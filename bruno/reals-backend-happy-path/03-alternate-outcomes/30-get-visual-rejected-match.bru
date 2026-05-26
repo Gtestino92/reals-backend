@@ -1,0 +1,21 @@
+meta {
+  name: 30 Get Visual Rejected Match
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMatchVisualRejectedId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "VISUAL_REJECTED") {
+    throw new Error(`Expected persisted match state VISUAL_REJECTED, got ${body.state}`);
+  }
+  if (body.connectionId) {
+    throw new Error("VISUAL_REJECTED must not have connectionId.");
+  }
+}

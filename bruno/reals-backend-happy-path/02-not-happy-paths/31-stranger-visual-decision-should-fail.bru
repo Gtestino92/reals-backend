@@ -1,0 +1,28 @@
+meta {
+  name: 31 Stranger Visual Decision Should Fail
+  type: http
+  seq: 31
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 400) {
+    throw new Error(`Expected 400 Bad Request, got ${res.getStatus()}`);
+  }
+}

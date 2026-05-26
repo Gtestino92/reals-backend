@@ -1,0 +1,33 @@
+meta {
+  name: 10 Create Profile B
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+body:json {
+  {
+    "displayName": "Negative B",
+    "birthDate": "1994-09-22",
+    "gender": "MALE",
+    "lookingForGender": "WOMEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Negative path B."
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("negativeProfileBId", res.getBody().id);
+}

@@ -1,0 +1,28 @@
+meta {
+  name: 29 User B Approve First Chat
+  type: http
+  seq: 29
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  if (res.getBody().state !== "VISUAL_PHASE") {
+    throw new Error("Expected VISUAL_PHASE.");
+  }
+}

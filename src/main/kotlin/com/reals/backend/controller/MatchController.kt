@@ -27,12 +27,22 @@ class MatchController(
         return ResponseEntity.ok(MatchResponse.from(match = match, connectionId = connectionId))
     }
 
+    @GetMapping("/{matchId}/chat")
+    fun getFirstChat(
+        @PathVariable matchId: UUID
+    ): ResponseEntity<ChatResponse> =
+        ResponseEntity.ok(
+            ChatResponse.from(
+                chatService.findActiveFirstChatOrThrow(matchId)
+            )
+        )
+
     /*
         Returns the profile of the OTHER user in the match, ass seen from [requestingUserId]
         Only available when the match is in VISUAL_PHASE or later
         Includes photos so the requesting user can make the visual decision
      */
-    @GetMapping("/{matchId}/visual/profile")
+    @GetMapping("/{matchId}/visual-profile")
     fun getVisualPhaseProfile(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID
@@ -75,7 +85,7 @@ class MatchController(
             - BOTH APPROVED -> Match transitions CHAT_ACTIVE -> VISUAL_PHASE, VisualReview created
             - ANY REJECTED -> Match transitions to CHAT_REJECTED, locks released
      */
-    @PostMapping("/{matchId}/chat/decision")
+    @PostMapping("/{matchId}/chat-decision")
     fun recordChatDecision(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
@@ -106,7 +116,7 @@ class MatchController(
      *  - mutual APPROVED -> VISUAL_APPROVED, Connection created
      *  - any REJECTED -> VISUAL_REJECTED, locks released
      */
-    @PostMapping("/{matchId}/visual/decision")
+    @PostMapping("/{matchId}/visual-decision")
     fun recordVisualDecision(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
@@ -136,7 +146,7 @@ class MatchController(
      * Records the personal message a user writes to the other
      * Only meaningful after mutual visual approval (messagesVisible = true)
      */
-    @PostMapping("/{matchId}/visual/message")
+    @PutMapping("/{matchId}/personal-message")
     fun recordPersonalMessage(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
@@ -163,7 +173,7 @@ class MatchController(
      * TODO (front): llamar al entrar en la pantalla de negociación de horario
      * TODO (product): ver PENDING.md #17 - visibilidad del mensaje del partner
      */
-    @GetMapping("/{matchId}/visual/message")
+    @GetMapping("/{matchId}/partner-message")
     fun getPartnerMessage(
         @PathVariable matchId: UUID,
         @CurrentUserId requestingUserId: UUID

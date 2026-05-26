@@ -1,0 +1,32 @@
+meta {
+  name: 00 Setup Negative Run Variables
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const runId = Date.now().toString();
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const dayAfterTomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+  bru.setEnvVar("negativeRunId", runId);
+  bru.setEnvVar("negativeUserAEmail", `negative.a.${runId}@example.com`);
+  bru.setEnvVar("negativeUserBEmail", `negative.b.${runId}@example.com`);
+  bru.setEnvVar("negativeStrangerEmail", `negative.stranger.${runId}@example.com`);
+  bru.setEnvVar("negativeDraftEmail", `negative.draft.${runId}@example.com`);
+  bru.setEnvVar("negativeSecondChatDateTime", tomorrow);
+  bru.setEnvVar("negativeOtherSecondChatDateTime", dayAfterTomorrow);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response { status: 'ok' }");
+  }
+}

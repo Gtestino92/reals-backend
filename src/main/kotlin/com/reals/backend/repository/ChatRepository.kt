@@ -3,6 +3,7 @@ package com.reals.backend.repository
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.OffsetDateTime
@@ -31,7 +32,7 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         """ select c from Chat c
         where c.status = 'ACTIVE'
           and (
-              c.lastMessageAt is null
+              (c.lastMessageAt is null and c.startedAt <= :threshold)
               or c.lastMessageAt <= :threshold
           )
         """
@@ -39,4 +40,11 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     fun findInactiveActiveChats(
         @Param("threshold") threshold: OffsetDateTime
     ): List<Chat>
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Chat c set c.timeoutAt = :timeoutAt where c.id = :chatId")
+    fun updateTimeoutAt(
+        @Param("chatId") chatId: UUID,
+        @Param("timeoutAt") timeoutAt: OffsetDateTime
+    ): Int
 }

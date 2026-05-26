@@ -64,6 +64,8 @@ Known scheduler jobs:
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
 
+Local/dev profiles expose `/api/dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. These endpoints are profile-gated and are not part of the production API.
+
 ## Non-Goals
 
 These are not current backend behavior:

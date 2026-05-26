@@ -1,0 +1,31 @@
+meta {
+  name: 05 Add Photo Invalid Position Should Fail
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeDraftUserId}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/invalid-position.jpg",
+    "position": 10,
+    "isPersonPhoto": true,
+    "isFullBody": true
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

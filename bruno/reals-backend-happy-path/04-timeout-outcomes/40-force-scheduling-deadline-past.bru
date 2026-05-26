@@ -1,0 +1,17 @@
+meta {
+  name: 40 Force Scheduling Deadline Past
+  type: http
+  seq: 40
+}
+
+post {
+  url: {{baseUrl}}/api/dev/timeouts/connections/{{timeoutSchedulingConnectionId}}/scheduling-expire-now
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().target !== "connection") {
+    throw new Error("Expected dev timeout mutation for connection.");
+  }
+}

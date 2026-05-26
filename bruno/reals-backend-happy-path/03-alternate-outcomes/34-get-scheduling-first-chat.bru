@@ -1,0 +1,16 @@
+meta {
+  name: 34 Get Scheduling First Chat
+  type: http
+  seq: 34
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMatchSchedulingFailedId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("alternateFirstChatSchedulingId", body.id);
+}

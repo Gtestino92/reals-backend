@@ -1,0 +1,24 @@
+meta {
+  name: 06 Add Profile A Photo 2
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "url": "https://example.com/timeout-a-2.jpg",
+    "position": 2,
+    "isPersonPhoto": false,
+    "isFullBody": false
+  }
+}

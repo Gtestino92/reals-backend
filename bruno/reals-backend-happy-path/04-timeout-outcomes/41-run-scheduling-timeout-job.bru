@@ -1,0 +1,17 @@
+meta {
+  name: 41 Run Scheduling Timeout Job
+  type: http
+  seq: 41
+}
+
+post {
+  url: {{baseUrl}}/api/dev/jobs/scheduling-timeout/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "SchedulingNegotiationTimeoutJob") {
+    throw new Error("Expected SchedulingNegotiationTimeoutJob to run.");
+  }
+}

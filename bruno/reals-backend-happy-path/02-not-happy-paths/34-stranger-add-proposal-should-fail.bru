@@ -1,0 +1,28 @@
+meta {
+  name: 34 Stranger Add Proposal Should Fail
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{negativeSecondChatDateTime}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

@@ -35,6 +35,16 @@ class ConnectionController(
         )
     }
 
+    @GetMapping("/{connectionId}/chat")
+    fun getSecondChat(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<com.reals.backend.controller.dto.ChatResponse> =
+        ResponseEntity.ok(
+            com.reals.backend.controller.dto.ChatResponse.from(
+                chatService.findActiveSecondChatOrThrow(connectionId)
+            )
+        )
+
     @GetMapping("/{connectionId}/negotiation")
     fun getNegotiation(
         @PathVariable connectionId: UUID
@@ -103,7 +113,7 @@ class ConnectionController(
      *  - [userId] must have already submitted their own proposal this round
      *  - Once confirmed -> Connection transitions to SECOND_CHAT, second chat starts
      */
-    @PostMapping("/{connectionId}/proposals/{proposalId}/accept")
+    @PostMapping("/{connectionId}/proposals/{proposalId}/acceptance")
     fun acceptProposal(
         @CurrentUserId userId: UUID,
         @PathVariable proposalId: UUID,
@@ -127,7 +137,7 @@ class ConnectionController(
      * Clears pending proposals and increments round number
      * if maxRounds is exceeded -> negotiation FAILED, Connection CLOSED
      */
-    @PostMapping("/{connectionId}/negotiation/next-round")
+    @PostMapping("/{connectionId}/negotiation/rounds")
     fun openNewRound(
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {

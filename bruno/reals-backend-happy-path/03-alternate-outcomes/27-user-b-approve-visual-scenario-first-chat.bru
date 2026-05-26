@@ -1,0 +1,29 @@
+meta {
+  name: 27 User B Approve Visual Scenario First Chat
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchVisualRejectedId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "VISUAL_PHASE") {
+    throw new Error(`Expected VISUAL_PHASE, got ${body.state}`);
+  }
+}

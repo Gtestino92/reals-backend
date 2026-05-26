@@ -1,0 +1,20 @@
+meta {
+  name: 24 Process Visual Rejection Match
+  type: http
+  seq: 24
+}
+
+post {
+  url: {{baseUrl}}/api/dev/matchmaking/process?batchSize=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated !== 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("Expected exactly one match for visual rejection scenario.");
+  }
+
+  bru.setEnvVar("alternateMatchVisualRejectedId", body.pairs[0].id);
+}

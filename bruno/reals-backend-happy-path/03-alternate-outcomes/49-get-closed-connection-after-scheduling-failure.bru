@@ -1,0 +1,18 @@
+meta {
+  name: 49 Get Closed Connection After Scheduling Failure
+  type: http
+  seq: 49
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "CLOSED") {
+    throw new Error(`Expected CLOSED connection after failed negotiation, got ${body.state}`);
+  }
+}

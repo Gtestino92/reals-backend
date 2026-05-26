@@ -1,0 +1,22 @@
+meta {
+  name: 35 User A Approve Scheduling First Chat
+  type: http
+  seq: 35
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchSchedulingFailedId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

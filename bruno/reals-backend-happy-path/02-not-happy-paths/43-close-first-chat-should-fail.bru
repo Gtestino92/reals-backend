@@ -1,0 +1,21 @@
+meta {
+  name: 43 Close First Chat Should Fail
+  type: http
+  seq: 43
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{negativeFirstChatId}}/closure
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

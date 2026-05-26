@@ -22,4 +22,11 @@ interface PenaltyRepository :
         @Param("now")
         now: OffsetDateTime
     ): List<Penalty>
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Penalty p set p.expiresAt = :expiresAt where p.id = :penaltyId")
+    fun updateExpiresAt(
+        @Param("penaltyId") penaltyId: UUID,
+        @Param("expiresAt") expiresAt: OffsetDateTime
+    ): Int
 }

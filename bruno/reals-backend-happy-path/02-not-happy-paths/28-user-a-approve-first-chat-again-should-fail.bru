@@ -1,0 +1,28 @@
+meta {
+  name: 28 User A Approve First Chat Again Should Fail
+  type: http
+  seq: 28
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

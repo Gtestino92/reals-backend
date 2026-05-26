@@ -1,0 +1,32 @@
+meta {
+  name: 29 User B Reject Visual
+  type: http
+  seq: 29
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchVisualRejectedId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "decision": "REJECTED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "VISUAL_REJECTED") {
+    throw new Error(`Expected VISUAL_REJECTED, got ${body.state}`);
+  }
+  if (body.connectionId) {
+    throw new Error("Visual rejection must not create a connection.");
+  }
+}

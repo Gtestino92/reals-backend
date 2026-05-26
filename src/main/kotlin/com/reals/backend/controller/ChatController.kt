@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*
 import java.util.*
 
 @RestController
-@RequestMapping("/api/chat")
+@RequestMapping("/api/chats")
 class ChatController(
     private val chatService: ChatService
 ) {
@@ -27,28 +27,6 @@ class ChatController(
         return ResponseEntity.ok(
             ChatResponse.from(chat)
         )
-    }
-
-    /**
-     * Returns the active first chat for a given match
-     * Useful when you only have the matchId (eg right after /matchmaking/process)
-     */
-    @GetMapping("/by-match/{matchId}")
-    fun getChatByMatch(
-        @PathVariable matchId: UUID
-    ): ResponseEntity<ChatResponse> {
-        return ResponseEntity.ok(ChatResponse.from(chatService.findActiveFirstChatOrThrow(matchId)))
-    }
-
-    /**
-     * Returns the active second chat for a given connection
-     * Useful after sched negotiation is confirmed to obtain chatId2
-     */
-    @GetMapping("/by-connection/{connectionId}")
-    fun getChatByConnection(
-        @PathVariable connectionId: UUID
-    ): ResponseEntity<ChatResponse> {
-        return ResponseEntity.ok(ChatResponse.from(chatService.findActiveSecondChatOrThrow(connectionId)))
     }
 
     @PostMapping("/{chatId}/messages")
@@ -83,7 +61,7 @@ class ChatController(
         )
     }
 
-    @PostMapping("/{chatId}/close")
+    @PostMapping("/{chatId}/closure")
     fun closeSecondChat(
         @PathVariable chatId: UUID,
         @CurrentUserId userId: UUID

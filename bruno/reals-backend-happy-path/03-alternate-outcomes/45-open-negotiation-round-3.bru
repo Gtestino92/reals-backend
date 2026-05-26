@@ -1,0 +1,18 @@
+meta {
+  name: 45 Open Negotiation Round 3
+  type: http
+  seq: 45
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rounds
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "PENDING" || body.roundNumber !== 3) {
+    throw new Error(`Expected PENDING round 3, got ${body.status} round ${body.roundNumber}`);
+  }
+}

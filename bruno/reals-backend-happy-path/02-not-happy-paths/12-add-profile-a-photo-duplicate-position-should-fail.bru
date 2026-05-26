@@ -1,0 +1,31 @@
+meta {
+  name: 12 Add Profile A Photo Duplicate Position Should Fail
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/negative-a-duplicate.jpg",
+    "position": 1,
+    "isPersonPhoto": true,
+    "isFullBody": false
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

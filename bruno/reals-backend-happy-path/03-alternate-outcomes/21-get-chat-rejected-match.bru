@@ -1,0 +1,21 @@
+meta {
+  name: 21 Get Chat Rejected Match
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMatchChatRejectedId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "CHAT_REJECTED") {
+    throw new Error(`Expected persisted match state CHAT_REJECTED, got ${body.state}`);
+  }
+  if (body.connectionId) {
+    throw new Error("CHAT_REJECTED must not have connectionId.");
+  }
+}

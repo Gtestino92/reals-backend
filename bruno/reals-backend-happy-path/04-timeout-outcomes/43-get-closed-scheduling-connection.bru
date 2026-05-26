@@ -1,0 +1,17 @@
+meta {
+  name: 43 Get Closed Scheduling Connection
+  type: http
+  seq: 43
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSchedulingConnectionId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().state !== "CLOSED") {
+    throw new Error(`Expected scheduling connection CLOSED, got ${res.getBody().state}`);
+  }
+}

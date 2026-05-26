@@ -1,0 +1,21 @@
+meta {
+  name: 30 Stranger Get Visual Profile Should Fail
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/visual-profile
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 400) {
+    throw new Error(`Expected 400 Bad Request, got ${res.getStatus()}`);
+  }
+}

@@ -1,0 +1,15 @@
+meta {
+  name: 23 Enqueue User B For Visual Rejection
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserBId}}
+}

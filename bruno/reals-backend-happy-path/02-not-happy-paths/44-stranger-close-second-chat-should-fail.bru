@@ -1,0 +1,21 @@
+meta {
+  name: 44 Stranger Close Second Chat Should Fail
+  type: http
+  seq: 44
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{negativeSecondChatId}}/closure
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

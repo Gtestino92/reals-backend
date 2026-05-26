@@ -1,0 +1,21 @@
+meta {
+  name: 48 Open Round After Max Fails Negotiation
+  type: http
+  seq: 48
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rounds
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "FAILED" || body.roundNumber !== 3) {
+    throw new Error(`Expected FAILED round 3, got ${body.status} round ${body.roundNumber}`);
+  }
+  if (body.chatId) {
+    throw new Error("Failed negotiation must not create a second chat.");
+  }
+}

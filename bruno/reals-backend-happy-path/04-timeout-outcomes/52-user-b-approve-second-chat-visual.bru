@@ -1,0 +1,30 @@
+meta {
+  name: 52 User B Approve Second Chat Visual
+  type: http
+  seq: 52
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{timeoutSecondChatMatchId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body.connectionId) {
+    throw new Error("Expected connectionId for second-chat timeout scenario.");
+  }
+  bru.setEnvVar("timeoutSecondChatConnectionId", body.connectionId);
+}

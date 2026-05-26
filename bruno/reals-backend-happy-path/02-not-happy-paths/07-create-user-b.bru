@@ -1,0 +1,25 @@
+meta {
+  name: 07 Create User B
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/users
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{negativeUserBEmail}}"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("negativeUserBId", res.getBody().id);
+}

@@ -1,0 +1,15 @@
+meta {
+  name: 09 Activate Profile A
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/activation
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}

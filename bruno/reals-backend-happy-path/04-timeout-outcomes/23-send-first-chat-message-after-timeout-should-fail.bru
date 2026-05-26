@@ -1,0 +1,28 @@
+meta {
+  name: 23 Send First Chat Message After Timeout Should Fail
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{timeoutFirstChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "content": "Este mensaje no deberia aceptarse."
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 when sending to expired first chat, got ${res.getStatus()}`);
+  }
+}

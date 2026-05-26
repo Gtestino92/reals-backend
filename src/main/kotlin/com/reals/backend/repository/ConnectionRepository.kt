@@ -3,6 +3,9 @@ package com.reals.backend.repository
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -17,4 +20,11 @@ interface ConnectionRepository :
         state: ConnectionState,
         before: OffsetDateTime
     ): List<Connection>
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Connection c set c.schedulingExpiresAt = :expiresAt where c.id = :connectionId")
+    fun updateSchedulingExpiresAt(
+        @Param("connectionId") connectionId: UUID,
+        @Param("expiresAt") expiresAt: OffsetDateTime
+    ): Int
 }

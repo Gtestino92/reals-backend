@@ -1,0 +1,18 @@
+meta {
+  name: 19 Force First Chat Deadline Past
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{baseUrl}}/api/dev/timeouts/chats/{{timeoutFirstChatId}}/expire-now
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.target !== "chat") {
+    throw new Error("Expected dev timeout mutation for chat.");
+  }
+}

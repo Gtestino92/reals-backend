@@ -8,7 +8,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
 - Whether second-chat explicit close should ever create penalties.
-- Whether matchmaking should be processed by a scheduler/worker instead of the manual `/api/matchmaking/process` endpoint.
+- Whether matchmaking should be processed by a scheduler/worker instead of the dev-only `/api/dev/matchmaking/process` endpoint.
 
 ## Not Currently Implemented
 

@@ -1,0 +1,15 @@
+meta {
+  name: 52 Enqueue User A Incompatible
+  type: http
+  seq: 52
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}

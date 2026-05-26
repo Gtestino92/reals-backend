@@ -12,11 +12,18 @@ Bruno collection for local `local-nodb` manual testing.
    ```
 
 3. Select the `local` environment.
-4. Run the requests in `01 Happy Path` in order.
+4. Run one folder at a time, always in request order.
 
 The first request generates unique test emails and a future second-chat slot. The next two requests create real `users` rows and store `userAId` and `userBId` in the active Bruno environment. The following requests use `X-Dev-User-Id` to impersonate each local user.
 
-## Covered Flow
+## Folders
+
+- `01 Happy Path`: complete successful path through second chat and closed connection.
+- `02 Not Happy Paths`: HTTP-level guardrails and invalid operations that should return 4xx responses.
+- `03 Alternate Outcomes`: valid business flows that do not end in a successful second chat.
+- `04 Timeout Outcomes`: local/dev-only deadline and job-trigger flows for time-based outcomes.
+
+## Happy Path Covered Flow
 
 - create two compatible profiles
 - create two local test users

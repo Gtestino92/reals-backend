@@ -1,0 +1,23 @@
+meta {
+  name: 41 User B Accept User A Proposal
+  type: http
+  seq: 41
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals/{{negativeProposalAId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "CONFIRMED" || !body.chatId) {
+    throw new Error("Expected CONFIRMED negotiation with chatId.");
+  }
+  bru.setEnvVar("negativeSecondChatId", body.chatId);
+}

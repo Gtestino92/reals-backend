@@ -1,0 +1,22 @@
+meta {
+  name: 37 User A Approve Scheduling Visual
+  type: http
+  seq: 37
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchSchedulingFailedId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

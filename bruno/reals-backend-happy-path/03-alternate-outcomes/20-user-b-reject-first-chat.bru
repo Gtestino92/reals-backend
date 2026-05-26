@@ -1,0 +1,32 @@
+meta {
+  name: 20 User B Reject First Chat
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchChatRejectedId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "decision": "REJECTED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "CHAT_REJECTED") {
+    throw new Error(`Expected CHAT_REJECTED, got ${body.state}`);
+  }
+  if (body.connectionId) {
+    throw new Error("Rejected first-chat match must not create a connection.");
+  }
+}

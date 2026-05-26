@@ -1,0 +1,22 @@
+meta {
+  name: 41 User B Propose Round 1 Different Slot
+  type: http
+  seq: 41
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{alternateSlot2}}"
+  }
+}

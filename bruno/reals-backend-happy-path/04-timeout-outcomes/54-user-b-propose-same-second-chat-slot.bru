@@ -1,0 +1,30 @@
+meta {
+  name: 54 User B Propose Same Second Chat Slot
+  type: http
+  seq: 54
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{timeoutSecondChatSlot}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body.chatId) {
+    throw new Error("Expected second chat chatId after matching proposals.");
+  }
+  bru.setEnvVar("timeoutSecondChatId", body.chatId);
+}

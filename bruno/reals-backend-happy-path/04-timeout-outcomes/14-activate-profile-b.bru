@@ -1,0 +1,21 @@
+meta {
+  name: 14 Activate Profile B
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/activation
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+script:post-response {
+  if (res.getBody().status !== "ACTIVE") {
+    throw new Error("Expected profile B to be ACTIVE.");
+  }
+}

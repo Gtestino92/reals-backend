@@ -1,0 +1,25 @@
+meta {
+  name: 08 Create Stranger User
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/users
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{negativeStrangerEmail}}"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("negativeStrangerUserId", res.getBody().id);
+}

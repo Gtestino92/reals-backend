@@ -3,12 +3,13 @@ package com.reals.backend.controller
 import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.ProfileService
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.util.*
 
 @RestController
-@RequestMapping("/api/profiles")
+@RequestMapping("/api/me/profile")
 class ProfileController(
     private val profileService: ProfileService
 ) {
@@ -36,12 +37,12 @@ class ProfileController(
             bio = request.bio
         )
         val photos = profileService.getPhotos(profile.id)
-        return ResponseEntity.ok(
+        return ResponseEntity.status(HttpStatus.CREATED).body(
             ProfileResponse.from(profile, photos.size)
         )
     }
 
-    @GetMapping("/me")
+    @GetMapping
     fun getMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
@@ -60,7 +61,7 @@ class ProfileController(
     }
 
 
-    @PatchMapping("/me")
+    @PatchMapping
     fun updateMyProfile(
         @CurrentUserId userId: UUID,
         @RequestBody request: UpdateProfileRequest
@@ -91,7 +92,7 @@ class ProfileController(
         )
     }
 
-    @PostMapping("/me/activate")
+    @PostMapping("/activation")
     fun activateMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
@@ -119,82 +120,57 @@ class ProfileController(
      * Positions 1-9 are valid. Each position can only be occupied once
      * TODO: the isPersonPhoto and isFullBody should be validated with other services!
      */
-    @PostMapping("/{profileId}/photos")
+    @PostMapping("/photos")
     fun addPhoto(
-        @PathVariable profileId: UUID,
+        @CurrentUserId userId: UUID,
         @RequestBody request: AddPhotoRequest
     ): ResponseEntity<PhotoResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
 
         val photo = profileService.addPhoto(
-            profileId = profileId,
+            profileId = profile.id,
             url = request.url,
             position = request.position,
             isPersonPhoto = request.isPersonPhoto,
             isFullBody = request.isFullBody
         )
 
-        return ResponseEntity.ok(
+        return ResponseEntity.status(HttpStatus.CREATED).body(
             PhotoResponse.from(photo)
         )
     }
 
-    @GetMapping("/{profileId}/photos")
+    @GetMapping("/photos")
     fun getPhotos(
-        @PathVariable profileId: UUID
+        @CurrentUserId userId: UUID
     ): ResponseEntity<List<PhotoResponse>> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
 
-        val photos = profileService.getPhotos(profileId = profileId)
+        val photos = profileService.getPhotos(profileId = profile.id)
             .sortedBy { it.position }
             .map { PhotoResponse.from(it) }
 
         return ResponseEntity.ok(photos)
     }
 
-    /**
-     * Validates photos and sets profile status to ACTIVE
-     * Requirements are configurable via profile.photos.* properties
-     * Defaults (prod): exactly 9 photos, min 3 person photos, min 1 full body
-     * Local (local-nodb): exactly 4 photos, min 1 and 1
-     * Only ACTIVE profiles can enter matchmaking
-     */
-    @PostMapping("{profileId}/activate")
-    fun activateProfile(@PathVariable profileId: UUID): ResponseEntity<ProfileResponse> {
-        val profile = profileService.activateProfile(profileId)
-        val photos = profileService.getPhotos(profile.id)
-        return ResponseEntity.ok(ProfileResponse.from(profile, photos.size))
-    }
-
-    /** Partially updates editable text fields
-     * only non-null fields in the req body are applied
-     * birthDate and gender are not editable after profile creation
-     *
-     */
-    @PatchMapping("/{profileId}")
-    fun updateProfile(
-        @PathVariable profileId: UUID,
-        @RequestBody request: UpdateProfileRequest
-    ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.updateProfile(
-            profileId = profileId,
-            displayName = request.displayName,
-            bio = request.bio,
-            city = request.city,
-            country = request.country,
-            intention = request.intention,
-            lookingForGender = request.lookingForGender
-        )
-        val photos = profileService.getPhotos(profile.id)
-        return ResponseEntity.ok(ProfileResponse.from(profile, photos.size))
-    }
-
-    @DeleteMapping("/{profileId}/{position}")
+    @DeleteMapping("/photos/{position}")
     fun deletePhoto(
-        @PathVariable profileId: UUID,
+        @CurrentUserId userId: UUID,
         @PathVariable position: Int
     ): ResponseEntity<ProfileResponse> {
+        val existing = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
 
         val profile = profileService.deletePhoto(
-            profileId = profileId,
+            profileId = existing.id,
             position = position
         )
 
@@ -208,15 +184,19 @@ class ProfileController(
         )
     }
 
-    // REPLACE PHOTO
-    @PutMapping("/{profileId}/photos/{position}")
+    @PutMapping("/photos/{position}")
     fun replacePhoto(
-        @PathVariable profileId: UUID,
+        @CurrentUserId userId: UUID,
         @PathVariable position: Int,
         @RequestBody request: ReplacePhotoRequest
     ): ResponseEntity<PhotoResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
         val photo = profileService.replacePhoto(
-            profileId = profileId,
+            profileId = profile.id,
             position = position,
             url = request.url,
             isPersonPhoto = request.isPersonPhoto,

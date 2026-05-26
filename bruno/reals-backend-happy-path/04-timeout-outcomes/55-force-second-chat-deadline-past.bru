@@ -1,0 +1,17 @@
+meta {
+  name: 55 Force Second Chat Deadline Past
+  type: http
+  seq: 55
+}
+
+post {
+  url: {{baseUrl}}/api/dev/timeouts/chats/{{timeoutSecondChatId}}/expire-now
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().target !== "chat") {
+    throw new Error("Expected dev timeout mutation for second chat.");
+  }
+}

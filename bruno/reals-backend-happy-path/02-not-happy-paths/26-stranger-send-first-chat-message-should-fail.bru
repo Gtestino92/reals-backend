@@ -1,0 +1,28 @@
+meta {
+  name: 26 Stranger Send First Chat Message Should Fail
+  type: http
+  seq: 26
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{negativeFirstChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+body:json {
+  {
+    "content": "I should not be allowed to send this."
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

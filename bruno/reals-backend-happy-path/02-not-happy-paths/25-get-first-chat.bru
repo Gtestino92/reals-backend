@@ -1,0 +1,15 @@
+meta {
+  name: 25 Get First Chat
+  type: http
+  seq: 25
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  bru.setEnvVar("negativeFirstChatId", res.getBody().id);
+}

@@ -1,0 +1,33 @@
+meta {
+  name: 00 Setup Alternate Run Variables
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const runId = Date.now().toString();
+  const hours = (n) => new Date(Date.now() + n * 60 * 60 * 1000).toISOString();
+
+  bru.setEnvVar("alternateRunId", runId);
+  bru.setEnvVar("alternateUserAEmail", `alternate.a.${runId}@example.com`);
+  bru.setEnvVar("alternateUserBEmail", `alternate.b.${runId}@example.com`);
+  bru.setEnvVar("alternateSlot1", hours(24));
+  bru.setEnvVar("alternateSlot2", hours(25));
+  bru.setEnvVar("alternateSlot3", hours(26));
+  bru.setEnvVar("alternateSlot4", hours(27));
+  bru.setEnvVar("alternateSlot5", hours(28));
+  bru.setEnvVar("alternateSlot6", hours(29));
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response { status: 'ok' }");
+  }
+}

@@ -1,0 +1,22 @@
+meta {
+  name: 27 User A Approve Visual Timeout First Chat
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{timeoutVisualMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

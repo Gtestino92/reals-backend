@@ -1,0 +1,19 @@
+meta {
+  name: 39 Get Scheduling Negotiation
+  type: http
+  seq: 39
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "PENDING" || body.roundNumber !== 1) {
+    throw new Error(`Expected PENDING round 1, got ${body.status} round ${body.roundNumber}`);
+  }
+  bru.setEnvVar("alternateNegotiationSchedulingFailedId", body.id);
+}

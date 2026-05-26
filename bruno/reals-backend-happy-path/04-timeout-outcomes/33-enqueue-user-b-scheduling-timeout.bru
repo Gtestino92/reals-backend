@@ -1,0 +1,15 @@
+meta {
+  name: 33 Enqueue User B Scheduling Timeout
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserBId}}
+}

@@ -1,0 +1,18 @@
+meta {
+  name: 39 Get Scheduling Negotiation Before Timeout
+  type: http
+  seq: 39
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSchedulingConnectionId}}/negotiation
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "PENDING") {
+    throw new Error(`Expected scheduling negotiation PENDING, got ${body.status}`);
+  }
+}

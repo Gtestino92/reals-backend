@@ -1,0 +1,17 @@
+meta {
+  name: 45 Get Second Chat After Scheduling Timeout Returns 404
+  type: http
+  seq: 45
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSchedulingConnectionId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getStatus() !== 404) {
+    throw new Error(`Expected 404 because scheduling timeout created no second chat, got ${res.getStatus()}`);
+  }
+}

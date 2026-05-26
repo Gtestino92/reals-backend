@@ -1,0 +1,18 @@
+meta {
+  name: 21 Get Expired First Chat By Id
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/api/chats/{{timeoutFirstChatId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "EXPIRED") {
+    throw new Error(`Expected first chat EXPIRED, got ${body.status}`);
+  }
+}

@@ -1,0 +1,16 @@
+meta {
+  name: 18 Get Chat Rejection First Chat
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMatchChatRejectedId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("alternateFirstChatRejectId", body.id);
+}

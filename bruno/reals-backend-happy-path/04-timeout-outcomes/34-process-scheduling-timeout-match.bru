@@ -1,0 +1,19 @@
+meta {
+  name: 34 Process Scheduling Timeout Match
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{baseUrl}}/api/dev/matchmaking/process?batchSize=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated !== 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("Expected one match for scheduling timeout.");
+  }
+  bru.setEnvVar("timeoutSchedulingMatchId", body.pairs[0].id);
+}

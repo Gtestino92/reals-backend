@@ -1,0 +1,17 @@
+meta {
+  name: 20 Run Chat Timeout Job For First Chat
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/api/dev/jobs/chat-timeout/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "ChatTimeoutJob") {
+    throw new Error("Expected ChatTimeoutJob to run.");
+  }
+}

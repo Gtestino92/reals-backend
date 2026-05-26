@@ -1,0 +1,15 @@
+meta {
+  name: 16 Enqueue User B For Chat Rejection
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserBId}}
+}

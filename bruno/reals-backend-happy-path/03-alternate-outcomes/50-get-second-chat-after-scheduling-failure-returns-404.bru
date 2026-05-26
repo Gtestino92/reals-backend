@@ -1,0 +1,17 @@
+meta {
+  name: 50 Get Second Chat After Scheduling Failure Returns 404
+  type: http
+  seq: 50
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getStatus() !== 404) {
+    throw new Error(`Expected 404 because no second chat was created, got ${res.getStatus()}`);
+  }
+}

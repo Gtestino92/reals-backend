@@ -1,0 +1,21 @@
+meta {
+  name: 54 Process Incompatible Queue
+  type: http
+  seq: 54
+}
+
+post {
+  url: {{baseUrl}}/api/dev/matchmaking/process?batchSize=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated !== 0) {
+    throw new Error(`Expected no match for incompatible profiles, got ${body && body.matchesCreated}`);
+  }
+  if (body.pairs && body.pairs.length !== 0) {
+    throw new Error("Expected empty pairs list for incompatible profiles.");
+  }
+}

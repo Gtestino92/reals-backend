@@ -1,0 +1,17 @@
+meta {
+  name: 42 Get Failed Scheduling Negotiation
+  type: http
+  seq: 42
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSchedulingConnectionId}}/negotiation
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().status !== "FAILED") {
+    throw new Error(`Expected scheduling negotiation FAILED, got ${res.getBody().status}`);
+  }
+}

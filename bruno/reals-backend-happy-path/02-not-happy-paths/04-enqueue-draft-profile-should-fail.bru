@@ -1,0 +1,21 @@
+meta {
+  name: 04 Enqueue Draft Profile Should Fail
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeDraftUserId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

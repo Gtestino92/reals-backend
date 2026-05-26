@@ -62,29 +62,28 @@ class MatchExpirationJob(
 
         if (expiredCandidates.isEmpty()) {
             log.debug("MatchExpirationJob - no expired matches found")
-            return
-        }
+        } else {
+            log.info(
+                "MatchExpirationJob - found {} match(es) to expire",
+                expiredCandidates.size
+            )
 
-        log.info(
-            "MatchExpirationJob - found {} match(es) to expire",
-            expiredCandidates.size
-        )
+            expiredCandidates.forEach { match ->
+                try {
+                    matchService.expireMatch(match.id)
 
-        expiredCandidates.forEach { match ->
-            try {
-                matchService.expireMatch(match.id)
-
-                log.info(
-                    "MatchExpirationJob - expired match={} (createdAt={})",
-                    match.id,
-                    match.createdAt
-                )
-            } catch (ex: Exception) {
-                log.error(
-                    "MatchExpirationJob - failed to expire match={}: {}",
-                    match.id,
-                    ex.message
-                )
+                    log.info(
+                        "MatchExpirationJob - expired match={} (createdAt={})",
+                        match.id,
+                        match.createdAt
+                    )
+                } catch (ex: Exception) {
+                    log.error(
+                        "MatchExpirationJob - failed to expire match={}: {}",
+                        match.id,
+                        ex.message
+                    )
+                }
             }
         }
 

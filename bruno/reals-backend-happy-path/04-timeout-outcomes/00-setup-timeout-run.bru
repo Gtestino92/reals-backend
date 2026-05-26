@@ -1,0 +1,28 @@
+meta {
+  name: 00 Setup Timeout Run Variables
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const runId = Date.now().toString();
+  const hours = (n) => new Date(Date.now() + n * 60 * 60 * 1000).toISOString();
+
+  bru.setEnvVar("timeoutRunId", runId);
+  bru.setEnvVar("timeoutUserAEmail", `timeout.a.${runId}@example.com`);
+  bru.setEnvVar("timeoutUserBEmail", `timeout.b.${runId}@example.com`);
+  bru.setEnvVar("timeoutSecondChatSlot", hours(24));
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response { status: 'ok' }");
+  }
+}

@@ -1,0 +1,22 @@
+meta {
+  name: 19 User A Approve First Chat
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{alternateMatchChatRejectedId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

@@ -1,0 +1,34 @@
+meta {
+  name: 02 Create Draft Profile
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeDraftUserId}}
+}
+
+body:json {
+  {
+    "displayName": "Draft Negative",
+    "birthDate": "1996-01-01",
+    "gender": "FEMALE",
+    "lookingForGender": "MEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Draft profile for negative tests."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("negativeDraftProfileId", body.id);
+}

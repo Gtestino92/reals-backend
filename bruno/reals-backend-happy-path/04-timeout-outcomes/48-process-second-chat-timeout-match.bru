@@ -1,0 +1,19 @@
+meta {
+  name: 48 Process Second Chat Timeout Match
+  type: http
+  seq: 48
+}
+
+post {
+  url: {{baseUrl}}/api/dev/matchmaking/process?batchSize=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated !== 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("Expected one match for second-chat timeout.");
+  }
+  bru.setEnvVar("timeoutSecondChatMatchId", body.pairs[0].id);
+}

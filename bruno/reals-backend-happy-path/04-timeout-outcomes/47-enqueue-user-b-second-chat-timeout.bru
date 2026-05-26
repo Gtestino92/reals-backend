@@ -1,0 +1,15 @@
+meta {
+  name: 47 Enqueue User B Second Chat Timeout
+  type: http
+  seq: 47
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserBId}}
+}

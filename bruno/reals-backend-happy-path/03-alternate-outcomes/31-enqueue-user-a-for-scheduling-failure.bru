@@ -1,0 +1,15 @@
+meta {
+  name: 31 Enqueue User A For Scheduling Failure
+  type: http
+  seq: 31
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}

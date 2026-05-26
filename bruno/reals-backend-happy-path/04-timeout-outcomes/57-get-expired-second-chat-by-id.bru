@@ -1,0 +1,17 @@
+meta {
+  name: 57 Get Expired Second Chat By Id
+  type: http
+  seq: 57
+}
+
+get {
+  url: {{baseUrl}}/api/chats/{{timeoutSecondChatId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().status !== "EXPIRED") {
+    throw new Error(`Expected second chat EXPIRED, got ${res.getBody().status}`);
+  }
+}

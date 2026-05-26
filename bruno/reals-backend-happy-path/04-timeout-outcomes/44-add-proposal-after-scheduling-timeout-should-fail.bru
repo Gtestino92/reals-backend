@@ -1,0 +1,28 @@
+meta {
+  name: 44 Add Proposal After Scheduling Timeout Should Fail
+  type: http
+  seq: 44
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSchedulingConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{timeoutSecondChatSlot}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 when proposing after scheduling timeout, got ${res.getStatus()}`);
+  }
+}

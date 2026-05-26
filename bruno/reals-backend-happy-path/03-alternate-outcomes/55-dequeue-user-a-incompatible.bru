@@ -1,0 +1,15 @@
+meta {
+  name: 55 Dequeue User A Incompatible
+  type: http
+  seq: 55
+}
+
+delete {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}

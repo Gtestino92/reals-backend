@@ -1,0 +1,21 @@
+meta {
+  name: 03 Activate Draft Profile Without Photos Should Fail
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/activation
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeDraftUserId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

@@ -1,0 +1,28 @@
+meta {
+  name: 60 Send Second Chat Message After Timeout Should Fail
+  type: http
+  seq: 60
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{timeoutSecondChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "content": "Este mensaje tampoco deberia aceptarse."
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 when sending to expired second chat, got ${res.getStatus()}`);
+  }
+}

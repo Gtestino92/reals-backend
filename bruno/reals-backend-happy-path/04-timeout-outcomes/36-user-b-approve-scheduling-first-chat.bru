@@ -1,0 +1,28 @@
+meta {
+  name: 36 User B Approve Scheduling First Chat
+  type: http
+  seq: 36
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{timeoutSchedulingMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  if (res.getBody().state !== "VISUAL_PHASE") {
+    throw new Error("Expected scheduling scenario to enter VISUAL_PHASE.");
+  }
+}

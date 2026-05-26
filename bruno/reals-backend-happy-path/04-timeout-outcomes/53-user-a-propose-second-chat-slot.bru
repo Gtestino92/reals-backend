@@ -1,0 +1,22 @@
+meta {
+  name: 53 User A Propose Second Chat Slot
+  type: http
+  seq: 53
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{timeoutSecondChatSlot}}"
+  }
+}

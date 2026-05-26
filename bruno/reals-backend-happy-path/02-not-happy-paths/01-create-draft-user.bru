@@ -1,0 +1,26 @@
+meta {
+  name: 01 Create Draft User
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/users
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{negativeDraftEmail}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("negativeDraftUserId", body.id);
+}
