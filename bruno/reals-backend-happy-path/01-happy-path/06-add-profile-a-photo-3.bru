@@ -1,0 +1,25 @@
+meta {
+  name: 06 Add Profile A Photo 3
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/profiles/{{profileAId}}/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/a-3.jpg",
+    "position": 3,
+    "isPersonPhoto": false,
+    "isFullBody": false
+  }
+}

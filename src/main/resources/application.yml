@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: reals-backend
+
+  profiles:
+    active: local-nodb
+
+logging:
+  level:
+    root: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+scheduler:
+  # Detects chat sessions exceeding max duration or inactivity timeout
+  # Runs every 2 minutes — fast response needed so users don't remain stuck
+  chat-timeout-job:
+    fixed-delay: 120000
+
+  # Expires matches that have not progressed past CHAT_ACTIVE
+  # Runs every 5 minutes — less urgent than chat timeout
+  match-expiration-job:
+    fixed-delay: 300000
+
+  # Detects chat sessions with no messages within inactivity threshold
+  # Runs every 3 minutes — frequent enough to catch inactive sessions
+  inactivity-check-job:
+    fixed-delay: 180000
+
+    # How long a session can have no messages before being considered inactive
+    inactivity-threshold-minutes: 30
+
+  # Deactivates penalties whose expiresAt has passed
+  # Runs every 10 minutes — penalties have hour-level granularity
+  penalty-expiration-job:
+    fixed-delay: 600000
+
+  # Runs every 5 minutes — same cadence as match-expiration-job
+  visual-phase-expiration-job:
+    fixed-delay: 300000
+
+  # Closes scheduling negotiations that have exceeded their deadline
+  # Runs every 15 minutes — hour-level granularity is sufficient for this phase
+  scheduling-timeout-job:
+    fixed-delay: 900000
+
+chat:
+  # Maximum duration for the anonymous first chat between matched users
+  first-chat:
+    duration-minutes: 1440 # 24 hours
+
+    # Minimum number of messages a user must have sent before being allowed to approve
+    # 0 = disabled (default). Enforce in production once UX is validated
+    min-messages-per-user: 0
+
+  # Maximum duration for the visual phase
+  visual-phase:
+    duration-minutes: 1440 # 24 hours
+
+  # Maximum duration for the second chat after visual approval
+  # Longer because users are already acquainted
+  second-chat:
+    duration-minutes: 2880 # 48 hours
+
+scheduling:
+  # Total time window (in minutes) for both users to agree on a meeting time
+  # If not confirmed within this period, the negotiation is marked FAILED
+  negotiation-duration-minutes: 2880 # 48 hours
+
+  # Maximum negotiation rounds before marking the negotiation as FAILED
+  max-rounds: 3
+
+profile:
+  photos:
+    # Maximum number of photos a user can upload to their profile
+    max-count: 9
+
+    # Exact number of photos required to activate the profile
+    required-count: 9
+
+    # Minimum photos that must show the person
+    min-person-photos: 3
+
+    # Minimum full-body photos required
+    min-full-body-photos: 1
+
+engagement:
+  # Maximum number of simultaneous active Matches a user can participate in
+  # A match is active while its lock of type MATCH exists
+  max-active-matches: 5
+
+  # Maximum number of simultaneous active Connections a user can participate in
+  # A connection is active while its lock of type CONNECTION exists
+  max-active-connections: 2

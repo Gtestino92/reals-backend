@@ -1,0 +1,148 @@
+# Agent Instructions
+
+This repository is the backend for Reals, a structured dating / connection product. The backend is a Kotlin + Spring Boot modular monolith with explicit state transitions. Preserve the state-machine architecture when making changes.
+
+## Stack
+
+- Kotlin 2.2.0 on Java 17.
+- Spring Boot 3.5.3.
+- Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
+- H2 for local `local-nodb` development.
+- Oracle and PostgreSQL drivers are present for non-local environments, but this repository currently only contains `application.yml` and `application-local-nodb.yml`.
+- Flyway migrations live under `src/main/resources/db/migration`; local `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update`.
+- ShedLock protects scheduler jobs when a `LockProvider` bean exists.
+- Firebase Admin dependency and Firebase auth classes exist, but local development uses dev auto-auth.
+
+## Local Development
+
+- Default active Spring profile: `local-nodb`.
+- Local database: H2 file database at `./data/realsdb`.
+- H2 console: `http://localhost:8080/h2-console`.
+- H2 JDBC URL: `jdbc:h2:file:./data/realsdb`.
+- Local auth: `DevAutoAuthFilter` injects user `00000000-0000-0000-0000-000000000001` with `ROLE_USER`.
+- Sanity endpoint: `GET /api/ping`.
+- Maven CLI may not be installed on the target machine. Prefer IntelliJ IDEA run/build actions unless the user explicitly confirms CLI availability.
+
+## Architecture Rules
+
+- Controllers are thin HTTP adapters.
+- DTOs live under `src/main/kotlin/com/reals/backend/controller/dto`.
+- Services own business rules and state transitions.
+- Repositories are Spring Data JPA persistence adapters only.
+- Schedulers call services and must not duplicate transition logic.
+- Domain classes under `domain` represent persisted entities and enums.
+- Matching-specific logic belongs under `service.matching`.
+- Reputation-specific logic belongs under `service.reputation`.
+- Configuration belongs under `config`.
+
+Use this flow unless there is a strong reason not to:
+
+```text
+Controller -> Service -> Repository
+```
+
+Do not mutate domain state directly from controllers, schedulers or repositories.
+
+## Domain Invariants
+
+- The product is anonymous-first and state-driven.
+- Do not add swipe behavior, popularity ranking, ELO, visible reputation badges, reveal quotas, WebSockets, notifications or ML scoring unless explicitly requested.
+- Do not silently create missing domain objects unless the service method clearly owns that behavior.
+- Validate state transitions in services with clear failures.
+- Terminal states should not be mutated except by explicit, justified service methods.
+- Active engagement limits are counted from `ActiveEngagementLock`, not inferred from `Match` or `Connection` state.
+
+## Core Flow
+
+- A `Profile` starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking.
+- `MatchmakingService.enqueue` validates eligibility and queues the current user.
+- `MatchmakingService.findCandidatePairs` finds candidate pairs.
+- `MatchService.createMatch` creates the `Match`, creates `MATCH` locks for both users and removes both users from the queue.
+- `ChatService.startFirstChat` starts the anonymous first chat separately.
+- Mutual first-chat approval moves the match from `CHAT_ACTIVE` to `VISUAL_PHASE` and initializes `VisualReview`.
+- Any first-chat rejection moves the match to `CHAT_REJECTED` and releases locks.
+- Mutual visual approval moves the match to `VISUAL_APPROVED`, creates a `Connection`, upgrades locks to `CONNECTION` and initializes scheduling.
+- Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
+- Scheduling confirmation moves the connection to `SECOND_CHAT` and starts the second chat from the controller layer.
+- Scheduling proposals are for the second chat inside the app, not for an in-person meeting outside the app.
+- Closing or expiring a connection releases `CONNECTION` locks.
+
+## State Machines
+
+Allowed `MatchState` transitions:
+
+- `CHAT_ACTIVE -> VISUAL_PHASE`
+- `CHAT_ACTIVE -> CHAT_REJECTED`
+- `CHAT_ACTIVE -> EXPIRED`
+- `VISUAL_PHASE -> VISUAL_APPROVED`
+- `VISUAL_PHASE -> VISUAL_REJECTED`
+- `VISUAL_PHASE -> EXPIRED`
+
+Allowed `ChatStatus` transitions:
+
+- `ACTIVE -> FINISHED`
+- `ACTIVE -> EXPIRED`
+- `ACTIVE -> ABANDONED`
+
+Allowed `ConnectionState` transitions:
+
+- `SCHEDULING_PHASE -> SECOND_CHAT`
+- `SCHEDULING_PHASE -> CLOSED`
+- `SECOND_CHAT -> CLOSED`
+
+Allowed scheduling transitions:
+
+- `NegotiationStatus.PENDING -> CONFIRMED`
+- `NegotiationStatus.PENDING -> FAILED`
+- `ProposalStatus.PENDING -> ACCEPTED`
+- `ProposalStatus.PENDING -> REJECTED`
+
+## Configured Limits
+
+From `application.yml`:
+
+- `engagement.max-active-matches: 5`
+- `engagement.max-active-connections: 2`
+- `chat.first-chat.duration-minutes: 1440`
+- `chat.first-chat.min-messages-per-user: 0`
+- `chat.visual-phase.duration-minutes: 1440`
+- `chat.second-chat.duration-minutes: 2880`
+- `scheduling.negotiation-duration-minutes: 2880`
+- `scheduling.max-rounds: 3`
+- default profile photos: required `9`, max `9`, min person `3`, min full-body `1`
+
+From `application-local-nodb.yml`:
+
+- local profile photos: required `4`, max `9`, min person `1`, min full-body `1`
+
+## Coding Style
+
+- Use Kotlin idioms and constructor injection.
+- Use `@Transactional` on services that mutate state.
+- Use `OffsetDateTime` for persisted timestamps.
+- Prefer explicit parameter names in service calls when it improves readability.
+- Keep methods focused on one business action.
+- Avoid broad refactors while making narrow behavior changes.
+- Do not introduce dependencies unless necessary and consistent with the project.
+
+## Testing And Verification
+
+- There are currently no committed automated tests under `src/test/kotlin`.
+- Prefer service-level tests for business rules if adding automated coverage.
+- Important areas to test when touched: state transitions, invalid transitions, engagement limits, queue behavior, scheduling confirmation/failure, profile activation, penalties and scheduler-triggered expiration.
+- If automated tests cannot be run, state that clearly and describe the manual/code-level verification performed.
+
+## Documentation
+
+- Canonical docs live under `docs/`.
+- `docs/architecture.md` explains structure and ownership.
+- `docs/domain.md` explains entities, enums and invariants.
+- `docs/state-machine.md` lists allowed transitions.
+- `docs/user-flow.md` explains the product/backend flow.
+- `docs/local-development.md` explains local setup.
+- `docs/api.md` summarizes current controllers and endpoints.
+- `docs/technical-debt.md` lists known non-implemented or undecided behavior.
+
+## When Unsure
+
+Preserve the current explicit state flow. Ask before changing product behavior, authentication model, persistence schema, matching criteria, trust-score behavior or local development assumptions.

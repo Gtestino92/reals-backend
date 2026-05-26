@@ -1,0 +1,23 @@
+meta {
+  name: 17 Process Matchmaking
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/process?batchSize=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated < 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("No match was created. Check profile activation and compatibility.");
+  }
+
+  const match = body.pairs[0];
+  bru.setEnvVar("matchId", match.id);
+  bru.setEnvVar("matchUserAId", match.userAId);
+  bru.setEnvVar("matchUserBId", match.userBId);
+}

@@ -1,0 +1,30 @@
+meta {
+  name: 29 User B Add Same Proposal
+  type: http
+  seq: 29
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "proposedDateTime": "{{secondChatDateTime}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("proposalBId", body.id);
+  if (body.chatId) {
+    bru.setEnvVar("secondChatId", body.chatId);
+  }
+}

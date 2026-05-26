@@ -1,0 +1,28 @@
+meta {
+  name: 00 Setup Run Variables
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const runId = Date.now().toString();
+  const secondChatSlot = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  bru.setEnvVar("runId", runId);
+  bru.setEnvVar("userAEmail", `ana.local.${runId}@example.com`);
+  bru.setEnvVar("userBEmail", `bruno.local.${runId}@example.com`);
+  bru.setEnvVar("secondChatDateTime", secondChatSlot);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response { status: 'ok' }");
+  }
+}

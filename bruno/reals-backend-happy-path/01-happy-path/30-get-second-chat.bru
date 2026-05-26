@@ -1,0 +1,16 @@
+meta {
+  name: 30 Get Second Chat
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/api/chat/by-connection/{{connectionId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("secondChatId", body.id);
+}

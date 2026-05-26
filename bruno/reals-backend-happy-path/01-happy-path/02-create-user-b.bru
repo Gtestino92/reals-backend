@@ -1,0 +1,29 @@
+meta {
+  name: 02 Create User B
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/users
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{userBEmail}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created user B id.");
+  }
+  bru.setEnvVar("userBId", body.id);
+}

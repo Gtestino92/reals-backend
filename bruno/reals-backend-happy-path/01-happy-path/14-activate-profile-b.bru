@@ -1,0 +1,20 @@
+meta {
+  name: 14 Activate Profile B
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{baseUrl}}/api/profiles/me/activate
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("profileBStatus", body.status);
+}

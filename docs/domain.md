@@ -1,0 +1,99 @@
+# Domain Model
+
+The domain is state-driven and anonymous-first. Business transitions are validated in services, not encoded in controllers or repositories.
+
+## Entities
+
+- `User`
+- `Profile`
+- `ProfilePhoto`
+- `MatchmakingQueueEntry`
+- `Match`
+- `Chat`
+- `ChatMessage`
+- `ChatDecision`
+- `VisualReview`
+- `Connection`
+- `ScheduleNegotiation`
+- `ScheduleProposal`
+- `Penalty`
+- `ActiveEngagementLock`
+
+## Main Enums
+
+Profile:
+
+- `Gender`: `MALE`, `FEMALE`, `NON_BINARY`, `OTHER`
+- `LookingForGender`: `MEN`, `WOMEN`, `EVERYONE`, `OTHER`
+- `Intention`: `DATE`, `FRIENDSHIP`, `CASUAL`
+- `ProfileStatus`: `DRAFT`, `ACTIVE`, `INACTIVE`
+
+Matching and chat:
+
+- `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
+- `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
+- `ChatStatus`: `ACTIVE`, `FINISHED`, `EXPIRED`, `ABANDONED`
+- `ChatContinueDecision`: `APPROVED`, `REJECTED`
+- `VisualDecision`: `APPROVED`, `REJECTED`
+
+Connection and scheduling:
+
+- `ConnectionState`: `SCHEDULING_PHASE`, `SECOND_CHAT`, `CLOSED`
+- `NegotiationStatus`: `PENDING`, `CONFIRMED`, `FAILED`
+- `ProposalStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
+
+Scheduling proposals represent a second-chat slot inside the app. They do not represent an in-person meeting time.
+
+Engagement:
+
+- `EngagementType`: `MATCH`, `CONNECTION`
+
+## Relationships
+
+- A `User` may have one `Profile`.
+- A `Profile` has many `ProfilePhoto` records.
+- A `Match` has `userAId` and `userBId`.
+- A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
+- `ChatDecision` belongs to a chat and match.
+- `VisualReview` belongs to a match.
+- `Connection` belongs to a match.
+- `ScheduleNegotiation` belongs to a connection.
+- `ScheduleProposal` belongs to a connection and user.
+- `ActiveEngagementLock` logically belongs to a user and either a match or connection.
+
+## Active Engagement Locks
+
+Users can have multiple active matches and connections up to configured limits:
+
+- `engagement.max-active-matches: 5`
+- `engagement.max-active-connections: 2`
+
+The lock table is the source of truth for active engagement counting.
+
+- Match creation creates one `MATCH` lock per user.
+- Match rejection or expiration deletes match locks.
+- Connection creation upgrades match locks to `CONNECTION` locks.
+- Connection closure deletes connection locks.
+
+Do not infer active engagement counts from match or connection state alone.
+
+## Profile Rules
+
+- A profile starts as `DRAFT`.
+- Only `ACTIVE` profiles can enter matchmaking.
+- Activation validates photo requirements from `profile.photos.*`.
+- Default photo requirements are 9 photos, 3 person photos and 1 full-body photo.
+- Local `local-nodb` overrides required photos to 4, min person to 1 and min full-body to 1.
+- Birth date and gender are immutable after creation.
+- Editable fields include display name, bio, city, country, intention and looking-for gender.
+- Photo positions are unique per profile.
+- Removing a required photo can revert an active profile to `DRAFT`.
+
+## Compatibility
+
+Compatibility is delegated to `CompatibilityEvaluator`. The current basic evaluator checks:
+
+- mutual gender preference
+- same intention
+
+Advanced criteria such as distance, affinity tags, age tolerance or ML scoring are not implemented.

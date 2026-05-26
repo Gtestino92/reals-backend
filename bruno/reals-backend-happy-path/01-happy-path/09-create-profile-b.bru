@@ -1,0 +1,34 @@
+meta {
+  name: 09 Create Profile B
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/profiles
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "displayName": "Bruno Local",
+    "birthDate": "1994-09-22",
+    "gender": "MALE",
+    "lookingForGender": "WOMEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Perfil local B para probar el flujo feliz."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("profileBId", body.id);
+}

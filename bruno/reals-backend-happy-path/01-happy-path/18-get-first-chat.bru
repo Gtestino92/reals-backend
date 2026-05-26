@@ -1,0 +1,16 @@
+meta {
+  name: 18 Get First Chat
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/api/chat/by-match/{{matchId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("firstChatId", body.id);
+}

@@ -1,0 +1,15 @@
+meta {
+  name: 33 Close Second Chat
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/api/chat/{{secondChatId}}/close
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
