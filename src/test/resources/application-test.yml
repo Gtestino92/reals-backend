@@ -1,0 +1,63 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:reals_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: false
+
+  main:
+    banner-mode: off
+
+logging:
+  level:
+    root: WARN
+
+scheduler:
+  chat-timeout-job:
+    fixed-delay: 3600000
+  match-expiration-job:
+    fixed-delay: 3600000
+  inactivity-check-job:
+    fixed-delay: 3600000
+    inactivity-threshold-minutes: 30
+  penalty-expiration-job:
+    fixed-delay: 3600000
+  visual-phase-expiration-job:
+    fixed-delay: 3600000
+  scheduling-timeout-job:
+    fixed-delay: 3600000
+
+chat:
+  first-chat:
+    duration-minutes: 1440
+    min-messages-per-user: 0
+  visual-phase:
+    duration-minutes: 1440
+  second-chat:
+    duration-minutes: 2880
+
+scheduling:
+  negotiation-duration-minutes: 2880
+  max-rounds: 3
+
+profile:
+  photos:
+    max-count: 9
+    required-count: 4
+    min-person-photos: 1
+    min-full-body-photos: 1
+
+engagement:
+  max-active-matches: 5
+  max-active-connections: 2

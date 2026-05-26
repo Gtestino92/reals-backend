@@ -21,7 +21,6 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Gamified reputation badges.
 - Production trust score based on real behavior.
 - Full Firebase/JWT production authentication flow.
-- Committed automated tests under `src/test/kotlin`.
 
 ## Infrastructure Gaps
 

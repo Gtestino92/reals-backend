@@ -127,8 +127,8 @@ From `application-local-nodb.yml`:
 
 ## Testing And Verification
 
-- There are currently no committed automated tests under `src/test/kotlin`.
-- Prefer service-level tests for business rules if adding automated coverage.
+- Integration tests live under `src/test/kotlin` and use the `test` Spring profile with H2 in-memory.
+- Prefer service-level integration tests for business rules that depend on JPA, transactions, repositories or schema.
 - Important areas to test when touched: state transitions, invalid transitions, engagement limits, queue behavior, scheduling confirmation/failure, profile activation, penalties and scheduler-triggered expiration.
 - If automated tests cannot be run, state that clearly and describe the manual/code-level verification performed.
 
@@ -141,6 +141,7 @@ From `application-local-nodb.yml`:
 - `docs/user-flow.md` explains the product/backend flow.
 - `docs/local-development.md` explains local setup.
 - `docs/api.md` summarizes current controllers and endpoints.
+- `docs/testing.md` explains the test strategy and how to run tests.
 - `docs/technical-debt.md` lists known non-implemented or undecided behavior.
 
 ## When Unsure
