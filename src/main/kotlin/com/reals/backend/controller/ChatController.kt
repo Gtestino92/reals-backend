@@ -1,10 +1,10 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.CurrentUserId
-import com.reals.backend.controller.dto.ChatMessageResponse
-import com.reals.backend.controller.dto.ChatResponse
-import com.reals.backend.controller.dto.SendMessageRequest
+import com.reals.backend.controller.dto.*
+import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.util.*
@@ -12,7 +12,8 @@ import java.util.*
 @RestController
 @RequestMapping("/api/chats")
 class ChatController(
-    private val chatService: ChatService
+    private val chatService: ChatService,
+    private val chatExitService: ChatExitService
 ) {
 
     @GetMapping("/{chatId}")
@@ -61,12 +62,108 @@ class ChatController(
         )
     }
 
+    @PostMapping("/{chatId}/exit-requests")
+    fun requestMutualCancellation(
+        @PathVariable chatId: UUID,
+        @CurrentUserId userId: UUID,
+        @RequestBody request: ChatExitRequestCreateRequest
+    ): ResponseEntity<ChatExitRequestResponse> {
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = chatId,
+                requesterUserId = userId,
+                reason = request.reason,
+                details = request.details
+            )
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ChatExitRequestResponse.from(exitRequest))
+    }
+
+    @GetMapping("/{chatId}/exit-requests")
+    fun getExitRequests(
+        @PathVariable chatId: UUID,
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<List<ChatExitRequestResponse>> =
+        ResponseEntity.ok(
+            chatExitService.findExitRequests(chatId, userId)
+                .map { ChatExitRequestResponse.from(it) }
+        )
+
+    @PostMapping("/{chatId}/exit-requests/{exitRequestId}/acceptance")
+    fun acceptMutualCancellation(
+        @PathVariable chatId: UUID,
+        @PathVariable exitRequestId: UUID,
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ChatExitOutcomeResponse> =
+        ResponseEntity.ok(
+            ChatExitOutcomeResponse.from(
+                chatExitService.acceptMutualCancellation(
+                    chatId = chatId,
+                    requestId = exitRequestId,
+                    responderUserId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{chatId}/exit-requests/{exitRequestId}/rejection")
+    fun rejectMutualCancellation(
+        @PathVariable chatId: UUID,
+        @PathVariable exitRequestId: UUID,
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ChatExitRequestResponse> =
+        ResponseEntity.ok(
+            ChatExitRequestResponse.from(
+                chatExitService.rejectMutualCancellation(
+                    chatId = chatId,
+                    requestId = exitRequestId,
+                    responderUserId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{chatId}/cancellations")
+    fun cancelChat(
+        @PathVariable chatId: UUID,
+        @CurrentUserId userId: UUID,
+        @RequestBody request: ChatCancellationRequest
+    ): ResponseEntity<ChatExitOutcomeResponse> =
+        ResponseEntity.status(HttpStatus.CREATED)
+            .body(
+                ChatExitOutcomeResponse.from(
+                    chatExitService.cancelChatUnilaterally(
+                        chatId = chatId,
+                        userId = userId,
+                        reason = request.reason,
+                        details = request.details
+                    )
+                )
+            )
+
+    @PostMapping("/{chatId}/safety-cancellations")
+    fun cancelChatForSafety(
+        @PathVariable chatId: UUID,
+        @CurrentUserId userId: UUID,
+        @RequestBody request: ChatSafetyCancellationRequest
+    ): ResponseEntity<ChatExitOutcomeResponse> =
+        ResponseEntity.status(HttpStatus.CREATED)
+            .body(
+                ChatExitOutcomeResponse.from(
+                    chatExitService.cancelChatForSafety(
+                        chatId = chatId,
+                        reporterUserId = userId,
+                        reason = request.reason,
+                        details = request.details
+                    )
+                )
+            )
+
     @PostMapping("/{chatId}/closure")
     fun closeSecondChat(
         @PathVariable chatId: UUID,
         @CurrentUserId userId: UUID
     ): ResponseEntity<ChatResponse> {
-        chatService.closeSecondChat(chatId, userId)
+        chatExitService.closeSecondChat(chatId, userId)
         return ResponseEntity.ok(ChatResponse.from(chatService.findByIdOrThrow(chatId)))
     }
 }

@@ -48,7 +48,7 @@ scheduler:
   scheduling-timeout-job:
     fixed-delay: 900000
 
-  # Starts second chats whose negotiated confirmedDateTime has arrived
+  # Makes second chats available when their negotiated confirmedDateTime has arrived
   # Runs every minute so users can enter the chat close to the agreed slot
   scheduled-second-chat-start-job:
     fixed-delay: 60000
@@ -62,6 +62,10 @@ chat:
     # 0 = disabled (default). Enforce in production once UX is validated
     min-messages-per-user: 0
 
+    # Minimum messages a user must send before unilateral cancellation is penalty-free.
+    # Mutual cancellation and safety cancellation bypass this rule.
+    min-messages-before-free-cancel: 0
+
   # Maximum duration for the visual phase
   visual-phase:
     duration-minutes: 1440 # 24 hours
@@ -70,6 +74,7 @@ chat:
   # Longer because users are already acquainted
   second-chat:
     duration-minutes: 2880 # 48 hours
+    min-messages-before-free-cancel: 0
 
 scheduling:
   # Total time window (in minutes) for both users to agree on a meeting time

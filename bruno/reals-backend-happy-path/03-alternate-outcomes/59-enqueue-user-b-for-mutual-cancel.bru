@@ -1,0 +1,15 @@
+meta {
+  name: 59 Enqueue User B For Mutual Cancel
+  type: http
+  seq: 59
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserBId}}
+}

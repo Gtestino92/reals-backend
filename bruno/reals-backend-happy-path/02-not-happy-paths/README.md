@@ -20,6 +20,7 @@ These requests are intentionally stateful and should be executed in order from `
 - proposal after confirmed negotiation rejection
 - invalid first-chat close
 - non-participant second-chat close
+- safety cancellation of an active second chat, including penalty application to the reported participant
 
 `43 Close First Chat Should Fail` runs after the first chat has already been finished by the approval flow, so it validates that the endpoint rejects an invalid close request. A stricter "active first chat cannot be closed through this endpoint" check would need a separate isolated setup or an admin/test fixture endpoint.
 

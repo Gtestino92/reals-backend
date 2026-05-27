@@ -42,6 +42,21 @@ data class SendMessageRequest(
     val content: String
 )
 
+data class ChatExitRequestCreateRequest(
+    val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+    val details: String? = null
+)
+
+data class ChatCancellationRequest(
+    val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+    val details: String? = null
+)
+
+data class ChatSafetyCancellationRequest(
+    val reason: ChatExitReason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
+    val details: String? = null
+)
+
 data class ChatMessageResponse(
     val id: UUID,
     val chatSessionId: UUID,
@@ -61,6 +76,51 @@ data class ChatMessageResponse(
 }
 
 // — Connection
+
+data class ChatExitRequestResponse(
+    val id: UUID,
+    val chatId: UUID,
+    val requesterUserId: UUID,
+    val responderUserId: UUID,
+    val type: ChatExitRequestType,
+    val status: ChatExitRequestStatus,
+    val reason: ChatExitReason?,
+    val details: String?,
+    val createdAt: OffsetDateTime,
+    val resolvedAt: OffsetDateTime?
+) {
+    companion object {
+        fun from(r: ChatExitRequest) = ChatExitRequestResponse(
+            id = r.id,
+            chatId = r.chatId,
+            requesterUserId = r.requesterUserId,
+            responderUserId = r.responderUserId,
+            type = r.type,
+            status = r.status,
+            reason = r.reason,
+            details = r.details,
+            createdAt = r.createdAt,
+            resolvedAt = r.resolvedAt
+        )
+    }
+}
+
+data class ChatExitOutcomeResponse(
+    val chat: ChatResponse,
+    val exitRequest: ChatExitRequestResponse,
+    val penaltyApplied: Boolean,
+    val penalizedUserId: UUID?
+) {
+    companion object {
+        fun from(o: com.reals.backend.service.ChatExitOutcome) =
+            ChatExitOutcomeResponse(
+                chat = ChatResponse.from(o.chat),
+                exitRequest = ChatExitRequestResponse.from(o.exitRequest),
+                penaltyApplied = o.penaltyApplied,
+                penalizedUserId = o.penalizedUserId
+            )
+    }
+}
 
 data class ConnectionResponse(
     val id: UUID,

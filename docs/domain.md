@@ -12,6 +12,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `Chat`
 - `ChatMessage`
 - `ChatDecision`
+- `ChatExitRequest`
 - `VisualReview`
 - `Connection`
 - `ScheduleNegotiation`
@@ -32,8 +33,11 @@ Matching and chat:
 
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
-- `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `EXPIRED`, `ABANDONED`
+- `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `CANCELLED`, `EXPIRED`, `ABANDONED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
+- `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
+- `ChatExitRequestStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
+- `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
 Connection and scheduling:
@@ -55,6 +59,7 @@ Engagement:
 - A `Match` has `userAId` and `userBId`.
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
 - `ChatDecision` belongs to a chat and match.
+- `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report cancellations.
 - `VisualReview` belongs to a match.
 - `Connection` belongs to a match.
 - `ScheduleNegotiation` belongs to a connection.
@@ -76,6 +81,14 @@ The lock table is the source of truth for active engagement counting.
 - Connection closure deletes connection locks.
 
 Do not infer active engagement counts from match or connection state alone.
+
+## Chat Exit Rules
+
+Chats can end through approval/normal completion, timeout, inactivity abandonment or explicit cancellation.
+
+- Mutual cancellation creates a pending `ChatExitRequest`; if the other participant accepts, the chat becomes `CANCELLED` with no penalty.
+- Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
+- Safety cancellation closes the chat as `CANCELLED`, exempts the reporting user and applies a penalty to the reported participant. It records a `SAFETY_REPORT` exit request as a moderation/reporting skeleton.
 
 ## Profile Rules
 

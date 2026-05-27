@@ -1,0 +1,19 @@
+meta {
+  name: 61 Get Mutual Cancel First Chat
+  type: http
+  seq: 61
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMutualCancelMatchId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "ACTIVE") {
+    throw new Error(`Expected first chat ACTIVE, got ${body.status}`);
+  }
+  bru.setEnvVar("alternateMutualCancelFirstChatId", body.id);
+}

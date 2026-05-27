@@ -12,6 +12,7 @@ enum class ChatType {
 enum class ChatStatus {
     AVAILABLE,
     ACTIVE,
+    CANCELLED,
     EXPIRED,
     ABANDONED,
     CLOSED,

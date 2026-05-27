@@ -1,0 +1,28 @@
+meta {
+  name: 63 User B Accept Mutual Cancel
+  type: http
+  seq: 63
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{alternateMutualCancelFirstChatId}}/exit-requests/{{alternateMutualCancelExitRequestId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.chat.status !== "CANCELLED") {
+    throw new Error(`Expected first chat CANCELLED, got ${body.chat.status}`);
+  }
+  if (body.exitRequest.status !== "ACCEPTED") {
+    throw new Error(`Expected exit request ACCEPTED, got ${body.exitRequest.status}`);
+  }
+  if (body.penaltyApplied !== false) {
+    throw new Error("Mutual cancellation should not apply a penalty.");
+  }
+}

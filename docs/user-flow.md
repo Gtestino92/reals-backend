@@ -37,12 +37,14 @@ Messages can be sent only when the chat is active, not timed out and the sender 
 
 ## 4. Chat Decision
 
-Each user submits one `ChatContinueDecision`.
+Each user can approve continuation, request mutual cancellation or cancel explicitly.
 
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
-- Any `REJECTED`: first chat becomes `FINISHED`, match moves to `CHAT_REJECTED`, locks are released.
+- `REJECTED` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
+- Mutual cancellation request accepted by the other participant cancels the chat without penalty.
+- Safety cancellation cancels the chat, exempts the reporter and applies a penalty to the reported participant.
 
-No transition occurs until both users have decided.
+Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, unilateral cancellation or safety cancellation.
 
 ## 5. Visual Review
 
@@ -86,7 +88,7 @@ ChatService.startSecondChat(matchId, connectionId)
 
 The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
 
-Closing the active second chat closes the connection and releases locks. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
+Explicit second-chat cancellation closes the connection and releases locks. It can be mutual without penalty, unilateral with penalty policy evaluation or safety-based with a penalty for the reported participant. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
 
 ## 9. Completion
 

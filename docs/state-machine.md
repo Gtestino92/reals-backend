@@ -27,12 +27,14 @@ Allowed transitions:
 
 - `AVAILABLE -> ACTIVE`
 - `ACTIVE -> FINISHED`
+- `ACTIVE -> CANCELLED`
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
 
 Terminal states:
 
 - `FINISHED`
+- `CANCELLED`
 - `EXPIRED`
 - `ABANDONED`
 

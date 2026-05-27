@@ -27,6 +27,37 @@ class PenaltyService(
     fun createAbandonmentPenalty(
         userId: UUID,
         baseDurationHours: Long = 24
+    ): Penalty =
+        createPenalty(
+            userId = userId,
+            reason = "Abandoned second chat",
+            baseDurationHours = baseDurationHours
+        )
+
+    fun createCancellationPenalty(
+        userId: UUID,
+        baseDurationHours: Long = 24
+    ): Penalty =
+        createPenalty(
+            userId = userId,
+            reason = "Cancelled chat before minimum engagement",
+            baseDurationHours = baseDurationHours
+        )
+
+    fun createSafetyReportPenalty(
+        userId: UUID,
+        baseDurationHours: Long = 24
+    ): Penalty =
+        createPenalty(
+            userId = userId,
+            reason = "Reported for unsafe chat behavior",
+            baseDurationHours = baseDurationHours
+        )
+
+    private fun createPenalty(
+        userId: UUID,
+        reason: String,
+        baseDurationHours: Long
     ): Penalty {
 
         val score = trustScoreEvaluator.evaluate(userId)
@@ -35,7 +66,7 @@ class PenaltyService(
 
         val penalty = Penalty(
             userId = userId,
-            reason = "Abandoned second chat",
+            reason = reason,
             expiresAt = OffsetDateTime.now().plusHours(effectiveHours)
         )
 

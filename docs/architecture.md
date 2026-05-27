@@ -44,6 +44,11 @@ Schedulers should also call services rather than mutating repositories directly.
 
 A match can produce one connection. Connection creation upgrades engagement locks from `MATCH` to `CONNECTION`.
 
+Chat responsibilities are split conservatively:
+
+- `ChatService`: chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `ChatExitService`: mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
+
 ## Persistence
 
 - Entities use UUID primary keys.

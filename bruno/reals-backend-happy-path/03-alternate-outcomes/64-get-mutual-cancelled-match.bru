@@ -1,0 +1,21 @@
+meta {
+  name: 64 Get Mutual Cancelled Match
+  type: http
+  seq: 64
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{alternateMutualCancelMatchId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "CHAT_REJECTED") {
+    throw new Error(`Expected mutual-cancelled match state CHAT_REJECTED, got ${body.state}`);
+  }
+  if (body.connectionId) {
+    throw new Error("Mutual-cancelled first chat must not create a connection.");
+  }
+}

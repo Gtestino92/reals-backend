@@ -7,7 +7,6 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Guided first-chat questions or conversation starters.
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
-- Whether second-chat explicit close should ever create penalties.
 - Whether matchmaking should be processed by a scheduler/worker instead of the dev-only `/api/dev/matchmaking/process` endpoint.
 
 ## Not Currently Implemented
@@ -20,6 +19,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.
 - Production trust score based on real behavior.
+- Full moderation workflow for safety reports. Current implementation records safety cancellation and applies a penalty, but no manual review workflow exists yet.
 - Full Firebase/JWT production authentication flow.
 
 ## Infrastructure Gaps

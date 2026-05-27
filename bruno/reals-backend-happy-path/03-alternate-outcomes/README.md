@@ -12,6 +12,7 @@ Execute requests in order from `00`.
 - visual rejection ends the match in `VISUAL_REJECTED`
 - scheduling reaches max rounds and closes the connection without second chat
 - incompatible queued users produce no match
+- mutual first-chat cancellation ends the match without penalty
 
 ## Not Covered Here
 

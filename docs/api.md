@@ -46,7 +46,13 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `GET /api/chats/{chatId}`: fetch chat.
 - `POST /api/chats/{chatId}/messages`: send message as authenticated user.
 - `GET /api/chats/{chatId}/messages`: list messages.
-- `POST /api/chats/{chatId}/closure`: close an active second chat as authenticated user.
+- `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation.
+- `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
+- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close without penalty.
+- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation; chat remains active.
+- `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
+- `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Exempts reporter and penalizes reported participant.
+- `POST /api/chats/{chatId}/closure`: legacy explicit close for active second chats; prefer `cancellations`.
 
 ## Connections And Scheduling
 

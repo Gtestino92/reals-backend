@@ -42,10 +42,12 @@ chat:
   first-chat:
     duration-minutes: 1440
     min-messages-per-user: 0
+    min-messages-before-free-cancel: 1
   visual-phase:
     duration-minutes: 1440
   second-chat:
     duration-minutes: 2880
+    min-messages-before-free-cancel: 1
 
 scheduling:
   negotiation-duration-minutes: 2880

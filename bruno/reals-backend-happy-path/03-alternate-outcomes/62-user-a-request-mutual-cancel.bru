@@ -1,0 +1,30 @@
+meta {
+  name: 62 User A Request Mutual Cancel
+  type: http
+  seq: 62
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{alternateMutualCancelFirstChatId}}/exit-requests
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "reason": "NO_LONGER_INTERESTED",
+    "details": "Manual Bruno mutual cancellation check."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.type !== "MUTUAL_CANCEL" || body.status !== "PENDING") {
+    throw new Error(`Expected pending MUTUAL_CANCEL, got ${body.type} ${body.status}`);
+  }
+  bru.setEnvVar("alternateMutualCancelExitRequestId", body.id);
+}

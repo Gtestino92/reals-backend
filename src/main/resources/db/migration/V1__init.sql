@@ -178,6 +178,8 @@ CREATE TABLE chats (
     chat_type        VARCHAR(16)  NOT NULL,
     status           VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
     started_at       TIMESTAMP NOT NULL DEFAULT now(),
+    available_at     TIMESTAMP,
+    activated_at     TIMESTAMP,
     timeout_at       TIMESTAMP NOT NULL,
     ended_at         TIMESTAMP,
     last_message_at  TIMESTAMP,
@@ -191,6 +193,32 @@ CREATE TABLE chats (
 
 CREATE INDEX idx_chat_match
     ON chats (match_id);
+
+-- ============================================================
+-- CHAT EXIT REQUESTS
+-- ============================================================
+
+CREATE TABLE chat_exit_requests (
+    id                 UUID         NOT NULL DEFAULT gen_random_uuid(),
+    chat_id            UUID         NOT NULL,
+    requester_user_id  UUID         NOT NULL,
+    responder_user_id  UUID         NOT NULL,
+    request_type       VARCHAR(32)  NOT NULL,
+    status             VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
+    reason             VARCHAR(64),
+    details            TEXT,
+    created_at         TIMESTAMP    NOT NULL DEFAULT now(),
+    resolved_at        TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    CONSTRAINT fk_chat_exit_request_chat
+        FOREIGN KEY (chat_id)
+        REFERENCES chats(id)
+);
+
+CREATE INDEX idx_chat_exit_request_chat
+    ON chat_exit_requests (chat_id);
 
 -- ============================================================
 -- CHAT MESSAGES

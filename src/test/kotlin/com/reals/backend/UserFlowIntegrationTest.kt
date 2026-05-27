@@ -1,7 +1,9 @@
 package com.reals.backend
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
@@ -16,9 +18,11 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.scheduler.ScheduledSecondChatStartJob
+import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
@@ -50,6 +54,7 @@ class UserFlowIntegrationTest(
     private val matchmakingService: MatchmakingService,
     private val matchService: MatchService,
     private val chatService: ChatService,
+    private val chatExitService: ChatExitService,
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService,
@@ -58,7 +63,8 @@ class UserFlowIntegrationTest(
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
-    private val proposalRepository: ScheduleProposalRepository
+    private val proposalRepository: ScheduleProposalRepository,
+    private val penaltyRepository: PenaltyRepository
 ) {
 
     @Test
@@ -160,9 +166,9 @@ class UserFlowIntegrationTest(
         chatService.sendMessage(secondChat.id, userA, "Ya quedo habilitado el segundo chat")
         chatService.sendMessage(secondChat.id, userB, "Seguimos por aca")
 
-        chatService.closeSecondChat(secondChat.id, userA)
+        chatExitService.closeSecondChat(secondChat.id, userA)
 
-        assertEquals(ChatStatus.FINISHED, chatService.findByIdOrThrow(secondChat.id).status)
+        assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(secondChat.id).status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(connection.id).state)
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
@@ -224,7 +230,7 @@ class UserFlowIntegrationTest(
             chatService.recordChatDecision(
                 matchId = setup.matchId,
                 userId = setup.userAId,
-                decision = ChatContinueDecision.REJECTED
+                decision = ChatContinueDecision.APPROVED
             )
         }
     }
@@ -239,6 +245,65 @@ class UserFlowIntegrationTest(
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.MATCH))
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.MATCH))
+        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(setup.firstChatId).status)
+    }
+
+    @Test
+    fun `mutual first chat cancellation closes without penalties`() {
+        val setup = createMatchWithFirstChat()
+
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+
+        val outcome =
+            chatExitService.acceptMutualCancellation(
+                chatId = setup.firstChatId,
+                requestId = exitRequest.id,
+                responderUserId = setup.userBId
+            )
+
+        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
+        assertEquals(false, outcome.penaltyApplied)
+        assertEquals(false, penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
+        assertEquals(false, penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+    }
+
+    @Test
+    fun `safety cancellation penalizes reported participant`() {
+        val setup = createMatchWithFirstChat()
+
+        val outcome =
+            chatExitService.cancelChatForSafety(
+                chatId = setup.firstChatId,
+                reporterUserId = setup.userAId,
+                reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR
+            )
+
+        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(setup.userBId, outcome.penalizedUserId)
+        assertEquals(false, penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
+        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+    }
+
+    @Test
+    fun `unilateral second chat cancellation before minimum messages applies penalty`() {
+        val setup = createActiveSecondChat()
+
+        val outcome =
+            chatExitService.cancelChatUnilaterally(
+                chatId = setup.secondChatId,
+                userId = setup.userAId
+            )
+
+        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
+        assertEquals(setup.userAId, outcome.penalizedUserId)
+        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
     }
 
     @Test
@@ -359,6 +424,51 @@ class UserFlowIntegrationTest(
         )
     }
 
+    private fun createActiveSecondChat(): ActiveSecondChatFixture {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = OffsetDateTime.now().plusDays(1)
+
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot
+        )
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTime = slot
+        )
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        ScheduledSecondChatStartJob(
+            negotiationRepository = negotiationRepository,
+            connectionService = connectionService,
+            chatService = chatService
+        ).run()
+
+        val secondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                setup.connectionId,
+                ChatType.SECOND_CHAT
+            ) ?: error("Second chat was not made available")
+
+        chatService.findVisibleSecondChatOrThrow(
+            connectionId = setup.connectionId,
+            userId = setup.userAId
+        )
+
+        return ActiveSecondChatFixture(
+            userAId = setup.userAId,
+            userBId = setup.userBId,
+            matchId = setup.matchId,
+            connectionId = setup.connectionId,
+            secondChatId = secondChat.id
+        )
+    }
+
     private data class MatchFixture(
         val userAId: UUID,
         val userBId: UUID,
@@ -371,5 +481,13 @@ class UserFlowIntegrationTest(
         val userBId: UUID,
         val matchId: UUID,
         val connectionId: UUID
+    )
+
+    private data class ActiveSecondChatFixture(
+        val userAId: UUID,
+        val userBId: UUID,
+        val matchId: UUID,
+        val connectionId: UUID,
+        val secondChatId: UUID
     )
 }

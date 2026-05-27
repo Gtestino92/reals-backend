@@ -28,6 +28,8 @@ This repository is the backend for Reals, a structured dating / connection produ
 - Controllers are thin HTTP adapters.
 - DTOs live under `src/main/kotlin/com/reals/backend/controller/dto`.
 - Services own business rules and state transitions.
+- `ChatService` owns chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `ChatExitService` owns mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
 - Repositories are Spring Data JPA persistence adapters only.
 - Schedulers call services and must not duplicate transition logic.
 - Domain classes under `domain` represent persisted entities and enums.
@@ -60,7 +62,8 @@ Do not mutate domain state directly from controllers, schedulers or repositories
 - `MatchService.createMatch` creates the `Match`, creates `MATCH` locks for both users and removes both users from the queue.
 - `ChatService.startFirstChat` starts the anonymous first chat separately.
 - Mutual first-chat approval moves the match from `CHAT_ACTIVE` to `VISUAL_PHASE` and initializes `VisualReview`.
-- Any first-chat rejection moves the match to `CHAT_REJECTED` and releases locks.
+- First-chat rejection is unilateral cancellation: it moves the match to `CHAT_REJECTED`, releases locks and evaluates cancellation penalties.
+- Mutual chat cancellation closes without penalty; safety cancellation records a report and penalizes the reported participant.
 - Mutual visual approval moves the match to `VISUAL_APPROVED`, creates a `Connection`, upgrades locks to `CONNECTION` and initializes scheduling.
 - Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
 - Scheduling confirmation moves the connection to `SECOND_CHAT_SCHEDULED`; `ScheduledSecondChatStartJob` makes the second chat `AVAILABLE` when `confirmedDateTime` is due, and user entry or first message activates it.
@@ -82,6 +85,7 @@ Allowed `ChatStatus` transitions:
 
 - `AVAILABLE -> ACTIVE`
 - `ACTIVE -> FINISHED`
+- `ACTIVE -> CANCELLED`
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
 
@@ -107,8 +111,10 @@ From `application.yml`:
 - `engagement.max-active-connections: 2`
 - `chat.first-chat.duration-minutes: 1440`
 - `chat.first-chat.min-messages-per-user: 0`
+- `chat.first-chat.min-messages-before-free-cancel: 0`
 - `chat.visual-phase.duration-minutes: 1440`
 - `chat.second-chat.duration-minutes: 2880`
+- `chat.second-chat.min-messages-before-free-cancel: 0`
 - `scheduling.negotiation-duration-minutes: 2880`
 - `scheduling.max-rounds: 3`
 - default profile photos: required `9`, max `9`, min person `3`, min full-body `1`

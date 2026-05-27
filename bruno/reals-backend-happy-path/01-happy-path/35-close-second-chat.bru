@@ -5,11 +5,28 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/api/chats/{{secondChatId}}/closure
-  body: none
+  url: {{baseUrl}}/api/chats/{{secondChatId}}/cancellations
+  body: json
   auth: none
 }
 
 headers {
   X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "reason": "NO_LONGER_INTERESTED",
+    "details": "Happy path manual closure."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.chat.status !== "CANCELLED") {
+    throw new Error(`Expected second chat CANCELLED, got ${body.chat.status}`);
+  }
+  if (body.penaltyApplied !== false) {
+    throw new Error("Happy path close should not apply a penalty after both users sent messages.");
+  }
 }
