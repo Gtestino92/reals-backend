@@ -35,7 +35,8 @@ The first request generates unique test emails and a future second-chat slot. Th
 - approve visual review
 - create connection
 - confirm the second-chat slot with matching proposals
-- start second chat
+- force the confirmed start time and trigger the scheduled second-chat availability job in local/dev
+- enter the available second chat, which activates it and starts its timeout window
 - close connection
 
 This collection assumes local photo requirements from `application-local-nodb.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.

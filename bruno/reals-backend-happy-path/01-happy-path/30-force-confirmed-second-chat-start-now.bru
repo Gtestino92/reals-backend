@@ -1,0 +1,18 @@
+meta {
+  name: 30 Force Confirmed Second Chat Start Now
+  type: http
+  seq: 30
+}
+
+post {
+  url: {{baseUrl}}/api/dev/timeouts/connections/{{connectionId}}/second-chat-start-now
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.target !== "schedule-negotiation") {
+    throw new Error("Expected dev timeout mutation for schedule-negotiation.");
+  }
+}

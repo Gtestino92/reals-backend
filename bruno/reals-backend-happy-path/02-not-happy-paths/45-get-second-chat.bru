@@ -1,0 +1,22 @@
+meta {
+  name: 45 Get Second Chat
+  type: http
+  seq: 45
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/chat
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "ACTIVE") {
+    throw new Error(`Expected second chat ACTIVE, got ${body.status}`);
+  }
+  if (!body.availableAt || !body.activatedAt || !body.timeoutAt) {
+    throw new Error("Expected availableAt, activatedAt and timeoutAt after entering second chat.");
+  }
+  bru.setEnvVar("negativeSecondChatId", body.id);
+}

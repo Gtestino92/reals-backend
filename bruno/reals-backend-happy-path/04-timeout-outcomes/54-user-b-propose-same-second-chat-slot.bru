@@ -23,8 +23,7 @@ body:json {
 
 script:post-response {
   const body = res.getBody();
-  if (!body.chatId) {
-    throw new Error("Expected second chat chatId after matching proposals.");
+  if (body.chatId) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
   }
-  bru.setEnvVar("timeoutSecondChatId", body.chatId);
 }

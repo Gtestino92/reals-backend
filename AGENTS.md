@@ -63,7 +63,7 @@ Do not mutate domain state directly from controllers, schedulers or repositories
 - Any first-chat rejection moves the match to `CHAT_REJECTED` and releases locks.
 - Mutual visual approval moves the match to `VISUAL_APPROVED`, creates a `Connection`, upgrades locks to `CONNECTION` and initializes scheduling.
 - Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
-- Scheduling confirmation moves the connection to `SECOND_CHAT` and starts the second chat from the controller layer.
+- Scheduling confirmation moves the connection to `SECOND_CHAT_SCHEDULED`; `ScheduledSecondChatStartJob` makes the second chat `AVAILABLE` when `confirmedDateTime` is due, and user entry or first message activates it.
 - Scheduling proposals are for the second chat inside the app, not for an in-person meeting outside the app.
 - Closing or expiring a connection releases `CONNECTION` locks.
 
@@ -80,14 +80,16 @@ Allowed `MatchState` transitions:
 
 Allowed `ChatStatus` transitions:
 
+- `AVAILABLE -> ACTIVE`
 - `ACTIVE -> FINISHED`
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
 
 Allowed `ConnectionState` transitions:
 
-- `SCHEDULING_PHASE -> SECOND_CHAT`
+- `SCHEDULING_PHASE -> SECOND_CHAT_SCHEDULED -> SECOND_CHAT_AVAILABLE -> SECOND_CHAT`
 - `SCHEDULING_PHASE -> CLOSED`
+- `SECOND_CHAT_AVAILABLE -> CLOSED`
 - `SECOND_CHAT -> CLOSED`
 
 Allowed scheduling transitions:

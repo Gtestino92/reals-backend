@@ -48,6 +48,11 @@ scheduler:
   scheduling-timeout-job:
     fixed-delay: 900000
 
+  # Starts second chats whose negotiated confirmedDateTime has arrived
+  # Runs every minute so users can enter the chat close to the agreed slot
+  scheduled-second-chat-start-job:
+    fixed-delay: 60000
+
 chat:
   # Maximum duration for the anonymous first chat between matched users
   first-chat:

@@ -16,7 +16,9 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
@@ -55,6 +57,7 @@ class UserFlowIntegrationTest(
     private val chatDecisionRepository: ChatDecisionRepository,
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
+    private val negotiationRepository: ScheduleNegotiationRepository,
     private val proposalRepository: ScheduleProposalRepository
 ) {
 
@@ -122,13 +125,38 @@ class UserFlowIntegrationTest(
         val negotiation = schedulingService.findNegotiationOrThrow(connection.id)
         assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
         assertEquals(slot.toInstant(), negotiation.confirmedDateTime?.toInstant())
-        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
+        assertEquals(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            connectionService.findByIdOrThrow(connection.id).state
+        )
 
         val proposals = proposalRepository.findByConnectionId(connection.id)
         assertEquals(2, proposals.size)
         assertTrue(proposals.all { it.status == ProposalStatus.ACCEPTED })
 
-        val secondChat = chatService.startSecondChat(match.id, connection.id)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = connection.id,
+            confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        ScheduledSecondChatStartJob(
+            negotiationRepository = negotiationRepository,
+            connectionService = connectionService,
+            chatService = chatService
+        ).run()
+
+        assertEquals(ConnectionState.SECOND_CHAT_AVAILABLE, connectionService.findByIdOrThrow(connection.id).state)
+
+        val availableSecondChat = chatRepository.findByConnectionIdAndChatType(
+            connection.id,
+            com.reals.backend.domain.ChatType.SECOND_CHAT
+        ) ?: error("Second chat was not made available")
+        assertEquals(ChatStatus.AVAILABLE, availableSecondChat.status)
+
+        val secondChat = chatService.findVisibleSecondChatOrThrow(connection.id, userA)
+        assertEquals(ChatStatus.ACTIVE, secondChat.status)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
+
         chatService.sendMessage(secondChat.id, userA, "Ya quedo habilitado el segundo chat")
         chatService.sendMessage(secondChat.id, userB, "Seguimos por aca")
 

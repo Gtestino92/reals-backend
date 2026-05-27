@@ -1,17 +1,17 @@
 meta {
-  name: 44 Stranger Close Second Chat Should Fail
+  name: 46 Close First Chat Should Fail
   type: http
-  seq: 44
+  seq: 46
 }
 
 post {
-  url: {{baseUrl}}/api/chats/{{negativeSecondChatId}}/closure
+  url: {{baseUrl}}/api/chats/{{negativeFirstChatId}}/closure
   body: none
   auth: none
 }
 
 headers {
-  X-Dev-User-Id: {{negativeStrangerUserId}}
+  X-Dev-User-Id: {{negativeUserAId}}
 }
 
 script:post-response {

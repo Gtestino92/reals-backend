@@ -2,10 +2,10 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.AddProposalRequest
+import com.reals.backend.controller.dto.ChatResponse
 import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.ScheduleProposalResponse
-import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.SchedulingService
@@ -37,11 +37,15 @@ class ConnectionController(
 
     @GetMapping("/{connectionId}/chat")
     fun getSecondChat(
+        @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
-    ): ResponseEntity<com.reals.backend.controller.dto.ChatResponse> =
+    ): ResponseEntity<ChatResponse> =
         ResponseEntity.ok(
-            com.reals.backend.controller.dto.ChatResponse.from(
-                chatService.findActiveSecondChatOrThrow(connectionId)
+            ChatResponse.from(
+                chatService.findVisibleSecondChatOrThrow(
+                    connectionId = connectionId,
+                    userId = userId
+                )
             )
         )
 
@@ -62,7 +66,7 @@ class ConnectionController(
      * TODO: allow to send more than one proposal?
      * After saving, tryConfirm() runs automatically:
      *  - If overlap found with the other user's proposals -> negotiation CONFIRMED
-     *      Connection -> SECOND_CHAT, second ChatSession started
+     *      Connection -> SECOND_CHAT_SCHEDULED. The second chat starts at confirmedDateTime.
      *  - If no overlap -> stays PENDING, waiting for more proposals
      */
     @PostMapping("/{connectionId}/proposals")
@@ -78,16 +82,8 @@ class ConnectionController(
             proposedDateTime = request.proposedDateTime
         )
 
-        // If tryConfirm confirmed the negotiation, start the second chat here
-        // SchedulingService does not inject ChatService to avoid a new cycle:
-        // SchedulingService -> ChatService -> VisualReviewService -> SchedulingService
-        val negotiation = schedulingService.findNegotiationOrNull(connectionId = connectionId)
-        val chatId = if (negotiation?.status == NegotiationStatus.CONFIRMED) {
-            val connection = connectionService.findByIdOrThrow(connectionId)
-            chatService.startSecondChat(connection.matchId, connectionId).id
-        } else null
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            ScheduleProposalResponse.from(proposal, chatId)
+            ScheduleProposalResponse.from(proposal)
         )
     }
 
@@ -111,7 +107,8 @@ class ConnectionController(
      * Rules enforced by SchedulingService
      *  - [userId] must NOT be the proposer of [proposalId]
      *  - [userId] must have already submitted their own proposal this round
-     *  - Once confirmed -> Connection transitions to SECOND_CHAT, second chat starts
+     *  - Once confirmed -> Connection transitions to SECOND_CHAT_SCHEDULED. The second chat
+     *    starts at confirmedDateTime.
      */
     @PostMapping("/{connectionId}/proposals/{proposalId}/acceptance")
     fun acceptProposal(
@@ -124,11 +121,8 @@ class ConnectionController(
             proposalId = proposalId,
             acceptorUserId = userId
         )
-        // TODO: ver si hay problema en usar en un lado connectionId y en otro el de negotiation
-        val connection = connectionService.findByIdOrThrow(negotiation.connectionId)
-        val chat = chatService.startSecondChat(connection.matchId, connectionId)
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation, chat.id)
+            NegotiationResponse.from(negotiation)
         )
     }
 

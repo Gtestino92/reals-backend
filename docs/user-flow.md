@@ -72,19 +72,21 @@ Rules:
 - acceptor must have submitted their own proposal before accepting the partner proposal
 - exact matching proposed instants can auto-confirm
 
-Confirmation marks the negotiation as `CONFIRMED`, moves the connection to `SECOND_CHAT` and the controller starts the second chat.
+Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
 
 If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILED` and the connection closes.
 
 ## 8. Second Chat
 
-Second chat starts after scheduling confirmation:
+Second chat becomes visible when the agreed `confirmedDateTime` arrives. `ScheduledSecondChatStartJob` finds confirmed negotiations whose start time is due, creates an `AVAILABLE` second chat and moves the connection to `SECOND_CHAT_AVAILABLE`:
 
 ```text
 ChatService.startSecondChat(matchId, connectionId)
 ```
 
-Closing the second chat closes the connection and releases locks. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
+The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
+
+Closing the active second chat closes the connection and releases locks. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
 
 ## 9. Completion
 

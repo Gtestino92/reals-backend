@@ -51,11 +51,11 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 ## Connections And Scheduling
 
 - `GET /api/connections/{connectionId}`: fetch connection.
-- `GET /api/connections/{connectionId}/chat`: fetch active second chat for connection.
+- `GET /api/connections/{connectionId}/chat`: fetch visible second chat for connection. If the chat is `AVAILABLE`, this activates it for the authenticated participant and starts its timeout window.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
 - `POST /api/connections/{connectionId}/proposals`: add scheduling proposal.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
-- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and start second chat.
+- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
 - `POST /api/connections/{connectionId}/negotiation/rounds`: reject pending proposals and open the next scheduling round, or fail/close if max rounds are exceeded.
 
 ## Dev-Only Endpoints
@@ -65,6 +65,11 @@ These endpoints are profile-gated for local/dev manual testing:
 - `POST /api/dev/matchmaking/process?batchSize=5`: manually process candidate pairs and start first chats.
 - `POST /api/dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
+
+The scheduled second-chat availability job is available at:
+
+- `POST /api/dev/jobs/scheduled-second-chat-start/run`
+- `POST /api/dev/timeouts/connections/{connectionId}/second-chat-start-now`
 
 ## Error Shape
 

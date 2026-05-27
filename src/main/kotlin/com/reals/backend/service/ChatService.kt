@@ -61,21 +61,22 @@ class ChatService(
 
     fun startSecondChat(
         matchId: UUID,
-        connectionId: UUID
+        connectionId: UUID,
+        availableAt: OffsetDateTime = OffsetDateTime.now()
     ): Chat {
         chatRepository
             .findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
             ?.let { return it }
-
-        val now = OffsetDateTime.now()
 
         return chatRepository.save(
             Chat(
                 matchId = matchId,
                 connectionId = connectionId,
                 chatType = ChatType.SECOND_CHAT,
-                startedAt = now,
-                timeoutAt = now.plusMinutes(secondChatDurationMinutes)
+                status = ChatStatus.AVAILABLE,
+                startedAt = availableAt,
+                availableAt = availableAt,
+                timeoutAt = availableAt.plusMinutes(secondChatDurationMinutes)
             )
         )
     }
@@ -91,15 +92,12 @@ class ChatService(
         senderId: UUID,
         content: String
     ): ChatMessage {
-        val chat = findByIdOrThrow(chatId)
+        val chat = activateAvailableSecondChatIfNeeded(
+            chat = findByIdOrThrow(chatId),
+            userId = senderId
+        )
 
-        check(chat.status == ChatStatus.ACTIVE) {
-            "Chat $chatId is not active (status: ${chat.status})"
-        }
-
-        check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
-            "Chat $chatId has timed out"
-        }
+        validateActiveChatWindow(chat)
 
         val match = matchService.findByIdOrThrow(chat.matchId)
 
@@ -331,8 +329,30 @@ class ChatService(
     }
 
     /**
+     * Finds the visible SECOND_CHAT for a given connection.
+     * If it is AVAILABLE, this call represents the participant entering the chat,
+     * so it activates the chat and starts its timeout window.
+     */
+    fun findVisibleSecondChatOrThrow(
+        connectionId: UUID,
+        userId: UUID
+    ): Chat {
+        val chat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId,
+                ChatType.SECOND_CHAT
+            )
+                ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
+
+        return activateAvailableSecondChatIfNeeded(
+            chat = chat,
+            userId = userId
+        )
+    }
+
+    /**
      * Finds the active SECOND_CHAT for a given connection.
-     * Used to obtain chatId after scheduling negotiation is confirmed.
+     * Used by tests and internal flows that require the chat to be already active.
      */
     fun findActiveSecondChatOrThrow(connectionId: UUID): Chat {
         val chat =
@@ -347,5 +367,47 @@ class ChatService(
         }
 
         return chat
+    }
+
+    private fun activateAvailableSecondChatIfNeeded(
+        chat: Chat,
+        userId: UUID
+    ): Chat {
+        if (chat.status != ChatStatus.AVAILABLE) {
+            return chat
+        }
+
+        check(chat.chatType == ChatType.SECOND_CHAT) {
+            "Only SECOND_CHAT can be activated from AVAILABLE"
+        }
+
+        val connectionId = checkNotNull(chat.connectionId) {
+            "SECOND_CHAT has no connectionId"
+        }
+        val connection = connectionService.findByIdOrThrow(connectionId)
+
+        check(userId == connection.userAId || userId == connection.userBId) {
+            "User $userId does not belong to connection $connectionId"
+        }
+
+        val now = OffsetDateTime.now()
+        chat.status = ChatStatus.ACTIVE
+        chat.startedAt = now
+        chat.activatedAt = now
+        chat.timeoutAt = now.plusMinutes(secondChatDurationMinutes)
+
+        connectionService.transitionToSecondChat(connectionId)
+
+        return chatRepository.save(chat)
+    }
+
+    private fun validateActiveChatWindow(chat: Chat) {
+        check(chat.status == ChatStatus.ACTIVE) {
+            "Chat ${chat.id} is not active (status: ${chat.status})"
+        }
+
+        check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
+            "Chat ${chat.id} has timed out"
+        }
     }
 }

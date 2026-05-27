@@ -1,7 +1,7 @@
 meta {
-  name: 32 User B Send Second Chat Message
+  name: 33 User A Send Second Chat Message
   type: http
-  seq: 32
+  seq: 33
 }
 
 post {
@@ -12,11 +12,11 @@ post {
 
 headers {
   Content-Type: application/json
-  X-Dev-User-Id: {{userBId}}
+  X-Dev-User-Id: {{userAId}}
 }
 
 body:json {
   {
-    "content": "Perfecto, seguimos conversando por aca."
+    "content": "Ya quedo habilitado el segundo chat."
   }
 }

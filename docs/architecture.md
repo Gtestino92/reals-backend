@@ -60,9 +60,12 @@ Known scheduler jobs:
 - `MatchExpirationJob`
 - `PenaltyExpirationJob`
 - `SchedulingNegotiationTimeoutJob`
+- `ScheduledSecondChatStartJob`
 - `VisualPhaseExpirationJob`
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
+
+`ScheduledSecondChatStartJob` only makes the second chat visible as `AVAILABLE`; user entry or the first message activates the chat and starts its timeout window.
 
 Local/dev profiles expose `/api/dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. These endpoints are profile-gated and are not part of the production API.
 

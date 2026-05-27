@@ -32,17 +32,17 @@ Matching and chat:
 
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
-- `ChatStatus`: `ACTIVE`, `FINISHED`, `EXPIRED`, `ABANDONED`
+- `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `EXPIRED`, `ABANDONED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
 Connection and scheduling:
 
-- `ConnectionState`: `SCHEDULING_PHASE`, `SECOND_CHAT`, `CLOSED`
+- `ConnectionState`: `SCHEDULING_PHASE`, `SECOND_CHAT_SCHEDULED`, `SECOND_CHAT_AVAILABLE`, `SECOND_CHAT`, `CLOSED`
 - `NegotiationStatus`: `PENDING`, `CONFIRMED`, `FAILED`
 - `ProposalStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
 
-Scheduling proposals represent a second-chat slot inside the app. They do not represent an in-person meeting time.
+Scheduling proposals represent a second-chat slot inside the app. They do not represent an in-person meeting time. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is reached the chat becomes visible as `AVAILABLE`, and the timeout window starts only when a participant enters or sends the first message.
 
 Engagement:
 

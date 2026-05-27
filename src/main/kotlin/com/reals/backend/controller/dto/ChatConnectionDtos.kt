@@ -13,6 +13,8 @@ data class ChatResponse(
     val chatType: ChatType,
     val status: ChatStatus,
     val startedAt: OffsetDateTime,
+    val availableAt: OffsetDateTime?,
+    val activatedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?
@@ -25,6 +27,8 @@ data class ChatResponse(
             chatType = c.chatType,
             status = c.status,
             startedAt = c.startedAt,
+            availableAt = c.availableAt,
+            activatedAt = c.activatedAt,
             timeoutAt = c.timeoutAt,
             endedAt = c.endedAt,
             lastMessageAt = c.lastMessageAt

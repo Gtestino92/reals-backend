@@ -10,6 +10,7 @@ enum class ChatType {
 }
 
 enum class ChatStatus {
+    AVAILABLE,
     ACTIVE,
     EXPIRED,
     ABANDONED,
@@ -39,10 +40,16 @@ data class Chat(
     var status: ChatStatus = ChatStatus.ACTIVE,
 
     @Column(name = "started_at", nullable = false)
-    val startedAt: OffsetDateTime = OffsetDateTime.now(),
+    var startedAt: OffsetDateTime = OffsetDateTime.now(),
+
+    @Column(name = "available_at")
+    val availableAt: OffsetDateTime? = null,
+
+    @Column(name = "activated_at")
+    var activatedAt: OffsetDateTime? = null,
 
     @Column(name = "timeout_at", nullable = false)
-    val timeoutAt: OffsetDateTime,
+    var timeoutAt: OffsetDateTime,
 
     @Column(name = "ended_at")
     var endedAt: OffsetDateTime? = null,

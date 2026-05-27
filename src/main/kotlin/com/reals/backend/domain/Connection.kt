@@ -6,6 +6,8 @@ import java.util.*
 
 enum class ConnectionState {
     SCHEDULING_PHASE,
+    SECOND_CHAT_SCHEDULED,
+    SECOND_CHAT_AVAILABLE,
     SECOND_CHAT,
     CLOSED
 }

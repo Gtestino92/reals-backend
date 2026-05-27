@@ -25,6 +25,6 @@ script:post-response {
   const body = res.getBody();
   bru.setEnvVar("proposalBId", body.id);
   if (body.chatId) {
-    bru.setEnvVar("secondChatId", body.chatId);
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
   }
 }

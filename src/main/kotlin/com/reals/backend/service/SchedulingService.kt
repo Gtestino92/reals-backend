@@ -150,7 +150,7 @@ class SchedulingService(
      * - [acceptorUserId] must NOT be the proposer of [proposalId].
      * - [acceptorUserId] must have already submitted their own proposal this round.
      * - The proposal must be in PENDING state.
-     * - Confirms the negotiation and transitions Connection to SECOND_CHAT.
+     * - Confirms the negotiation and transitions Connection to SECOND_CHAT_SCHEDULED.
      */
     fun acceptProposal(
         proposalId: UUID,
@@ -295,7 +295,7 @@ class SchedulingService(
 
     /**
      * Marks [accepted] and [acceptorProposal] as ACCEPTED, rejects remaining PENDING proposals,
-     * confirms the negotiation, and transitions the Connection to SECOND_CHAT.
+     * confirms the negotiation, and transitions the Connection to SECOND_CHAT_SCHEDULED.
      * [accepted] is the proposal being accepted; [acceptorProposal] is the acceptor's own proposal.
      */
     private fun confirmWith(
@@ -324,6 +324,6 @@ class SchedulingService(
 
         negotiationRepository.save(negotiation)
 
-        connectionService.transitionToSecondChat(connectionId)
+        connectionService.transitionToSecondChatScheduled(connectionId)
     }
 }

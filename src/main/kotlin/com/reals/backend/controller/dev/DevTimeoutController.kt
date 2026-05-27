@@ -3,6 +3,7 @@ package com.reals.backend.controller.dev
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.PenaltyRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
@@ -21,6 +22,7 @@ class DevTimeoutController(
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
     private val penaltyRepository: PenaltyRepository,
+    private val scheduleNegotiationRepository: ScheduleNegotiationRepository,
     private val visualReviewRepository: VisualReviewRepository
 ) {
 
@@ -77,6 +79,28 @@ class DevTimeoutController(
                 target = "connection",
                 id = connectionId,
                 expiresAt = expiresAt
+            )
+        )
+    }
+
+    @PostMapping("/connections/{connectionId}/second-chat-start-now")
+    @Transactional
+    fun startSecondChatNow(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val startsAt = OffsetDateTime.now().minusSeconds(1)
+        requireUpdated(
+            updated = scheduleNegotiationRepository.updateConfirmedDateTimeByConnectionId(
+                connectionId = connectionId,
+                confirmedDateTime = startsAt
+            ),
+            message = "ScheduleNegotiation not found for connection: $connectionId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "schedule-negotiation",
+                id = connectionId,
+                expiresAt = startsAt
             )
         )
     }

@@ -16,8 +16,10 @@ headers {
 
 script:post-response {
   const body = res.getBody();
-  if (body.status !== "CONFIRMED" || !body.chatId) {
-    throw new Error("Expected CONFIRMED negotiation with chatId.");
+  if (body.status !== "CONFIRMED") {
+    throw new Error("Expected CONFIRMED negotiation.");
   }
-  bru.setEnvVar("negativeSecondChatId", body.chatId);
+  if (body.chatId) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
+  }
 }

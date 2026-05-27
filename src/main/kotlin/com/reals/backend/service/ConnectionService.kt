@@ -102,14 +102,50 @@ class ConnectionService(
     }
 
     /**
-     * Transitions a Connection from SCHEDULING_PHASE to SECOND_CHAT.
-     * Called by SchedulingServie when scheduling negotiation is confirmed
+     * Transitions a Connection from SCHEDULING_PHASE to SECOND_CHAT_SCHEDULED.
+     * Called when scheduling negotiation is confirmed for a future second chat slot.
+     */
+    fun transitionToSecondChatScheduled(connectionId: UUID): Connection {
+
+        val connection = findByIdOrThrow(connectionId)
+
+        check(connection.state == ConnectionState.SCHEDULING_PHASE) {
+            "Cannot transition to SECOND_CHAT_SCHEDULED: connection is in state ${connection.state}"
+        }
+
+        connection.state = ConnectionState.SECOND_CHAT_SCHEDULED
+        connection.updatedAt = OffsetDateTime.now()
+
+        return connectionRepository.save(connection)
+    }
+
+    /**
+     * Transitions a scheduled Connection to SECOND_CHAT_AVAILABLE when the confirmed
+     * second-chat time has arrived and the chat session is visible to participants.
+     */
+    fun transitionToSecondChatAvailable(connectionId: UUID): Connection {
+
+        val connection = findByIdOrThrow(connectionId)
+
+        check(connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
+            "Cannot transition to SECOND_CHAT_AVAILABLE: connection is in state ${connection.state}"
+        }
+
+        connection.state = ConnectionState.SECOND_CHAT_AVAILABLE
+        connection.updatedAt = OffsetDateTime.now()
+
+        return connectionRepository.save(connection)
+    }
+
+    /**
+     * Transitions an available second-chat Connection to SECOND_CHAT when a participant
+     * enters the chat or sends the first message.
      */
     fun transitionToSecondChat(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
 
-        check(connection.state == ConnectionState.SCHEDULING_PHASE) {
+        check(connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
             "Cannot transition to SECOND_CHAT: connection is in state ${connection.state}"
         }
 
@@ -128,6 +164,8 @@ class ConnectionService(
 
         check(
             connection.state == ConnectionState.SCHEDULING_PHASE ||
+            connection.state == ConnectionState.SECOND_CHAT_SCHEDULED ||
+            connection.state == ConnectionState.SECOND_CHAT_AVAILABLE ||
             connection.state == ConnectionState.SECOND_CHAT
         ) {
             "Cannot close connection: connection is in state ${connection.state}"

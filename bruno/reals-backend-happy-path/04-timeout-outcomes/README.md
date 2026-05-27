@@ -11,6 +11,8 @@ Run with the `local` Bruno environment after starting the backend with `local-no
 - first chat timeout expires the match and makes the active first-chat lookup unusable
 - visual phase timeout expires the match before a connection exists
 - scheduling timeout fails the negotiation and closes the connection
+- scheduled second-chat availability exposes the chat when the confirmed time is due
+- entering the available second chat activates it before timeout testing
 - second chat timeout expires the chat and closes the connection
 
 ## Not Covered Here
