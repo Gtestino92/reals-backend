@@ -13,10 +13,6 @@ interface PenaltyRepository :
         userId: UUID
     ): Boolean
 
-    fun findByUserIdAndActiveTrue(
-        userId: UUID
-    ): List<Penalty>
-
     @Query("SELECT p from Penalty p where p.active=true and p.expiresAt <= :now")
     fun findExpiredActivePenalties(
         @Param("now")

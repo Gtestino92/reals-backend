@@ -89,10 +89,4 @@ class PenaltyService(
         penaltyRepository.saveAll(expired)
     }
 
-    fun getActivePenalties(
-        userId: UUID
-    ): List<Penalty> {
-
-        return penaltyRepository.findByUserIdAndActiveTrue(userId)
-    }
 }

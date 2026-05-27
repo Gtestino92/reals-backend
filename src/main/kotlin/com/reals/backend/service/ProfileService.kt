@@ -15,6 +15,7 @@ import java.util.UUID
 class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
+    private val profilePhotoValidationService: ProfilePhotoValidationService,
 
     @Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -93,8 +94,8 @@ class ProfileService(
         profileId: UUID,
         url: String,
         position: Int,
-        isPersonPhoto: Boolean,
-        isFullBody: Boolean
+        isPersonPhoto: Boolean? = null,
+        isFullBody: Boolean? = null
     ): ProfilePhoto {
 
         findByIdOrThrow(profileId)
@@ -113,13 +114,20 @@ class ProfileService(
             "Profile $profileId already has the maximum number of photos ($maxPhotoCount)"
         }
 
+        val trimmedUrl = url.trim()
+        val validation = profilePhotoValidationService.validate(
+            ProfilePhotoValidationRequest(
+                url = trimmedUrl
+            )
+        )
+
         return profilePhotoRepository.save(
             ProfilePhoto(
                 profileId = profileId,
-                url = url.trim(),
+                url = trimmedUrl,
                 position = position,
-                isPersonPhoto = isPersonPhoto,
-                isFullBody = isFullBody
+                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
+                isFullBody = isFullBody ?: validation.isFullBody
             )
         )
     }
@@ -212,8 +220,8 @@ class ProfileService(
         profileId: UUID,
         position: Int,
         url: String,
-        isPersonPhoto: Boolean,
-        isFullBody: Boolean
+        isPersonPhoto: Boolean? = null,
+        isFullBody: Boolean? = null
     ): ProfilePhoto {
 
         findByIdOrThrow(profileId)
@@ -227,13 +235,20 @@ class ProfileService(
             profilePhotoRepository.delete(existing)
         }
 
+        val trimmedUrl = url.trim()
+        val validation = profilePhotoValidationService.validate(
+            ProfilePhotoValidationRequest(
+                url = trimmedUrl
+            )
+        )
+
         return profilePhotoRepository.save(
             ProfilePhoto(
                 profileId = profileId,
-                url = url.trim(),
+                url = trimmedUrl,
                 position = position,
-                isPersonPhoto = isPersonPhoto,
-                isFullBody = isFullBody
+                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
+                isFullBody = isFullBody ?: validation.isFullBody
             )
         )
     }

@@ -193,9 +193,6 @@ class ChatService(
         }
     }
 
-    fun findChatDecisionOrNull(matchId: UUID): ChatDecision? =
-        chatDecisionRepository.findByMatchId(matchId)
-
     fun endChat(
         chatId: UUID,
         finalStatus: ChatStatus,
@@ -272,21 +269,6 @@ class ChatService(
             chat = chat,
             userId = userId
         )
-    }
-
-    fun findActiveSecondChatOrThrow(connectionId: UUID): Chat {
-        val chat =
-            chatRepository.findByConnectionIdAndChatType(
-                connectionId,
-                ChatType.SECOND_CHAT
-            )
-                ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
-
-        check(chat.status == ChatStatus.ACTIVE) {
-            "Second chat for connection $connectionId is not active (status: ${chat.status})"
-        }
-
-        return chat
     }
 
     private fun activateAvailableSecondChatIfNeeded(

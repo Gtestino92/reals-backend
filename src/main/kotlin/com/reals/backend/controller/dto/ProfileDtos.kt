@@ -22,8 +22,8 @@ data class UpdateProfileRequest(
 
 data class ReplacePhotoRequest(
     val url: String,
-    val isPersonPhoto: Boolean = false,
-    val isFullBody: Boolean = false
+    val isPersonPhoto: Boolean? = null,
+    val isFullBody: Boolean? = null
 )
 
 data class CreateProfileRequest(
@@ -40,8 +40,8 @@ data class CreateProfileRequest(
 data class AddPhotoRequest(
     val url: String,
     val position: Int,
-    val isPersonPhoto: Boolean = false,
-    val isFullBody: Boolean = false
+    val isPersonPhoto: Boolean? = null,
+    val isFullBody: Boolean? = null
 )
 
 data class ProfileResponse(

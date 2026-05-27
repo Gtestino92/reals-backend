@@ -255,23 +255,6 @@ class SchedulingService(
         proposalRepository.findByConnectionId(connectionId)
 
     /**
-     * Returns whether both users in the connection have already submitted
-     * a proposal in the current round (i.e. proposals are now mutually visible).
-     */
-    fun bothProposed(connectionId: UUID): Boolean {
-
-        val connection = connectionService.findByIdOrThrow(connectionId)
-
-        return proposalRepository.existsByConnectionIdAndUserId(
-            connectionId,
-            connection.userAId
-        ) && proposalRepository.existsByConnectionIdAndUserId(
-            connectionId,
-            connection.userBId
-        )
-    }
-
-    /**
      * Marks a PENDING negotiation as FAILED and closes its Connection.
      * Called by SchedulingNegotiationTimeoutJob when Connection.schedulingExpiresAt is past.
      */

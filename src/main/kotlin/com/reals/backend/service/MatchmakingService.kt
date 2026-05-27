@@ -3,7 +3,6 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.service.matching.CompatibilityEvaluator
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -16,7 +15,7 @@ class MatchmakingService(
 
     private val queueRepository: MatchmakingQueueRepository,
     private val lockRepository: ActiveEngagementLockRepository,
-    private val penaltyRepository: PenaltyRepository,
+    private val penaltyService: PenaltyService,
     private val profileService: ProfileService,
     private val compatibilityEvaluator: CompatibilityEvaluator,
 
@@ -43,7 +42,7 @@ class MatchmakingService(
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
         }
 
-        check(!penaltyRepository.existsByUserIdAndActiveTrue(userId)) {
+        check(!penaltyService.hasActivePenalty(userId)) {
             "User $userId has an active penalty"
         }
 

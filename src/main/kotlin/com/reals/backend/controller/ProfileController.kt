@@ -118,7 +118,7 @@ class ProfileController(
 
     /**
      * Positions 1-9 are valid. Each position can only be occupied once
-     * TODO: the isPersonPhoto and isFullBody should be validated with other services!
+     * Semantic photo classification is delegated to ProfilePhotoValidationService.
      */
     @PostMapping("/photos")
     fun addPhoto(
