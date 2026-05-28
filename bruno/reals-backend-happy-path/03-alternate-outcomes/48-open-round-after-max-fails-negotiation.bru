@@ -5,9 +5,13 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rounds
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
   body: none
   auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
 }
 
 script:post-response {

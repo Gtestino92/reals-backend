@@ -1,0 +1,22 @@
+meta {
+  name: 25 User B Add Personal Message
+  type: http
+  seq: 25
+}
+
+put {
+  url: {{baseUrl}}/api/matches/{{matchId}}/personal-messages/me
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "message": "Tambien me gusto. Avancemos."
+  }
+}

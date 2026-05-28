@@ -1,0 +1,36 @@
+meta {
+  name: 32 User B Add Same Proposal
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "proposedDateTimes": [
+      "{{secondChatDateTime}}",
+      "{{secondChatDateTimeLatest}}"
+    ]
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("proposalBId", body[0].id);
+  if (!body.some((proposal) => proposal.status === "ACCEPTED")) {
+    throw new Error("Expected overlapping proposal to auto-confirm scheduling.");
+  }
+  if (body.some((proposal) => proposal.chatId)) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
+  }
+}

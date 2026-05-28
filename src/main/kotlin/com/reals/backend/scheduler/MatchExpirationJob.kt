@@ -4,11 +4,9 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.MatchService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -25,14 +23,13 @@ import java.time.OffsetDateTime
  * Config key: scheduler.match-expiration-job.max-chat-duration
  */
 @Component
-@ConditionalOnBean(value = [LockProvider::class])
 class MatchExpirationJob(
 
     private val matchRepository: MatchRepository,
     private val visualReviewRepository: VisualReviewRepository,
     private val matchService: MatchService,
 
-    @Value("\${scheduler.match-expiration-job.max-chat-duration:PT24H}")
+    @param:Value("\${scheduler.match-expiration-job.max-chat-duration:PT24H}")
     private val maxChatDuration: Duration
 
 ) {

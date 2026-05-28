@@ -1,0 +1,30 @@
+meta {
+  name: 39 Get Second Chat Messages
+  type: http
+  seq: 39
+}
+
+get {
+  url: {{baseUrl}}/api/chats/{{secondChatId}}/messages
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body)) {
+    throw new Error(`Expected second-chat messages array, got ${typeof body}`);
+  }
+  const userAId = bru.getEnvVar("userAId");
+  const userBId = bru.getEnvVar("userBId");
+  if (!body.some(message => message.senderId === userAId)) {
+    throw new Error("Expected at least one second-chat message from user A.");
+  }
+  if (!body.some(message => message.senderId === userBId)) {
+    throw new Error("Expected at least one second-chat message from user B.");
+  }
+}

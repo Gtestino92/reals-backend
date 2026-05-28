@@ -10,22 +10,30 @@ enum class EngagementType {
 }
 
 @Entity
-@Table(name = "active_engagement_locks")
+@Table(
+    name = "active_engagement_locks",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uq_engagement_lock_user_engagement",
+            columnNames = ["user_id", "engagement_id"]
+        )
+    ]
+)
 data class ActiveEngagementLock(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false)
-    val userId: UUID,
+    var userId: UUID,
 
     @Column(name = "engagement_id", nullable = false)
-    val engagementId: UUID,
+    var engagementId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "engagement_type", nullable = false)
-    val engagementType: EngagementType,
+    var engagementType: EngagementType,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now()
+    var createdAt: OffsetDateTime = OffsetDateTime.now()
 )

@@ -1,0 +1,26 @@
+meta {
+  name: 43 User B Add Different Proposal
+  type: http
+  seq: 43
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+body:json {
+  {
+    "proposedDateTimes": ["{{negativeOtherSecondChatDateTime}}"]
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("negativeProposalBId", res.getBody()[0].id);
+}

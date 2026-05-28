@@ -19,7 +19,7 @@ class VisualReviewService(
     private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService,
 
-    @Value("\${chat.visual-phase.duration-minutes:1440}")
+    @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
 ) {
 
@@ -51,7 +51,8 @@ class VisualReviewService(
     ) {
 
         val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
+        val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
+            ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
 
         review.expiresAt?.let {
             check(OffsetDateTime.now().isBefore(it)) {
@@ -61,6 +62,14 @@ class VisualReviewService(
 
         check(match.state == MatchState.VISUAL_PHASE) {
             "Match is not in visual phase"
+        }
+
+        if (decision == VisualDecision.APPROVED) {
+            requirePartnerMessageReadIfPresent(
+                match = match,
+                review = review,
+                userId = userId
+            )
         }
 
         when (userId) {
@@ -90,7 +99,10 @@ class VisualReviewService(
 
             val approvedMatch = matchService.approveVisualPhase(matchId)
             val connection = connectionService.createFromMatch(approvedMatch)
-            schedulingService.initializeNegotiation(connection.id)
+
+            if (schedulingService.findNegotiationOrNull(connection.id) == null) {
+                schedulingService.initializeNegotiation(connection.id)
+            }
         } else {
             matchService.rejectVisualPhase(matchId)
         }
@@ -104,6 +116,10 @@ class VisualReviewService(
 
         val match = matchService.findByIdOrThrow(matchId)
         val review = findByMatchIdOrThrow(matchId)
+
+        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
+            "Personal messages are only available during visual review or scheduling"
+        }
 
         when (userId) {
 
@@ -129,5 +145,64 @@ class VisualReviewService(
 
         review.updatedAt = OffsetDateTime.now()
         visualReviewRepository.save(review)
+    }
+
+    fun getPartnerMessage(
+        matchId: UUID,
+        requestingUserId: UUID
+    ): String? {
+        val match = matchService.findByIdOrThrow(matchId)
+        val review = findByMatchIdOrThrow(matchId)
+
+        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
+            "Partner message is only available during visual review or scheduling"
+        }
+
+        val message = when (requestingUserId) {
+            match.userAId -> {
+                if (review.personalMessageB != null && review.personalMessageBReadByAAt == null) {
+                    review.personalMessageBReadByAAt = OffsetDateTime.now()
+                }
+                review.personalMessageB
+            }
+
+            match.userBId -> {
+                if (review.personalMessageA != null && review.personalMessageAReadByBAt == null) {
+                    review.personalMessageAReadByBAt = OffsetDateTime.now()
+                }
+                review.personalMessageA
+            }
+
+            else -> throw IllegalArgumentException(
+                "User $requestingUserId does not belong to match $matchId"
+            )
+        }
+
+        review.updatedAt = OffsetDateTime.now()
+        visualReviewRepository.save(review)
+
+        return message
+    }
+
+    private fun requirePartnerMessageReadIfPresent(
+        match: Match,
+        review: VisualReview,
+        userId: UUID
+    ) {
+        when (userId) {
+            match.userAId ->
+                check(review.personalMessageB == null || review.personalMessageBReadByAAt != null) {
+                    "Cannot approve visual review before reading partner personal message"
+                }
+
+            match.userBId ->
+                check(review.personalMessageA == null || review.personalMessageAReadByBAt != null) {
+                    "Cannot approve visual review before reading partner personal message"
+                }
+
+            else -> throw IllegalArgumentException(
+                "User $userId does not belong to match ${match.id}"
+            )
+        }
     }
 }

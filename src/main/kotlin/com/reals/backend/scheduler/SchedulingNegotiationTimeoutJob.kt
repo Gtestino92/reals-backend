@@ -3,10 +3,8 @@ package com.reals.backend.scheduler
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.service.SchedulingService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -19,7 +17,6 @@ import java.time.OffsetDateTime
  * scheduler.scheduling-timeout-job.fixed-delay
  */
 @Component
-@ConditionalOnBean(LockProvider::class)
 class SchedulingNegotiationTimeoutJob(
     private val connectionRepository: ConnectionRepository,
     private val schedulingService: SchedulingService

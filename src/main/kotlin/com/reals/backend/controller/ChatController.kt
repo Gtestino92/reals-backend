@@ -50,11 +50,13 @@ class ChatController(
 
     @GetMapping("/{chatId}/messages")
     fun getMessages(
+        @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID
     ): ResponseEntity<List<ChatMessageResponse>> {
 
         val messages = chatService.getMessages(
-            chatId = chatId
+            chatId = chatId,
+            userId = userId
         )
 
         return ResponseEntity.ok(
@@ -158,12 +160,4 @@ class ChatController(
                 )
             )
 
-    @PostMapping("/{chatId}/closure")
-    fun closeSecondChat(
-        @PathVariable chatId: UUID,
-        @CurrentUserId userId: UUID
-    ): ResponseEntity<ChatResponse> {
-        chatExitService.closeSecondChat(chatId, userId)
-        return ResponseEntity.ok(ChatResponse.from(chatService.findByIdOrThrow(chatId)))
-    }
 }

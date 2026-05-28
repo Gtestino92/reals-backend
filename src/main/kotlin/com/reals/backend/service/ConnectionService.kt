@@ -15,10 +15,10 @@ class ConnectionService(
     private val connectionRepository: ConnectionRepository,
     private val lockRepository: ActiveEngagementLockRepository,
 
-    @Value("\${engagement.max-active-connections:2}")
+    @param:Value("\${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
 
-    @Value("\${scheduling.negotiation-duration-minutes:2880}")
+    @param:Value("\${scheduling.negotiation-duration-minutes:2880}")
     private val negotiationDurationMinutes: Long
 
 ) {
@@ -43,6 +43,8 @@ class ConnectionService(
      * Upgrades ActiveEngagementLock type from MATCH to CONNECTION.
      */
     fun createFromMatch(match: Match): Connection {
+
+        connectionRepository.findByMatchId(match.id)?.let { return it }
 
         checkConnectionLimit(match.userAId)
         checkConnectionLimit(match.userBId)

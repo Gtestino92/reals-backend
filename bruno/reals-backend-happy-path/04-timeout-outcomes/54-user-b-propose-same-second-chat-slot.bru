@@ -17,13 +17,13 @@ headers {
 
 body:json {
   {
-    "proposedDateTime": "{{timeoutSecondChatSlot}}"
+    "proposedDateTimes": ["{{timeoutSecondChatSlot}}"]
   }
 }
 
 script:post-response {
   const body = res.getBody();
-  if (body.chatId) {
+  if (body.some((proposal) => proposal.chatId)) {
     throw new Error("Second chat should not start immediately after scheduling confirmation.");
   }
 }

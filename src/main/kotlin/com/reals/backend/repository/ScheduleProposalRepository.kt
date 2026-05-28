@@ -11,20 +11,14 @@ interface ScheduleProposalRepository :
         connectionId: UUID
     ): List<ScheduleProposal>
 
-    fun findByConnectionIdAndUserId(
+    fun findByConnectionIdAndRoundNumber(
         connectionId: UUID,
-        userId: UUID
+        roundNumber: Int
     ): List<ScheduleProposal>
 
-    fun findByConnectionIdAndStatus(
+    fun existsByConnectionIdAndUserIdAndRoundNumber(
         connectionId: UUID,
-        status: ProposalStatus
-    ): List<ScheduleProposal>
-
-    fun existsByConnectionIdAndUserId(
-        connectionId: UUID,
-        userId: UUID
+        userId: UUID,
+        roundNumber: Int
     ): Boolean
-
-    fun deleteByConnectionId(connectionId: UUID)
 }

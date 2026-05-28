@@ -16,6 +16,8 @@ management:
         include: health,info
 
 scheduler:
+  enabled: true
+
   # Detects chat sessions exceeding max duration or inactivity timeout
   # Runs every 2 minutes — fast response needed so users don't remain stuck
   chat-timeout-job:

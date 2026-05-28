@@ -5,10 +5,8 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -23,7 +21,6 @@ import java.time.OffsetDateTime
  * it or sends the first message.
  */
 @Component
-@ConditionalOnBean(LockProvider::class)
 class ScheduledSecondChatStartJob(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val connectionService: ConnectionService,

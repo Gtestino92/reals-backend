@@ -1,0 +1,18 @@
+meta {
+  name: 35 Get Second Chat Available Connection
+  type: http
+  seq: 35
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{connectionId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "SECOND_CHAT_AVAILABLE") {
+    throw new Error(`Expected connection state SECOND_CHAT_AVAILABLE, got ${body.state}`);
+  }
+}

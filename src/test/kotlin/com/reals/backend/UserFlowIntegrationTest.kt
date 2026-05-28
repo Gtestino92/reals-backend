@@ -108,6 +108,8 @@ class UserFlowIntegrationTest(
 
         visualReviewService.recordPersonalMessage(match.id, userA, "Sigamos conversando")
         visualReviewService.recordPersonalMessage(match.id, userB, "Dale")
+        assertEquals("Dale", visualReviewService.getPartnerMessage(match.id, userA))
+        assertEquals("Sigamos conversando", visualReviewService.getPartnerMessage(match.id, userB))
         visualReviewService.recordDecision(match.id, userA, VisualDecision.APPROVED)
         visualReviewService.recordDecision(match.id, userB, VisualDecision.APPROVED)
 
@@ -122,11 +124,20 @@ class UserFlowIntegrationTest(
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
 
-        val slot = OffsetDateTime.now().plusDays(1).withNano(0)
-        val proposalA = schedulingService.addProposal(connection.id, userA, slot)
-        assertEquals(ProposalStatus.PENDING, proposalA.status)
+        val slot = futureHalfHourSlot()
+        val proposalA = schedulingService.addProposals(
+            connectionId = connection.id,
+            userId = userA,
+            proposedDateTimes = listOf(slot.plusHours(1), slot)
+        )
+        assertEquals(2, proposalA.size)
+        assertTrue(proposalA.all { it.status == ProposalStatus.PENDING })
 
-        schedulingService.addProposal(connection.id, userB, slot)
+        schedulingService.addProposals(
+            connectionId = connection.id,
+            userId = userB,
+            proposedDateTimes = listOf(slot, slot.plusHours(2))
+        )
 
         val negotiation = schedulingService.findNegotiationOrThrow(connection.id)
         assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
@@ -137,8 +148,9 @@ class UserFlowIntegrationTest(
         )
 
         val proposals = proposalRepository.findByConnectionId(connection.id)
-        assertEquals(2, proposals.size)
-        assertTrue(proposals.all { it.status == ProposalStatus.ACCEPTED })
+        assertEquals(4, proposals.size)
+        assertEquals(2, proposals.count { it.status == ProposalStatus.ACCEPTED })
+        assertEquals(2, proposals.count { it.status == ProposalStatus.REJECTED })
 
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = connection.id,
@@ -166,7 +178,16 @@ class UserFlowIntegrationTest(
         chatService.sendMessage(secondChat.id, userA, "Ya quedo habilitado el segundo chat")
         chatService.sendMessage(secondChat.id, userB, "Seguimos por aca")
 
-        chatExitService.closeSecondChat(secondChat.id, userA)
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = secondChat.id,
+                requesterUserId = userA
+            )
+        chatExitService.acceptMutualCancellation(
+            chatId = secondChat.id,
+            requestId = exitRequest.id,
+            responderUserId = userB
+        )
 
         assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(secondChat.id).status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(connection.id).state)
@@ -233,6 +254,24 @@ class UserFlowIntegrationTest(
                 decision = ChatContinueDecision.APPROVED
             )
         }
+    }
+
+    @Test
+    fun `visual approval requires reading partner personal message when present`() {
+        val setup = createMatchWithFirstChat()
+
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me caiste bien")
+
+        assertThrows<IllegalStateException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        }
+
+        assertEquals("Me caiste bien", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
     }
 
     @Test
@@ -325,7 +364,7 @@ class UserFlowIntegrationTest(
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,
-                proposedDateTime = OffsetDateTime.now().plusDays(1)
+                proposedDateTime = futureHalfHourSlot()
             )
         }
     }
@@ -336,7 +375,7 @@ class UserFlowIntegrationTest(
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = OffsetDateTime.now().plusDays(1)
+            proposedDateTime = futureHalfHourSlot()
         )
 
         assertThrows<IllegalStateException> {
@@ -345,6 +384,67 @@ class UserFlowIntegrationTest(
                 acceptorUserId = setup.userAId
             )
         }
+    }
+
+    @Test
+    fun `scheduling auto confirmation chooses best overlap by preference and earliest tie`() {
+        val setup = createConnectionInSchedulingPhase()
+        val early = futureHalfHourSlot()
+        val late = early.plusHours(1)
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTimes = listOf(late, early)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTimes = listOf(early, late)
+        )
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(early.toInstant(), negotiation.confirmedDateTime?.toInstant())
+
+        val proposals = proposalRepository.findByConnectionId(setup.connectionId)
+        val accepted = proposals.filter { it.status == ProposalStatus.ACCEPTED }
+        assertEquals(2, accepted.size)
+        assertTrue(
+            accepted.all {
+                it.proposedDateTime.toInstant().equals(early.toInstant())
+            }
+        )
+    }
+
+    @Test
+    fun `explicit scheduling rejection opens next round`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slotA = futureHalfHourSlot()
+        val slotB = slotA.plusHours(1)
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTimes = listOf(slotA)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTimes = listOf(slotB)
+        )
+
+        val negotiation = schedulingService.rejectCurrentRound(
+            connectionId = setup.connectionId,
+            userId = setup.userAId
+        )
+
+        assertEquals(NegotiationStatus.PENDING, negotiation.status)
+        assertEquals(2, negotiation.roundNumber)
+        assertTrue(
+            proposalRepository.findByConnectionId(setup.connectionId)
+                .all { it.status == ProposalStatus.REJECTED }
+        )
     }
 
     private fun createActiveProfile(
@@ -426,7 +526,7 @@ class UserFlowIntegrationTest(
 
     private fun createActiveSecondChat(): ActiveSecondChatFixture {
         val setup = createConnectionInSchedulingPhase()
-        val slot = OffsetDateTime.now().plusDays(1)
+        val slot = futureHalfHourSlot()
 
         schedulingService.addProposal(
             connectionId = setup.connectionId,
@@ -467,6 +567,19 @@ class UserFlowIntegrationTest(
             connectionId = setup.connectionId,
             secondChatId = secondChat.id
         )
+    }
+
+    private fun futureHalfHourSlot(): OffsetDateTime {
+        val candidate = OffsetDateTime.now()
+            .plusDays(1)
+            .withSecond(0)
+            .withNano(0)
+
+        return if (candidate.minute < 30) {
+            candidate.withMinute(30)
+        } else {
+            candidate.plusHours(1).withMinute(0)
+        }
     }
 
     private data class MatchFixture(

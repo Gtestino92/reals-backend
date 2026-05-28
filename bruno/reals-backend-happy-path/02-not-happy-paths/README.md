@@ -12,17 +12,18 @@ These requests are intentionally stateful and should be executed in order from `
 - non-participant chat message rejection
 - duplicate chat decision rejection
 - non-participant visual profile/decision rejection
+- visual approval rejection when the partner personal message exists but was not read
 - non-participant scheduling proposal rejection
 - past scheduling proposal rejection
-- duplicate proposal in the same round
+- duplicate proposal list in the same round
 - own-proposal acceptance rejection
 - accepting before submitting own proposal rejection
 - proposal after confirmed negotiation rejection
-- invalid first-chat close
-- non-participant second-chat close
+- non-participant first-chat cancellation
+- non-participant second-chat cancellation
 - safety cancellation of an active second chat, including penalty application to the reported participant
 
-`43 Close First Chat Should Fail` runs after the first chat has already been finished by the approval flow, so it validates that the endpoint rejects an invalid close request. A stricter "active first chat cannot be closed through this endpoint" check would need a separate isolated setup or an admin/test fixture endpoint.
+`49 Stranger Cancel First Chat Should Fail` and `50 Stranger Cancel Second Chat Should Fail` validate that users outside the match cannot close another pair's chat.
 
 ## Deferred
 

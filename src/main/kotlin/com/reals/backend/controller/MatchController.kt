@@ -2,7 +2,6 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.*
-import com.reals.backend.domain.MatchState
 import com.reals.backend.service.*
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -143,10 +142,9 @@ class MatchController(
     }
 
     /**
-     * Records the personal message a user writes to the other
-     * Only meaningful after mutual visual approval (messagesVisible = true)
+     * Records the optional personal message a user writes to the other during visual review.
      */
-    @PutMapping("/{matchId}/personal-message")
+    @PutMapping("/{matchId}/personal-messages/me")
     fun recordPersonalMessage(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
@@ -169,32 +167,21 @@ class MatchController(
      *
      * Reads the requesting userId from the SecurityContext (DevAutoAuthFilter in local,
      * JWT in prod - no query param needed, already aligned with PENDING.md #9)
-     * Available from VISUAL_APPROVED onwards
+     * Available from VISUAL_PHASE onwards
      * TODO (front): llamar al entrar en la pantalla de negociación de horario
      * TODO (product): ver PENDING.md #17 - visibilidad del mensaje del partner
      */
-    @GetMapping("/{matchId}/partner-message")
+    @GetMapping("/{matchId}/personal-messages/partner")
     fun getPartnerMessage(
         @PathVariable matchId: UUID,
         @CurrentUserId requestingUserId: UUID
     ): ResponseEntity<PartnerMessageResponse> {
-        val match = matchService.findByIdOrThrow(matchId = matchId)
-        check(match.state == MatchState.VISUAL_APPROVED)
-        val review = visualReviewService.findByMatchIdOrThrow(matchId = matchId)
-
-        val partnerMessage =
-            when (requestingUserId) {
-                match.userAId -> review.personalMessageB
-                match.userBId -> review.personalMessageA
-                else ->
-                    error(
-                        "User $requestingUserId does not belong to match $matchId"
-                    )
-            }
-
         return ResponseEntity.ok(
             PartnerMessageResponse(
-                message = partnerMessage
+                message = visualReviewService.getPartnerMessage(
+                    matchId = matchId,
+                    requestingUserId = requestingUserId
+                )
             )
         )
     }

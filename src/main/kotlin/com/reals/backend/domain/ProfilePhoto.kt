@@ -12,16 +12,16 @@ import java.util.UUID
 data class ProfilePhoto(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "profile_id", nullable = false)
-    val profileId: UUID,
+    var profileId: UUID,
 
     @Column(name = "url", nullable = false)
     var url: String,
 
     @Column(name = "position", nullable = false)
-    val position: Int,
+    var position: Int,
 
     @Column(name = "is_person_photo", nullable = false)
     var isPersonPhoto: Boolean = false,
@@ -30,5 +30,5 @@ data class ProfilePhoto(
     var isFullBody: Boolean = false,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now()
+    var createdAt: OffsetDateTime = OffsetDateTime.now()
 )

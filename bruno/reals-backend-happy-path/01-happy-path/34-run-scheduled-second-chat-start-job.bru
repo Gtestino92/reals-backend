@@ -1,0 +1,17 @@
+meta {
+  name: 34 Run Scheduled Second Chat Start Job
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{baseUrl}}/api/dev/jobs/scheduled-second-chat-start/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "ScheduledSecondChatStartJob") {
+    throw new Error("Expected ScheduledSecondChatStartJob to run.");
+  }
+}

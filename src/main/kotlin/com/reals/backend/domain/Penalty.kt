@@ -12,19 +12,19 @@ import java.util.UUID
 data class Penalty(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false)
-    val userId: UUID,
+    var userId: UUID,
 
     @Column(name = "reason", nullable = false)
-    val reason: String,
+    var reason: String,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "expires_at", nullable = false)
-    val expiresAt: OffsetDateTime,
+    var expiresAt: OffsetDateTime,
 
     @Column(name = "active", nullable = false)
     var active: Boolean = true

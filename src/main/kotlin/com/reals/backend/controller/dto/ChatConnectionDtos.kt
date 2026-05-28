@@ -163,13 +163,15 @@ data class PartnerMessageResponse(
 // — Scheduling
 
 data class AddProposalRequest(
-    val proposedDateTime: OffsetDateTime
+    val proposedDateTimes: List<OffsetDateTime>
 )
 
 data class ScheduleProposalResponse(
     val id: UUID,
     val connectionId: UUID,
     val userId: UUID,
+    val roundNumber: Int,
+    val preferenceOrder: Int,
     val proposedDateTime: OffsetDateTime,
     val status: ProposalStatus,
     val chatId: UUID?,
@@ -183,6 +185,8 @@ data class ScheduleProposalResponse(
             id = p.id,
             connectionId = p.connectionId,
             userId = p.userId,
+            roundNumber = p.roundNumber,
+            preferenceOrder = p.preferenceOrder,
             proposedDateTime = p.proposedDateTime,
             status = p.status,
             chatId = chatId,

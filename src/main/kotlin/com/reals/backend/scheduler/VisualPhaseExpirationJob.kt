@@ -2,10 +2,8 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.MatchService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -18,7 +16,6 @@ import java.time.OffsetDateTime
  * scheduler.visual-phase-expiration-job.fixed-delay
  */
 @Component
-@ConditionalOnBean(value = [LockProvider::class])
 class VisualPhaseExpirationJob(
 
     private val visualReviewRepository: VisualReviewRepository,

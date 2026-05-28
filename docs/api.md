@@ -38,31 +38,30 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision.
-- `PUT /api/matches/{matchId}/personal-message`: store personal visual-review message.
-- `GET /api/matches/{matchId}/partner-message`: get partner message after `VISUAL_APPROVED`.
+- `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message.
+- `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before visual approval.
 
 ## Chats
 
 - `GET /api/chats/{chatId}`: fetch chat.
 - `POST /api/chats/{chatId}/messages`: send message as authenticated user.
-- `GET /api/chats/{chatId}/messages`: list messages.
+- `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant.
 - `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close without penalty.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation; chat remains active.
 - `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
 - `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Exempts reporter and penalizes reported participant.
-- `POST /api/chats/{chatId}/closure`: legacy explicit close for active second chats; prefer `cancellations`.
 
 ## Connections And Scheduling
 
 - `GET /api/connections/{connectionId}`: fetch connection.
 - `GET /api/connections/{connectionId}/chat`: fetch visible second chat for connection. If the chat is `AVAILABLE`, this activates it for the authenticated participant and starts its timeout window.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
-- `POST /api/connections/{connectionId}/proposals`: add scheduling proposal.
+- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to 3 future half-hour slots.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
-- `POST /api/connections/{connectionId}/negotiation/rounds`: reject pending proposals and open the next scheduling round, or fail/close if max rounds are exceeded.
+- `POST /api/connections/{connectionId}/negotiation/rejections`: explicitly reject the current round and automatically open the next scheduling round, or fail/close if max rounds are exceeded.
 
 ## Dev-Only Endpoints
 

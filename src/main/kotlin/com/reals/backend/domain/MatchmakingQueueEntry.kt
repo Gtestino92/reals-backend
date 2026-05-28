@@ -14,17 +14,17 @@ enum class QueueStatus {
 data class MatchmakingQueueEntry(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false)
-    val userId: UUID,
+    var userId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     var status: QueueStatus = QueueStatus.WAITING,
 
     @Column(name = "entered_at", nullable = false)
-    val enteredAt: OffsetDateTime = OffsetDateTime.now(),
+    var enteredAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "processed_at")
     var processedAt: OffsetDateTime? = null

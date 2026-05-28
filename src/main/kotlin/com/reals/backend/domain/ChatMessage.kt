@@ -12,17 +12,17 @@ import java.util.*
 data class ChatMessage(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "chat_session_id", nullable = false)
-    val chatSessionId: UUID,
+    var chatSessionId: UUID,
 
     @Column(name = "sender_id", nullable = false)
-    val senderId: UUID,
+    var senderId: UUID,
 
     @Column(name = "content", nullable = false)
-    val content: String,
+    var content: String,
 
     @Column(name = "sent_at", nullable = false)
-    val sentAt: OffsetDateTime = OffsetDateTime.now()
+    var sentAt: OffsetDateTime = OffsetDateTime.now()
 )

@@ -1,0 +1,21 @@
+meta {
+  name: 42 User B Accept Before Own Proposal Should Fail
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals/{{negativeProposalAId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

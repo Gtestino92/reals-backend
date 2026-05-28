@@ -30,13 +30,13 @@ class ChatService(
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
 
-    @Value("\${chat.first-chat.duration-minutes:1440}")
+    @param:Value("\${chat.first-chat.duration-minutes:1440}")
     private val firstChatDurationMinutes: Long,
 
-    @Value("\${chat.second-chat.duration-minutes:2880}")
+    @param:Value("\${chat.second-chat.duration-minutes:2880}")
     private val secondChatDurationMinutes: Long,
 
-    @Value("\${chat.first-chat.min-messages-per-user:0}")
+    @param:Value("\${chat.first-chat.min-messages-per-user:0}")
     private val minMessagesPerUser: Int
 ) {
 
@@ -95,11 +95,7 @@ class ChatService(
 
         validateActiveChatWindow(chat)
 
-        val match = matchService.findByIdOrThrow(chat.matchId)
-
-        check(senderId == match.userAId || senderId == match.userBId) {
-            "User $senderId does not belong to match ${chat.matchId}"
-        }
+        validateChatParticipant(chat, senderId)
 
         val message =
             chatMessageRepository.save(
@@ -227,7 +223,12 @@ class ChatService(
         }
     }
 
-    fun getMessages(chatId: UUID): List<ChatMessage> {
+    fun getMessages(
+        chatId: UUID,
+        userId: UUID
+    ): List<ChatMessage> {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, userId)
         return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
     }
 
@@ -310,6 +311,17 @@ class ChatService(
 
         check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
             "Chat ${chat.id} has timed out"
+        }
+    }
+
+    private fun validateChatParticipant(
+        chat: Chat,
+        userId: UUID
+    ) {
+        val match = matchService.findByIdOrThrow(chat.matchId)
+
+        check(userId == match.userAId || userId == match.userBId) {
+            "User $userId does not belong to match ${chat.matchId}"
         }
     }
 }

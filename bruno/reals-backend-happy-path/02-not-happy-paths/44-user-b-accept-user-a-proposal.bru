@@ -1,0 +1,25 @@
+meta {
+  name: 44 User B Accept User A Proposal
+  type: http
+  seq: 44
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals/{{negativeProposalAId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "CONFIRMED") {
+    throw new Error("Expected CONFIRMED negotiation.");
+  }
+  if (body.chatId) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
+  }
+}

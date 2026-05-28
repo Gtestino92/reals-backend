@@ -1,0 +1,28 @@
+meta {
+  name: 49 Stranger Cancel First Chat Should Fail
+  type: http
+  seq: 49
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{negativeFirstChatId}}/cancellations
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+body:json {
+  {
+    "reason": "NO_LONGER_INTERESTED",
+    "details": "Stranger cannot cancel a chat they do not belong to."
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}

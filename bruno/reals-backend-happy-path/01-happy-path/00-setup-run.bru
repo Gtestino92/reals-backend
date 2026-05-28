@@ -1,5 +1,5 @@
 meta {
-  name: 00 Setup Run Variables
+  name: 00 Setup Run
   type: http
   seq: 0
 }
@@ -12,12 +12,24 @@ get {
 
 script:pre-request {
   const runId = Date.now().toString();
-  const secondChatSlot = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const halfHourSlot = (hoursAhead) => {
+    const date = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
+    date.setUTCSeconds(0, 0);
+    if (date.getUTCMinutes() < 30) {
+      date.setUTCMinutes(30);
+    } else {
+      date.setUTCHours(date.getUTCHours() + 1, 0, 0, 0);
+    }
+    return date.toISOString();
+  };
+  const secondChatSlot = halfHourSlot(24);
 
   bru.setEnvVar("runId", runId);
   bru.setEnvVar("userAEmail", `ana.local.${runId}@example.com`);
   bru.setEnvVar("userBEmail", `bruno.local.${runId}@example.com`);
   bru.setEnvVar("secondChatDateTime", secondChatSlot);
+  bru.setEnvVar("secondChatDateTimeLater", halfHourSlot(25));
+  bru.setEnvVar("secondChatDateTimeLatest", halfHourSlot(26));
 }
 
 script:post-response {

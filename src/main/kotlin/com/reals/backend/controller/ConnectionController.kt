@@ -62,28 +62,27 @@ class ConnectionController(
     }
 
     /**
-     * Submits a date/time proposal for a user
-     * TODO: allow to send more than one proposal?
+     * Submits the user's ordered second-chat slot proposals for the current round.
      * After saving, tryConfirm() runs automatically:
-     *  - If overlap found with the other user's proposals -> negotiation CONFIRMED
+     *  - If overlap is found with the other user's proposals -> negotiation CONFIRMED
      *      Connection -> SECOND_CHAT_SCHEDULED. The second chat starts at confirmedDateTime.
-     *  - If no overlap -> stays PENDING, waiting for more proposals
+     *  - If no overlap -> stays PENDING so each user can accept a partner slot or reject the round.
      */
     @PostMapping("/{connectionId}/proposals")
     fun addProposal(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID,
         @RequestBody request: AddProposalRequest
-    ): ResponseEntity<ScheduleProposalResponse> {
+    ): ResponseEntity<List<ScheduleProposalResponse>> {
 
-        val proposal = schedulingService.addProposal(
+        val proposals = schedulingService.addProposals(
             connectionId = connectionId,
             userId = userId,
-            proposedDateTime = request.proposedDateTime
+            proposedDateTimes = request.proposedDateTimes
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            ScheduleProposalResponse.from(proposal)
+            proposals.map { ScheduleProposalResponse.from(it) }
         )
     }
 
@@ -127,17 +126,18 @@ class ConnectionController(
     }
 
     /**
-     * Opens a new negotiation round when neither user accepted the other's proposal
-     * Clears pending proposals and increments round number
-     * if maxRounds is exceeded -> negotiation FAILED, Connection CLOSED
+     * Explicitly rejects the current round and automatically opens the next one.
+     * If maxRounds is exceeded -> negotiation FAILED, Connection CLOSED.
      */
-    @PostMapping("/{connectionId}/negotiation/rounds")
-    fun openNewRound(
+    @PostMapping("/{connectionId}/negotiation/rejections")
+    fun rejectCurrentRound(
+        @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
 
-        val negotiation = schedulingService.openNewRound(
-            connectionId = connectionId
+        val negotiation = schedulingService.rejectCurrentRound(
+            connectionId = connectionId,
+            userId = userId
         )
         return ResponseEntity.ok(
             NegotiationResponse.from(negotiation)

@@ -18,7 +18,7 @@ class MatchService(
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
 
-    @Value("\${engagement.max-active-matches:5}")
+    @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
 
 ) {

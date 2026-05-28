@@ -1,6 +1,6 @@
 package com.reals.backend.config
 
-import org.springframework.boot.ApplicationRunner
+import org.springframework.beans.factory.InitializingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
@@ -13,8 +13,8 @@ class LocalShedLockSchemaConfig {
     @Bean
     fun localShedLockSchemaInitializer(
         jdbcTemplate: JdbcTemplate
-    ): ApplicationRunner =
-        ApplicationRunner {
+    ): InitializingBean =
+        InitializingBean {
             jdbcTemplate.execute(
                 """
                 CREATE TABLE IF NOT EXISTS shedlock (

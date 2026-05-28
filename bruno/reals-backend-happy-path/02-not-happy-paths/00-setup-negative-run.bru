@@ -12,8 +12,18 @@ get {
 
 script:pre-request {
   const runId = Date.now().toString();
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const dayAfterTomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const halfHourSlot = (hoursAhead) => {
+    const date = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
+    date.setUTCSeconds(0, 0);
+    if (date.getUTCMinutes() < 30) {
+      date.setUTCMinutes(30);
+    } else {
+      date.setUTCHours(date.getUTCHours() + 1, 0, 0, 0);
+    }
+    return date.toISOString();
+  };
+  const tomorrow = halfHourSlot(24);
+  const dayAfterTomorrow = halfHourSlot(48);
 
   bru.setEnvVar("negativeRunId", runId);
   bru.setEnvVar("negativeUserAEmail", `negative.a.${runId}@example.com`);

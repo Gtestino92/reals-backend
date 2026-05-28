@@ -1,0 +1,32 @@
+meta {
+  name: 33 User A Approve Visual Without Reading Message Should Fail
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{negativeMatchId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+  const body = res.getBody();
+  if (!body.message || !body.message.includes("reading partner personal message")) {
+    throw new Error(`Expected unread partner message error, got: ${body.message}`);
+  }
+}

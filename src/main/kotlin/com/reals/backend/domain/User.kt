@@ -12,16 +12,16 @@ import java.util.UUID
 data class User(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "email")
-    val email: String? = null,
+    var email: String? = null,
 
     @Column(name = "firebase_uid")
-    val firebaseUid: String? = null,
+    var firebaseUid: String? = null,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()

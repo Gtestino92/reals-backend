@@ -33,20 +33,20 @@ enum class ChatExitReason {
 data class ChatExitRequest(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "chat_id", nullable = false)
-    val chatId: UUID,
+    var chatId: UUID,
 
     @Column(name = "requester_user_id", nullable = false)
-    val requesterUserId: UUID,
+    var requesterUserId: UUID,
 
     @Column(name = "responder_user_id", nullable = false)
-    val responderUserId: UUID,
+    var responderUserId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "request_type", nullable = false)
-    val type: ChatExitRequestType,
+    var type: ChatExitRequestType,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -54,13 +54,13 @@ data class ChatExitRequest(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "reason")
-    val reason: ChatExitReason? = null,
+    var reason: ChatExitReason? = null,
 
     @Column(name = "details")
-    val details: String? = null,
+    var details: String? = null,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "resolved_at")
     var resolvedAt: OffsetDateTime? = null

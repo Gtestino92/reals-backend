@@ -2,10 +2,8 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.service.ChatService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
@@ -14,7 +12,6 @@ import org.springframework.stereotype.Component
     Runs every 2 minutes - fast response needed so users don't wait on a dead session.
  */
 @Component
-@ConditionalOnBean(LockProvider::class)
 class ChatTimeoutJob(
     private val chatService: ChatService
 ) {

@@ -6,28 +6,22 @@ import com.reals.backend.domain.ChatType
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.service.ChatService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
 import java.util.*
 
 @Component
-@ConditionalOnBean(LockProvider::class)
 class InactivityCheckJob(
     private val chatService: ChatService,
     private val chatMessageRepository: ChatMessageRepository,
-    private val connectionRepository: ConnectionRepository
+    private val connectionRepository: ConnectionRepository,
+    @param:Value("\${scheduler.inactivity-check-job.inactivity-threshold-minutes:30}")
+    private val inactivityThresholdMinutes: Long
 ) {
-
-    @Value(
-        "\${scheduler.inactivity-check-job.inactivity-threshold-minutes:30}"
-    )
-    private var inactivityThresholdMinutes: Long = 30
 
     private val log = LoggerFactory.getLogger(javaClass)
 

@@ -68,6 +68,7 @@ Do not mutate domain state directly from controllers, schedulers or repositories
 - Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
 - Scheduling confirmation moves the connection to `SECOND_CHAT_SCHEDULED`; `ScheduledSecondChatStartJob` makes the second chat `AVAILABLE` when `confirmedDateTime` is due, and user entry or first message activates it.
 - Scheduling proposals are for the second chat inside the app, not for an in-person meeting outside the app.
+- Scheduling proposal submissions are ordered lists of 1 to 3 unique future half-hour slots per user per round. Overlaps auto-confirm by lowest combined preference order, then earliest agreed slot. If there is no overlap, a participant must explicitly reject the round to open the next one.
 - Closing or expiring a connection releases `CONNECTION` locks.
 
 ## State Machines

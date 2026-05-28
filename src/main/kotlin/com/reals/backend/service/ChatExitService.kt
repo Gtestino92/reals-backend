@@ -27,10 +27,10 @@ class ChatExitService(
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
 
-    @Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
+    @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
 
-    @Value("\${chat.second-chat.min-messages-before-free-cancel:0}")
+    @param:Value("\${chat.second-chat.min-messages-before-free-cancel:0}")
     private val secondChatMinMessagesBeforeFreeCancel: Int
 ) {
 
@@ -210,23 +210,6 @@ class ChatExitService(
             exitRequest = exitRequest,
             penaltyApplied = true,
             penalizedUserId = reportedUserId
-        )
-    }
-
-    fun closeSecondChat(
-        chatId: UUID,
-        userId: UUID
-    ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
-
-        check(chat.chatType == ChatType.SECOND_CHAT) {
-            "closeSecondChat is only valid for SECOND_CHAT"
-        }
-
-        return cancelChatUnilaterally(
-            chatId = chatId,
-            userId = userId,
-            reason = ChatExitReason.NO_LONGER_INTERESTED
         )
     }
 

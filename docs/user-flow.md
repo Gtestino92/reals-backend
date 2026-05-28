@@ -63,16 +63,19 @@ It validates active connection limits and upgrades engagement locks from `MATCH`
 
 ## 7. Scheduling
 
-Scheduling is initialized once per connection. Users submit future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
+Scheduling is initialized once per connection. Users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 
 Rules:
 
-- one pending proposal per user per round
-- proposal must be in the future
+- each user submits one proposal list per round
+- each list must contain 1 to 3 unique future slots
+- slots must be aligned to half-hour boundaries
 - user must belong to the connection
 - user cannot accept their own proposal
-- acceptor must have submitted their own proposal before accepting the partner proposal
-- exact matching proposed instants can auto-confirm
+- acceptor must have submitted their own proposal list before accepting a partner proposal
+- overlapping proposed instants auto-confirm
+
+If more than one slot overlaps, the backend chooses the slot with the lowest combined preference order. If that still ties, it chooses the earliest agreed slot. If there is no overlap after both users submit, proposals remain visible so either participant can accept one partner slot or explicitly reject the round. Rejection opens the next round automatically unless max rounds has been reached.
 
 Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
 

@@ -1,15 +1,12 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.service.PenaltyService
-import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
 @Component
-@ConditionalOnBean(LockProvider::class)
 class PenaltyExpirationJob(
     private val penaltyService: PenaltyService
 ) {

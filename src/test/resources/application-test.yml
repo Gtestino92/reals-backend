@@ -24,6 +24,7 @@ logging:
     root: WARN
 
 scheduler:
+  enabled: false
   chat-timeout-job:
     fixed-delay: 3600000
   match-expiration-job:

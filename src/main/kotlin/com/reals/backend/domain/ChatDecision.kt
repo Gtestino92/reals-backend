@@ -17,20 +17,20 @@ class ChatDecision(
 
     @Id
     @Column(updatable = false)
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     /**
      * The chat session this decision belongs to.
      */
     @Column(name = "chat_id", nullable = false)
-    val chatId: UUID,
+    var chatId: UUID,
 
     /**
      * The match this decision belongs to.
      * Denormalized for easy lookup.
      */
     @Column(name = "match_id", nullable = false)
-    val matchId: UUID,
+    var matchId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "user_a_decision")
@@ -40,7 +40,7 @@ class ChatDecision(
     @Column(name = "user_b_decision")
     var userBDecision: ChatContinueDecision? = null,
 
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     var updatedAt: OffsetDateTime = OffsetDateTime.now()
 )

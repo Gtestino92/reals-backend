@@ -46,7 +46,7 @@ Connection and scheduling:
 - `NegotiationStatus`: `PENDING`, `CONFIRMED`, `FAILED`
 - `ProposalStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
 
-Scheduling proposals represent a second-chat slot inside the app. They do not represent an in-person meeting time. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is reached the chat becomes visible as `AVAILABLE`, and the timeout window starts only when a participant enters or sends the first message.
+Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is reached the chat becomes visible as `AVAILABLE`, and the timeout window starts only when a participant enters or sends the first message.
 
 Engagement:
 

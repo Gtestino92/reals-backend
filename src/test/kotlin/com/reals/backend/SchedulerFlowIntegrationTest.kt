@@ -1,6 +1,5 @@
 package com.reals.backend
 
-import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
@@ -75,14 +74,9 @@ class SchedulerFlowIntegrationTest(
         )
 
         val oldSetup = createMatchWithFirstChat()
-        val oldChat = chatRepository.save(
-            Chat(
-                matchId = oldSetup.matchId,
-                chatType = ChatType.FIRST_CHAT,
-                startedAt = OffsetDateTime.now().minusMinutes(31),
-                timeoutAt = OffsetDateTime.now().plusDays(1)
-            )
-        )
+        val oldChat = chatRepository.findById(oldSetup.firstChatId).orElseThrow()
+        oldChat.startedAt = OffsetDateTime.now().minusMinutes(31)
+        chatRepository.save(oldChat)
 
         assertTrue(
             chatService.findInactiveChats(inactivityMinutes = 30)
@@ -172,7 +166,7 @@ class SchedulerFlowIntegrationTest(
     @Test
     fun `scheduled second chat job makes due second chat available before activation`() {
         val setup = createConnectionInSchedulingPhase()
-        val slot = OffsetDateTime.now().plusDays(1)
+        val slot = futureHalfHourSlot()
 
         schedulingService.addProposal(
             connectionId = setup.connectionId,
@@ -296,7 +290,7 @@ class SchedulerFlowIntegrationTest(
 
     private fun createAvailableSecondChat(): ConnectionFixture {
         val setup = createConnectionInSchedulingPhase()
-        val slot = OffsetDateTime.now().plusDays(1)
+        val slot = futureHalfHourSlot()
 
         schedulingService.addProposal(
             connectionId = setup.connectionId,
@@ -320,6 +314,19 @@ class SchedulerFlowIntegrationTest(
         ).run()
 
         return setup
+    }
+
+    private fun futureHalfHourSlot(): OffsetDateTime {
+        val candidate = OffsetDateTime.now()
+            .plusDays(1)
+            .withSecond(0)
+            .withNano(0)
+
+        return if (candidate.minute < 30) {
+            candidate.withMinute(30)
+        } else {
+            candidate.plusHours(1).withMinute(0)
+        }
     }
 
     private fun createMatchWithFirstChat(): MatchFixture {

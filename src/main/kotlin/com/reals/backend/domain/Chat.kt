@@ -20,21 +20,33 @@ enum class ChatStatus {
 }
 
 @Entity
-@Table(name = "chats")
+@Table(
+    name = "chats",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uq_chat_match_type",
+            columnNames = ["match_id", "chat_type"]
+        ),
+        UniqueConstraint(
+            name = "uq_chat_connection_type",
+            columnNames = ["connection_id", "chat_type"]
+        )
+    ]
+)
 data class Chat(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "match_id", nullable = false)
-    val matchId: UUID,
+    var matchId: UUID,
 
     @Column(name = "connection_id")
-    val connectionId: UUID? = null,
+    var connectionId: UUID? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "chat_type", nullable = false)
-    val chatType: ChatType,
+    var chatType: ChatType,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -44,7 +56,7 @@ data class Chat(
     var startedAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "available_at")
-    val availableAt: OffsetDateTime? = null,
+    var availableAt: OffsetDateTime? = null,
 
     @Column(name = "activated_at")
     var activatedAt: OffsetDateTime? = null,

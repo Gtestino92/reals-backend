@@ -18,20 +18,20 @@ enum class MatchState {
 data class Match(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_a_id", nullable = false)
-    val userAId: UUID,
+    var userAId: UUID,
 
     @Column(name = "user_b_id", nullable = false)
-    val userBId: UUID,
+    var userBId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "state", nullable = false)
     var state: MatchState = MatchState.CHAT_ACTIVE,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()

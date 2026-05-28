@@ -21,7 +21,7 @@ class SchedulingService(
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
-    @Value("\${scheduling.max-rounds:3}")
+    @param:Value("\${scheduling.max-rounds:3}")
     private val maxRounds: Int
 
 ) {
@@ -54,18 +54,19 @@ class SchedulingService(
     }
 
     /**
-     * Records a time slot proposal from a user.
+     * Records an ordered list of second-chat slot proposals from a user.
      *
      * Rules:
      * - Negotiation must be in PENDING state.
-     * - Each user can submit only one proposal per round.
-     * - After saving, auto-confirms if both users proposed the exact same instant.
+     * - Each user can submit only one ordered list per round.
+     * - The list must contain 1 to 3 unique future half-hour slots.
+     * - After saving, auto-confirms if both users have at least one overlapping instant.
      */
-    fun addProposal(
+    fun addProposals(
         connectionId: UUID,
         userId: UUID,
-        proposedDateTime: OffsetDateTime
-    ): ScheduleProposal {
+        proposedDateTimes: List<OffsetDateTime>
+    ): List<ScheduleProposal> {
 
         val negotiation = findNegotiationOrThrow(connectionId)
 
@@ -83,33 +84,53 @@ class SchedulingService(
             "Cannot add proposal: scheduling phase for connection $connectionId has expired"
         }
 
-        check(proposedDateTime.isAfter(OffsetDateTime.now())) {
-            "Proposed date/time must be in the future"
+        validateProposalSlots(proposedDateTimes)
+
+        check(
+            !proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                connectionId,
+                userId,
+                negotiation.roundNumber
+            )
+        ) {
+            "User $userId has already submitted proposals for round ${negotiation.roundNumber}."
         }
 
-        check(!proposalRepository.existsByConnectionIdAndUserId(connectionId, userId)) {
-            "User $userId has already submitted a proposal for this round. Open a new round to propose again."
-        }
-
-        val proposal = proposalRepository.save(
+        val proposals = proposedDateTimes.mapIndexed { index, proposedDateTime ->
             ScheduleProposal(
                 connectionId = connectionId,
                 userId = userId,
+                roundNumber = negotiation.roundNumber,
+                preferenceOrder = index + 1,
                 proposedDateTime = proposedDateTime
             )
-        )
+        }
 
-        tryAutoConfirmExact(connectionId)
+        val saved = proposalRepository.saveAll(proposals).toList()
 
-        return proposal
+        tryAutoConfirmOverlap(connectionId)
+
+        return saved
     }
 
+    fun addProposal(
+        connectionId: UUID,
+        userId: UUID,
+        proposedDateTime: OffsetDateTime
+    ): ScheduleProposal =
+        addProposals(
+            connectionId = connectionId,
+            userId = userId,
+            proposedDateTimes = listOf(proposedDateTime)
+        ).first()
+
     /**
-     * Auto-confirms if both users proposed the exact same instant (UTC comparison).
-     * Only runs immediately after a new proposal is added.
+     * Auto-confirms if both users proposed at least one same instant (UTC comparison).
+     * The agreed slot is chosen by the lowest combined preference order; ties choose
+     * the earliest agreed instant.
      * For explicit acceptance use [acceptProposal].
      */
-    private fun tryAutoConfirmExact(connectionId: UUID) {
+    private fun tryAutoConfirmOverlap(connectionId: UUID) {
 
         val negotiation = findNegotiationOrThrow(connectionId)
 
@@ -118,25 +139,40 @@ class SchedulingService(
         val connection = connectionService.findByIdOrThrow(connectionId)
 
         val pending =
-            proposalRepository.findByConnectionIdAndStatus(
+            proposalRepository.findByConnectionIdAndRoundNumber(
                 connectionId,
-                ProposalStatus.PENDING
-            )
+                negotiation.roundNumber
+            ).filter { it.status == ProposalStatus.PENDING }
 
         val byUser = pending.groupBy { it.userId }
 
         if (byUser.size < 2) return
 
-        val proposalA = byUser[connection.userAId]?.firstOrNull() ?: return
-        val proposalB = byUser[connection.userBId]?.firstOrNull() ?: return
+        val proposalsA = byUser[connection.userAId].orEmpty()
+        val proposalsB = byUser[connection.userBId].orEmpty()
 
-        if (!proposalA.proposedDateTime.toInstant()
-                .equals(proposalB.proposedDateTime.toInstant())
-        ) return
-        
+        val overlap =
+            proposalsA.flatMap { proposalA ->
+                proposalsB
+                    .filter { proposalB ->
+                        proposalA.proposedDateTime.toInstant()
+                            .equals(proposalB.proposedDateTime.toInstant())
+                    }
+                    .map { proposalB ->
+                        AgreedSlotCandidate(
+                            proposalA = proposalA,
+                            proposalB = proposalB,
+                            score = proposalA.preferenceOrder + proposalB.preferenceOrder
+                        )
+                    }
+            }
+                .minWithOrNull(
+                    compareBy<AgreedSlotCandidate> { it.score }
+                        .thenBy { it.proposalA.proposedDateTime.toInstant() }
+                ) ?: return
+
         confirmWith(
-            accepted = proposalA,
-            acceptorProposal = proposalB,
+            accepted = listOf(overlap.proposalA, overlap.proposalB),
             pending = pending,
             negotiation = negotiation,
             connectionId = connectionId
@@ -148,7 +184,7 @@ class SchedulingService(
      *
      * Rules:
      * - [acceptorUserId] must NOT be the proposer of [proposalId].
-     * - [acceptorUserId] must have already submitted their own proposal this round.
+     * - [acceptorUserId] must have already submitted their own proposals this round.
      * - The proposal must be in PENDING state.
      * - Confirms the negotiation and transitions Connection to SECOND_CHAT_SCHEDULED.
      */
@@ -171,12 +207,13 @@ class SchedulingService(
         }
 
         check(
-            proposalRepository.existsByConnectionIdAndUserId(
+            proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
                 proposal.connectionId,
-                acceptorUserId
+                acceptorUserId,
+                proposal.roundNumber
             )
         ) {
-            "User $acceptorUserId must submit their own proposal before accepting the partner's"
+            "User $acceptorUserId must submit their own proposals before accepting the partner's"
         }
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
@@ -195,18 +232,18 @@ class SchedulingService(
             "Cannot accept proposal: negotiation is ${negotiation.status}"
         }
 
-        val pending =
-            proposalRepository.findByConnectionIdAndStatus(
-                proposal.connectionId,
-                ProposalStatus.PENDING
-            )
+        check(proposal.roundNumber == negotiation.roundNumber) {
+            "Proposal $proposalId belongs to round ${proposal.roundNumber}, current round is ${negotiation.roundNumber}"
+        }
 
-        val acceptorProposal =
-            pending.first { it.userId == acceptorUserId }
+        val pending =
+            proposalRepository.findByConnectionIdAndRoundNumber(
+                proposal.connectionId,
+                negotiation.roundNumber
+            ).filter { it.status == ProposalStatus.PENDING }
 
         confirmWith(
-            accepted = proposal,
-            acceptorProposal = acceptorProposal,
+            accepted = listOf(proposal),
             pending = pending,
             negotiation = negotiation,
             connectionId = proposal.connectionId
@@ -216,20 +253,54 @@ class SchedulingService(
     }
 
     /**
-     * Opens a new negotiation round when both users have submitted proposals
-     * but no overlap was found.
+     * Explicitly rejects the current negotiation round and opens the next one.
      *
      * Rules:
-     * - Only callable if negotiation is PENDING and current proposals are exhausted.
+     * - Only callable if negotiation is PENDING.
+     * - Both users must have submitted proposals in the current round.
      * - If maxRounds is exceeded, marks negotiation as FAILED and closes the connection.
      */
-    fun openNewRound(connectionId: UUID): ScheduleNegotiation {
+    fun rejectCurrentRound(
+        connectionId: UUID,
+        userId: UUID
+    ): ScheduleNegotiation {
 
         val negotiation = findNegotiationOrThrow(connectionId)
 
         check(negotiation.status == NegotiationStatus.PENDING) {
-            "Cannot open new round: negotiation is ${negotiation.status}"
+            "Cannot reject round: negotiation is ${negotiation.status}"
         }
+
+        val connection = connectionService.findByIdOrThrow(connectionId)
+
+        check(userId == connection.userAId || userId == connection.userBId) {
+            "User $userId does not belong to connection $connectionId"
+        }
+
+        val currentRoundProposals =
+            proposalRepository.findByConnectionIdAndRoundNumber(
+                connectionId,
+                negotiation.roundNumber
+            )
+
+        val usersWithPendingProposals =
+            currentRoundProposals
+                .filter { it.status == ProposalStatus.PENDING }
+                .map { it.userId }
+                .toSet()
+
+        check(
+            usersWithPendingProposals.contains(connection.userAId) &&
+                usersWithPendingProposals.contains(connection.userBId)
+        ) {
+            "Cannot reject round ${negotiation.roundNumber}: both users must submit proposals first"
+        }
+
+        currentRoundProposals
+            .filter { it.status == ProposalStatus.PENDING }
+            .forEach { it.status = ProposalStatus.REJECTED }
+
+        proposalRepository.saveAll(currentRoundProposals)
 
         if (negotiation.roundNumber >= maxRounds) {
             negotiation.status = NegotiationStatus.FAILED
@@ -241,9 +312,6 @@ class SchedulingService(
 
             return negotiation
         }
-
-        // Clear pending proposals and increment round
-        proposalRepository.deleteByConnectionId(connectionId)
 
         negotiation.roundNumber += 1
         negotiation.updatedAt = OffsetDateTime.now()
@@ -277,31 +345,29 @@ class SchedulingService(
     // -------------------------------------------------------------------------
 
     /**
-     * Marks [accepted] and [acceptorProposal] as ACCEPTED, rejects remaining PENDING proposals,
+     * Marks [accepted] as ACCEPTED, rejects remaining PENDING proposals in the current round,
      * confirms the negotiation, and transitions the Connection to SECOND_CHAT_SCHEDULED.
-     * [accepted] is the proposal being accepted; [acceptorProposal] is the acceptor's own proposal.
      */
     private fun confirmWith(
-        accepted: ScheduleProposal,
-        acceptorProposal: ScheduleProposal,
+        accepted: List<ScheduleProposal>,
         pending: List<ScheduleProposal>,
         negotiation: ScheduleNegotiation,
         connectionId: UUID
     ) {
 
-        accepted.status = ProposalStatus.ACCEPTED
-        acceptorProposal.status = ProposalStatus.ACCEPTED
+        accepted.forEach { it.status = ProposalStatus.ACCEPTED }
 
-        proposalRepository.save(accepted)
-        proposalRepository.save(acceptorProposal)
+        proposalRepository.saveAll(accepted)
+
+        val acceptedIds = accepted.map { it.id }.toSet()
 
         pending
-            .filter { it.id != accepted.id && it.id != acceptorProposal.id }
+            .filter { it.id !in acceptedIds }
             .forEach { it.status = ProposalStatus.REJECTED }
 
         proposalRepository.saveAll(pending)
 
-        negotiation.confirmedDateTime = accepted.proposedDateTime
+        negotiation.confirmedDateTime = accepted.minBy { it.preferenceOrder }.proposedDateTime
         negotiation.status = NegotiationStatus.CONFIRMED
         negotiation.updatedAt = OffsetDateTime.now()
 
@@ -309,4 +375,37 @@ class SchedulingService(
 
         connectionService.transitionToSecondChatScheduled(connectionId)
     }
+
+    //TODO: ver si es la mejor manera de validar, con minutos o de otra manera
+    private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {
+        check(proposedDateTimes.size in 1..3) { //TODO: que el maximo sea property, no hardcodeado
+            "Proposal list must contain between 1 and 3 date/times"
+        }
+
+        val uniqueInstants = proposedDateTimes.map { it.toInstant() }.toSet()
+
+        check(uniqueInstants.size == proposedDateTimes.size) {
+            "Proposal list cannot contain duplicate date/times"
+        }
+
+        proposedDateTimes.forEach { proposedDateTime ->
+            check(proposedDateTime.isAfter(OffsetDateTime.now())) {
+                "Proposed date/time must be in the future"
+            }
+
+            check(
+                (proposedDateTime.minute == 0 || proposedDateTime.minute == 30) &&
+                    proposedDateTime.second == 0 &&
+                    proposedDateTime.nano == 0
+            ) {
+                "Proposed date/time must be aligned to a half-hour boundary"
+            }
+        }
+    }
+
+    private data class AgreedSlotCandidate(
+        val proposalA: ScheduleProposal,
+        val proposalB: ScheduleProposal,
+        val score: Int
+    )
 }

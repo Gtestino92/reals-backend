@@ -14,10 +14,10 @@ enum class VisualDecision {
 data class VisualReview(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "match_id", nullable = false)
-    val matchId: UUID,
+    var matchId: UUID,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "user_a_visual_decision")
@@ -33,14 +33,20 @@ data class VisualReview(
     @Column(name = "personal_message_b")
     var personalMessageB: String? = null,
 
+    @Column(name = "personal_message_a_read_by_b_at")
+    var personalMessageAReadByBAt: OffsetDateTime? = null,
+
+    @Column(name = "personal_message_b_read_by_a_at")
+    var personalMessageBReadByAAt: OffsetDateTime? = null,
+
     @Column(name = "messages_visible", nullable = false)
     var messagesVisible: Boolean = false,
 
     @Column(name = "expires_at")
-    val expiresAt: OffsetDateTime? = null,
+    var expiresAt: OffsetDateTime? = null,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()

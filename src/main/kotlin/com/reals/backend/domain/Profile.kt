@@ -36,20 +36,20 @@ enum class ProfileStatus {
 data class Profile(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false)
-    val userId: UUID,
+    var userId: UUID,
 
     @Column(name = "display_name", nullable = false)
     var displayName: String,
 
     @Column(name = "birth_date", nullable = false)
-    val birthDate: LocalDate,
+    var birthDate: LocalDate,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false)
-    val gender: Gender,
+    var gender: Gender,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "looking_for_gender", nullable = false)
@@ -73,7 +73,7 @@ data class Profile(
     var status: ProfileStatus = ProfileStatus.DRAFT,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()

@@ -28,6 +28,11 @@ logging:
   level:
     root: INFO
 
+scheduler:
+  # Local manual testing should be deterministic. Use /api/dev/jobs/.../run
+  # endpoints from Bruno instead of background execution.
+  enabled: false
+
 profile:
   photos:
     max-count: 9

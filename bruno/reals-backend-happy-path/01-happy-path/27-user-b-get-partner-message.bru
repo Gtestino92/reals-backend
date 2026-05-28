@@ -1,0 +1,22 @@
+meta {
+  name: 27 User B Get Partner Message
+  type: http
+  seq: 27
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{matchId}}/personal-messages/partner
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.message !== "Me gusto la charla. Sigamos coordinando.") {
+    throw new Error(`Expected user B to see user A personal message, got: ${body.message}`);
+  }
+}

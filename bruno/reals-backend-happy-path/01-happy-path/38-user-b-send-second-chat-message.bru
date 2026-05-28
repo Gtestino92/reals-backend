@@ -1,0 +1,22 @@
+meta {
+  name: 38 User B Send Second Chat Message
+  type: http
+  seq: 38
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{secondChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "content": "Perfecto, seguimos conversando por aca."
+  }
+}

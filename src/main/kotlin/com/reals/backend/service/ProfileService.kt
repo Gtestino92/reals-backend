@@ -17,16 +17,16 @@ class ProfileService(
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
 
-    @Value("\${profile.photos.max-count}")
+    @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
 
-    @Value("\${profile.photos.required-count}")
+    @param:Value("\${profile.photos.required-count}")
     private val requiredPhotoCount: Int,
 
-    @Value("\${profile.photos.min-person-photos}")
+    @param:Value("\${profile.photos.min-person-photos}")
     private val minPersonPhotos: Int,
 
-    @Value("\${profile.photos.min-full-body-photos}")
+    @param:Value("\${profile.photos.min-full-body-photos}")
     private val minFullBodyPhotos: Int
 ) {
 

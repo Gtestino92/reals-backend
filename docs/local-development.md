@@ -71,6 +71,26 @@ role: ROLE_USER
 
 This filter is scoped to the local profile.
 
+## Local Jobs
+
+`local-nodb` disables automatic scheduled execution:
+
+```yaml
+scheduler.enabled: false
+```
+
+Use the dev endpoints for deterministic manual testing:
+
+```http
+POST /api/dev/jobs/{job}/run
+```
+
+For example:
+
+```http
+POST /api/dev/jobs/scheduled-second-chat-start/run
+```
+
 ## Local Profile Photo Rules
 
 Local overrides:

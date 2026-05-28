@@ -15,10 +15,10 @@ enum class NegotiationStatus {
 data class ScheduleNegotiation(
 
     @Id
-    val id: UUID = UUID.randomUUID(),
+    var id: UUID = UUID.randomUUID(),
 
     @Column(name = "connection_id", nullable = false)
-    val connectionId: UUID,
+    var connectionId: UUID,
 
     @Column(name = "round_number", nullable = false)
     var roundNumber: Int = 1,
@@ -31,7 +31,7 @@ data class ScheduleNegotiation(
     var confirmedDateTime: OffsetDateTime? = null,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: OffsetDateTime = OffsetDateTime.now(),
+    var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()

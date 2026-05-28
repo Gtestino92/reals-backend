@@ -14,7 +14,7 @@ Bruno collection for local `local-nodb` manual testing.
 3. Select the `local` environment.
 4. Run one folder at a time, always in request order.
 
-The first request generates unique test emails and a future second-chat slot. The next two requests create real `users` rows and store `userAId` and `userBId` in the active Bruno environment. The following requests use `X-Dev-User-Id` to impersonate each local user.
+The first request generates unique test emails and a future half-hour second-chat slot. The next two requests create real `users` rows and store `userAId` and `userBId` in the active Bruno environment. The following requests use `X-Dev-User-Id` to impersonate each local user.
 
 ## Folders
 
@@ -34,9 +34,9 @@ The first request generates unique test emails and a future second-chat slot. Th
 - start and approve first chat
 - approve visual review
 - create connection
-- confirm the second-chat slot with matching proposals
+- confirm the second-chat slot with matching ordered proposal lists
 - force the confirmed start time and trigger the scheduled second-chat availability job in local/dev
 - enter the available second chat, which activates it and starts its timeout window
-- cancel the second chat without penalty and close the connection
+- request and accept mutual second-chat cancellation, closing the connection without penalty
 
 This collection assumes local photo requirements from `application-local-nodb.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.

@@ -19,7 +19,7 @@ class MatchmakingService(
     private val profileService: ProfileService,
     private val compatibilityEvaluator: CompatibilityEvaluator,
 
-    @Value("\${engagement.max-active-matches:5}")
+    @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
 
 ) {

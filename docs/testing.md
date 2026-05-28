@@ -32,7 +32,8 @@ For those cases, service-level integration tests catch more realistic regression
 - non-participant chat message rejection
 - non-participant scheduling proposal rejection
 - own-proposal acceptance rejection
-- exact second-chat slot auto-confirmation with both proposals accepted
+- second-chat slot auto-confirmation across ordered proposal lists
+- scheduling preference tie-breaks and explicit round rejection
 
 Bruno also includes manual HTTP collections that are convenient to run against the local application:
 

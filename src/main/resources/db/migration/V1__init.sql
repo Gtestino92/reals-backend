@@ -20,8 +20,8 @@ CREATE TABLE users (
     id          UUID         NOT NULL DEFAULT gen_random_uuid(),
     email       VARCHAR(255),
     firebase_uid VARCHAR(255),
-    created_at  TIMESTAMP  NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMP  NOT NULL DEFAULT now(),
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
     CONSTRAINT uq_users_email UNIQUE (email)
@@ -43,8 +43,8 @@ CREATE TABLE profiles (
     country             VARCHAR(100) NOT NULL,
     bio                 TEXT,
     status              VARCHAR(32)  NOT NULL DEFAULT 'DRAFT',
-    created_at          TIMESTAMP  NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMP  NOT NULL DEFAULT now(),
+    created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -67,7 +67,7 @@ CREATE TABLE profile_photos (
     position        INT          NOT NULL,
     is_person_photo BOOLEAN      NOT NULL DEFAULT false,
     is_full_body    BOOLEAN      NOT NULL DEFAULT false,
-    created_at      TIMESTAMP  NOT NULL DEFAULT now(),
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -88,9 +88,12 @@ CREATE TABLE active_engagement_locks (
     user_id          UUID         NOT NULL,
     engagement_id    UUID         NOT NULL,
     engagement_type  VARCHAR(16)  NOT NULL,
-    created_at       TIMESTAMP  NOT NULL DEFAULT now(),
+    created_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+
+    CONSTRAINT uq_engagement_lock_user_engagement
+        UNIQUE (user_id, engagement_id)
 );
 
 CREATE INDEX idx_engagement_lock_user_id
@@ -104,8 +107,8 @@ CREATE TABLE matchmaking_queue (
     id            UUID         NOT NULL DEFAULT gen_random_uuid(),
     user_id       UUID         NOT NULL,
     status        VARCHAR(16)  NOT NULL DEFAULT 'WAITING',
-    entered_at    TIMESTAMP  NOT NULL DEFAULT now(),
-    processed_at  TIMESTAMP,
+    entered_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    processed_at  TIMESTAMP WITH TIME ZONE,
 
     PRIMARY KEY (id),
 
@@ -122,8 +125,8 @@ CREATE TABLE matches (
     user_a_id   UUID         NOT NULL,
     user_b_id   UUID         NOT NULL,
     state       VARCHAR(32)  NOT NULL DEFAULT 'CHAT_ACTIVE',
-    created_at  TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id)
 );
@@ -147,9 +150,9 @@ CREATE TABLE connections (
     user_a_id             UUID         NOT NULL,
     user_b_id             UUID         NOT NULL,
     state                 VARCHAR(32)  NOT NULL DEFAULT 'SCHEDULING_PHASE',
-    scheduling_expires_at TIMESTAMP NOT NULL,
-    created_at            TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMP NOT NULL DEFAULT now(),
+    scheduling_expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -177,18 +180,24 @@ CREATE TABLE chats (
     connection_id    UUID,
     chat_type        VARCHAR(16)  NOT NULL,
     status           VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
-    started_at       TIMESTAMP NOT NULL DEFAULT now(),
-    available_at     TIMESTAMP,
-    activated_at     TIMESTAMP,
-    timeout_at       TIMESTAMP NOT NULL,
-    ended_at         TIMESTAMP,
-    last_message_at  TIMESTAMP,
+    started_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    available_at     TIMESTAMP WITH TIME ZONE,
+    activated_at     TIMESTAMP WITH TIME ZONE,
+    timeout_at       TIMESTAMP WITH TIME ZONE NOT NULL,
+    ended_at         TIMESTAMP WITH TIME ZONE,
+    last_message_at  TIMESTAMP WITH TIME ZONE,
 
     PRIMARY KEY (id),
 
     CONSTRAINT fk_chat_match
         FOREIGN KEY (match_id)
-        REFERENCES matches(id)
+        REFERENCES matches(id),
+
+    CONSTRAINT uq_chat_match_type
+        UNIQUE (match_id, chat_type),
+
+    CONSTRAINT uq_chat_connection_type
+        UNIQUE (connection_id, chat_type)
 );
 
 CREATE INDEX idx_chat_match
@@ -207,8 +216,8 @@ CREATE TABLE chat_exit_requests (
     status             VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
     reason             VARCHAR(64),
     details            TEXT,
-    created_at         TIMESTAMP    NOT NULL DEFAULT now(),
-    resolved_at        TIMESTAMP,
+    created_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    resolved_at        TIMESTAMP WITH TIME ZONE,
 
     PRIMARY KEY (id),
 
@@ -229,7 +238,7 @@ CREATE TABLE chat_messages (
     chat_session_id  UUID         NOT NULL,
     sender_id        UUID         NOT NULL,
     content          TEXT         NOT NULL,
-    sent_at          TIMESTAMP NOT NULL DEFAULT now(),
+    sent_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -251,8 +260,8 @@ CREATE TABLE chat_decisions (
     match_id         UUID         NOT NULL,
     user_a_decision  VARCHAR(16),
     user_b_decision  VARCHAR(16),
-    created_at       TIMESTAMP    NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMP    NOT NULL DEFAULT now(),
+    created_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -288,10 +297,12 @@ CREATE TABLE visual_reviews (
     user_b_visual_decision VARCHAR(16),
     personal_message_a     TEXT,
     personal_message_b     TEXT,
+    personal_message_a_read_by_b_at TIMESTAMP WITH TIME ZONE,
+    personal_message_b_read_by_a_at TIMESTAMP WITH TIME ZONE,
     messages_visible       BOOLEAN      NOT NULL DEFAULT false,
-    expires_at             TIMESTAMP,
-    created_at             TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at             TIMESTAMP NOT NULL DEFAULT now(),
+    expires_at             TIMESTAMP WITH TIME ZONE,
+    created_at             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -312,9 +323,9 @@ CREATE TABLE schedule_negotiations (
     connection_id         UUID         NOT NULL,
     round_number          INT          NOT NULL DEFAULT 1,
     status                VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
-    confirmed_date_time   TIMESTAMP,
-    created_at            TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMP NOT NULL DEFAULT now(),
+    confirmed_date_time   TIMESTAMP WITH TIME ZONE,
+    created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -334,9 +345,11 @@ CREATE TABLE schedule_proposals (
     id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
     connection_id       UUID         NOT NULL,
     user_id             UUID         NOT NULL,
-    proposed_date_time  TIMESTAMP NOT NULL,
+    round_number        INT          NOT NULL DEFAULT 1,
+    preference_order    INT          NOT NULL DEFAULT 1,
+    proposed_date_time  TIMESTAMP WITH TIME ZONE NOT NULL,
     status              VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
-    created_at          TIMESTAMP NOT NULL DEFAULT now(),
+    created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
 
@@ -356,8 +369,8 @@ CREATE TABLE penalties (
     id          UUID         NOT NULL DEFAULT gen_random_uuid(),
     user_id     UUID         NOT NULL,
     reason      VARCHAR(255) NOT NULL,
-    created_at  TIMESTAMP NOT NULL DEFAULT now(),
-    expires_at  TIMESTAMP NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
     active      BOOLEAN      NOT NULL DEFAULT true,
 
     PRIMARY KEY (id)
