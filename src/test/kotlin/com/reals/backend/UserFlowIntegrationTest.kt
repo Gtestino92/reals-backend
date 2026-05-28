@@ -18,6 +18,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
@@ -32,7 +33,9 @@ import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -62,6 +65,7 @@ class UserFlowIntegrationTest(
     private val chatDecisionRepository: ChatDecisionRepository,
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
+    private val matchRepository: MatchRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val proposalRepository: ScheduleProposalRepository,
     private val penaltyRepository: PenaltyRepository
@@ -282,10 +286,48 @@ class UserFlowIntegrationTest(
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.REJECTED)
 
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
-        assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.MATCH))
-        assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.MATCH))
+        assertNoMatchLocks(setup.userAId, setup.userBId)
         assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
         assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(setup.firstChatId).status)
+    }
+
+    @Test
+    fun `visual rejection ends match without creating connection`() {
+        val setup = createMatchWithFirstChat()
+
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.REJECTED)
+
+        assertEquals(MatchState.VISUAL_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
+        assertNull(connectionRepository.findByMatchId(setup.matchId))
+        assertNoMatchLocks(setup.userAId, setup.userBId)
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+    }
+
+    @Test
+    fun `incompatible queued users do not produce a match`() {
+        val userA = createActiveProfile(
+            email = "incompatible-a-${UUID.randomUUID()}@example.com",
+            displayName = "Incompatible A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val userB = createActiveProfile(
+            email = "incompatible-b-${UUID.randomUUID()}@example.com",
+            displayName = "Incompatible B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        matchmakingService.enqueue(userA)
+        matchmakingService.enqueue(userB)
+
+        assertTrue(matchmakingService.findCandidatePairs(batchSize = 1).isEmpty())
+        assertNoMatchLocks(userA, userB)
+        assertFalse(matchExistsForUsers(userA, userB))
     }
 
     @Test
@@ -466,6 +508,45 @@ class UserFlowIntegrationTest(
         )
     }
 
+    @Test
+    fun `explicit scheduling rejection at max rounds fails negotiation and closes connection`() {
+        val setup = createConnectionInSchedulingPhase()
+        val baseSlot = futureHalfHourSlot()
+
+        repeat(3) { roundIndex ->
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userAId,
+                proposedDateTimes = listOf(baseSlot.plusHours((roundIndex * 2).toLong()))
+            )
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                proposedDateTimes = listOf(baseSlot.plusHours((roundIndex * 2 + 1).toLong()))
+            )
+
+            val negotiation = schedulingService.rejectCurrentRound(
+                connectionId = setup.connectionId,
+                userId = setup.userAId
+            )
+
+            if (roundIndex < 2) {
+                assertEquals(NegotiationStatus.PENDING, negotiation.status)
+                assertEquals(roundIndex + 2, negotiation.roundNumber)
+            } else {
+                assertEquals(NegotiationStatus.FAILED, negotiation.status)
+                assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
+                assertNoConnectionLocks(setup.userAId, setup.userBId)
+                assertNull(chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT))
+            }
+        }
+
+        assertTrue(
+            proposalRepository.findByConnectionId(setup.connectionId)
+                .all { it.status == ProposalStatus.REJECTED }
+        )
+    }
+
     private fun createActiveProfile(
         email: String,
         displayName: String,
@@ -600,6 +681,31 @@ class UserFlowIntegrationTest(
             candidate.plusHours(1).withMinute(0)
         }
     }
+
+    private fun assertNoMatchLocks(
+        userAId: UUID,
+        userBId: UUID
+    ) {
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userAId, EngagementType.MATCH))
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userBId, EngagementType.MATCH))
+    }
+
+    private fun assertNoConnectionLocks(
+        userAId: UUID,
+        userBId: UUID
+    ) {
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userAId, EngagementType.CONNECTION))
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userBId, EngagementType.CONNECTION))
+    }
+
+    private fun matchExistsForUsers(
+        userAId: UUID,
+        userBId: UUID
+    ): Boolean =
+        matchRepository.findAll().any {
+            (it.userAId == userAId && it.userBId == userBId) ||
+                (it.userAId == userBId && it.userBId == userAId)
+        }
 
     private data class MatchFixture(
         val userAId: UUID,
