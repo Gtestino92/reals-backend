@@ -22,7 +22,10 @@ class SchedulingService(
      * Maximum number of negotiation rounds before marking as FAILED.
      */
     @param:Value("\${scheduling.max-rounds:3}")
-    private val maxRounds: Int
+    private val maxRounds: Int,
+
+    @param:Value("\${scheduling.max-proposals-per-round:3}")
+    private val maxProposalsPerRound: Int
 
 ) {
 
@@ -59,7 +62,7 @@ class SchedulingService(
      * Rules:
      * - Negotiation must be in PENDING state.
      * - Each user can submit only one ordered list per round.
-     * - The list must contain 1 to 3 unique future half-hour slots.
+     * - The list must contain 1 to [maxProposalsPerRound] unique future half-hour slots.
      * - After saving, auto-confirms if both users have at least one overlapping instant.
      */
     fun addProposals(
@@ -376,10 +379,9 @@ class SchedulingService(
         connectionService.transitionToSecondChatScheduled(connectionId)
     }
 
-    //TODO: ver si es la mejor manera de validar, con minutos o de otra manera
     private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {
-        check(proposedDateTimes.size in 1..3) { //TODO: que el maximo sea property, no hardcodeado
-            "Proposal list must contain between 1 and 3 date/times"
+        check(proposedDateTimes.size in 1..maxProposalsPerRound) {
+            "Proposal list must contain between 1 and $maxProposalsPerRound date/times"
         }
 
         val uniqueInstants = proposedDateTimes.map { it.toInstant() }.toSet()

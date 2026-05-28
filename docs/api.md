@@ -58,7 +58,7 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `GET /api/connections/{connectionId}`: fetch connection.
 - `GET /api/connections/{connectionId}/chat`: fetch visible second chat for connection. If the chat is `AVAILABLE`, this activates it for the authenticated participant and starts its timeout window.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
-- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to 3 future half-hour slots.
+- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: explicitly reject the current round and automatically open the next scheduling round, or fail/close if max rounds are exceeded.

@@ -68,7 +68,7 @@ Do not mutate domain state directly from controllers, schedulers or repositories
 - Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
 - Scheduling confirmation moves the connection to `SECOND_CHAT_SCHEDULED`; `ScheduledSecondChatStartJob` makes the second chat `AVAILABLE` when `confirmedDateTime` is due, and user entry or first message activates it.
 - Scheduling proposals are for the second chat inside the app, not for an in-person meeting outside the app.
-- Scheduling proposal submissions are ordered lists of 1 to 3 unique future half-hour slots per user per round. Overlaps auto-confirm by lowest combined preference order, then earliest agreed slot. If there is no overlap, a participant must explicitly reject the round to open the next one.
+- Scheduling proposal submissions are ordered lists of 1 to `scheduling.max-proposals-per-round` unique future half-hour slots per user per round. Overlaps auto-confirm by lowest combined preference order, then earliest agreed slot. If there is no overlap, a participant must explicitly reject the round to open the next one.
 - Closing or expiring a connection releases `CONNECTION` locks.
 
 ## State Machines
@@ -118,6 +118,7 @@ From `application.yml`:
 - `chat.second-chat.min-messages-before-free-cancel: 0`
 - `scheduling.negotiation-duration-minutes: 2880`
 - `scheduling.max-rounds: 3`
+- `scheduling.max-proposals-per-round: 3`
 - default profile photos: required `9`, max `9`, min person `3`, min full-body `1`
 
 From `application-local-nodb.yml`:

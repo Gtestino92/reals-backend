@@ -68,7 +68,7 @@ Scheduling is initialized once per connection. Users submit ordered lists of fut
 Rules:
 
 - each user submits one proposal list per round
-- each list must contain 1 to 3 unique future slots
+- each list must contain 1 to `scheduling.max-proposals-per-round` unique future slots
 - slots must be aligned to half-hour boundaries
 - user must belong to the connection
 - user cannot accept their own proposal

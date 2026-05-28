@@ -86,6 +86,9 @@ scheduling:
   # Maximum negotiation rounds before marking the negotiation as FAILED
   max-rounds: 3
 
+  # Maximum number of proposed second-chat slots each user can submit per round
+  max-proposals-per-round: 3
+
 profile:
   photos:
     # Maximum number of photos a user can upload to their profile

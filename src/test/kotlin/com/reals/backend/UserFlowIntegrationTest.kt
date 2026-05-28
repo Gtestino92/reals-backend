@@ -387,6 +387,25 @@ class UserFlowIntegrationTest(
     }
 
     @Test
+    fun `proposal list cannot exceed configured maximum`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        assertThrows<IllegalStateException> {
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userAId,
+                proposedDateTimes = listOf(
+                    slot,
+                    slot.plusHours(1),
+                    slot.plusHours(2),
+                    slot.plusHours(3)
+                )
+            )
+        }
+    }
+
+    @Test
     fun `scheduling auto confirmation chooses best overlap by preference and earliest tie`() {
         val setup = createConnectionInSchedulingPhase()
         val early = futureHalfHourSlot()

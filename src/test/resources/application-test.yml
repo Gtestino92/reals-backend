@@ -53,6 +53,7 @@ chat:
 scheduling:
   negotiation-duration-minutes: 2880
   max-rounds: 3
+  max-proposals-per-round: 3
 
 profile:
   photos:
