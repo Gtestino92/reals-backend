@@ -82,9 +82,9 @@ class ScheduledSecondChatStartJob(
                 )
             } catch (ex: Exception) {
                 log.error(
-                    "ScheduledSecondChatStartJob - failed for connection={}: {}",
+                    "ScheduledSecondChatStartJob - failed for connection={}",
                     negotiation.connectionId,
-                    ex.message
+                    ex
                 )
             }
         }

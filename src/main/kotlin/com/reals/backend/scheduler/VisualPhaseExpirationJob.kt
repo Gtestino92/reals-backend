@@ -60,9 +60,9 @@ class VisualPhaseExpirationJob(
                 )
             } catch (ex: Exception) {
                 log.warn(
-                    "VisualPhaseExpirationJob - skipped match={}: {}",
+                    "VisualPhaseExpirationJob - skipped match={}",
                     review.matchId,
-                    ex.message
+                    ex
                 )
             }
         }
