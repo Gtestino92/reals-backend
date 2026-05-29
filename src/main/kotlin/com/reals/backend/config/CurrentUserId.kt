@@ -3,13 +3,9 @@ package com.reals.backend.config
 /**
  * Marks a controller parameter to be resolved with the authenticated user id.
  *
- * In local-nodb: resolved from the principal injected by DevAutoAuthFilter.
- *
- * In prod: will be resolved from the JWT claim (PENDING.md #9) — only the
- * CurrentUserIdArgumentResolver needs to change, all controllers stay the same.
- *
- * Usage:
- *   fun myEndpoint(@CurrentUserId userId: UUID): ResponseEntity<...>
+ * Local-nodb uses DevAutoAuthFilter. Dev/prod should use FirebaseTokenFilter.
+ * Both filters set the SecurityContext principal to the internal user UUID
+ * string, keeping controllers independent from the auth provider.
  */
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)

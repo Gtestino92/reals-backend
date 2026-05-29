@@ -168,10 +168,6 @@ data class ConnectionResponse(
 /**
  * The personal message the partner left for the requesting user.
  * null if the partner hasn't submitted one yet.
- *
- * TODO(front): mostrar en la pantalla de negociación de horario.
- * TODO(product): ver PENDING.md #17 - decidir si exponer message solo cuando
- * ambos lo hayan enviado, o desde que entra en SCHEDULING_PHASE.
  */
 data class PartnerMessageResponse(
     val message: String?

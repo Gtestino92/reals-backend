@@ -10,6 +10,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Whether matchmaking should be processed by a scheduler/worker instead of the dev-only `/api/dev/matchmaking/process` endpoint.
 - Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`.
 - Decide where geolocation enters the product flow. The likely point is before first-chat matchmaking/search, using profile location plus future latitude/longitude, geohash or search radius fields.
+- Decide final visibility and UX timing for visual-review personal messages. Current behavior allows reading the partner message during visual review and requires reading it before approving if the partner already submitted one.
 
 ## Not Currently Implemented
 
@@ -29,9 +30,9 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Infrastructure Gaps
 
-- `pom.xml` includes Oracle and PostgreSQL drivers, but this repository currently does not include `application-dev.yml` or `application-prod.yml`.
+- `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
 - Local profile uses H2 file storage and disables Flyway.
-- Maven CLI may be unavailable on the target machine; IntelliJ IDEA is the reliable local execution path.
+- Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
 
 ## Multi-Instance Deployment Risks
 

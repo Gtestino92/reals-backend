@@ -92,3 +92,6 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
+
+GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
+`master` or `development`.

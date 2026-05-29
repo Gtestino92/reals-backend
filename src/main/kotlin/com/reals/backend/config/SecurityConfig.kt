@@ -54,8 +54,7 @@ class SecurityConfig(
             )
         }
 
-        // TODO(firebase):
-        // add FirebaseTokenFilter here once dependency resolves
+        // TODO(firebase): register FirebaseTokenFilter for dev/prod production auth.
 
         return http.build()
     }
