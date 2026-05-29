@@ -24,7 +24,8 @@ CREATE TABLE users (
     updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
-    CONSTRAINT uq_users_email UNIQUE (email)
+    CONSTRAINT uq_users_email UNIQUE (email),
+    CONSTRAINT uq_users_firebase_uid UNIQUE (firebase_uid)
 );
 
 -- ============================================================

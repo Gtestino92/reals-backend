@@ -71,6 +71,20 @@ role: ROLE_USER
 
 This filter is scoped to the local profile.
 
+## Local Firebase Auth
+
+Use `local-firebase` only when you want to test real Firebase ID tokens locally.
+It uses the same H2 file database style as `local-nodb`, but disables dev
+auto-auth and enables Firebase token verification.
+
+The local Firebase service-account JSON is expected at:
+
+```text
+./secrets/reals-backend-firebase-credentials-dev.json
+```
+
+The `secrets/` directory is ignored by Git and must never be committed.
+
 ## Local Jobs
 
 `local-nodb` disables automatic scheduled execution:

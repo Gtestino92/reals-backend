@@ -14,10 +14,10 @@ data class User(
     @Id
     var id: UUID = UUID.randomUUID(),
 
-    @Column(name = "email")
+    @Column(name = "email", unique = true)
     var email: String? = null,
 
-    @Column(name = "firebase_uid")
+    @Column(name = "firebase_uid", unique = true)
     var firebaseUid: String? = null,
 
     @Column(name = "created_at", nullable = false)
