@@ -12,7 +12,7 @@ import java.util.UUID
  * - Abandonment rate derived from chat history.
  * - Positive engagement signals: completed connections, etc.
  *
- * See item 10 in PENDING.md for full spec.
+ * See docs/technical-debt.md for pending reputation decisions.
  */
 @Component
 class DefaultTrustScoreEvaluator : TrustScoreEvaluator {

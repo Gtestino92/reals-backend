@@ -10,14 +10,10 @@ import org.springframework.web.method.support.ModelAndViewContainer
 import java.util.UUID
 
 /**
- * Resolves controller parameters annotated with @CurrentUserId
- * by reading the authenticated principal from the SecurityContext.
+ * Resolves controller parameters annotated with @CurrentUserId by reading the
+ * authenticated principal from the SecurityContext.
  *
- * Local: DevAutoAuthFilter sets the principal as a UUID string.
- *
- * Prod: JWT filter will set the principal the same way
- * (PENDING.md #9) — this resolver needs no changes when JWT
- * is implemented.
+ * Auth filters must set the principal as an internal user UUID string.
  */
 @Component
 class CurrentUserIdArgumentResolver :
