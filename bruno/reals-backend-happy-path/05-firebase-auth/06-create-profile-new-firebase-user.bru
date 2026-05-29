@@ -1,0 +1,46 @@
+meta {
+  name: 06 Create Profile New Firebase User
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_new_id_token}}
+}
+
+body:json {
+  {
+    "displayName": "Firebase New User",
+    "birthDate": "1997-04-21",
+    "gender": "FEMALE",
+    "lookingForGender": "MEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Perfil creado para validar provisioning de usuario nuevo con Firebase Auth."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created profile response with id.");
+  }
+  if (body.displayName !== "Firebase New User") {
+    throw new Error(`Expected displayName Firebase New User, got ${body.displayName}`);
+  }
+
+  const expectedUserId = bru.getEnvVar("firebase_new_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected profile userId ${expectedUserId}, got ${body.userId}`);
+  }
+
+  bru.setEnvVar("firebase_new_profile_id", body.id);
+}
