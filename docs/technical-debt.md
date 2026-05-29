@@ -34,6 +34,15 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Local profile uses H2 file storage and disables Flyway.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
 
+## Observability And Error Handling
+
+- Add request correlation IDs. Propagate incoming `X-Request-Id` or generate one, return it in responses and include it in log MDC.
+- Add Spring Boot Actuator and metrics export before production. Track HTTP latency/statuses, auth failures by reason, scheduled job runs, processed/skipped/failed item counts and key state transitions.
+- Harden scheduled jobs so one failing record does not abort an entire run. Each job should log a final summary with processed/succeeded/failed/skipped counts.
+- Include exception stacktraces in job failure logs. Avoid logging only `ex.message` for unexpected scheduler failures.
+- Consider explicit domain exception types with stable error codes for frontend handling, instead of relying only on `IllegalArgumentException` and `IllegalStateException`.
+- Add production log policy for sensitive fields. Do not log tokens, chat contents, personal messages, full emails, private media URLs or raw request bodies.
+
 ## Multi-Instance Deployment Risks
 
 - Scheduler jobs must remain safe when more than one app instance exists. ShedLock prevents most duplicate scheduled executions, but each job should still be idempotent: re-running it should not create duplicate chats, penalties, locks or state transitions.
