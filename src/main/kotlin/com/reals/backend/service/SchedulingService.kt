@@ -7,6 +7,7 @@ import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -79,8 +80,8 @@ class SchedulingService(
 
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
@@ -221,8 +222,10 @@ class SchedulingService(
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
 
-        check(acceptorUserId == connection.userAId || acceptorUserId == connection.userBId) {
-            "User $acceptorUserId does not belong to connection ${proposal.connectionId}"
+        if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
+            throw AccessDeniedException(
+                "User $acceptorUserId does not belong to connection ${proposal.connectionId}"
+            )
         }
 
         check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
@@ -276,8 +279,8 @@ class SchedulingService(
 
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         val currentRoundProposals =

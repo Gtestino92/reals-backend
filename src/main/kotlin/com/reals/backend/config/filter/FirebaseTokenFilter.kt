@@ -41,6 +41,7 @@ class FirebaseTokenFilter(
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             writeUnauthorized(
                 response = response,
+                code = "MISSING_AUTHORIZATION_HEADER",
                 message = "Missing Authorization header"
             )
             return
@@ -50,6 +51,7 @@ class FirebaseTokenFilter(
         if (token.isBlank()) {
             writeUnauthorized(
                 response = response,
+                code = "MISSING_BEARER_TOKEN",
                 message = "Missing bearer token"
             )
             return
@@ -75,6 +77,7 @@ class FirebaseTokenFilter(
             SecurityContextHolder.clearContext()
             writeUnauthorized(
                 response = response,
+                code = "INVALID_TOKEN",
                 message = "Invalid or expired token"
             )
             return
@@ -85,13 +88,14 @@ class FirebaseTokenFilter(
 
     private fun writeUnauthorized(
         response: HttpServletResponse,
+        code: String,
         message: String
     ) {
         response.status = HttpServletResponse.SC_UNAUTHORIZED
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(
-            """{"error":"Unauthorized","message":"$message"}"""
+            """{"code":"$code","error":"Unauthorized","message":"$message"}"""
         )
     }
 }
