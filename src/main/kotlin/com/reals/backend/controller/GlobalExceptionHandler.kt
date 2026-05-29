@@ -2,6 +2,7 @@ package com.reals.backend.controller
 
 import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -104,6 +105,19 @@ class GlobalExceptionHandler {
                     code = "DATA_INTEGRITY_CONFLICT",
                     error = "Conflict",
                     message = "Data integrity constraint violation"
+                )
+            )
+
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleOptimisticLockingFailure(
+        ex: OptimisticLockingFailureException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    code = "CONCURRENT_MODIFICATION",
+                    error = "Conflict",
+                    message = "Resource was modified concurrently. Please retry."
                 )
             )
 

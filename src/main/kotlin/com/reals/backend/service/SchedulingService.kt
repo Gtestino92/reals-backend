@@ -46,9 +46,7 @@ class SchedulingService(
      */
     fun initializeNegotiation(connectionId: UUID): ScheduleNegotiation {
 
-        check(negotiationRepository.findByConnectionId(connectionId) == null) {
-            "ScheduleNegotiation already exists for connection: $connectionId"
-        }
+        negotiationRepository.findByConnectionId(connectionId)?.let { return it }
 
         return negotiationRepository.save(
             ScheduleNegotiation(

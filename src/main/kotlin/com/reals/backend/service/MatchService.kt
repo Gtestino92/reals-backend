@@ -109,6 +109,10 @@ class MatchService(
 
         val match = findByIdOrThrow(matchId)
 
+        if (match.state == MatchState.VISUAL_PHASE) {
+            return match
+        }
+
         check(match.state == MatchState.CHAT_ACTIVE) {
             "Cannot transition to visual phase: match is in state ${match.state}"
         }
@@ -128,6 +132,10 @@ class MatchService(
 
         val match = findByIdOrThrow(matchId)
 
+        if (match.state == MatchState.VISUAL_APPROVED) {
+            return match
+        }
+
         check(match.state == MatchState.VISUAL_PHASE) {
             "Cannot approve visual phase: match is in state ${match.state}"
         }
@@ -145,6 +153,10 @@ class MatchService(
     fun rejectChatPhase(matchId: UUID): Match {
 
         val match = findByIdOrThrow(matchId)
+
+        if (match.state == MatchState.CHAT_REJECTED) {
+            return match
+        }
 
         check(match.state == MatchState.CHAT_ACTIVE) {
             "Cannot reject chat phase: match is in state ${match.state}"
@@ -170,6 +182,10 @@ class MatchService(
 
         val match = findByIdOrThrow(matchId)
 
+        if (match.state == MatchState.VISUAL_REJECTED) {
+            return match
+        }
+
         check(match.state == MatchState.VISUAL_PHASE) {
             "Cannot reject visual phase: match is in state ${match.state}"
         }
@@ -193,6 +209,10 @@ class MatchService(
     fun expireMatch(matchId: UUID) {
 
         val match = findByIdOrThrow(matchId)
+
+        if (match.state == MatchState.EXPIRED) {
+            return
+        }
 
         check(
             match.state == MatchState.CHAT_ACTIVE ||
