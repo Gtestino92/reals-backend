@@ -36,8 +36,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Observability And Error Handling
 
-- Add request correlation IDs. Propagate incoming `X-Request-Id` or generate one, return it in responses and include it in log MDC.
-- Add Spring Boot Actuator and metrics export before production. Track HTTP latency/statuses, auth failures by reason, scheduled job runs, processed/skipped/failed item counts and key state transitions.
+- Add metrics export before production. Actuator health/info is available, but metrics are intentionally disabled for now. Later track HTTP latency/statuses, auth failures by reason, scheduled job runs, processed/skipped/failed item counts and key state transitions.
 - Harden scheduled jobs so one failing record does not abort an entire run. Each job should log a final summary with processed/succeeded/failed/skipped counts.
 - Include exception stacktraces in job failure logs. Avoid logging only `ex.message` for unexpected scheduler failures.
 - Consider explicit domain exception types with stable error codes for frontend handling, instead of relying only on `IllegalArgumentException` and `IllegalStateException`.
