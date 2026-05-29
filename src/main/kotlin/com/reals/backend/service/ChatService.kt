@@ -203,7 +203,7 @@ class ChatService(
                 chatDecision.userBDecision = decision
             }
 
-            else -> error("User $userId does not belong to match $matchId")
+            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
         }
 
         chatDecision.updatedAt = OffsetDateTime.now()
@@ -336,8 +336,8 @@ class ChatService(
         }
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         val now = OffsetDateTime.now()

@@ -110,7 +110,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val setup = createConnectionInSchedulingPhase()
         val stranger = userService.createUser("proposal-stranger-${UUID.randomUUID()}@example.com")
 
-        assertThrows<IllegalStateException> {
+        assertThrows<AccessDeniedException> {
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,

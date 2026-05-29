@@ -39,6 +39,7 @@ class SecurityConfig(
                         writeSecurityError(
                             response = response,
                             status = HttpServletResponse.SC_UNAUTHORIZED,
+                            code = "AUTHENTICATION_REQUIRED",
                             error = "Unauthorized",
                             message = "Authentication is required"
                         )
@@ -47,6 +48,7 @@ class SecurityConfig(
                         writeSecurityError(
                             response = response,
                             status = HttpServletResponse.SC_FORBIDDEN,
+                            code = "ACCESS_DENIED",
                             error = "Forbidden",
                             message = "Access is denied"
                         )
@@ -89,6 +91,7 @@ class SecurityConfig(
     private fun writeSecurityError(
         response: HttpServletResponse,
         status: Int,
+        code: String,
         error: String,
         message: String
     ) {
@@ -96,7 +99,7 @@ class SecurityConfig(
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(
-            """{"error":"$error","message":"$message"}"""
+            """{"code":"$code","error":"$error","message":"$message"}"""
         )
     }
 }

@@ -20,6 +20,7 @@ class GlobalExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
     data class ErrorResponse(
+        val code: String,
         val error: String,
         val message: String?
     )
@@ -31,6 +32,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = ex.bindingResult.fieldErrors
                         .joinToString("; ") { it.toValidationMessage() }
@@ -45,6 +47,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = "Request validation failed"
                 )
@@ -57,6 +60,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = ex.constraintViolations
                         .joinToString("; ") { "${it.propertyPath}: ${it.message}" }
@@ -71,6 +75,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "MALFORMED_REQUEST",
                     error = "Bad Request",
                     message = "Malformed request body or invalid field value"
                 )
@@ -83,6 +88,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = "Invalid value for ${ex.name}"
                 )
@@ -95,6 +101,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(
                 ErrorResponse(
+                    code = "DATA_INTEGRITY_CONFLICT",
                     error = "Conflict",
                     message = "Data integrity constraint violation"
                 )
@@ -107,6 +114,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(
                 ErrorResponse(
+                    code = "ACCESS_DENIED",
                     error = "Forbidden",
                     message = ex.message
                 )
@@ -119,6 +127,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(
                 ErrorResponse(
+                    code = "RESOURCE_NOT_FOUND",
                     error = "Not Found",
                     message = ex.message
                 )
@@ -131,6 +140,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = ex.message
                 )
@@ -144,6 +154,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(
                 ErrorResponse(
+                    code = "DOMAIN_CONFLICT",
                     error = "Conflict",
                     message = ex.message
                 )
@@ -158,6 +169,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(
                 ErrorResponse(
+                    code = "INTERNAL_ERROR",
                     error = "Internal Server Error",
                     message = "Unexpected server error"
                 )

@@ -13,6 +13,7 @@ import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.NoSuchElementException
@@ -246,7 +247,9 @@ class ChatExitService(
         return when (userId) {
             match.userAId -> match.userBId
             match.userBId -> match.userAId
-            else -> error("User $userId does not belong to chat ${chat.id}")
+            else -> throw AccessDeniedException(
+                "User $userId does not belong to chat ${chat.id}"
+            )
         }
     }
 
