@@ -4,6 +4,7 @@ import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,11 +19,13 @@ class ChatController(
 
     @GetMapping("/{chatId}")
     fun getChat(
+        @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID
     ): ResponseEntity<ChatResponse> {
 
-        val chat = chatService.findByIdOrThrow(
-            chatId = chatId
+        val chat = chatService.findByIdForUserOrThrow(
+            chatId = chatId,
+            userId = userId
         )
 
         return ResponseEntity.ok(
@@ -34,6 +37,7 @@ class ChatController(
     fun sendMessage(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID,
+        @Valid
         @RequestBody request: SendMessageRequest
     ): ResponseEntity<ChatMessageResponse> {
 
@@ -68,6 +72,7 @@ class ChatController(
     fun requestMutualCancellation(
         @PathVariable chatId: UUID,
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: ChatExitRequestCreateRequest
     ): ResponseEntity<ChatExitRequestResponse> {
         val exitRequest =
@@ -128,6 +133,7 @@ class ChatController(
     fun cancelChat(
         @PathVariable chatId: UUID,
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: ChatCancellationRequest
     ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
@@ -146,6 +152,7 @@ class ChatController(
     fun cancelChatForSafety(
         @PathVariable chatId: UUID,
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: ChatSafetyCancellationRequest
     ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.status(HttpStatus.CREATED)

@@ -35,6 +35,10 @@ class ChatExitService(
     private val secondChatMinMessagesBeforeFreeCancel: Int
 ) {
 
+    private companion object {
+        const val DETAILS_MAX_LENGTH = 1000
+    }
+
     fun requestMutualCancellation(
         chatId: UUID,
         requesterUserId: UUID,
@@ -44,6 +48,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         val responderUserId = resolvePartnerUserId(chat, requesterUserId)
+        val normalizedDetails = normalizeDetails(details)
 
         chatExitRequestRepository.findByChatIdAndStatusAndType(
             chatId = chatId,
@@ -63,7 +68,7 @@ class ChatExitService(
                 responderUserId = responderUserId,
                 type = ChatExitRequestType.MUTUAL_CANCEL,
                 reason = reason,
-                details = details
+                details = normalizedDetails
             )
         )
     }
@@ -150,6 +155,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         val responderUserId = resolvePartnerUserId(chat, userId)
+        val normalizedDetails = normalizeDetails(details)
 
         val shouldPenalize = shouldPenalizeCancellation(chat, userId)
         if (shouldPenalize) {
@@ -164,7 +170,7 @@ class ChatExitService(
                 type = ChatExitRequestType.UNILATERAL_CANCEL,
                 status = ChatExitRequestStatus.ACCEPTED,
                 reason = reason,
-                details = details,
+                details = normalizedDetails,
                 resolvedAt = OffsetDateTime.now()
             )
         )
@@ -188,6 +194,11 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         val reportedUserId = resolvePartnerUserId(chat, reporterUserId)
+        val normalizedDetails = normalizeDetails(details)
+
+        require(!normalizedDetails.isNullOrBlank()) {
+            "Safety cancellation details are required"
+        }
 
         penaltyService.createSafetyReportPenalty(userId = reportedUserId)
 
@@ -199,7 +210,7 @@ class ChatExitService(
                 type = ChatExitRequestType.SAFETY_REPORT,
                 status = ChatExitRequestStatus.ACCEPTED,
                 reason = reason,
-                details = details,
+                details = normalizedDetails,
                 resolvedAt = OffsetDateTime.now()
             )
         )
@@ -284,5 +295,21 @@ class ChatExitService(
         check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
             "Chat ${chat.id} has timed out"
         }
+    }
+
+    private fun normalizeDetails(details: String?): String? {
+        val normalized = details?.trim()?.takeIf { it.isNotBlank() }
+
+        if (normalized != null) {
+            require(normalized.length <= DETAILS_MAX_LENGTH) {
+                "Details must be at most $DETAILS_MAX_LENGTH characters"
+            }
+
+            require(normalized.none { it.isISOControl() }) {
+                "Details cannot contain control characters"
+            }
+        }
+
+        return normalized
     }
 }

@@ -14,7 +14,6 @@ import java.util.UUID
 class VisualReviewService(
 
     private val visualReviewRepository: VisualReviewRepository,
-    private val matchRepository: MatchRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService,
@@ -22,6 +21,10 @@ class VisualReviewService(
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
 ) {
+
+    private companion object {
+        const val PERSONAL_MESSAGE_MAX_LENGTH = 280
+    }
 
     fun findByMatchIdOrThrow(matchId: UUID): VisualReview =
         visualReviewRepository.findByMatchId(matchId)
@@ -113,6 +116,7 @@ class VisualReviewService(
         userId: UUID,
         message: String
     ) {
+        val normalizedMessage = normalizePersonalMessage(message)
 
         val match = matchService.findByIdOrThrow(matchId)
         val review = findByMatchIdOrThrow(matchId)
@@ -127,14 +131,14 @@ class VisualReviewService(
                 check(review.personalMessageA == null) {
                     "User A already submitted a personal message"
                 }
-                review.personalMessageA = message
+                review.personalMessageA = normalizedMessage
             }
 
             match.userBId -> {
                 check(review.personalMessageB == null) {
                     "User B already submitted a personal message"
                 }
-                review.personalMessageB = message
+                review.personalMessageB = normalizedMessage
             }
 
             else ->
@@ -204,5 +208,23 @@ class VisualReviewService(
                 "User $userId does not belong to match ${match.id}"
             )
         }
+    }
+
+    private fun normalizePersonalMessage(message: String): String {
+        val normalized = message.trim()
+
+        require(normalized.isNotBlank()) {
+            "Personal message is required"
+        }
+
+        require(normalized.length <= PERSONAL_MESSAGE_MAX_LENGTH) {
+            "Personal message must be at most $PERSONAL_MESSAGE_MAX_LENGTH characters"
+        }
+
+        require(normalized.none { it.isISOControl() }) {
+            "Personal message cannot contain control characters"
+        }
+
+        return normalized
     }
 }

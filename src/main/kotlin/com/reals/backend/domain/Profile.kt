@@ -47,6 +47,9 @@ data class Profile(
     @Column(name = "birth_date", nullable = false)
     var birthDate: LocalDate,
 
+    @Column(name = "identity_verified", nullable = false)
+    var identityVerified: Boolean = false,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false)
     var gender: Gender,

@@ -7,6 +7,7 @@ import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -57,6 +58,19 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `non participant cannot get match`() {
+        val setup = createMatchWithFirstChat()
+        val stranger = userService.createUser("match-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
     fun `record personal message returns no content`() {
         val setup = createMatchInVisualPhase()
 
@@ -67,5 +81,19 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .content("""{"message":"Me caiste bien"}""")
         )
             .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `invalid enum request returns bad request`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"MAYBE"}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
     }
 }

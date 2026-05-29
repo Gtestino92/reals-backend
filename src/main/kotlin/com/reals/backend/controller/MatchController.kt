@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.*
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.util.*
@@ -19,20 +20,28 @@ class MatchController(
 
     @GetMapping("/{matchId}")
     fun getMatch(
+        @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID
     ): ResponseEntity<MatchResponse> {
-        val match = matchService.findByIdOrThrow(matchId = matchId)
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
         val connectionId = connectionService.findConnectionIdByMatchId(matchId = matchId)
         return ResponseEntity.ok(MatchResponse.from(match = match, connectionId = connectionId))
     }
 
     @GetMapping("/{matchId}/chat")
     fun getFirstChat(
+        @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID
     ): ResponseEntity<ChatResponse> =
         ResponseEntity.ok(
             ChatResponse.from(
-                chatService.findActiveFirstChatOrThrow(matchId)
+                chatService.findActiveFirstChatForUserOrThrow(
+                    matchId = matchId,
+                    userId = userId
+                )
             )
         )
 
@@ -88,6 +97,7 @@ class MatchController(
     fun recordChatDecision(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
+        @Valid
         @RequestBody request: ChatDecisionRequest
     ): ResponseEntity<MatchResponse> {
         chatService.recordChatDecision(
@@ -119,6 +129,7 @@ class MatchController(
     fun recordVisualDecision(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
+        @Valid
         @RequestBody request: VisualDecisionRequest
     ): ResponseEntity<MatchResponse> {
         visualReviewService.recordDecision(
@@ -148,6 +159,7 @@ class MatchController(
     fun recordPersonalMessage(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID,
+        @Valid
         @RequestBody request: PersonalMessageRequest
     ): ResponseEntity<Void> {
 

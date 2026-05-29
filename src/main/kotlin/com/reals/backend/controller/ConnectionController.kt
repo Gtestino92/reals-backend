@@ -9,6 +9,7 @@ import com.reals.backend.controller.dto.ScheduleProposalResponse
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.SchedulingService
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -25,10 +26,12 @@ class ConnectionController(
 
     @GetMapping("/{connectionId}")
     fun getConnection(
+        @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<ConnectionResponse> {
-        val connection = connectionService.findByIdOrThrow(
-            connectionId = connectionId
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
         )
         return ResponseEntity.ok(
             ConnectionResponse.from(connection)
@@ -51,8 +54,14 @@ class ConnectionController(
 
     @GetMapping("/{connectionId}/negotiation")
     fun getNegotiation(
+        @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
+        connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
+
         val negotiation = schedulingService.findNegotiationOrThrow(
             connectionId = connectionId
         )
@@ -72,6 +81,7 @@ class ConnectionController(
     fun addProposal(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID,
+        @Valid
         @RequestBody request: AddProposalRequest
     ): ResponseEntity<List<ScheduleProposalResponse>> {
 
@@ -88,8 +98,13 @@ class ConnectionController(
 
     @GetMapping("/{connectionId}/proposals")
     fun getProposals(
+        @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<List<ScheduleProposalResponse>> {
+        connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
 
         val proposals = schedulingService.getProposals(
             connectionId = connectionId

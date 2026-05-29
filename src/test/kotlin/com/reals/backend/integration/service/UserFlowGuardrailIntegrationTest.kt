@@ -10,6 +10,7 @@ import com.reals.backend.integration.BaseIT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.security.access.AccessDeniedException
 import java.time.LocalDate
 import java.util.UUID
 
@@ -99,7 +100,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val setup = createMatchWithFirstChat()
         val stranger = userService.createUser("stranger-${UUID.randomUUID()}@example.com")
 
-        assertThrows<IllegalStateException> {
+        assertThrows<AccessDeniedException> {
             chatService.sendMessage(setup.firstChatId, stranger.id, "No pertenezco a este match")
         }
     }

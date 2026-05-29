@@ -3,43 +3,87 @@ package com.reals.backend.controller.dto
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Past
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
 import java.util.UUID
 
 data class UpdateProfileRequest(
+    @field:Size(min = 2, max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val displayName: String? = null,
+
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val bio: String? = null,
+
+    @field:Size(min = 1, max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val city: String? = null,
+
+    @field:Size(min = 1, max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val country: String? = null,
+
     val intention: Intention? = null,
     val lookingForGender: LookingForGender? = null
 )
 
 data class ReplacePhotoRequest(
+    @field:NotBlank
+    @field:Size(max = 512)
+    @field:Pattern(regexp = "^https://\\S+$")
     val url: String,
     val isPersonPhoto: Boolean? = null,
     val isFullBody: Boolean? = null
 )
 
 data class CreateProfileRequest(
+    @field:NotBlank
+    @field:Size(min = 2, max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val displayName: String,
+
+    @field:Past
     val birthDate: LocalDate,
+
     val gender: Gender,
     val lookingForGender: LookingForGender,
     val intention: Intention,
+
+    @field:NotBlank
+    @field:Size(max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val city: String,
+
+    @field:NotBlank
+    @field:Size(max = 100)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val country: String,
+
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val bio: String? = null
 )
 
 data class AddPhotoRequest(
+    @field:NotBlank
+    @field:Size(max = 512)
+    @field:Pattern(regexp = "^https://\\S+$")
     val url: String,
+
+    @field:Min(1)
     val position: Int,
+
     val isPersonPhoto: Boolean? = null,
     val isFullBody: Boolean? = null
 )
@@ -50,6 +94,7 @@ data class ProfileResponse(
     val displayName: String,
     val birthDate: LocalDate,
     val age: Int,
+    val identityVerified: Boolean,
     val gender: Gender,
     val lookingForGender: LookingForGender,
     val intention: Intention,
@@ -71,6 +116,7 @@ data class ProfileResponse(
             displayName = profile.displayName,
             birthDate = profile.birthDate,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
+            identityVerified = profile.identityVerified,
             gender = profile.gender,
             lookingForGender = profile.lookingForGender,
             intention = profile.intention,
@@ -89,6 +135,7 @@ data class PhotoResponse(
     val id: UUID,
     val profileId: UUID,
     val url: String,
+    val storageProvider: PhotoStorageProvider,
     val position: Int,
     val isPersonPhoto: Boolean,
     val isFullBody: Boolean,
@@ -99,6 +146,7 @@ data class PhotoResponse(
             id = photo.id,
             profileId = photo.profileId,
             url = photo.url,
+            storageProvider = photo.storageProvider,
             position = photo.position,
             isPersonPhoto = photo.isPersonPhoto,
             isFullBody = photo.isFullBody,

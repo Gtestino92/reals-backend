@@ -5,6 +5,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import jakarta.transaction.Transactional
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -28,6 +29,15 @@ class MatchService(
             .orElseThrow {
                 NoSuchElementException("Match not found: $matchId")
             }
+    }
+
+    fun findByIdForUserOrThrow(
+        matchId: UUID,
+        userId: UUID
+    ): Match {
+        val match = findByIdOrThrow(matchId)
+        validateParticipant(match, userId)
+        return match
     }
 
     /**
@@ -78,6 +88,15 @@ class MatchService(
 
         check(active < maxActiveMatches) {
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
+        }
+    }
+
+    private fun validateParticipant(
+        match: Match,
+        userId: UUID
+    ) {
+        if (userId != match.userAId && userId != match.userBId) {
+            throw AccessDeniedException("User $userId does not belong to match ${match.id}")
         }
     }
 

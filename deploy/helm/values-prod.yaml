@@ -1,0 +1,91 @@
+# Helm values reference for the prod environment.
+#
+# TODO(deploy): revisit the final deploy convention. The Helm chart may live in
+# a separate infrastructure repository; this file documents the app-specific
+# values that such a chart would consume.
+#
+# Do not put real secret values here.
+
+environment: prod
+
+image:
+  repository: ghcr.io/your-org/reals-backend
+  tag: stable
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  name: reals-backend-prod
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: api.reals.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: reals-backend-tls
+      hosts:
+        - api.reals.example.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1024Mi
+  limits:
+    cpu: 2000m
+    memory: 2048Mi
+
+probes:
+  readiness:
+    path: /actuator/health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  liveness:
+    path: /actuator/health
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: prod
+
+configRefs:
+  - name: S3_PROFILE_PHOTOS_BUCKET
+    key: reals-prod-profile-photos
+  - name: S3_REGION
+    key: aws-region
+  - name: IDENTITY_VERIFICATION_PROVIDER
+    key: identity-verification-provider
+
+secretRefs:
+  - name: DATABASE_URL
+    key: database_url
+  - name: DATABASE_USERNAME
+    key: database_username
+  - name: DATABASE_PASSWORD
+    key: database_password
+  - name: FIREBASE_SERVICE_ACCOUNT_PATH
+    key: firebase_service_account_path
+  - name: IDENTITY_VERIFICATION_API_KEY
+    key: identity_verification_api_key

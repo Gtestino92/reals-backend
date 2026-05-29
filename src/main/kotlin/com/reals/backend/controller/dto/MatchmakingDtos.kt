@@ -4,6 +4,9 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
 import java.util.*
 
@@ -37,6 +40,9 @@ data class VisualDecisionRequest(
 )
 
 data class PersonalMessageRequest(
+    @field:NotBlank
+    @field:Size(max = 280)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val message: String
 )
 

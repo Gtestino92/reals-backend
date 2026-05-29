@@ -3,13 +3,17 @@ package com.reals.backend.controller
 import com.reals.backend.config.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.ProfileService
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import java.util.*
 
 @RestController
 @RequestMapping("/api/me/profile")
+@Validated
 class ProfileController(
     private val profileService: ProfileService
 ) {
@@ -22,6 +26,7 @@ class ProfileController(
     @PostMapping
     fun createProfile(
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: CreateProfileRequest
     ): ResponseEntity<ProfileResponse> {
 
@@ -64,6 +69,7 @@ class ProfileController(
     @PatchMapping
     fun updateMyProfile(
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: UpdateProfileRequest
     ): ResponseEntity<ProfileResponse> {
 
@@ -123,6 +129,7 @@ class ProfileController(
     @PostMapping("/photos")
     fun addPhoto(
         @CurrentUserId userId: UUID,
+        @Valid
         @RequestBody request: AddPhotoRequest
     ): ResponseEntity<PhotoResponse> {
         val profile = profileService.findByUserId(userId)
@@ -162,6 +169,7 @@ class ProfileController(
     @DeleteMapping("/photos/{position}")
     fun deletePhoto(
         @CurrentUserId userId: UUID,
+        @Min(1)
         @PathVariable position: Int
     ): ResponseEntity<ProfileResponse> {
         val existing = profileService.findByUserId(userId)
@@ -187,7 +195,9 @@ class ProfileController(
     @PutMapping("/photos/{position}")
     fun replacePhoto(
         @CurrentUserId userId: UUID,
+        @Min(1)
         @PathVariable position: Int,
+        @Valid
         @RequestBody request: ReplacePhotoRequest
     ): ResponseEntity<PhotoResponse> {
         val profile = profileService.findByUserId(userId)

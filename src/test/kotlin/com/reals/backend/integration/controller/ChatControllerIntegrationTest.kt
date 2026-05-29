@@ -47,8 +47,45 @@ class ChatControllerIntegrationTest : ControllerIT() {
             get("/api/chats/${setup.firstChatId}/messages")
                 .with(authenticatedAs(stranger.id))
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.error", equalTo("Conflict")))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
+    fun `non participant cannot get chat`() {
+        val setup = createMatchWithFirstChat()
+        val stranger = userService.createUser("http-chat-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
+    fun `blank chat message returns bad request`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"   "}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+    }
+
+    @Test
+    fun `invalid chat id returns bad request`() {
+        mockMvc.perform(
+            get("/api/chats/not-a-uuid/messages")
+                .with(authenticatedAs(java.util.UUID.randomUUID()))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
     }
 
     @Test

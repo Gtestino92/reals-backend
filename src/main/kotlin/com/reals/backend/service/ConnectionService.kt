@@ -5,6 +5,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.*
@@ -28,6 +29,15 @@ class ConnectionService(
             .orElseThrow {
                 NoSuchElementException("Connection not found: $connectionId")
             }
+    }
+
+    fun findByIdForUserOrThrow(
+        connectionId: UUID,
+        userId: UUID
+    ): Connection {
+        val connection = findByIdOrThrow(connectionId)
+        validateParticipant(connection, userId)
+        return connection
     }
 
     /**
@@ -83,6 +93,15 @@ class ConnectionService(
 
         check(active < maxActiveConnections) {
             "User $userId has reached the maximum number of active connections ($maxActiveConnections)"
+        }
+    }
+
+    private fun validateParticipant(
+        connection: Connection,
+        userId: UUID
+    ) {
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection ${connection.id}")
         }
     }
 

@@ -68,6 +68,19 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `non participant cannot get connection`() {
+        val setup = createConnectionInSchedulingPhase()
+        val stranger = userService.createUser("connection-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
     fun `proposal validation conflict is returned as error json`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()

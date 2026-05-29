@@ -8,6 +8,8 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
 - Whether matchmaking should be processed by a scheduler/worker instead of the dev-only `/api/dev/matchmaking/process` endpoint.
+- Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`.
+- Decide where geolocation enters the product flow. The likely point is before first-chat matchmaking/search, using profile location plus future latitude/longitude, geohash or search radius fields.
 
 ## Not Currently Implemented
 
@@ -21,6 +23,9 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Production trust score based on real behavior.
 - Full moderation workflow for safety reports. Current implementation records safety cancellation and applies a penalty, but no manual review workflow exists yet.
 - Full Firebase/JWT production authentication flow.
+- Own media storage for profile photos with S3. `ProfilePhoto` already has storage provider/bucket/key fields, but upload endpoints, presigned URL generation, object lifecycle, quarantine path and moderation promotion are not implemented yet.
+- Restrict client overrides of photo validation flags (`isPersonPhoto`, `isFullBody`) to local/dev or trusted admin tooling once automatic validation exists.
+- Identity verification is only represented by `Profile.identityVerified` for now; no dedicated identity-verification provider is called yet.
 
 ## Infrastructure Gaps
 

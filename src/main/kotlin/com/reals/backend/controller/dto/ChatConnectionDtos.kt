@@ -1,6 +1,10 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.*
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
 import java.util.*
 
@@ -39,22 +43,35 @@ data class ChatResponse(
 // — Messages
 
 data class SendMessageRequest(
+    @field:NotBlank
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val content: String
 )
 
 data class ChatExitRequestCreateRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val details: String? = null
 )
 
 data class ChatCancellationRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
     val details: String? = null
 )
 
 data class ChatSafetyCancellationRequest(
     val reason: ChatExitReason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-    val details: String? = null
+
+    @field:NotBlank
+    @field:Size(max = 1000)
+    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    val details: String
 )
 
 data class ChatMessageResponse(
@@ -163,6 +180,7 @@ data class PartnerMessageResponse(
 // — Scheduling
 
 data class AddProposalRequest(
+    @field:NotEmpty
     val proposedDateTimes: List<OffsetDateTime>
 )
 

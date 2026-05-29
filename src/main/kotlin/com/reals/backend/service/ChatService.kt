@@ -13,6 +13,7 @@ import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.NoSuchElementException
@@ -40,11 +41,24 @@ class ChatService(
     private val minMessagesPerUser: Int
 ) {
 
+    private companion object {
+        const val MESSAGE_MAX_LENGTH = 1000
+    }
+
     fun findByIdOrThrow(chatId: UUID): Chat {
         return chatRepository.findById(chatId)
             .orElseThrow {
                 NoSuchElementException("Chat not found: $chatId")
             }
+    }
+
+    fun findByIdForUserOrThrow(
+        chatId: UUID,
+        userId: UUID
+    ): Chat {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, userId)
+        return chat
     }
 
     fun startFirstChat(matchId: UUID): Chat {
@@ -87,6 +101,8 @@ class ChatService(
         senderId: UUID,
         content: String
     ): ChatMessage {
+        val normalizedContent = normalizeMessageContent(content)
+
         val chat =
             activateAvailableSecondChatIfNeeded(
                 chat = findByIdOrThrow(chatId),
@@ -102,7 +118,7 @@ class ChatService(
                 ChatMessage(
                     chatSessionId = chat.id,
                     senderId = senderId,
-                    content = content
+                    content = normalizedContent
                 )
             )
 
@@ -255,6 +271,15 @@ class ChatService(
         return chat
     }
 
+    fun findActiveFirstChatForUserOrThrow(
+        matchId: UUID,
+        userId: UUID
+    ): Chat {
+        val chat = findActiveFirstChatOrThrow(matchId)
+        validateChatParticipant(chat, userId)
+        return chat
+    }
+
     fun findVisibleSecondChatOrThrow(
         connectionId: UUID,
         userId: UUID
@@ -265,6 +290,11 @@ class ChatService(
                 ChatType.SECOND_CHAT
             )
                 ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
+
+        connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
 
         return activateAvailableSecondChatIfNeeded(
             chat = chat,
@@ -320,8 +350,26 @@ class ChatService(
     ) {
         val match = matchService.findByIdOrThrow(chat.matchId)
 
-        check(userId == match.userAId || userId == match.userBId) {
-            "User $userId does not belong to match ${chat.matchId}"
+        if (userId != match.userAId && userId != match.userBId) {
+            throw AccessDeniedException("User $userId does not belong to match ${chat.matchId}")
         }
+    }
+
+    private fun normalizeMessageContent(content: String): String {
+        val normalized = content.trim()
+
+        require(normalized.isNotBlank()) {
+            "Message content is required"
+        }
+
+        require(normalized.length <= MESSAGE_MAX_LENGTH) {
+            "Message content must be at most $MESSAGE_MAX_LENGTH characters"
+        }
+
+        require(normalized.none { it.isISOControl() }) {
+            "Message content cannot contain control characters"
+        }
+
+        return normalized
     }
 }

@@ -12,6 +12,11 @@ class UserService(
     private val userRepository: UserRepository
 ) {
 
+    private companion object {
+        private val EMAIL_PATTERN =
+            Regex("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", RegexOption.IGNORE_CASE)
+    }
+
     fun findByIdOrThrow(userId: UUID): User {
 
         return userRepository.findById(userId)
@@ -25,13 +30,26 @@ class UserService(
      * Throws IllegalArgumentException if the email is already registered.
      */
     fun createUser(email: String): User {
+        val normalizedEmail = email.trim().lowercase()
 
-        check(!userRepository.existsByEmail(email)) {
-            "Email already registered: $email"
+        require(normalizedEmail.isNotBlank()) {
+            "Email is required"
+        }
+
+        require(normalizedEmail.length <= 255) {
+            "Email must be at most 255 characters"
+        }
+
+        require(EMAIL_PATTERN.matches(normalizedEmail)) {
+            "Email format is invalid"
+        }
+
+        check(!userRepository.existsByEmail(normalizedEmail)) {
+            "Email already registered: $normalizedEmail"
         }
 
         return userRepository.save(
-            User(email = email.trim().lowercase())
+            User(email = normalizedEmail)
         )
     }
 

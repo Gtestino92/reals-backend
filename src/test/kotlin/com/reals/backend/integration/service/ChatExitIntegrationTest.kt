@@ -43,7 +43,8 @@ class ChatExitIntegrationTest : BaseIT() {
             chatExitService.cancelChatForSafety(
                 chatId = setup.firstChatId,
                 reporterUserId = setup.userAId,
-                reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR
+                reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
+                details = "Reported inappropriate behavior"
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)

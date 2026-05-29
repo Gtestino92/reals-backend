@@ -2,10 +2,17 @@ package com.reals.backend.domain
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.OffsetDateTime
 import java.util.UUID
+
+enum class PhotoStorageProvider {
+    EXTERNAL_URL,
+    S3
+}
 
 @Entity
 @Table(name = "profile_photos")
@@ -19,6 +26,16 @@ data class ProfilePhoto(
 
     @Column(name = "url", nullable = false)
     var url: String,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_provider", nullable = false)
+    var storageProvider: PhotoStorageProvider = PhotoStorageProvider.EXTERNAL_URL,
+
+    @Column(name = "storage_bucket")
+    var storageBucket: String? = null,
+
+    @Column(name = "storage_key")
+    var storageKey: String? = null,
 
     @Column(name = "position", nullable = false)
     var position: Int,

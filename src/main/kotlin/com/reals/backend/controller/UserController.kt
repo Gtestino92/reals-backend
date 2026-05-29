@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.controller.dto.CreateUserRequest
 import com.reals.backend.controller.dto.UserResponse
 import com.reals.backend.service.UserService
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -16,6 +17,7 @@ class UserController(
 
     @PostMapping
     fun createUser(
+        @Valid
         @RequestBody request: CreateUserRequest
     ): ResponseEntity<UserResponse> {
         val user = userService.createUser(
