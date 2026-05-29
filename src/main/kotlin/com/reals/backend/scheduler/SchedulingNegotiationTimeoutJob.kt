@@ -7,7 +7,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -30,7 +29,6 @@ class SchedulingNegotiationTimeoutJob(
         lockAtLeastFor = "PT30S",
         lockAtMostFor = "PT5M"
     )
-    @Transactional
     fun run() {
         log.debug("SchedulingNegotiationTimeoutJob triggered")
 

@@ -96,6 +96,23 @@ class ChatService(
         )
     }
 
+    fun makeSecondChatAvailable(
+        matchId: UUID,
+        connectionId: UUID,
+        availableAt: OffsetDateTime
+    ): Chat {
+        val chat =
+            startSecondChat(
+                matchId = matchId,
+                connectionId = connectionId,
+                availableAt = availableAt
+            )
+
+        connectionService.transitionToSecondChatAvailable(connectionId)
+
+        return chat
+    }
+
     fun sendMessage(
         chatId: UUID,
         senderId: UUID,

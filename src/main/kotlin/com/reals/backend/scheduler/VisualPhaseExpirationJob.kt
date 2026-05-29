@@ -6,7 +6,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -31,7 +30,6 @@ class VisualPhaseExpirationJob(
         lockAtLeastFor = "PT30S",
         lockAtMostFor = "PT3M"
     )
-    @Transactional
     fun run() {
         log.debug("VisualPhaseExpirationJob triggered")
 
