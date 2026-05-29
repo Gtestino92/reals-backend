@@ -38,19 +38,42 @@ class InactivityCheckJob(
             )
 
         val threshold = OffsetDateTime.now().minusMinutes(inactivityThresholdMinutes)
+
+        if (inactiveChats.isEmpty()) return
+
+        var succeeded = 0
+        var failed = 0
+
         inactiveChats.forEach { chat: Chat ->
-            val abandonedUserIds: List<UUID> = if (chat.chatType == ChatType.SECOND_CHAT) {
-                resolveInactiveUsers(chat.id, chat.connectionId, threshold)
-            } else {
-                emptyList()
+            try {
+                val abandonedUserIds: List<UUID> = if (chat.chatType == ChatType.SECOND_CHAT) {
+                    resolveInactiveUsers(chat.id, chat.connectionId, threshold)
+                } else {
+                    emptyList()
+                }
+
+                chatService.endChat(
+                    chatId = chat.id,
+                    finalStatus = ChatStatus.ABANDONED,
+                    abandonedUserIds = abandonedUserIds
+                )
+                succeeded += 1
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "InactivityCheckJob - failed to abandon chat={}",
+                    chat.id,
+                    ex
+                )
             }
-            log.info("InactivityCheckJob: ending chat ${chat.id} (type=${chat.chatType}, abandoned=$abandonedUserIds")
-            chatService.endChat(
-                chatId = chat.id,
-                finalStatus = ChatStatus.ABANDONED,
-                abandonedUserIds = abandonedUserIds
-            )
         }
+
+        log.info(
+            "InactivityCheckJob - processed={} succeeded={} failed={}",
+            inactiveChats.size,
+            succeeded,
+            failed
+        )
     }
 
     private fun resolveInactiveUsers(chatId: UUID, connectionId: UUID?, threshold: OffsetDateTime): List<UUID> {
