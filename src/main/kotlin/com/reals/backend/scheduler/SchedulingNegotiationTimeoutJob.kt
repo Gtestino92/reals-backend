@@ -62,9 +62,9 @@ class SchedulingNegotiationTimeoutJob(
                 )
             } catch (ex: Exception) {
                 log.error(
-                    "SchedulingNegotiationTimeoutJob - failed for connection={}: {}",
+                    "SchedulingNegotiationTimeoutJob - failed for connection={}",
                     connection.id,
-                    ex.message
+                    ex
                 )
             }
         }

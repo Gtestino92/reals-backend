@@ -76,9 +76,9 @@ class MatchExpirationJob(
                     )
                 } catch (ex: Exception) {
                     log.error(
-                        "MatchExpirationJob - failed to expire match={}: {}",
+                        "MatchExpirationJob - failed to expire match={}",
                         match.id,
-                        ex.message
+                        ex
                     )
                 }
             }
@@ -105,9 +105,9 @@ class MatchExpirationJob(
                     )
                 } catch (ex: Exception) {
                     log.warn(
-                        "MatchExpirationJob (fallback) - skipped match={}: {}",
+                        "MatchExpirationJob (fallback) - skipped match={}",
                         review.matchId,
-                        ex.message
+                        ex
                     )
                 }
             }
