@@ -4,6 +4,7 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.repository.UserRepository
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -18,6 +19,7 @@ class MatchService(
     private val matchRepository: MatchRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
+    private val userRepository: UserRepository,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -46,6 +48,8 @@ class MatchService(
      * The first ChatSession must be started separately via ChatService.startFirstChat().
      */
     fun createMatch(userAId: UUID, userBId: UUID): Match {
+
+        lockUsers(userAId, userBId)
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
@@ -88,6 +92,15 @@ class MatchService(
 
         check(active < maxActiveMatches) {
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
+        }
+    }
+
+    private fun lockUsers(vararg userIds: UUID) {
+        val distinctIds = userIds.distinct()
+        val locked = userRepository.findAllByIdForUpdate(distinctIds)
+
+        check(locked.size == distinctIds.size) {
+            "Cannot create match: one or more users were not found"
         }
     }
 

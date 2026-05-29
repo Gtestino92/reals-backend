@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.UserRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -15,6 +16,7 @@ import java.util.*
 class ConnectionService(
     private val connectionRepository: ConnectionRepository,
     private val lockRepository: ActiveEngagementLockRepository,
+    private val userRepository: UserRepository,
 
     @param:Value("\${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
@@ -56,6 +58,8 @@ class ConnectionService(
 
         connectionRepository.findByMatchId(match.id)?.let { return it }
 
+        lockUsers(match.userAId, match.userBId)
+
         checkConnectionLimit(match.userAId)
         checkConnectionLimit(match.userBId)
 
@@ -93,6 +97,15 @@ class ConnectionService(
 
         check(active < maxActiveConnections) {
             "User $userId has reached the maximum number of active connections ($maxActiveConnections)"
+        }
+    }
+
+    private fun lockUsers(vararg userIds: UUID) {
+        val distinctIds = userIds.distinct()
+        val locked = userRepository.findAllByIdForUpdate(distinctIds)
+
+        check(locked.size == distinctIds.size) {
+            "Cannot create connection: one or more users were not found"
         }
     }
 
