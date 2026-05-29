@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.matching.CompatibilityEvaluator
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -15,6 +16,7 @@ class MatchmakingService(
 
     private val queueRepository: MatchmakingQueueRepository,
     private val lockRepository: ActiveEngagementLockRepository,
+    private val userRepository: UserRepository,
     private val penaltyService: PenaltyService,
     private val profileService: ProfileService,
     private val compatibilityEvaluator: CompatibilityEvaluator,
@@ -32,6 +34,8 @@ class MatchmakingService(
      *  - profile is ACTIVE (photo validation already happened at profile activation)
      */
     fun enqueue(userId: UUID) {
+
+        lockUser(userId)
 
         val activeMatches = lockRepository.countByUserIdAndEngagementType(
             userId,
@@ -60,6 +64,12 @@ class MatchmakingService(
         queueRepository.save(
             MatchmakingQueueEntry(userId = userId)
         )
+    }
+
+    private fun lockUser(userId: UUID) {
+        check(userRepository.findAllByIdForUpdate(listOf(userId)).size == 1) {
+            "Cannot enqueue: user $userId was not found"
+        }
     }
 
     fun dequeue(userId: UUID) {
