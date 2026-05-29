@@ -40,7 +40,7 @@ class RequestCorrelationIdFilter : OncePerRequestFilter() {
     }
 
     companion object {
-        const val REQUEST_ID_HEADER = "X-Reals-Request-Id"
+        const val REQUEST_ID_HEADER = "X-Request-Id"
         const val MDC_KEY = "requestId"
         private const val MAX_REQUEST_ID_LENGTH = 100
     }
