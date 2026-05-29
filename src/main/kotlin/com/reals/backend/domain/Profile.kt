@@ -38,6 +38,10 @@ data class Profile(
     @Id
     var id: UUID = UUID.randomUUID(),
 
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
+
     @Column(name = "user_id", nullable = false)
     var userId: UUID,
 

@@ -130,6 +130,10 @@ class ConnectionService(
 
         val connection = findByIdOrThrow(connectionId)
 
+        if (connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
+            return connection
+        }
+
         check(connection.state == ConnectionState.SCHEDULING_PHASE) {
             "Cannot transition to SECOND_CHAT_SCHEDULED: connection is in state ${connection.state}"
         }
@@ -147,6 +151,10 @@ class ConnectionService(
     fun transitionToSecondChatAvailable(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+
+        if (connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
+            return connection
+        }
 
         check(connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
             "Cannot transition to SECOND_CHAT_AVAILABLE: connection is in state ${connection.state}"
@@ -166,6 +174,10 @@ class ConnectionService(
 
         val connection = findByIdOrThrow(connectionId)
 
+        if (connection.state == ConnectionState.SECOND_CHAT) {
+            return connection
+        }
+
         check(connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
             "Cannot transition to SECOND_CHAT: connection is in state ${connection.state}"
         }
@@ -182,6 +194,10 @@ class ConnectionService(
     fun closeConnection(connectionId: UUID) {
 
         val connection = findByIdOrThrow(connectionId)
+
+        if (connection.state == ConnectionState.CLOSED) {
+            return
+        }
 
         check(
             connection.state == ConnectionState.SCHEDULING_PHASE ||
