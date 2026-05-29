@@ -2,9 +2,8 @@ package com.reals.backend.config.filter
 
 /*
 TODO(firebase):
-Uncomment when firebase-admin:9.2.0 is available in the local Maven repo.
-
-See FirebaseConfig.kt for activation steps.
+Firebase Admin is already declared in pom.xml. Activate this filter together
+with FirebaseConfig and register it in SecurityConfig for dev/prod.
 
 Flow when active:
 1. Extract Bearer token from Authorization header.

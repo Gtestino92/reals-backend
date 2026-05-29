@@ -2,26 +2,10 @@ package com.reals.backend.config
 
 /*
 TODO(firebase):
-Uncomment when firebase-admin:9.2.0
-is available in local Maven repo.
-
-Steps to activate:
-
-1. Download firebase-admin-9.2.0.jar and run:
-
-mvn install:install-file \
--Dfile=firebase-admin-9.2.0.jar \
--DgroupId=com.google.firebase \
--DartifactId=firebase-admin \
--Dversion=9.2.0 \
--Dpackaging=jar
-
-2. Set env:
-FIREBASE_SERVICE_ACCOUNT_PATH=/path/to/key.json
-
-3. Uncomment this file and FirebaseTokenFilter.kt
-
-4. Add FirebaseTokenFilter to SecurityConfig
+Firebase Admin is already declared in pom.xml. To activate production auth:
+1. Replace this placeholder with active configuration.
+2. Provide FIREBASE_SERVICE_ACCOUNT_PATH or platform default credentials.
+3. Enable FirebaseTokenFilter in SecurityConfig for dev/prod.
 */
 
 /*
