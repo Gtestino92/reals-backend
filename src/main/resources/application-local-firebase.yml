@@ -1,7 +1,7 @@
 spring:
   config:
     activate:
-      on-profile: local-nodb
+      on-profile: local-firebase
 
   datasource:
     url: jdbc:h2:file:./data/realsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
@@ -28,9 +28,10 @@ logging:
     root: INFO
 
 scheduler:
-  # Local manual testing should be deterministic. Use /api/dev/jobs/.../run
-  # endpoints from Bruno instead of background execution.
   enabled: false
+
+firebase:
+  service-account-path: ./secrets/reals-backend-firebase-credentials-dev.json
 
 profile:
   photos:

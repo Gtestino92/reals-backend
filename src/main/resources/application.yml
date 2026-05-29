@@ -3,7 +3,10 @@ spring:
     name: reals-backend
 
   profiles:
-    active: local-nodb
+    active: local-firebase
+
+  jpa:
+    open-in-view: false
 
 logging:
   level:
@@ -111,3 +114,5 @@ engagement:
   # Maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
   max-active-connections: 2
+
+kind: Application

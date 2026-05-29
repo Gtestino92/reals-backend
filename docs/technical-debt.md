@@ -23,7 +23,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Gamified reputation badges.
 - Production trust score based on real behavior.
 - Full moderation workflow for safety reports. Current implementation records safety cancellation and applies a penalty, but no manual review workflow exists yet.
-- Full Firebase/JWT production authentication flow.
+- Firebase/JWT backend wiring exists for `dev` and `prod`, but it still needs a real Firebase project, service account configuration and manual token validation before production use.
 - Own media storage for profile photos with S3. `ProfilePhoto` already has storage provider/bucket/key fields, but upload endpoints, presigned URL generation, object lifecycle, quarantine path and moderation promotion are not implemented yet.
 - Restrict client overrides of photo validation flags (`isPersonPhoto`, `isFullBody`) to local/dev or trusted admin tooling once automatic validation exists.
 - Identity verification is only represented by `Profile.identityVerified` for now; no dedicated identity-verification provider is called yet.

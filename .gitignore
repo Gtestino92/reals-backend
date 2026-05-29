@@ -10,6 +10,9 @@ target/
 
 ### Local data ###
 data/
+secrets/
+*firebase*credentials*.json
+*service-account*.json
 
 ### Kotlin ###
 .kotlin
