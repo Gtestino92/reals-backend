@@ -112,7 +112,7 @@ data class ChatExitOutcomeResponse(
     val penalizedUserId: UUID?
 ) {
     companion object {
-        fun from(o: com.reals.backend.service.ChatExitOutcome) =
+        fun from(o: ChatExitOutcome) =
             ChatExitOutcomeResponse(
                 chat = ChatResponse.from(o.chat),
                 exitRequest = ChatExitRequestResponse.from(o.exitRequest),

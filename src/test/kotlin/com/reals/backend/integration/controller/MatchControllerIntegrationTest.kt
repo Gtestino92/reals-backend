@@ -1,0 +1,71 @@
+package com.reals.backend.integration.controller
+
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.MatchState
+import com.reals.backend.integration.ControllerIT
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+
+class MatchControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `chat decision endpoint returns match state after both approvals`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.CHAT_ACTIVE.name)))
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+    }
+
+    @Test
+    fun `duplicate chat decision maps domain conflict to http 409`() {
+        val setup = createMatchWithFirstChat()
+        chatService.recordChatDecision(
+            matchId = setup.matchId,
+            userId = setup.userAId,
+            decision = ChatContinueDecision.APPROVED
+        )
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error", equalTo("Conflict")))
+            .andExpect(jsonPath("$.message", containsString("already submitted")))
+    }
+
+    @Test
+    fun `record personal message returns no content`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Me caiste bien"}""")
+        )
+            .andExpect(status().isNoContent)
+    }
+}

@@ -3,10 +3,16 @@
 Automated tests live under:
 
 ```text
-src/test/kotlin
+src/test/kotlin/com/reals/backend/integration
 ```
 
-The current suite uses Spring Boot integration tests with the `test` profile and H2 in-memory. This is intentional: core behavior depends on services, repositories, JPA mappings, transactions and schema shape.
+The suite uses Spring Boot integration tests with the `test` profile and H2 in-memory.
+
+Structure:
+
+- `integration/support`: shared fixtures and base classes. `BaseIT` is the common service-level base; `ControllerIT` adds `MockMvc` and HTTP authentication helpers.
+- `integration/service`: service-level integration tests. These load the Spring context and execute real services, repositories, JPA mappings and transactions against H2, then assert persisted state.
+- `integration/controller`: HTTP/controller integration tests. These use `MockMvc` to validate routing, JSON request/response shape, status codes, exception mapping, security/current-user resolution and controller wiring without duplicating every business flow.
 
 ## Why Integration Tests First
 
@@ -18,22 +24,55 @@ Unit tests are still useful for pure logic, for example compatibility scoring or
 - repository queries
 - service orchestration across match, chat, visual review, connection and scheduling
 
-For those cases, service-level integration tests catch more realistic regressions than mocks.
+For those cases, service-level integration tests catch more realistic regressions than mocks. Controller integration tests are intentionally smaller and focus on the HTTP contract.
 
 ## Current Coverage
 
-`UserFlowIntegrationTest` covers:
+`HappyPathIntegrationTest` covers:
 
 - happy path from profile creation to closed connection
+
+`UserFlowGuardrailIntegrationTest` covers:
+
 - profile activation photo requirements
 - draft profile queue rejection
 - duplicate chat decision rejection
-- chat rejection state and lock release
+- visual approval requiring partner-message read receipt
 - non-participant chat message rejection
 - non-participant scheduling proposal rejection
 - own-proposal acceptance rejection
+- configured scheduling proposal-list maximum
+
+`UserFlowAlternateOutcomeIntegrationTest` covers:
+
+- chat rejection state and lock release
+- visual rejection without connection creation
+- incompatible queued users producing no match
 - second-chat slot auto-confirmation across ordered proposal lists
 - scheduling preference tie-breaks and explicit round rejection
+- scheduling failure after max rounds
+
+`ChatExitIntegrationTest` covers:
+
+- mutual first-chat cancellation without penalties
+- safety cancellation and reported-user penalty
+- unilateral second-chat cancellation penalty behavior
+
+`SchedulerFlowIntegrationTest` covers:
+
+- inactive chat detection
+- first-chat timeout expiration
+- visual phase expiration
+- scheduling timeout
+- scheduled second-chat availability before activation
+- second-chat activation on user entry or first message
+
+Controller integration tests cover representative HTTP contract checks for:
+
+- `ProfileController` and `MeController`: authenticated current-user resolution and profile creation JSON.
+- `MatchController`: chat decision response, conflict mapping and personal-message write.
+- `ConnectionController`: proposal submission, negotiation confirmation and proposal validation errors.
+- `ChatController`: sending/listing messages, non-participant rejection and mutual cancellation over HTTP.
 
 Bruno also includes manual HTTP collections that are convenient to run against the local application:
 
@@ -46,10 +85,10 @@ The `/api/dev/...` endpoints are only exposed for `local`, `local-nodb` and `dev
 
 ## Running Tests
 
-From a shell with Maven and Java configured:
+From a shell with Java configured:
 
 ```text
-mvn test
+.\mvnw.cmd test
 ```
 
-On this machine, Maven was run through IntelliJ IDEA's bundled Maven with `JAVA_HOME` pointing at the IntelliJ JBR.
+Use `.\mvnw test` on Unix-like shells.

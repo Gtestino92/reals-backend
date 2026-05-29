@@ -1,0 +1,84 @@
+package com.reals.backend.integration.controller
+
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatExitRequestStatus
+import com.reals.backend.domain.ChatExitRequestType
+import com.reals.backend.domain.ChatStatus
+import com.reals.backend.integration.ControllerIT
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.hasSize
+import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+
+class ChatControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `send and list messages over http`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Hola desde controller"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.senderId", equalTo(setup.userAId.toString())))
+            .andExpect(jsonPath("$.content", equalTo("Hola desde controller")))
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$", hasSize<Any>(1)))
+            .andExpect(jsonPath("$[0].senderId", equalTo(setup.userAId.toString())))
+    }
+
+    @Test
+    fun `non participant cannot list chat messages`() {
+        val setup = createMatchWithFirstChat()
+        val stranger = userService.createUser("http-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error", equalTo("Conflict")))
+    }
+
+    @Test
+    fun `mutual cancellation request and acceptance close chat over http`() {
+        val setup = createMatchWithFirstChat()
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+
+        val exitRequestBody =
+            mockMvc.perform(
+                post("/api/chats/${setup.firstChatId}/exit-requests")
+                    .with(authenticatedAs(setup.userAId))
+                    .contentType(jsonContentType)
+                    .content("""{"reason":"NO_LONGER_INTERESTED","details":"Mutual cancellation test"}""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.type", equalTo(ChatExitRequestType.MUTUAL_CANCEL.name)))
+                .andExpect(jsonPath("$.status", equalTo(ChatExitRequestStatus.PENDING.name)))
+                .andReturn()
+                .response
+                .contentAsString
+
+        val exitRequestId = objectMapper.readTree(exitRequestBody).get("id").asText()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/$exitRequestId/acceptance")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
+            .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.ACCEPTED.name)))
+            .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+    }
+}

@@ -137,8 +137,10 @@ From `application-local-nodb.yml`:
 
 ## Testing And Verification
 
-- Integration tests live under `src/test/kotlin` and use the `test` Spring profile with H2 in-memory.
+- Integration tests live under `src/test/kotlin/com/reals/backend/integration` and use the `test` Spring profile with H2 in-memory.
+- Shared integration fixtures belong under `integration/support`; keep base classes out of the concrete test package levels.
 - Prefer service-level integration tests for business rules that depend on JPA, transactions, repositories or schema.
+- Use controller integration tests for HTTP contract coverage: routing, JSON shape, status codes, exception mapping and current-user resolution.
 - Important areas to test when touched: state transitions, invalid transitions, engagement limits, queue behavior, scheduling confirmation/failure, profile activation, penalties and scheduler-triggered expiration.
 - If automated tests cannot be run, state that clearly and describe the manual/code-level verification performed.
 

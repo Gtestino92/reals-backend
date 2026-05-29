@@ -5,6 +5,7 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
+import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.repository.ChatExitRequestRepository
@@ -285,10 +286,3 @@ class ChatExitService(
         }
     }
 }
-
-data class ChatExitOutcome(
-    val chat: Chat,
-    val exitRequest: ChatExitRequest,
-    val penaltyApplied: Boolean,
-    val penalizedUserId: UUID?
-)
