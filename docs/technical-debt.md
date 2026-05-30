@@ -33,6 +33,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
 - Local profile uses H2 file storage and disables Flyway.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
+- Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run and a managed PostgreSQL provider such as Neon or Supabase.
 
 ## Observability And Error Handling
 

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
-@Profile("local-nodb")
+@Profile("local-nodb", "local-postgres")
 class DevAutoAuthFilter : OncePerRequestFilter() {
 
     override fun doFilterInternal(
