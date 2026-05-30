@@ -26,6 +26,14 @@ class UserService(
             }
     }
 
+    fun findByFirebaseUid(firebaseUid: String): User? {
+        require(firebaseUid.isNotBlank()) {
+            "Firebase UID is required"
+        }
+
+        return userRepository.findByFirebaseUid(firebaseUid)
+    }
+
     /**
      * Creates a new user with a unique email.
      * Throws IllegalArgumentException if the email is already registered.
@@ -44,9 +52,9 @@ class UserService(
 
     /**
      * Returns the user with the given Firebase UID, creating one if it does not exist yet.
-     * Called by FirebaseTokenFilter on every authenticated request.
+     * This is intentionally called only from the explicit Firebase provisioning endpoint.
      */
-    fun findOrCreate(
+    fun provisionFromFirebase(
         firebaseUid: String,
         email: String? = null
     ): User {

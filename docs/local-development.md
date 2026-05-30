@@ -85,6 +85,47 @@ The local Firebase service-account JSON is expected at:
 
 The `secrets/` directory is ignored by Git and must never be committed.
 
+## Local PostgreSQL
+
+Use `local-postgres` when you want to test the production-style database path
+locally. This profile uses PostgreSQL, enables Flyway and validates the JPA
+model against the migrated schema.
+
+Start PostgreSQL:
+
+```powershell
+docker compose up -d postgres
+```
+
+Run the app with:
+
+```text
+SPRING_PROFILES_ACTIVE=local-postgres
+```
+
+Default connection:
+
+```text
+JDBC URL: jdbc:postgresql://localhost:5432/reals
+Username: reals
+Password: reals
+```
+
+This profile uses the same dev auto-auth behavior as `local-nodb`, so existing
+Bruno local flows can run without Firebase tokens. It disables automatic
+schedulers; use the dev job endpoints for deterministic manual testing.
+
+Useful database commands:
+
+```powershell
+docker compose logs -f postgres
+docker compose down
+docker compose down -v
+```
+
+Use `docker compose down -v` only when you want to delete the local PostgreSQL
+data volume and force Flyway to recreate the schema from scratch.
+
 ## Local Jobs
 
 `local-nodb` disables automatic scheduled execution:
@@ -124,6 +165,8 @@ Default application rules are stricter:
 ## Flyway And Schema
 
 Local `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update`.
+
+Local `local-postgres` enables Flyway and uses Hibernate `ddl-auto: validate`.
 
 Production-like schema changes should be represented with migrations under:
 

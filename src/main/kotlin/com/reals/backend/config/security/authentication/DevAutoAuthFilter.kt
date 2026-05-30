@@ -1,5 +1,6 @@
-package com.reals.backend.config.filter
+package com.reals.backend.config.security.authentication
 
+import com.reals.backend.config.security.SecurityRoles
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -11,7 +12,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
-@Profile("local-nodb")
+@Profile("local-nodb", "local-postgres")
 class DevAutoAuthFilter : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -25,7 +26,7 @@ class DevAutoAuthFilter : OncePerRequestFilter() {
         val auth = UsernamePasswordAuthenticationToken(
             userId,
             null,
-            listOf(SimpleGrantedAuthority("ROLE_USER"))
+            listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
         )
 
         SecurityContextHolder.getContext().authentication = auth

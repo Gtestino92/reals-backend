@@ -1,11 +1,11 @@
 meta {
-  name: 05 Get Me New Firebase User
+  name: 07 Provision New Firebase User
   type: http
-  seq: 5
+  seq: 7
 }
 
-get {
-  url: {{baseUrl}}/api/me
+post {
+  url: {{baseUrl}}/api/me/provision
   body: none
   auth: none
 }
@@ -15,9 +15,14 @@ headers {
 }
 
 script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK or 201 Created, got ${status}`);
+  }
+
   const body = res.getBody();
   if (!body || !body.id) {
-    throw new Error("Expected backend user response with id.");
+    throw new Error("Expected provisioned backend user response with id.");
   }
 
   const expectedEmail = bru.getEnvVar("firebase_new_email");

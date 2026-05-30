@@ -1,4 +1,4 @@
-package com.reals.backend.config
+package com.reals.backend.config.security.currentuser
 
 import org.springframework.core.MethodParameter
 import org.springframework.security.core.context.SecurityContextHolder
