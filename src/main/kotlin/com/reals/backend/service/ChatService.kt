@@ -313,10 +313,16 @@ class ChatService(
             userId = userId
         )
 
-        return activateAvailableSecondChatIfNeeded(
+        val visibleChat = activateAvailableSecondChatIfNeeded(
             chat = chat,
             userId = userId
         )
+
+        check(visibleChat.status == ChatStatus.ACTIVE) {
+            "Second chat for connection $connectionId is not active (status: ${visibleChat.status})"
+        }
+
+        return visibleChat
     }
 
     private fun activateAvailableSecondChatIfNeeded(
