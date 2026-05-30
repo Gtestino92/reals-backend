@@ -1,5 +1,5 @@
 meta {
-  name: 62 Get Active Second Chat After Timeout Should Fail
+  name: 62 Get Second Chat By Connection After Timeout Should Fail
   type: http
   seq: 62
 }
@@ -8,6 +8,10 @@ get {
   url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/chat
   body: none
   auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
 }
 
 script:post-response {
