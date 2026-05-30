@@ -1,10 +1,11 @@
-package com.reals.backend.config
+package com.reals.backend.config.security
 
-import com.reals.backend.config.filter.DevAutoAuthFilter
-import com.reals.backend.config.filter.FirebaseTokenFilter
+import com.reals.backend.config.security.authentication.DevAutoAuthFilter
+import com.reals.backend.config.security.authentication.FirebaseTokenFilter
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -68,7 +69,9 @@ class SecurityConfig(
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
-                    .requestMatchers("/api/**").authenticated()
+                    .requestMatchers(HttpMethod.POST, "/api/me/provision")
+                    .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
+                    .requestMatchers("/api/**").hasRole(SecurityRoles.USER)
                     .anyRequest().denyAll()
             }
 

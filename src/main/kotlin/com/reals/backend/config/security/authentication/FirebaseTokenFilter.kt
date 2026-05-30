@@ -1,7 +1,8 @@
-package com.reals.backend.config.filter
+package com.reals.backend.config.security.authentication
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -61,17 +62,25 @@ class FirebaseTokenFilter(
             val decoded = FirebaseAuth.getInstance()
                 .verifyIdToken(token)
 
-            val user = userService.findOrCreate(
-                firebaseUid = decoded.uid,
-                email = decoded.email
-            )
+            val user = userService.findByFirebaseUid(decoded.uid)
 
             SecurityContextHolder.getContext().authentication =
-                UsernamePasswordAuthenticationToken(
-                    user.id.toString(),
-                    null,
-                    listOf(SimpleGrantedAuthority("ROLE_USER"))
-                )
+                if (user == null) {
+                    UsernamePasswordAuthenticationToken(
+                        FirebasePrincipal(
+                            uid = decoded.uid,
+                            email = decoded.email
+                        ),
+                        null,
+                        listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
+                    )
+                } else {
+                    UsernamePasswordAuthenticationToken(
+                        user.id.toString(),
+                        null,
+                        listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                    )
+                }
         } catch (ex: FirebaseAuthException) {
             log.debug("Firebase token rejected: ${ex.message}")
             SecurityContextHolder.clearContext()
