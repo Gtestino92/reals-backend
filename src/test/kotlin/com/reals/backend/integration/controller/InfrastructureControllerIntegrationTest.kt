@@ -36,4 +36,10 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status", equalTo("UP")))
     }
+
+    @Test
+    fun `actuator info is available without authentication`() {
+        mockMvc.perform(get("/actuator/info"))
+            .andExpect(status().isOk)
+    }
 }
