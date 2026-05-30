@@ -21,6 +21,14 @@ class ChatTimeoutJob(
     @Scheduled(fixedDelayString = "\${scheduler.chat-timeout-job.fixed-delay}")
     @SchedulerLock(name = "ChatTimeoutJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
     fun run() {
+        processTimedOutChats()
+    }
+
+    fun runNowForDev() {
+        processTimedOutChats()
+    }
+
+    private fun processTimedOutChats() {
         val expiredChats = chatService.findTimedOutChats()
         if (expiredChats.isEmpty()) return
 

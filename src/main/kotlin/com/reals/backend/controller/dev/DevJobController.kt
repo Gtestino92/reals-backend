@@ -31,7 +31,7 @@ class DevJobController(
     @PostMapping("/chat-timeout/run")
     fun runChatTimeout(): ResponseEntity<DevJobRunResponse> =
         runJob("ChatTimeoutJob") {
-            requireJob(chatTimeoutJob, "ChatTimeoutJob").run()
+            requireJob(chatTimeoutJob, "ChatTimeoutJob").runNowForDev()
         }
 
     @PostMapping("/inactivity-check/run")
