@@ -1,4 +1,4 @@
-package com.reals.backend.config
+package com.reals.backend.config.security.currentuser
 
 /**
  * Marks a controller parameter to be resolved with the authenticated user id.

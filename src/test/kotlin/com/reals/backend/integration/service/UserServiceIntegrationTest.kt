@@ -9,10 +9,10 @@ import java.util.UUID
 class UserServiceIntegrationTest : BaseIT() {
 
     @Test
-    fun `find or create creates user from firebase uid and email`() {
+    fun `provision from firebase creates user from firebase uid and email`() {
         val firebaseUid = "firebase-${UUID.randomUUID()}"
 
-        val user = userService.findOrCreate(
+        val user = userService.provisionFromFirebase(
             firebaseUid = firebaseUid,
             email = "Firebase.User@Example.com"
         )
@@ -23,11 +23,11 @@ class UserServiceIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `find or create links existing email user to firebase uid`() {
+    fun `provision from firebase links existing email user to firebase uid`() {
         val existing = userService.createUser("linked-${UUID.randomUUID()}@example.com")
         val firebaseUid = "firebase-${UUID.randomUUID()}"
 
-        val linked = userService.findOrCreate(
+        val linked = userService.provisionFromFirebase(
             firebaseUid = firebaseUid,
             email = existing.email
         )
