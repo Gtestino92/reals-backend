@@ -72,7 +72,7 @@ Rules:
 - slots must be aligned to half-hour boundaries
 - user must belong to the connection
 - user cannot accept their own proposal
-- acceptor must have submitted their own proposal list before accepting a partner proposal
+- a participant can accept a partner proposal without first submitting their own list
 - overlapping proposed instants auto-confirm
 
 If more than one slot overlaps, the backend chooses the slot with the lowest combined preference order. If that still ties, it chooses the earliest agreed slot. If there is no overlap after both users submit, proposals remain visible so either participant can accept one partner slot or explicitly reject the round. Rejection opens the next round automatically unless max rounds has been reached.

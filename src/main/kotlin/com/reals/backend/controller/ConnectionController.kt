@@ -120,7 +120,6 @@ class ConnectionController(
      *
      * Rules enforced by SchedulingService
      *  - [userId] must NOT be the proposer of [proposalId]
-     *  - [userId] must have already submitted their own proposal this round
      *  - Once confirmed -> Connection transitions to SECOND_CHAT_SCHEDULED. The second chat
      *    starts at confirmedDateTime.
      */

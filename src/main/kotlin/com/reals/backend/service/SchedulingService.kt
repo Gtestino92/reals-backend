@@ -186,7 +186,6 @@ class SchedulingService(
      *
      * Rules:
      * - [acceptorUserId] must NOT be the proposer of [proposalId].
-     * - [acceptorUserId] must have already submitted their own proposals this round.
      * - The proposal must be in PENDING state.
      * - Confirms the negotiation and transitions Connection to SECOND_CHAT_SCHEDULED.
      */
@@ -206,16 +205,6 @@ class SchedulingService(
 
         check(proposal.userId != acceptorUserId) {
             "User $acceptorUserId cannot accept their own proposal"
-        }
-
-        check(
-            proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                proposal.connectionId,
-                acceptorUserId,
-                proposal.roundNumber
-            )
-        ) {
-            "User $acceptorUserId must submit their own proposals before accepting the partner's"
         }
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
