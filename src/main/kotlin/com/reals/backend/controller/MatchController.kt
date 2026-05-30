@@ -56,18 +56,16 @@ class MatchController(
         @PathVariable matchId: UUID
     ): ResponseEntity<VisualProfileResponse> {
 
-        val match = matchService.findByIdOrThrow(
-            matchId = matchId
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
         )
 
         val partnerId =
             when (userId) {
                 match.userAId -> match.userBId
                 match.userBId -> match.userAId
-                else ->
-                    throw IllegalArgumentException(
-                        "User $userId does not belong to match $matchId"
-                    )
+                else -> error("User was already validated as match participant")
             }
 
         val partnerProfile = profileService.findByUserId(partnerId)

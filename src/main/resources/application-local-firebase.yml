@@ -1,0 +1,41 @@
+spring:
+  config:
+    activate:
+      on-profile: local-firebase
+
+  datasource:
+    url: jdbc:h2:file:./data/realsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+
+  flyway:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+
+scheduler:
+  enabled: false
+
+firebase:
+  service-account-path: ./secrets/reals-backend-firebase-credentials-dev.json
+
+profile:
+  photos:
+    max-count: 9
+    required-count: 4
+    min-person-photos: 1
+    min-full-body-photos: 1

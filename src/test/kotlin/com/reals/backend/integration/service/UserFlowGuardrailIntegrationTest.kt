@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
@@ -110,7 +111,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val setup = createConnectionInSchedulingPhase()
         val stranger = userService.createUser("proposal-stranger-${UUID.randomUUID()}@example.com")
 
-        assertThrows<IllegalStateException> {
+        assertThrows<AccessDeniedException> {
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,
@@ -134,6 +135,24 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
                 acceptorUserId = setup.userAId
             )
         }
+    }
+
+    @Test
+    fun `user can accept partner proposal without submitting own proposal`() {
+        val setup = createConnectionInSchedulingPhase()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = futureHalfHourSlot()
+        )
+
+        val negotiation = schedulingService.acceptProposal(
+            proposalId = proposal.id,
+            acceptorUserId = setup.userBId
+        )
+
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(proposal.proposedDateTime.toInstant(), negotiation.confirmedDateTime?.toInstant())
     }
 
     @Test

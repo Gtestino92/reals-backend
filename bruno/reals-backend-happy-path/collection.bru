@@ -5,4 +5,6 @@ docs {
   The first request generates fresh user UUIDs and a future meeting timestamp.
 
   Local auth uses the X-Dev-User-Id header provided by DevAutoAuthFilter.
+  Firebase auth smoke tests live in `05 Firebase Auth`. They sign in against
+  Firebase REST and store `firebase_id_token` for backend requests.
 }

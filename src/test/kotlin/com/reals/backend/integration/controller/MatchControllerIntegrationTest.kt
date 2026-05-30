@@ -71,6 +71,20 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `non participant cannot get visual profile`() {
+        val setup = createMatchInVisualPhase()
+        val stranger = userService.createUser("visual-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
     fun `record personal message returns no content`() {
         val setup = createMatchInVisualPhase()
 

@@ -1,5 +1,5 @@
 meta {
-  name: 57 Get Second Chat Before Timeout
+  name: 57 Enter Second Chat Before Timeout
   type: http
   seq: 57
 }
@@ -8,6 +8,10 @@ get {
   url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/chat
   body: none
   auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
 }
 
 script:post-response {

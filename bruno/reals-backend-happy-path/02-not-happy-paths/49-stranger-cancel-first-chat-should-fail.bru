@@ -25,4 +25,8 @@ script:post-response {
   if (res.getStatus() !== 409) {
     throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
   }
+  const body = res.getBody();
+  if (!body || body.code !== "DOMAIN_CONFLICT") {
+    throw new Error(`Expected DOMAIN_CONFLICT, got ${body && body.code}`);
+  }
 }

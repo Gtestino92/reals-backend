@@ -11,11 +11,23 @@ enum class ProposalStatus {
 }
 
 @Entity
-@Table(name = "schedule_proposals")
+@Table(
+    name = "schedule_proposals",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uq_schedule_proposal_user_round_order",
+            columnNames = ["connection_id", "user_id", "round_number", "preference_order"]
+        )
+    ]
+)
 data class ScheduleProposal(
 
     @Id
     var id: UUID = UUID.randomUUID(),
+
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
 
     @Column(name = "connection_id", nullable = false)
     var connectionId: UUID,

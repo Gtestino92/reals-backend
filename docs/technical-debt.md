@@ -23,7 +23,8 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Gamified reputation badges.
 - Production trust score based on real behavior.
 - Full moderation workflow for safety reports. Current implementation records safety cancellation and applies a penalty, but no manual review workflow exists yet.
-- Full Firebase/JWT production authentication flow.
+- Firebase/JWT backend wiring exists for `dev` and `prod`, but it still needs a real Firebase project, service account configuration and manual token validation before production use.
+- Split Firebase token validation from local user provisioning. The current filter validates the Firebase token and also creates/synchronizes the local `User` on any protected request. A cleaner production flow would let the filter only authenticate the Firebase principal, then create/sync the local user through an explicit onboarding/provisioning endpoint such as `POST /api/me` or `POST /api/me/onboarding`.
 - Own media storage for profile photos with S3. `ProfilePhoto` already has storage provider/bucket/key fields, but upload endpoints, presigned URL generation, object lifecycle, quarantine path and moderation promotion are not implemented yet.
 - Restrict client overrides of photo validation flags (`isPersonPhoto`, `isFullBody`) to local/dev or trusted admin tooling once automatic validation exists.
 - Identity verification is only represented by `Profile.identityVerified` for now; no dedicated identity-verification provider is called yet.
@@ -33,6 +34,14 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
 - Local profile uses H2 file storage and disables Flyway.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
+
+## Observability And Error Handling
+
+- Add metrics export before production. Actuator health/info is available, but metrics are intentionally disabled for now. Later track HTTP latency/statuses, auth failures by reason, scheduled job runs, processed/skipped/failed item counts and key state transitions.
+- Harden scheduled jobs so one failing record does not abort an entire run. Each job should log a final summary with processed/succeeded/failed/skipped counts.
+- Include exception stacktraces in job failure logs. Avoid logging only `ex.message` for unexpected scheduler failures.
+- Consider explicit domain exception types with stable error codes for frontend handling, instead of relying only on `IllegalArgumentException` and `IllegalStateException`.
+- Add production log policy for sensitive fields. Do not log tokens, chat contents, personal messages, full emails, private media URLs or raw request bodies.
 
 ## Multi-Instance Deployment Risks
 

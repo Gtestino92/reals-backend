@@ -9,7 +9,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -35,7 +34,6 @@ class ScheduledSecondChatStartJob(
         lockAtLeastFor = "PT15S",
         lockAtMostFor = "PT2M"
     )
-    @Transactional
     fun run() {
         val due =
             negotiationRepository.findDueConfirmedNegotiations(
@@ -67,14 +65,13 @@ class ScheduledSecondChatStartJob(
                     return@forEach
                 }
 
-                chatService.startSecondChat(
+                chatService.makeSecondChatAvailable(
                     matchId = connection.matchId,
                     connectionId = connection.id,
                     availableAt = checkNotNull(negotiation.confirmedDateTime) {
                         "Confirmed negotiation ${negotiation.id} has no confirmedDateTime"
                     }
                 )
-                connectionService.transitionToSecondChatAvailable(connection.id)
 
                 log.info(
                     "ScheduledSecondChatStartJob - made second chat available for connection={}",
@@ -82,9 +79,9 @@ class ScheduledSecondChatStartJob(
                 )
             } catch (ex: Exception) {
                 log.error(
-                    "ScheduledSecondChatStartJob - failed for connection={}: {}",
+                    "ScheduledSecondChatStartJob - failed for connection={}",
                     negotiation.connectionId,
-                    ex.message
+                    ex
                 )
             }
         }

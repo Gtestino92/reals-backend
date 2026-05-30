@@ -10,6 +10,10 @@ get {
   auth: none
 }
 
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
 script:post-response {
   if (res.getBody().state !== "CLOSED") {
     throw new Error(`Expected scheduling connection CLOSED, got ${res.getBody().state}`);

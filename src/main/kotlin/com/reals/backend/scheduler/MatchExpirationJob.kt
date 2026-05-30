@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.OffsetDateTime
 
@@ -42,7 +41,6 @@ class MatchExpirationJob(
         lockAtLeastFor = "PT30S",
         lockAtMostFor = "PT2M"
     )
-    @Transactional
     fun run() {
         log.debug(
             "MatchExpirationJob triggered - maxChatDuration={}",
@@ -76,9 +74,9 @@ class MatchExpirationJob(
                     )
                 } catch (ex: Exception) {
                     log.error(
-                        "MatchExpirationJob - failed to expire match={}: {}",
+                        "MatchExpirationJob - failed to expire match={}",
                         match.id,
-                        ex.message
+                        ex
                     )
                 }
             }
@@ -105,9 +103,9 @@ class MatchExpirationJob(
                     )
                 } catch (ex: Exception) {
                     log.warn(
-                        "MatchExpirationJob (fallback) - skipped match={}: {}",
+                        "MatchExpirationJob (fallback) - skipped match={}",
                         review.matchId,
-                        ex.message
+                        ex
                     )
                 }
             }
