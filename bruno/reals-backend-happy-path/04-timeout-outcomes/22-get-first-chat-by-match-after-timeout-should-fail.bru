@@ -1,5 +1,5 @@
 meta {
-  name: 22 Get Active First Chat After Timeout Should Fail
+  name: 22 Get First Chat By Match After Timeout Should Fail
   type: http
   seq: 22
 }
@@ -8,6 +8,10 @@ get {
   url: {{baseUrl}}/api/matches/{{timeoutFirstChatMatchId}}/chat
   body: none
   auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
 }
 
 script:post-response {

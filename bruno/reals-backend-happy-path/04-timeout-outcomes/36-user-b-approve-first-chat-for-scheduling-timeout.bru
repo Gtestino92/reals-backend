@@ -1,11 +1,11 @@
 meta {
-  name: 28 User B Approve Visual Timeout First Chat
+  name: 36 User B Approve First Chat For Scheduling Timeout
   type: http
-  seq: 28
+  seq: 36
 }
 
 post {
-  url: {{baseUrl}}/api/matches/{{timeoutVisualMatchId}}/chat-decision
+  url: {{baseUrl}}/api/matches/{{timeoutSchedulingMatchId}}/chat-decision
   body: json
   auth: none
 }
@@ -23,6 +23,6 @@ body:json {
 
 script:post-response {
   if (res.getBody().state !== "VISUAL_PHASE") {
-    throw new Error("Expected match to enter VISUAL_PHASE.");
+    throw new Error("Expected scheduling scenario to enter VISUAL_PHASE.");
   }
 }
