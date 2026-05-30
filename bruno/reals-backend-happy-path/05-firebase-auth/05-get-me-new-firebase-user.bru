@@ -1,0 +1,29 @@
+meta {
+  name: 05 Get Me New Firebase User
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_new_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected backend user response with id.");
+  }
+
+  const expectedEmail = bru.getEnvVar("firebase_new_email");
+  if (body.email !== expectedEmail) {
+    throw new Error(`Expected backend user email ${expectedEmail}, got ${body.email}`);
+  }
+
+  bru.setEnvVar("firebase_new_backend_user_id", body.id);
+}

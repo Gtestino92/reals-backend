@@ -1,11 +1,11 @@
 meta {
-  name: 51 User A Approve Second Chat Visual
+  name: 27 User A Approve First Chat For Visual Timeout
   type: http
-  seq: 51
+  seq: 27
 }
 
 post {
-  url: {{baseUrl}}/api/matches/{{timeoutSecondChatMatchId}}/visual-decision
+  url: {{baseUrl}}/api/matches/{{timeoutVisualMatchId}}/chat-decision
   body: json
   auth: none
 }
