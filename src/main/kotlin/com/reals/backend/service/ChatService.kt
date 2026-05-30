@@ -308,7 +308,7 @@ class ChatService(
             )
                 ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
 
-        connectionService.findByIdForUserOrThrow(
+        val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,
             userId = userId
         )
@@ -319,7 +319,8 @@ class ChatService(
         )
 
         check(visibleChat.status == ChatStatus.ACTIVE) {
-            "Second chat for connection $connectionId is not active (status: ${visibleChat.status})"
+            "Second chat for connection $connectionId is not active " +
+                "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
         }
 
         return visibleChat
