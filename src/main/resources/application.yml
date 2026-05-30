@@ -8,6 +8,7 @@ spring:
 
   profiles:
     active: local-firebase
+    #active: local-nodb
 
   jpa:
     open-in-view: false

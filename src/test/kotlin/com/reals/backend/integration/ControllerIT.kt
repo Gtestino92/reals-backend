@@ -1,6 +1,8 @@
 package com.reals.backend.integration
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.SecurityRoles
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.http.MediaType
@@ -27,7 +29,22 @@ abstract class ControllerIT : BaseIT() {
             UsernamePasswordAuthenticationToken(
                 userId.toString(),
                 null,
-                listOf(SimpleGrantedAuthority("ROLE_USER"))
+                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+            )
+        )
+
+    protected fun authenticatedWithFirebase(
+        firebaseUid: String,
+        email: String?
+    ): RequestPostProcessor =
+        SecurityMockMvcRequestPostProcessors.authentication(
+            UsernamePasswordAuthenticationToken(
+                FirebasePrincipal(
+                    uid = firebaseUid,
+                    email = email
+                ),
+                null,
+                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
             )
         )
 

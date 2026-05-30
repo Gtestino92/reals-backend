@@ -1,6 +1,6 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.AddProposalRequest
 import com.reals.backend.controller.dto.ChatResponse
 import com.reals.backend.controller.dto.ConnectionResponse

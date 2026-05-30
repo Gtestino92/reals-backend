@@ -1,6 +1,6 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.QueueStatusResponse
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.MatchmakingService
