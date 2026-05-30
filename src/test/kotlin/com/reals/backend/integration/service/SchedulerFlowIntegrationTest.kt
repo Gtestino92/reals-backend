@@ -217,4 +217,29 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
     }
+
+    @Test
+    fun `expired second chat is not visible by connection`() {
+        val setup = createActiveSecondChat()
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        ChatTimeoutJob(chatService).runNowForDev()
+
+        assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(
+            ConnectionState.CLOSED,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            chatService.findVisibleSecondChatOrThrow(
+                connectionId = setup.connectionId,
+                userId = setup.userAId
+            )
+        }
+    }
 }
