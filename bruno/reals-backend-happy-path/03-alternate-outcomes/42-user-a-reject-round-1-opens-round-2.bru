@@ -1,7 +1,7 @@
 meta {
-  name: 45 Open Negotiation Round 3
+  name: 42 User A Reject Round 1 Opens Round 2
   type: http
-  seq: 45
+  seq: 42
 }
 
 post {
@@ -16,7 +16,7 @@ headers {
 
 script:post-response {
   const body = res.getBody();
-  if (body.status !== "PENDING" || body.roundNumber !== 3) {
-    throw new Error(`Expected PENDING round 3, got ${body.status} round ${body.roundNumber}`);
+  if (body.status !== "PENDING" || body.roundNumber !== 2) {
+    throw new Error(`Expected PENDING round 2, got ${body.status} round ${body.roundNumber}`);
   }
 }
