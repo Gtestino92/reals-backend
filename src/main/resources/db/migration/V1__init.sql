@@ -2,6 +2,8 @@
 -- V1 - Initial schema for reals-backend
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- ShedLock table (required by ShedLock library)
 
 CREATE TABLE IF NOT EXISTS shedlock (
