@@ -1,6 +1,6 @@
 # Reals Backend Happy Path
 
-Bruno collection for local `local-nodb` manual testing.
+Bruno collection for local `local-nodb` or `local-postgres` manual testing.
 
 ## How To Use
 
@@ -39,4 +39,4 @@ The first request generates unique test emails and a future half-hour second-cha
 - enter the available second chat, which activates it and starts its timeout window
 - request and accept mutual second-chat cancellation, closing the connection without penalty
 
-This collection assumes local photo requirements from `application-local-nodb.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.
+This collection assumes local photo requirements from `application-local-nodb.yml` or `application-local-postgres.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.

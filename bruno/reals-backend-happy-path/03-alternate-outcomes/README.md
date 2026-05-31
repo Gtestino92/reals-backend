@@ -2,7 +2,7 @@
 
 These are valid business outcomes that do not end in a successful second chat.
 
-Run this folder with the `local` environment after starting the backend with `local-nodb`.
+Run this folder with the `local` environment after starting the backend with `local-nodb` or `local-postgres`.
 
 Execute requests in order from `00`.
 

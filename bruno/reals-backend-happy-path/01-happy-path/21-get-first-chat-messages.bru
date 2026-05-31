@@ -19,7 +19,12 @@ script:post-response {
   if (!Array.isArray(body) || body.length !== 2) {
     throw new Error(`Expected 2 first-chat messages, got ${Array.isArray(body) ? body.length : typeof body}`);
   }
-  if (body[0].senderId !== bru.getEnvVar("userAId") || body[1].senderId !== bru.getEnvVar("userBId")) {
-    throw new Error("Expected first-chat messages from user A then user B.");
+  const expectedUserAId = bru.getEnvVar("userAId");
+  const expectedUserBId = bru.getEnvVar("userBId");
+  if (body[0].senderId !== expectedUserAId || body[1].senderId !== expectedUserBId) {
+    throw new Error(
+      `Expected first-chat messages from user A then user B. ` +
+      `Expected ${expectedUserAId}/${expectedUserBId}, got ${body[0].senderId}/${body[1].senderId}.`
+    );
   }
 }
