@@ -60,6 +60,7 @@ Chat responsibilities are split conservatively:
 
 Known scheduler jobs:
 
+- `MatchmakingJob`
 - `ChatTimeoutJob`
 - `InactivityCheckJob`
 - `MatchExpirationJob`

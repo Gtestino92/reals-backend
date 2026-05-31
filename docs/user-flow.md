@@ -23,7 +23,7 @@ Eligibility checks include:
 - not already queued
 - below active match limit
 
-Candidate pairs are selected by `MatchmakingService.findCandidatePairs`. Match creation is delegated to `MatchService.createMatch`, which creates the match, creates locks and removes both users from the queue.
+Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findCandidatePairs`. Match creation is delegated to `MatchService.createMatch`, which creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
 
 ## 3. First Chat
 
