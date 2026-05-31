@@ -17,7 +17,23 @@ script:post-response {
   }
 
   const match = body.pairs[0];
+  const expectedUserAId = bru.getEnvVar("userAId");
+  const expectedUserBId = bru.getEnvVar("userBId");
+  const participants = [match.userAId, match.userBId];
+
+  if (!participants.includes(expectedUserAId) || !participants.includes(expectedUserBId)) {
+    throw new Error(
+      `Created match does not contain current run users. ` +
+      `Expected ${expectedUserAId}/${expectedUserBId}, got ${match.userAId}/${match.userBId}. ` +
+      `Reset the local database or clear stale matchmaking queue entries.`
+    );
+  }
+
   bru.setEnvVar("matchId", match.id);
+  bru.setEnvVar("matchParticipant1Id", match.userAId);
+  bru.setEnvVar("matchParticipant2Id", match.userBId);
+
+  // Legacy aliases for backend match columns. Do not use these as Bruno persona A/B.
   bru.setEnvVar("matchUserAId", match.userAId);
   bru.setEnvVar("matchUserBId", match.userBId);
 }

@@ -81,7 +81,7 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
 - `04 Timeout Outcomes`: local/dev-only manual checks for deadline-driven jobs. These use `/api/dev/timeouts/...` to move deadlines into the past and `/api/dev/jobs/.../run` to trigger the real jobs deterministically.
 
-The `/api/dev/...` endpoints are only exposed for `local`, `local-nodb` and `dev` profiles. They must not be enabled in production.
+The `/api/dev/...` endpoints are only exposed for `local`, `local-nodb`, `local-postgres` and `dev` profiles. They must not be enabled in production.
 
 ## Running Tests
 
