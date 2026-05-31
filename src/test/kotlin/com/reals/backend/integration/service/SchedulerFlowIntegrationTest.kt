@@ -3,10 +3,13 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.Gender
+import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
+import com.reals.backend.scheduler.MatchmakingJob
 import com.reals.backend.scheduler.MatchExpirationJob
 import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
@@ -19,8 +22,51 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.OffsetDateTime
+import java.util.UUID
 
 class SchedulerFlowIntegrationTest : BaseIT() {
+
+    @Test
+    fun `matchmaking job creates match and first chat from queued users`() {
+        val userA = createActiveProfile(
+            email = "matchmaking-job-a-${UUID.randomUUID()}@example.com",
+            displayName = "Job A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val userB = createActiveProfile(
+            email = "matchmaking-job-b-${UUID.randomUUID()}@example.com",
+            displayName = "Job B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        matchmakingService.enqueue(userA)
+        matchmakingService.enqueue(userB)
+
+        MatchmakingJob(
+            matchmakingProcessorService = matchmakingProcessorService,
+            batchSize = 5
+        ).run()
+
+        val match =
+            matchRepository.findAll()
+                .single {
+                    (it.userAId == userA && it.userBId == userB) ||
+                        (it.userAId == userB && it.userBId == userA)
+                }
+
+        assertEquals(MatchState.CHAT_ACTIVE, match.state)
+        assertEquals(
+            ChatType.FIRST_CHAT,
+            chatRepository.findByMatchIdAndChatType(
+                match.id,
+                ChatType.FIRST_CHAT
+            )?.chatType
+        )
+        assertFalse(matchmakingQueueRepository.existsByUserId(userA))
+        assertFalse(matchmakingQueueRepository.existsByUserId(userB))
+    }
 
     @Test
     fun `fresh chat without messages is not considered inactive`() {

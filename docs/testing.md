@@ -60,6 +60,7 @@ For those cases, service-level integration tests catch more realistic regression
 
 `SchedulerFlowIntegrationTest` covers:
 
+- matchmaking job processing from queue to first chat
 - inactive chat detection
 - first-chat timeout expiration
 - visual phase expiration

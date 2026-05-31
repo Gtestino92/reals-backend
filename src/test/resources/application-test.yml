@@ -24,6 +24,9 @@ logging:
 
 scheduler:
   enabled: false
+  matchmaking-job:
+    fixed-delay: 3600000
+    batch-size: 5
   chat-timeout-job:
     fixed-delay: 3600000
   match-expiration-job:

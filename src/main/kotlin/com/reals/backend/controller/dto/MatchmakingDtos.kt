@@ -48,6 +48,8 @@ data class PersonalMessageRequest(
 
 data class ProcessQueueResponse(
     val matchesCreated: Int,
+    val candidatePairs: Int,
+    val failedPairs: Int,
     val pairs: List<MatchResponse>
 )
 

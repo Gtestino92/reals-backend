@@ -35,6 +35,9 @@ management:
 
 scheduler:
   enabled: true
+  matchmaking-job:
+    fixed-delay: 60000
+    batch-size: 5
   chat-timeout-job:
     fixed-delay: 120000
   match-expiration-job:

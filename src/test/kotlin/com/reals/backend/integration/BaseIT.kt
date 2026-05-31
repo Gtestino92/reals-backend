@@ -14,6 +14,7 @@ import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
+import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
@@ -23,6 +24,7 @@ import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
+import com.reals.backend.service.MatchmakingProcessorService
 import com.reals.backend.service.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.SchedulingService
@@ -50,6 +52,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var matchmakingService: MatchmakingService
+
+    @Autowired
+    protected lateinit var matchmakingProcessorService: MatchmakingProcessorService
 
     @Autowired
     protected lateinit var matchService: MatchService
@@ -83,6 +88,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var matchRepository: MatchRepository
+
+    @Autowired
+    protected lateinit var matchmakingQueueRepository: MatchmakingQueueRepository
 
     @Autowired
     protected lateinit var negotiationRepository: ScheduleNegotiationRepository
