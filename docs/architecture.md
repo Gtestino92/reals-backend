@@ -25,8 +25,8 @@ Schedulers should also call services rather than mutating repositories directly.
 ## Current Stack
 
 - Kotlin 2.2.0.
-- Java 17.
-- Spring Boot 3.5.3.
+- Java 21.
+- Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
 - H2 local database.
 - Oracle and PostgreSQL JDBC drivers are present.
