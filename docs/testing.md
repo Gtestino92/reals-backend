@@ -105,7 +105,8 @@ Pull requests to `development` or `master` run:
 - Maven tests.
 - Docker Compose config validation.
 - Backend Docker image build validation without publishing.
-- Dependency review for high-severity dependency changes.
+- Dependency review for high-severity dependency changes. This is advisory
+  until GitHub Dependency graph is enabled for the repository.
 - CodeQL analysis for Java/Kotlin.
 
 Pushes to `development` or `master` run the same validation and then publish
