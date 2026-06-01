@@ -30,21 +30,36 @@ class MatchmakingJob(
         lockAtMostFor = "PT2M"
     )
     fun run() {
+        val startedAt = System.nanoTime()
+        log.debug("MatchmakingJob - started batchSize={}", batchSize)
+
         val result =
-            matchmakingProcessorService.processBatch(
-                batchSize = batchSize
-            )
+            try {
+                matchmakingProcessorService.processBatch(
+                    batchSize = batchSize
+                )
+            } catch (ex: RuntimeException) {
+                log.error("MatchmakingJob - failed", ex)
+                throw ex
+            }
 
         if (result.candidatePairs == 0) {
-            log.debug("MatchmakingJob - no candidate pairs found")
+            log.debug(
+                "MatchmakingJob - completed candidatePairs=0 matchesCreated=0 failedPairs=0 durationMs={}",
+                elapsedMs(startedAt)
+            )
             return
         }
 
         log.info(
-            "MatchmakingJob - candidatePairs={} matchesCreated={} failedPairs={}",
+            "MatchmakingJob - completed candidatePairs={} matchesCreated={} failedPairs={} durationMs={}",
             result.candidatePairs,
             result.matchesCreated,
-            result.failedPairs
+            result.failedPairs,
+            elapsedMs(startedAt)
         )
     }
+
+    private fun elapsedMs(startedAt: Long): Long =
+        (System.nanoTime() - startedAt) / 1_000_000
 }
