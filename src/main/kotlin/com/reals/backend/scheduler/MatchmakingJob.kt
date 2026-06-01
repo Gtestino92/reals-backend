@@ -17,8 +17,8 @@ import org.springframework.stereotype.Component
 class MatchmakingJob(
     private val matchmakingProcessorService: MatchmakingProcessorService,
 
-    @param:Value("\${scheduler.matchmaking-job.batch-size:5}")
-    private val batchSize: Int
+    @param:Value("\${scheduler.matchmaking-job.max-pairs-per-run:5}")
+    private val maxPairsPerRun: Int
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -31,12 +31,12 @@ class MatchmakingJob(
     )
     fun run() {
         val startedAt = System.nanoTime()
-        log.debug("MatchmakingJob - started batchSize={}", batchSize)
+        log.debug("MatchmakingJob - started maxPairsPerRun={}", maxPairsPerRun)
 
         val result =
             try {
-                matchmakingProcessorService.processBatch(
-                    batchSize = batchSize
+                matchmakingProcessorService.process(
+                    maxPairsPerRun = maxPairsPerRun
                 )
             } catch (ex: RuntimeException) {
                 log.error("MatchmakingJob - failed", ex)

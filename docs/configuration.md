@@ -44,6 +44,12 @@ These files should use placeholders only for environment-specific or secret-back
 
 Do not commit real credentials in any `application-*.yml` file.
 
+## Matchmaking Tuning
+
+`matchmaking.candidate-pair-limit` controls how many SQL-filtered candidate pairs are scored per matchmaking selection. Local and test profiles keep this low for deterministic, cheap checks. Dev/prod use higher starting values and should be adjusted using queue size, job duration and match creation metrics.
+
+`matchmaking.min-compatibility-score` discards scored pairs below the configured threshold. `matchmaking.early-accept-compatibility-score` stops scoring as soon as a strong enough pair is found. Scores are expected to be normalized from `0.0` to `1.0`.
+
 ## How Injection Works
 
 The application only sees environment variables such as `DATABASE_PASSWORD` or `S3_PROFILE_PHOTOS_BUCKET`. The CI/CD or runtime platform is responsible for resolving those values from its own variable store or secret manager before starting the process.
