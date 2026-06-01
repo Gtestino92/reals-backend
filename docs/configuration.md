@@ -5,7 +5,7 @@ Production and shared development profiles should receive environment-specific v
 ## Profiles
 
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
-- `dev`: external database, Flyway enabled by default, schedulers enabled by default.
+- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
 
@@ -21,6 +21,8 @@ Use the deployment platform or secret manager to inject values such as:
 - `DATABASE_USERNAME`
 - `DATABASE_PASSWORD`
 - `FIREBASE_SERVICE_ACCOUNT_PATH`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIREBASE_SERVICE_ACCOUNT_BASE64`
 - `S3_PROFILE_PHOTOS_BUCKET`
 - `S3_REGION`
 - `IDENTITY_VERIFICATION_API_KEY`

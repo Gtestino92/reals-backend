@@ -11,6 +11,9 @@ RUN ./mvnw -DskipTests package
 
 FROM eclipse-temurin:17-jre-jammy
 
+LABEL org.opencontainers.image.source="https://github.com/Gtestino92/reals-backend"
+LABEL org.opencontainers.image.description="Reals backend service"
+
 WORKDIR /app
 
 RUN groupadd --system reals && useradd --system --gid reals reals
