@@ -36,6 +36,9 @@ jobs:
     name: Validate Docker image
     runs-on: ubuntu-latest
     needs: test
+    env:
+      TRIVY_DISABLE_VEX_NOTICE: "true"
+      TRIVY_SKIP_VERSION_CHECK: "true"
 
     steps:
       - name: Checkout
@@ -46,6 +49,56 @@ jobs:
 
       - name: Build backend image
         run: docker build -t reals-backend:ci .
+
+      - name: Scan backend image for critical vulnerabilities
+        id: trivy_dev
+        if: github.ref_name != 'master' && github.base_ref != 'master'
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: reals-backend:ci
+          format: table
+          exit-code: "1"
+          scanners: vuln
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          output: trivy-results.txt
+
+      - name: Scan backend image for high and critical vulnerabilities
+        id: trivy_prod
+        if: github.ref_name == 'master' || github.base_ref == 'master'
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: reals-backend:ci
+          format: table
+          exit-code: "1"
+          scanners: vuln
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          output: trivy-results.txt
+
+      - name: Publish Trivy summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f trivy-results.txt ]; then
+            {
+              echo "### Trivy image scan"
+              echo
+              echo '```text'
+              cat trivy-results.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Enforce Trivy policy
+        if: steps.trivy_dev.outcome == 'failure' || steps.trivy_prod.outcome == 'failure'
+        run: |
+          echo "Trivy image scan failed. See the job summary for the vulnerability table."
+          exit 1
 
   dependency-review:
     name: Dependency review
