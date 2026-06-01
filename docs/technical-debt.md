@@ -7,7 +7,11 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Guided first-chat questions or conversation starters.
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
-- Whether matchmaking should be processed by a scheduler/worker instead of the dev-only `/api/dev/matchmaking/process` endpoint.
+- Matchmaking should not depend on the dev-only `/api/dev/matchmaking/process` endpoint outside local/manual testing. The current queue model should evolve into a real background processor.
+  - Recommended first step: implement a bounded `MatchmakingJob` inside the modular monolith. It should claim queued users in batches with PostgreSQL `FOR UPDATE SKIP LOCKED`, create matches through `MatchService`, start first chats through `ChatService`, log processed/created/skipped/failed counts and be protected by ShedLock.
+  - Keep the matching orchestration in a service method shared by the dev controller and the job, so manual Bruno runs and automatic processing exercise the same business path.
+  - Avoid matching directly inside `enqueue`; immediate matching has lower latency but makes user-facing requests heavier and increases concurrency complexity.
+  - Revisit a dedicated worker process or external queue only if matchmaking volume, latency requirements or CPU cost make the scheduled DB-queue worker too expensive for the app instances.
 - Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`.
 - Decide where geolocation enters the product flow. The likely point is before first-chat matchmaking/search, using profile location plus future latitude/longitude, geohash or search radius fields.
 - Decide final visibility and UX timing for visual-review personal messages. Current behavior allows reading the partner message during visual review and requires reading it before approving if the partner already submitted one.
@@ -32,6 +36,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 - `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
 - Local profile uses H2 file storage and disables Flyway.
+- Upgrade Spring Boot to the latest stable major line, currently `4.x`, once PostgreSQL/Flyway and CI are stable. First keep the current `3.5.x` line on its latest patch release, then do the `4.x` migration in a dedicated branch with full regression testing.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
 - Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run and a managed PostgreSQL provider such as Neon or Supabase.
 

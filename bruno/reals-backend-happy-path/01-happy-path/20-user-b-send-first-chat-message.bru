@@ -20,3 +20,15 @@ body:json {
     "content": "Hola, respondo desde el usuario B."
   }
 }
+
+script:post-response {
+  const body = res.getBody();
+  const expectedUserAId = bru.getEnvVar("userAId");
+  const expectedUserBId = bru.getEnvVar("userBId");
+  if (!body || body.senderId !== expectedUserBId) {
+    throw new Error(
+      `Expected first-chat message from user B (${expectedUserBId}), got ${body?.senderId}. ` +
+      `If it equals user A (${expectedUserAId}), check the local Bruno value for userBId or rerun from 00 Setup Run.`
+    );
+  }
+}

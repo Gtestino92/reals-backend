@@ -14,7 +14,7 @@ interface MatchmakingQueueRepository :
     fun deleteByUserId(userId: UUID)
 
     @Query(
-        value = "SELECT * FROM matchmaking_queue WHERE status='WAITING' ORDER BY entered_at LIMIT :limit FOR UPDATE SKIP LOCKED",
+        value = "SELECT * FROM matchmaking_queue WHERE status='WAITING' ORDER BY entered_at, id LIMIT :limit FOR UPDATE SKIP LOCKED",
         nativeQuery = true
     )
     fun findWaitingSkipLocked(

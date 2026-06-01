@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Profile
 import org.springframework.jdbc.core.JdbcTemplate
 
 @Configuration
-@Profile("local", "local-nodb", "dev")
+@Profile("local", "local-nodb", "local-postgres", "dev")
 class LocalShedLockSchemaConfig {
 
     @Bean
