@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jdk-jammy AS build
+FROM eclipse-temurin:21-jdk-jammy AS build
 
 WORKDIR /workspace
 
@@ -9,7 +9,7 @@ RUN chmod +x mvnw
 COPY src src
 RUN ./mvnw -DskipTests package
 
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 
 LABEL org.opencontainers.image.source="https://github.com/Gtestino92/reals-backend"
 LABEL org.opencontainers.image.description="Reals backend service"
