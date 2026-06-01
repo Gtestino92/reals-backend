@@ -32,8 +32,8 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 - `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
 - Local profile uses H2 file storage and disables Flyway.
-- Upgrade Spring Boot to the latest stable major line, currently `4.x`, once PostgreSQL/Flyway and CI are stable. First keep the current `3.5.x` line on its latest patch release, then do the `4.x` migration in a dedicated branch with full regression testing.
-- Remove the temporary `tomcat.version` override once a Spring Boot 3.5.x patch manages Tomcat 10.1.55 or newer.
+- Keep Spring Boot on the latest stable `4.0.x` patch line until `4.1.x` is stable and the release notes have been reviewed.
+- Remove the temporary `tomcat.version` override once a Spring Boot 4.0.x patch manages Tomcat 11.0.22 or newer.
 - Add production release image tagging when a production environment exists. Dev should keep using moving `development` and immutable `sha-*` tags; production should publish immutable `v*` tags from Git tags, such as `v1.0.0`.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
 - Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run and a managed PostgreSQL provider such as Neon or Supabase.
