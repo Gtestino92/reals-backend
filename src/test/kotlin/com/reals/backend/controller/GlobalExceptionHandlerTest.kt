@@ -5,8 +5,11 @@ import ch.qos.logback.classic.Logger
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.HttpStatus
+import org.springframework.jdbc.CannotGetJdbcConnectionException
 import org.springframework.security.access.AccessDeniedException
+import java.sql.SQLException
 
 class GlobalExceptionHandlerTest {
 
@@ -34,6 +37,25 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    fun `generic wrapper with database connection root cause exposes service unavailable response`() {
+        val response =
+            handler.handleGeneric(
+                RuntimeException(
+                    "JPA wrapped error",
+                    SQLException("connection failure", "08006")
+                )
+            )
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.statusCode)
+        assertEquals("DATABASE_UNAVAILABLE", response.body?.code)
+        assertEquals("Service Unavailable", response.body?.error)
+        assertEquals(
+            "Database is temporarily unavailable. Please retry later.",
+            response.body?.message
+        )
+    }
+
+    @Test
     fun `access denied errors expose stable error code`() {
         val response =
             handler.handleAccessDenied(
@@ -44,5 +66,34 @@ class GlobalExceptionHandlerTest {
         assertEquals("ACCESS_DENIED", response.body?.code)
         assertEquals("Forbidden", response.body?.error)
         assertEquals("User cannot access this resource", response.body?.message)
+    }
+
+    @Test
+    fun `database unavailable errors expose service unavailable response`() {
+        val response =
+            handler.handleDatabaseUnavailable(
+                CannotGetJdbcConnectionException("database is down")
+            )
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.statusCode)
+        assertEquals("DATABASE_UNAVAILABLE", response.body?.code)
+        assertEquals("Service Unavailable", response.body?.error)
+        assertEquals(
+            "Database is temporarily unavailable. Please retry later.",
+            response.body?.message
+        )
+    }
+
+    @Test
+    fun `transient lock errors expose retryable conflict response`() {
+        val response =
+            handler.handleTransientConcurrencyFailure(
+                CannotAcquireLockException("row is locked")
+            )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals("TRANSIENT_CONCURRENCY_CONFLICT", response.body?.code)
+        assertEquals("Conflict", response.body?.error)
+        assertEquals("Resource is temporarily busy. Please retry.", response.body?.message)
     }
 }

@@ -11,8 +11,37 @@ get {
 }
 
 script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "runId",
+    "userAEmail",
+    "userBEmail",
+    "secondChatDateTime",
+    "secondChatDateTimeLater",
+    "secondChatDateTimeLatest",
+    "userAId",
+    "userBId",
+    "profileAId",
+    "profileAStatus",
+    "profileBId",
+    "profileBStatus",
+    "matchId",
+    "matchParticipant1Id",
+    "matchParticipant2Id",
+    "matchUserAId",
+    "matchUserBId",
+    "firstChatId",
+    "connectionId",
+    "negotiationId",
+    "proposalAId",
+    "proposalBId",
+    "secondChatId",
+    "secondChatExitRequestId"
+  ]);
+
   const runId = Date.now().toString();
-  const halfHourSlot = (hoursAhead) => {
+  const futureHalfHourSlot = (daysAhead, slotOffset) => {
+    const hoursAhead = daysAhead * 24 + slotOffset;
     const date = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
     date.setUTCSeconds(0, 0);
     if (date.getUTCMinutes() < 30) {
@@ -22,14 +51,13 @@ script:pre-request {
     }
     return date.toISOString();
   };
-  const secondChatSlot = halfHourSlot(24);
 
   bru.setEnvVar("runId", runId);
   bru.setEnvVar("userAEmail", `ana.local.${runId}@example.com`);
   bru.setEnvVar("userBEmail", `bruno.local.${runId}@example.com`);
-  bru.setEnvVar("secondChatDateTime", secondChatSlot);
-  bru.setEnvVar("secondChatDateTimeLater", halfHourSlot(25));
-  bru.setEnvVar("secondChatDateTimeLatest", halfHourSlot(26));
+  bru.setEnvVar("secondChatDateTime", futureHalfHourSlot(2, 0));
+  bru.setEnvVar("secondChatDateTimeLater", futureHalfHourSlot(2, 1));
+  bru.setEnvVar("secondChatDateTimeLatest", futureHalfHourSlot(2, 2));
 }
 
 script:post-response {
