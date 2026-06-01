@@ -67,7 +67,7 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/ping").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
-                    .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)

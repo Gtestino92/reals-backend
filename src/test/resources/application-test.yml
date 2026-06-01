@@ -22,6 +22,12 @@ logging:
   level:
     root: WARN
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 scheduler:
   enabled: false
   matchmaking-job:
