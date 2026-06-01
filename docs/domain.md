@@ -104,9 +104,11 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 
 ## Compatibility
 
-Compatibility is delegated to `CompatibilityEvaluator`. The current basic evaluator checks:
+Basic filtering is first applied in the matchmaking queue query. Final ranking is delegated to `CompatibilityScorer`. The current basic scorer uses `CompatibilityEvaluator`, which checks:
 
 - mutual gender preference
 - same intention
 
-Advanced criteria such as distance, affinity tags, age tolerance or ML scoring are not implemented.
+Advanced criteria such as distance, affinity tags, age tolerance or probabilistic scoring are not implemented.
+
+The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.

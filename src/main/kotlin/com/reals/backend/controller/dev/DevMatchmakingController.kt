@@ -2,9 +2,7 @@ package com.reals.backend.controller.dev
 
 import com.reals.backend.controller.dto.MatchResponse
 import com.reals.backend.controller.dto.ProcessQueueResponse
-import com.reals.backend.service.ChatService
-import com.reals.backend.service.MatchService
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.MatchmakingProcessorService
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -16,9 +14,7 @@ import org.springframework.web.bind.annotation.RestController
 @Profile("local", "local-nodb", "local-postgres", "dev")
 @RequestMapping("/api/dev/matchmaking")
 class DevMatchmakingController(
-    private val matchmakingService: MatchmakingService,
-    private val matchService: MatchService,
-    private val chatService: ChatService
+    private val matchmakingProcessorService: MatchmakingProcessorService
 ) {
 
     /**
@@ -28,29 +24,18 @@ class DevMatchmakingController(
     @PostMapping("/process")
     fun processQueue(
         @RequestParam(defaultValue = "5")
-        batchSize: Int
+        maxPairsPerRun: Int
     ): ResponseEntity<ProcessQueueResponse> {
-        val pairs = matchmakingService.findCandidatePairs(
-            batchSize = batchSize
+        val result = matchmakingProcessorService.process(
+            maxPairsPerRun = maxPairsPerRun
         )
-
-        val matches = pairs.map { (userAId, userBId) ->
-            val match = matchService.createMatch(
-                userAId = userAId,
-                userBId = userBId
-            )
-
-            chatService.startFirstChat(
-                matchId = match.id
-            )
-
-            MatchResponse.from(match)
-        }
 
         return ResponseEntity.ok(
             ProcessQueueResponse(
-                matchesCreated = matches.size,
-                pairs = matches
+                matchesCreated = result.matchesCreated,
+                candidatePairs = result.candidatePairs,
+                failedPairs = result.failedPairs,
+                pairs = result.matches.map { MatchResponse.from(it) }
             )
         )
     }

@@ -67,9 +67,81 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         matchmakingService.enqueue(userA)
         matchmakingService.enqueue(userB)
 
-        assertTrue(matchmakingService.findCandidatePairs(batchSize = 1).isEmpty())
+        assertTrue(matchmakingService.findNextCandidatePair() == null)
         assertNoMatchLocks(userA, userB)
         assertFalse(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `basic compatible query can skip an incompatible queued user`() {
+        val userA = createActiveProfile(
+            email = "compatible-skip-a-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val incompatibleUser = createActiveProfile(
+            email = "compatible-skip-b-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val userC = createActiveProfile(
+            email = "compatible-skip-c-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip C",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        matchmakingService.enqueue(userA)
+        matchmakingService.enqueue(incompatibleUser)
+        matchmakingService.enqueue(userC)
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, userC), pair)
+        assertFalse(matchExistsForUsers(userA, incompatibleUser))
+    }
+
+    @Test
+    fun `basic compatible query returns bounded deterministic candidate pairs`() {
+        val queuedUsers =
+            (1..4).map { index ->
+                createActiveProfile(
+                    email = "bounded-candidate-$index-${UUID.randomUUID()}@example.com",
+                    displayName = "Bounded Candidate $index",
+                    gender = Gender.FEMALE,
+                    lookingForGender = LookingForGender.WOMEN
+                )
+            }
+
+        queuedUsers.forEach { matchmakingService.enqueue(it) }
+
+        val candidatePairs =
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(limit = 3)
+
+        assertEquals(3, candidatePairs.size)
+        assertEquals(queuedUsers[0], UUID.fromString(candidatePairs[0].userAId))
+        assertEquals(queuedUsers[1], UUID.fromString(candidatePairs[0].userBId))
+    }
+
+    @Test
+    fun `matchmaking service uses FIFO tie breaker when multiple deterministic pairs are compatible`() {
+        val queuedUsers =
+            (1..4).map { index ->
+                createActiveProfile(
+                    email = "fifo-candidate-$index-${UUID.randomUUID()}@example.com",
+                    displayName = "Fifo Candidate $index",
+                    gender = Gender.FEMALE,
+                    lookingForGender = LookingForGender.WOMEN
+                )
+            }
+
+        queuedUsers.forEach { matchmakingService.enqueue(it) }
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(queuedUsers[0], queuedUsers[1]), pair)
     }
 
     @Test
