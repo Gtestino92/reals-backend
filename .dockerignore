@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.mvn/wrapper/maven-wrapper.jar
+target
+data
+secrets
+md_old
+*.iml
+*.log
+*firebase*credentials*.json
+*service-account*.json
+
