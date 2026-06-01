@@ -97,3 +97,17 @@ Use `.\mvnw test` on Unix-like shells.
 
 GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
 `master` or `development`.
+
+## CI Gates
+
+Pull requests to `development` or `master` run:
+
+- Maven tests.
+- Docker Compose config validation.
+- Backend Docker image build validation without publishing.
+- Dependency review for high-severity dependency changes.
+- CodeQL analysis for Java/Kotlin.
+
+Pushes to `development` or `master` run the same validation and then publish
+the backend image to GHCR. The image publishing job does not run for pull
+requests.
