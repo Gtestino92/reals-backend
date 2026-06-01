@@ -126,6 +126,48 @@ docker compose down -v
 Use `docker compose down -v` only when you want to delete the local PostgreSQL
 data volume and force Flyway to recreate the schema from scratch.
 
+## Local Docker App
+
+Build and run the backend plus PostgreSQL with Docker Compose:
+
+```powershell
+docker compose up -d --build backend
+```
+
+The `backend` service runs with:
+
+```text
+SPRING_PROFILES_ACTIVE=local-postgres
+SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reals
+```
+
+Inside Docker, the database host is `postgres`, not `localhost`, because
+`localhost` would point to the backend container itself.
+
+Check the backend:
+
+```powershell
+curl http://localhost:8080/api/ping
+```
+
+View logs:
+
+```powershell
+docker compose logs -f backend
+```
+
+Stop only the backend:
+
+```powershell
+docker compose stop backend
+```
+
+Stop backend and database without deleting the database volume:
+
+```powershell
+docker compose down
+```
+
 ## Local Jobs
 
 `local-nodb` disables automatic scheduled execution:

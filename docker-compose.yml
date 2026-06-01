@@ -1,4 +1,20 @@
 services:
+  backend:
+    build:
+      context: .
+    image: reals-backend:local
+    container_name: reals-backend-local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: local-postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/reals
+      SPRING_DATASOURCE_USERNAME: reals
+      SPRING_DATASOURCE_PASSWORD: reals
+    ports:
+      - "8080:8080"
+
   postgres:
     image: postgres:16-alpine
     container_name: reals-postgres-local
