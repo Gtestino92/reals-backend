@@ -38,6 +38,17 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `actuator probes are available without authentication`() {
+        mockMvc.perform(get("/actuator/health/liveness"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo("UP")))
+
+        mockMvc.perform(get("/actuator/health/readiness"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo("UP")))
+    }
+
+    @Test
     fun `actuator info is available without authentication`() {
         mockMvc.perform(get("/actuator/info"))
             .andExpect(status().isOk)
