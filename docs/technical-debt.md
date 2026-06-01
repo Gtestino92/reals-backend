@@ -7,11 +7,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Guided first-chat questions or conversation starters.
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
-- Matchmaking should not depend on the dev-only `/api/dev/matchmaking/process` endpoint outside local/manual testing. The current queue model should evolve into a real background processor.
-  - Recommended first step: implement a bounded `MatchmakingJob` inside the modular monolith. It should claim queued users in batches with PostgreSQL `FOR UPDATE SKIP LOCKED`, create matches through `MatchService`, start first chats through `ChatService`, log processed/created/skipped/failed counts and be protected by ShedLock.
-  - Keep the matching orchestration in a service method shared by the dev controller and the job, so manual Bruno runs and automatic processing exercise the same business path.
-  - Avoid matching directly inside `enqueue`; immediate matching has lower latency but makes user-facing requests heavier and increases concurrency complexity.
-  - Revisit a dedicated worker process or external queue only if matchmaking volume, latency requirements or CPU cost make the scheduled DB-queue worker too expensive for the app instances.
+- Revisit a dedicated matchmaking worker process or external queue only if matchmaking volume, latency requirements or CPU cost make the scheduled DB-queue `MatchmakingJob` too expensive for app instances.
 - Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`.
 - Decide where geolocation enters the product flow. The likely point is before first-chat matchmaking/search, using profile location plus future latitude/longitude, geohash or search radius fields.
 - Decide final visibility and UX timing for visual-review personal messages. Current behavior allows reading the partner message during visual review and requires reading it before approving if the partner already submitted one.
@@ -21,7 +17,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Real-time chat via WebSocket or SSE.
 - Notification delivery.
 - Reveal quotas.
-- Advanced compatibility scoring.
+- Advanced compatibility scoring. Current matching uses a SQL basic-compatible pair filter plus a rule-based `CompatibilityScorer`; future work should add geographic proximity, age-range preferences and interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
 - ML-based matching.
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.
@@ -53,10 +49,25 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Scheduler jobs must remain safe when more than one app instance exists. ShedLock prevents most duplicate scheduled executions, but each job should still be idempotent: re-running it should not create duplicate chats, penalties, locks or state transitions.
 - State transitions that create dependent records need stronger concurrency protection before multi-instance production. Examples: mutual visual approval creating a `Connection`, scheduling confirmation creating/activating second-chat availability, unilateral cancellation creating penalties, and lock creation/release. Use database constraints, transactions and optimistic or pessimistic locking where needed.
 - Active engagement limits can race under concurrent requests. Counting current `ActiveEngagementLock` rows and then inserting new rows is not enough by itself if two app instances do it at the same time. Revisit with transactional locking or database-level constraints before real scale.
-- Matchmaking processing must claim queued users atomically if it becomes a real scheduled worker. The risk is two workers selecting the same queued user pair at the same time. PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` or equivalent queue-claiming logic is the usual solution.
+- Matchmaking processing now uses a scheduled DB-queue worker with PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED`. Before multi-instance production, validate this behavior against the real PostgreSQL isolation level under concurrent workers and keep ShedLock enabled.
 - Profile photos are safe as URLs only if the actual files live in shared object storage such as S3, GCS, Firebase Storage or another external media service. They should not be stored on one backend instance's local disk, because another instance would not have the file.
 - Future real-time chat via WebSocket or SSE needs multi-instance routing. Options include sticky sessions, a shared pub/sub layer such as Redis, or managed realtime infrastructure. Plain in-memory connection state will not work across instances.
 - Add production observability before multi-instance rollout: structured logs with request/job identifiers, metrics for scheduled jobs and state transitions, and alerts for stuck negotiations, failed jobs or repeated retries.
+
+## Concurrency Hardening Tasks
+
+- Add PostgreSQL-backed concurrency tests for `MatchmakingProcessorService` with two simultaneous processors. Assert that the same queued user is never matched twice and that queue rows are removed exactly once. H2 is not enough for validating `FOR UPDATE SKIP LOCKED`.
+- Add explicit tests for concurrent mutual visual approval. Assert that only one `Connection` is created for a match, locks are upgraded once and repeated/competing approvals do not duplicate state.
+- Add explicit tests for concurrent scheduling confirmation and scheduled second-chat availability. Assert that only one second chat exists per connection and repeated job runs are idempotent.
+- Add explicit tests for concurrent chat cancellation/safety reports. Assert that penalties and `ChatExitRequest` rows are not duplicated for the same terminal chat transition.
+- Review and document lock acquisition order for operations that lock both users. Keep the current canonical order by user id and apply the same rule to future user-pair operations to reduce deadlock risk.
+- Convert expected concurrency failures such as optimistic-lock conflicts, duplicate-key conflicts and deadlocks into stable API responses or bounded job retries where the operation is idempotent.
+- Add database constraints where missing for one-per-domain invariants. Current examples already covered include one connection per match, one chat per match/type, one chat per connection/type and one queue row per user; revisit `ChatExitRequest`, penalties and schedule proposals before production traffic.
+- Add job-level summaries for concurrency-sensitive jobs: processed, succeeded, skipped, failed, duplicate/idempotent no-op and duration. Keep metrics export as a later step if Prometheus or another metrics backend is introduced.
+
+## Long-Term Scalability
+
+- Parallel matchmaking workers are intentionally deferred. The current `MatchmakingJob` should remain ShedLock-protected so only one instance processes the queue. If matchmaking queue backlog or latency becomes a real bottleneck, revisit a worker model where multiple instances process the queue concurrently using PostgreSQL `FOR UPDATE SKIP LOCKED`, bounded per-worker limits, short transactions, database constraints and dedicated concurrency tests.
 
 ## Code Notes To Revisit
 

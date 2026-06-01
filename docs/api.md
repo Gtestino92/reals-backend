@@ -68,7 +68,7 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 
 These endpoints are profile-gated for local/dev manual testing:
 
-- `POST /api/dev/matchmaking/process?batchSize=5`: manually process candidate pairs and start first chats.
+- `POST /api/dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
 - `POST /api/dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
 

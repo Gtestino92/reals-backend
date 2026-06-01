@@ -24,6 +24,9 @@ logging:
 
 scheduler:
   enabled: false
+  matchmaking-job:
+    fixed-delay: 3600000
+    max-pairs-per-run: 10
   chat-timeout-job:
     fixed-delay: 3600000
   match-expiration-job:
@@ -37,6 +40,11 @@ scheduler:
     fixed-delay: 3600000
   scheduling-timeout-job:
     fixed-delay: 3600000
+
+matchmaking:
+  candidate-pair-limit: 5
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
 
 chat:
   first-chat:

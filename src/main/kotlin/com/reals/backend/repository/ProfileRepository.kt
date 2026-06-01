@@ -6,4 +6,6 @@ import java.util.UUID
 
 interface ProfileRepository : JpaRepository<Profile, UUID> {
     fun findByUserId(userId: UUID): Profile?
+
+    fun findByUserIdIn(userIds: Collection<UUID>): List<Profile>
 }

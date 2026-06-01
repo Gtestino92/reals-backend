@@ -62,6 +62,9 @@ CREATE TABLE profiles (
         REFERENCES users(id)
 );
 
+CREATE INDEX idx_profiles_matchmaking_basic
+    ON profiles (status, intention, gender, looking_for_gender, user_id);
+
 -- ============================================================
 -- PROFILE PHOTOS
 -- ============================================================
@@ -128,6 +131,9 @@ CREATE TABLE matchmaking_queue (
     CONSTRAINT uq_queue_user
         UNIQUE (user_id)
 );
+
+CREATE INDEX idx_matchmaking_queue_waiting
+    ON matchmaking_queue (status, entered_at, id);
 
 -- ============================================================
 -- MATCHES
