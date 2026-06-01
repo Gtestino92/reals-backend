@@ -25,10 +25,15 @@ class FirebaseTokenFilter(
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
-        val path = request.servletPath
+        val path = request.servletPath.ifBlank {
+            request.requestURI.removePrefix(request.contextPath)
+        }
         return request.method.equals("OPTIONS", ignoreCase = true) ||
             path == "/api/ping" ||
             path.startsWith("/api/auth/") ||
+            path == "/actuator/health" ||
+            path.startsWith("/actuator/health/") ||
+            path == "/actuator/info" ||
             path.startsWith("/h2-console/")
     }
 

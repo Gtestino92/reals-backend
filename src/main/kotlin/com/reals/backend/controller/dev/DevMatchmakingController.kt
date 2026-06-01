@@ -11,14 +11,14 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres", "dev")
-@RequestMapping("/api/dev/matchmaking")
+@Profile("local", "local-nodb", "local-postgres")
+@RequestMapping("/api/local-dev/matchmaking")
 class DevMatchmakingController(
     private val matchmakingProcessorService: MatchmakingProcessorService
 ) {
 
     /**
-     * Manually triggers matchmaking for local/dev testing.
+     * Manually triggers matchmaking for local testing.
      * Production should use a worker/scheduler rather than exposing this to users.
      */
     @PostMapping("/process")

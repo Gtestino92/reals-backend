@@ -81,9 +81,9 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `01 Happy Path`: successful user flow through second chat.
 - `02 Not Happy Paths`: technical negative checks and guardrails, mostly expected 4xx responses.
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
-- `04 Timeout Outcomes`: local/dev-only manual checks for deadline-driven jobs. These use `/api/dev/timeouts/...` to move deadlines into the past and `/api/dev/jobs/.../run` to trigger the real jobs deterministically.
+- `04 Timeout Outcomes`: local-only manual checks for deadline-driven jobs. These use `/api/local-dev/timeouts/...` to move deadlines into the past and `/api/local-dev/jobs/.../run` to trigger the real jobs deterministically.
 
-The `/api/dev/...` endpoints are only exposed for `local`, `local-nodb`, `local-postgres` and `dev` profiles. They must not be enabled in production.
+The `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. They must not be enabled in cloud dev or production.
 
 ## Running Tests
 
@@ -97,3 +97,17 @@ Use `.\mvnw test` on Unix-like shells.
 
 GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
 `master` or `development`.
+
+## CI Gates
+
+Pull requests to `development` or `master` run:
+
+- Maven tests.
+- Docker Compose config validation.
+- Backend Docker image build validation without publishing.
+- Dependency review for high-severity dependency changes.
+- CodeQL default setup from GitHub code scanning.
+
+Pushes to `development` or `master` run the same validation and then publish
+the backend image to GHCR. The image publishing job does not run for pull
+requests.

@@ -21,7 +21,7 @@ The first request generates unique test emails and a future half-hour second-cha
 - `01 Happy Path`: complete successful path through second chat and closed connection.
 - `02 Not Happy Paths`: HTTP-level guardrails and invalid operations that should return 4xx responses.
 - `03 Alternate Outcomes`: valid business flows that do not end in a successful second chat.
-- `04 Timeout Outcomes`: local/dev-only deadline and job-trigger flows for time-based outcomes.
+- `04 Timeout Outcomes`: local-only deadline and job-trigger flows for time-based outcomes.
 
 ## Happy Path Covered Flow
 
@@ -35,7 +35,7 @@ The first request generates unique test emails and a future half-hour second-cha
 - approve visual review
 - create connection
 - confirm the second-chat slot with matching ordered proposal lists
-- force the confirmed start time and trigger the scheduled second-chat availability job in local/dev
+- force the confirmed start time and trigger the scheduled second-chat availability job locally
 - enter the available second chat, which activates it and starts its timeout window
 - request and accept mutual second-chat cancellation, closing the connection without penalty
 

@@ -39,7 +39,7 @@ management:
         enabled: true
 
 scheduler:
-  # Keep local PostgreSQL runs deterministic. Use /api/dev/jobs/.../run
+  # Keep local PostgreSQL runs deterministic. Use /api/local-dev/jobs/.../run
   # endpoints from Bruno instead of background execution.
   enabled: false
 

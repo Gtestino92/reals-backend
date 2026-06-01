@@ -37,6 +37,8 @@ matchmaking:
 
 firebase:
   service-account-path: ./secrets/reals-backend-firebase-credentials-dev.json
+  service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
+  service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
 
 profile:
   photos:

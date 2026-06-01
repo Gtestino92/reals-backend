@@ -179,13 +179,13 @@ scheduler.enabled: false
 Use the dev endpoints for deterministic manual testing:
 
 ```http
-POST /api/dev/jobs/{job}/run
+POST /api/local-dev/jobs/{job}/run
 ```
 
 For example:
 
 ```http
-POST /api/dev/jobs/scheduled-second-chat-start/run
+POST /api/local-dev/jobs/scheduled-second-chat-start/run
 ```
 
 ## Local Profile Photo Rules

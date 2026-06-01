@@ -16,8 +16,8 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres", "dev")
-@RequestMapping("/api/dev/timeouts")
+@Profile("local", "local-nodb", "local-postgres")
+@RequestMapping("/api/local-dev/timeouts")
 class DevTimeoutController(
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
