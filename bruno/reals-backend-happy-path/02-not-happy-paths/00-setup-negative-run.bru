@@ -11,8 +11,32 @@ get {
 }
 
 script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "negativeRunId",
+    "negativeUserAEmail",
+    "negativeUserBEmail",
+    "negativeStrangerEmail",
+    "negativeDraftEmail",
+    "negativeSecondChatDateTime",
+    "negativeOtherSecondChatDateTime",
+    "negativeDraftUserId",
+    "negativeDraftProfileId",
+    "negativeUserAId",
+    "negativeUserBId",
+    "negativeStrangerUserId",
+    "negativeProfileAId",
+    "negativeProfileBId",
+    "negativeMatchId",
+    "negativeFirstChatId",
+    "negativeConnectionId",
+    "negativeProposalAId",
+    "negativeSecondChatId"
+  ]);
+
   const runId = Date.now().toString();
-  const halfHourSlot = (hoursAhead) => {
+  const futureHalfHourSlot = (daysAhead, slotOffset) => {
+    const hoursAhead = daysAhead * 24 + slotOffset;
     const date = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
     date.setUTCSeconds(0, 0);
     if (date.getUTCMinutes() < 30) {
@@ -22,16 +46,14 @@ script:pre-request {
     }
     return date.toISOString();
   };
-  const tomorrow = halfHourSlot(24);
-  const dayAfterTomorrow = halfHourSlot(48);
 
   bru.setEnvVar("negativeRunId", runId);
   bru.setEnvVar("negativeUserAEmail", `negative.a.${runId}@example.com`);
   bru.setEnvVar("negativeUserBEmail", `negative.b.${runId}@example.com`);
   bru.setEnvVar("negativeStrangerEmail", `negative.stranger.${runId}@example.com`);
   bru.setEnvVar("negativeDraftEmail", `negative.draft.${runId}@example.com`);
-  bru.setEnvVar("negativeSecondChatDateTime", tomorrow);
-  bru.setEnvVar("negativeOtherSecondChatDateTime", dayAfterTomorrow);
+  bru.setEnvVar("negativeSecondChatDateTime", futureHalfHourSlot(2, 0));
+  bru.setEnvVar("negativeOtherSecondChatDateTime", futureHalfHourSlot(2, 1));
 }
 
 script:post-response {

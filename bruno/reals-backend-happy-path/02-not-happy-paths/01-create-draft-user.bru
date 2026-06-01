@@ -22,5 +22,8 @@ body:json {
 
 script:post-response {
   const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created draft user id.");
+  }
   bru.setEnvVar("negativeDraftUserId", body.id);
 }
