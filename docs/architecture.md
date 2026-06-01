@@ -7,7 +7,7 @@
 - `controller`: HTTP endpoints. Controllers parse request DTOs, call services and map responses.
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations and state transitions.
-- `service.matching`: compatibility evaluation.
+- `service.matching`: compatibility evaluation and scoring.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
 - `domain`: persisted entities and enums.

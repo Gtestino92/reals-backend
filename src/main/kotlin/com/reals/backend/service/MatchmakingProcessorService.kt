@@ -19,9 +19,9 @@ class MatchmakingProcessorService(
     private val log = LoggerFactory.getLogger(javaClass)
     private val transactionTemplate = TransactionTemplate(transactionManager)
 
-    fun processBatch(batchSize: Int): MatchmakingProcessResult {
-        require(batchSize > 0) {
-            "Batch size must be greater than 0"
+    fun process(maxPairsPerRun: Int): MatchmakingProcessResult {
+        require(maxPairsPerRun > 0) {
+            "Max pairs per run must be greater than 0"
         }
 
         val createdMatches = mutableListOf<Match>()
@@ -32,7 +32,7 @@ class MatchmakingProcessorService(
         // locks held from candidate selection through match/chat creation,
         // while allowing previous successful pairs to stay committed if a
         // later pair fails.
-        for (attempt in 0 until batchSize) {
+        for (attempt in 0..<maxPairsPerRun) {
             try {
                 val match = claimAndProcessNextCandidatePair()
                     ?: return MatchmakingProcessResult(
@@ -68,9 +68,7 @@ class MatchmakingProcessorService(
     private fun claimAndProcessNextCandidatePair(): Match? =
         transactionTemplate.execute<Match?> {
             val (userAId, userBId) =
-                matchmakingService.findCandidatePairs(
-                    batchSize = 1
-                ).firstOrNull()
+                matchmakingService.findNextCandidatePair()
                     ?: return@execute null
 
             try {

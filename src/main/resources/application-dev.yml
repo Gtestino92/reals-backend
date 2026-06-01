@@ -37,7 +37,7 @@ scheduler:
   enabled: true
   matchmaking-job:
     fixed-delay: 60000
-    batch-size: 5
+    max-pairs-per-run: 10
   chat-timeout-job:
     fixed-delay: 120000
   match-expiration-job:
@@ -54,6 +54,11 @@ scheduler:
     fixed-delay: 900000
   scheduled-second-chat-start-job:
     fixed-delay: 60000
+
+matchmaking:
+  candidate-pair-limit: 50
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
 
 chat:
   first-chat:

@@ -48,6 +48,7 @@ For those cases, service-level integration tests catch more realistic regression
 - chat rejection state and lock release
 - visual rejection without connection creation
 - incompatible queued users producing no match
+- matchmaking candidate-pair filtering, candidate limit behavior and FIFO tie-breaking
 - second-chat slot auto-confirmation across ordered proposal lists
 - scheduling preference tie-breaks and explicit round rejection
 - scheduling failure after max rounds

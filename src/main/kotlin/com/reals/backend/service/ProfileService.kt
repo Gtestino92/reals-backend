@@ -45,6 +45,9 @@ class ProfileService(
     fun findByUserId(userId: UUID): Profile? =
         profileRepository.findByUserId(userId)
 
+    fun findByUserIds(userIds: Collection<UUID>): List<Profile> =
+        profileRepository.findByUserIdIn(userIds)
+
     fun findByIdOrThrow(profileId: UUID): Profile =
         profileRepository.findById(profileId)
             .orElseThrow {

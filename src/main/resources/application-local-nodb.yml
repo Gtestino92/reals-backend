@@ -32,6 +32,11 @@ scheduler:
   # endpoints from Bruno instead of background execution.
   enabled: false
 
+matchmaking:
+  candidate-pair-limit: 5
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
+
 profile:
   photos:
     max-count: 9

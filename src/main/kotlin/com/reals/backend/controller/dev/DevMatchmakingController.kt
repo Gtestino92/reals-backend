@@ -24,10 +24,10 @@ class DevMatchmakingController(
     @PostMapping("/process")
     fun processQueue(
         @RequestParam(defaultValue = "5")
-        batchSize: Int
+        maxPairsPerRun: Int
     ): ResponseEntity<ProcessQueueResponse> {
-        val result = matchmakingProcessorService.processBatch(
-            batchSize = batchSize
+        val result = matchmakingProcessorService.process(
+            maxPairsPerRun = maxPairsPerRun
         )
 
         return ResponseEntity.ok(

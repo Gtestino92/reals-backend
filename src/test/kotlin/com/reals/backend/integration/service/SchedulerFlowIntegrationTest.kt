@@ -46,7 +46,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         MatchmakingJob(
             matchmakingProcessorService = matchmakingProcessorService,
-            batchSize = 5
+            maxPairsPerRun = 5
         ).run()
 
         val match =
