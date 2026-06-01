@@ -24,12 +24,12 @@ Schedulers should also call services rather than mutating repositories directly.
 
 ## Current Stack
 
-- Kotlin 2.2.0.
+- Kotlin 2.3.21.
 - Java 21.
 - Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
 - H2 local database.
-- Oracle and PostgreSQL JDBC drivers are present.
+- PostgreSQL JDBC driver is present for non-local environments.
 - Flyway is present; migrations live under `src/main/resources/db/migration`.
 - Caffeine cache.
 - ShedLock for scheduler locking.

@@ -4,11 +4,11 @@ This repository is the backend for Reals, a structured dating / connection produ
 
 ## Stack
 
-- Kotlin 2.2.0 on Java 21.
+- Kotlin 2.3.21 on Java 21.
 - Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
 - H2 for local `local-nodb` development.
-- Oracle and PostgreSQL drivers are present for non-local environments, but this repository currently only contains `application.yml` and `application-local-nodb.yml`.
+- PostgreSQL is the supported non-local database driver. Do not add another database driver unless a concrete environment needs it.
 - Flyway migrations live under `src/main/resources/db/migration`; local `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update`.
 - ShedLock protects scheduler jobs when a `LockProvider` bean exists.
 - Firebase Admin dependency and Firebase auth classes exist, but local development uses dev auto-auth.
@@ -137,6 +137,7 @@ From `application-local-nodb.yml`:
 
 ## Testing And Verification
 
+- Do not run Maven or Docker commands unless the user explicitly requests it. Prefer telling the user the exact Maven or Docker command to run outside IntelliJ IDEA, then use their reported output to continue.
 - Integration tests live under `src/test/kotlin/com/reals/backend/integration` and use the `test` Spring profile with H2 in-memory.
 - Shared integration fixtures belong under `integration/support`; keep base classes out of the concrete test package levels.
 - Prefer service-level integration tests for business rules that depend on JPA, transactions, repositories or schema.
