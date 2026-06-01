@@ -8,6 +8,11 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 2000
+      max-lifetime: 1800000
+      keepalive-time: 300000
 
   jpa:
     hibernate:
@@ -28,6 +33,10 @@ logging:
     root: INFO
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
   endpoints:
     web:
       exposure:
