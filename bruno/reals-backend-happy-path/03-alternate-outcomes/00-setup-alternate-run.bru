@@ -11,9 +11,38 @@ get {
 }
 
 script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "alternateRunId",
+    "alternateUserAEmail",
+    "alternateUserBEmail",
+    "alternateSlot1",
+    "alternateSlot2",
+    "alternateSlot3",
+    "alternateSlot4",
+    "alternateSlot5",
+    "alternateSlot6",
+    "alternateUserAId",
+    "alternateUserBId",
+    "alternateProfileAId",
+    "alternateProfileBId",
+    "alternateMatchChatRejectedId",
+    "alternateFirstChatRejectId",
+    "alternateMatchVisualRejectedId",
+    "alternateFirstChatVisualRejectId",
+    "alternateMatchSchedulingFailedId",
+    "alternateFirstChatSchedulingId",
+    "alternateConnectionSchedulingFailedId",
+    "alternateNegotiationSchedulingFailedId",
+    "alternateMutualCancelMatchId",
+    "alternateMutualCancelFirstChatId",
+    "alternateMutualCancelExitRequestId"
+  ]);
+
   const runId = Date.now().toString();
-  const hours = (n) => {
-    const date = new Date(Date.now() + n * 60 * 60 * 1000);
+  const futureHalfHourSlot = (daysAhead, slotOffset) => {
+    const hoursAhead = daysAhead * 24 + slotOffset;
+    const date = new Date(Date.now() + hoursAhead * 60 * 60 * 1000);
     date.setUTCSeconds(0, 0);
     if (date.getUTCMinutes() < 30) {
       date.setUTCMinutes(30);
@@ -26,12 +55,12 @@ script:pre-request {
   bru.setEnvVar("alternateRunId", runId);
   bru.setEnvVar("alternateUserAEmail", `alternate.a.${runId}@example.com`);
   bru.setEnvVar("alternateUserBEmail", `alternate.b.${runId}@example.com`);
-  bru.setEnvVar("alternateSlot1", hours(24));
-  bru.setEnvVar("alternateSlot2", hours(25));
-  bru.setEnvVar("alternateSlot3", hours(26));
-  bru.setEnvVar("alternateSlot4", hours(27));
-  bru.setEnvVar("alternateSlot5", hours(28));
-  bru.setEnvVar("alternateSlot6", hours(29));
+  bru.setEnvVar("alternateSlot1", futureHalfHourSlot(2, 0));
+  bru.setEnvVar("alternateSlot2", futureHalfHourSlot(2, 1));
+  bru.setEnvVar("alternateSlot3", futureHalfHourSlot(2, 2));
+  bru.setEnvVar("alternateSlot4", futureHalfHourSlot(2, 3));
+  bru.setEnvVar("alternateSlot5", futureHalfHourSlot(2, 4));
+  bru.setEnvVar("alternateSlot6", futureHalfHourSlot(2, 5));
 }
 
 script:post-response {

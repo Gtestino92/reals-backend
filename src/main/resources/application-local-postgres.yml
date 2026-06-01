@@ -8,6 +8,11 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: reals
     password: reals
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 2000
+      max-lifetime: 1800000
+      keepalive-time: 300000
 
   jpa:
     hibernate:
@@ -26,6 +31,12 @@ spring:
 logging:
   level:
     root: INFO
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 scheduler:
   # Keep local PostgreSQL runs deterministic. Use /api/dev/jobs/.../run

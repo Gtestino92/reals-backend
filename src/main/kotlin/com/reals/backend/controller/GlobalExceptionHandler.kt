@@ -1,12 +1,17 @@
 package com.reals.backend.controller
 
 import jakarta.validation.ConstraintViolationException
+import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
+import org.springframework.dao.CannotAcquireLockException
+import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.jdbc.CannotGetJdbcConnectionException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.validation.FieldError
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -14,6 +19,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import java.sql.SQLException
+import java.sql.SQLTransientConnectionException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -121,6 +128,42 @@ class GlobalExceptionHandler {
                 )
             )
 
+    @ExceptionHandler(
+        CannotGetJdbcConnectionException::class,
+        DataAccessResourceFailureException::class,
+        SQLTransientConnectionException::class
+    )
+    fun handleDatabaseUnavailable(
+        ex: Exception
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Database unavailable while processing request: {}", ex.message)
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(
+                ErrorResponse(
+                    code = "DATABASE_UNAVAILABLE",
+                    error = "Service Unavailable",
+                    message = "Database is temporarily unavailable. Please retry later."
+                )
+            )
+    }
+
+    @ExceptionHandler(
+        CannotAcquireLockException::class,
+        PessimisticLockingFailureException::class
+    )
+    fun handleTransientConcurrencyFailure(
+        ex: Exception
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    code = "TRANSIENT_CONCURRENCY_CONFLICT",
+                    error = "Conflict",
+                    message = "Resource is temporarily busy. Please retry."
+                )
+            )
+
     @ExceptionHandler(AccessDeniedException::class)
     fun handleAccessDenied(
         ex: AccessDeniedException
@@ -178,6 +221,10 @@ class GlobalExceptionHandler {
     fun handleGeneric(
         ex: Exception
     ): ResponseEntity<ErrorResponse> {
+        if (ex.isDatabaseUnavailable()) {
+            return handleDatabaseUnavailable(ex)
+        }
+
         log.error("Unhandled exception while processing request", ex)
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -192,4 +239,29 @@ class GlobalExceptionHandler {
 
     private fun FieldError.toValidationMessage(): String =
         "$field: ${defaultMessage ?: "invalid value"}"
+
+    private fun Throwable.isDatabaseUnavailable(): Boolean {
+        var current: Throwable? = this
+
+        while (current != null) {
+            when (current) {
+                is CannotGetJdbcConnectionException,
+                is DataAccessResourceFailureException,
+                is SQLTransientConnectionException,
+                is JDBCConnectionException -> return true
+                is SQLException ->
+                    if (current.sqlState?.startsWith(CONNECTION_EXCEPTION_SQL_STATE_CLASS) == true) {
+                        return true
+                    }
+            }
+
+            current = current.cause
+        }
+
+        return false
+    }
+
+    private companion object {
+        const val CONNECTION_EXCEPTION_SQL_STATE_CLASS = "08"
+    }
 }
