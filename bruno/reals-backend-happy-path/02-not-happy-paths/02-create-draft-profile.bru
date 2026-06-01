@@ -30,5 +30,12 @@ body:json {
 
 script:post-response {
   const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created draft profile id.");
+  }
+  if (!body.userId) {
+    throw new Error("Expected created draft profile userId.");
+  }
+  bru.setEnvVar("negativeDraftUserId", body.userId);
   bru.setEnvVar("negativeDraftProfileId", body.id);
 }
