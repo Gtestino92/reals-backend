@@ -1,6 +1,6 @@
 # Not Happy Paths
 
-Run this folder with the `local` environment after starting the backend with `local-nodb`.
+Run this folder with the `local` environment after starting the backend with `local-nodb` or `local-postgres`.
 
 These requests are intentionally stateful and should be executed in order from `00`.
 

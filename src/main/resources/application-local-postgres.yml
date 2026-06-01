@@ -1,0 +1,40 @@
+spring:
+  config:
+    activate:
+      on-profile: local-postgres
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/reals
+    driver-class-name: org.postgresql.Driver
+    username: reals
+    password: reals
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+
+  h2:
+    console:
+      enabled: false
+
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: INFO
+
+scheduler:
+  # Keep local PostgreSQL runs deterministic. Use /api/dev/jobs/.../run
+  # endpoints from Bruno instead of background execution.
+  enabled: false
+
+profile:
+  photos:
+    max-count: 9
+    required-count: 4
+    min-person-photos: 1
+    min-full-body-photos: 1
