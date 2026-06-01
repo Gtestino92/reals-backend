@@ -64,18 +64,18 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects the current scheduling round after reviewing partner proposals. This opens the next round, or fails/closes if max rounds are exceeded.
 
-## Dev-Only Endpoints
+## Local Dev Tooling Endpoints
 
-These endpoints are profile-gated for local/dev manual testing:
+These endpoints are profile-gated for local manual testing:
 
-- `POST /api/dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
-- `POST /api/dev/jobs/{job}/run`: trigger supported background jobs.
-- `POST /api/dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
+- `POST /api/local-dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
+- `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
+- `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
 
 The scheduled second-chat availability job is available at:
 
-- `POST /api/dev/jobs/scheduled-second-chat-start/run`
-- `POST /api/dev/timeouts/connections/{connectionId}/second-chat-start-now`
+- `POST /api/local-dev/jobs/scheduled-second-chat-start/run`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-start-now`
 
 ## Error Shape
 

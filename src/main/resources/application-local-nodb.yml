@@ -28,7 +28,7 @@ logging:
     root: INFO
 
 scheduler:
-  # Local manual testing should be deterministic. Use /api/dev/jobs/.../run
+  # Local manual testing should be deterministic. Use /api/local-dev/jobs/.../run
   # endpoints from Bruno instead of background execution.
   enabled: false
 

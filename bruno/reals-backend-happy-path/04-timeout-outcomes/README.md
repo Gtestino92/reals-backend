@@ -1,8 +1,8 @@
 # Timeout Outcomes
 
-Manual Bruno flow for local/dev job-driven outcomes.
+Manual Bruno flow for local job-driven outcomes.
 
-This folder uses `/api/dev/...` endpoints that are only exposed with `local`, `local-nodb`, `local-postgres` or `dev` profiles. Those endpoints make deadlines deterministic: they move a deadline to the past and then trigger the real scheduled job.
+This folder uses `/api/local-dev/...` endpoints that are only exposed with `local`, `local-nodb` or `local-postgres` profiles. Those endpoints make deadlines deterministic: they move a deadline to the past and then trigger the real scheduled job.
 
 Run with the `local` Bruno environment after starting the backend with `local-nodb` or `local-postgres`.
 

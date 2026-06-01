@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres", "dev")
-@RequestMapping("/api/dev/jobs")
+@Profile("local", "local-nodb", "local-postgres")
+@RequestMapping("/api/local-dev/jobs")
 class DevJobController(
     private val chatTimeoutJob: ObjectProvider<ChatTimeoutJob>,
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
