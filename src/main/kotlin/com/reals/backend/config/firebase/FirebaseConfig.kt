@@ -7,14 +7,22 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.Base64
 
 @Configuration
 @Profile("local-firebase", "dev", "prod")
 class FirebaseConfig(
 
     @param:Value("\${firebase.service-account-path:}")
-    private val serviceAccountPath: String
+    private val serviceAccountPath: String,
+
+    @param:Value("\${firebase.service-account-json:}")
+    private val serviceAccountJson: String,
+
+    @param:Value("\${firebase.service-account-base64:}")
+    private val serviceAccountBase64: String
 ) {
 
     @Bean
@@ -24,12 +32,26 @@ class FirebaseConfig(
         }
 
         val credentials =
-            if (serviceAccountPath.isNotBlank()) {
-                GoogleCredentials.fromStream(
-                    File(serviceAccountPath).inputStream()
-                )
-            } else {
-                GoogleCredentials.getApplicationDefault()
+            when {
+                serviceAccountPath.isNotBlank() ->
+                    GoogleCredentials.fromStream(
+                        File(serviceAccountPath).inputStream()
+                    )
+
+                serviceAccountJson.isNotBlank() ->
+                    GoogleCredentials.fromStream(
+                        ByteArrayInputStream(serviceAccountJson.toByteArray(Charsets.UTF_8))
+                    )
+
+                serviceAccountBase64.isNotBlank() ->
+                    GoogleCredentials.fromStream(
+                        ByteArrayInputStream(
+                            Base64.getDecoder().decode(serviceAccountBase64)
+                        )
+                    )
+
+                else ->
+                    GoogleCredentials.getApplicationDefault()
             }
 
         return FirebaseApp.initializeApp(
