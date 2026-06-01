@@ -105,6 +105,9 @@ Pull requests to `development` or `master` run:
 - Maven tests.
 - Docker Compose config validation.
 - Backend Docker image build validation without publishing.
+- Trivy image scan. Pull requests and pushes for `development` fail on fixed
+  `CRITICAL` vulnerabilities. Pull requests and pushes for `master` fail on
+  fixed `HIGH` or `CRITICAL` vulnerabilities.
 - Dependency review for high-severity dependency changes.
 - CodeQL default setup from GitHub code scanning.
 

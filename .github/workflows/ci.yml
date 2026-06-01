@@ -47,6 +47,28 @@ jobs:
       - name: Build backend image
         run: docker build -t reals-backend:ci .
 
+      - name: Scan backend image for critical vulnerabilities
+        if: github.ref_name != 'master' && github.base_ref != 'master'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: reals-backend:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+      - name: Scan backend image for high and critical vulnerabilities
+        if: github.ref_name == 'master' || github.base_ref == 'master'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: reals-backend:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
   dependency-review:
     name: Dependency review
     runs-on: ubuntu-latest
