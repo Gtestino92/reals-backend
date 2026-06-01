@@ -168,6 +168,50 @@ Stop backend and database without deleting the database volume:
 docker compose down
 ```
 
+### Local Docker App With Firebase
+
+Use this mode when you want Docker to run the backend plus PostgreSQL, but
+authenticate requests with real Firebase ID tokens instead of local auto-auth.
+
+The Firebase service-account JSON must exist locally at:
+
+```text
+./secrets/reals-backend-firebase-credentials-dev.json
+```
+
+The `secrets/` directory is ignored by Git and must never be committed.
+
+Build and run the Firebase-backed Docker app:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.firebase.yml up -d --build backend
+```
+
+This override runs the backend with:
+
+```text
+SPRING_PROFILES_ACTIVE=dev
+DATABASE_URL=jdbc:postgresql://postgres:5432/reals
+FIREBASE_SERVICE_ACCOUNT_PATH=/run/secrets/firebase-service-account.json
+```
+
+The service-account file is mounted read-only inside the backend container.
+Automatic schedulers are disabled through `SCHEDULER_ENABLED=false` so local
+manual testing stays deterministic.
+
+Check the backend:
+
+```powershell
+curl http://localhost:8080/api/ping
+curl http://localhost:8080/actuator/health/readiness
+```
+
+Stop backend and database without deleting the database volume:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.firebase.yml down
+```
+
 ## Local Jobs
 
 `local-nodb` disables automatic scheduled execution:

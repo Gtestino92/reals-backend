@@ -30,13 +30,17 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Infrastructure Gaps
 
-- `pom.xml` includes Oracle and PostgreSQL drivers, but only PostgreSQL is represented in `application-dev.yml` and `application-prod.yml`.
+- PostgreSQL is the only supported non-local database driver for now. Reintroduce another database driver only when a concrete environment needs it.
 - Local profile uses H2 file storage and disables Flyway.
 - Keep Spring Boot on the latest stable `4.0.x` patch line until `4.1.x` is stable and the release notes have been reviewed.
 - Remove the temporary `tomcat.version` override once a Spring Boot 4.0.x patch manages Tomcat 11.0.22 or newer.
 - Add production release image tagging when a production environment exists. Dev should keep using moving `development` and immutable `sha-*` tags; production should publish immutable `v*` tags from Git tags, such as `v1.0.0`.
 - Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
-- Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run and a managed PostgreSQL provider such as Neon or Supabase.
+- Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run, AWS App Runner or ECS Fargate, and a managed PostgreSQL provider such as Neon, Supabase, Render PostgreSQL, Railway PostgreSQL or AWS RDS.
+- For the first dev environment, prefer a simple container platform plus managed PostgreSQL before Kubernetes. Kubernetes, Helm and Terraform/CDK become worthwhile when there are multiple services, networking rules, autoscaling needs or repeatable environment provisioning requirements.
+- Before enabling deploy automation, define the deployment model: runtime platform, managed PostgreSQL instance, Firebase service-account secret, environment variables, health check path, rollback strategy and which GHCR tag dev should track.
+- Add a post-deploy smoke check that verifies `/actuator/health/readiness` and `/api/ping` after the dev environment is updated.
+- Decide whether infrastructure should be represented as Infrastructure as Code. If the first provider is AWS, prefer Terraform or AWS CDK for repeatability; if the first provider is Render, Fly.io or Railway, start with their service config and document manual console steps until the shape stabilizes.
 
 ## Observability And Error Handling
 
