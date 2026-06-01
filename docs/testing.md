@@ -107,7 +107,8 @@ Pull requests to `development` or `master` run:
 - Backend Docker image build validation without publishing.
 - Trivy image scan. Pull requests and pushes for `development` fail on fixed
   `CRITICAL` vulnerabilities. Pull requests and pushes for `master` fail on
-  fixed `HIGH` or `CRITICAL` vulnerabilities.
+  fixed `HIGH` or `CRITICAL` vulnerabilities. The scan table is also published
+  to the GitHub Actions job summary.
 - Dependency review for high-severity dependency changes.
 - CodeQL default setup from GitHub code scanning.
 
