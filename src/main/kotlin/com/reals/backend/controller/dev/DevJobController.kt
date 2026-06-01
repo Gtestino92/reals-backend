@@ -83,7 +83,7 @@ class DevJobController(
         )
     }
 
-    private fun <T> requireJob(
+    private fun <T : Any> requireJob(
         provider: ObjectProvider<T>,
         name: String
     ): T =

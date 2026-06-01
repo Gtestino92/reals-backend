@@ -4,8 +4,8 @@ This repository is the backend for Reals, a structured dating / connection produ
 
 ## Stack
 
-- Kotlin 2.2.0 on Java 17.
-- Spring Boot 3.5.3.
+- Kotlin 2.2.0 on Java 21.
+- Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
 - H2 for local `local-nodb` development.
 - Oracle and PostgreSQL drivers are present for non-local environments, but this repository currently only contains `application.yml` and `application-local-nodb.yml`.
