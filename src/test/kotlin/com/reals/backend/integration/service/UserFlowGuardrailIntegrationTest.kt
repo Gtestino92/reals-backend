@@ -29,7 +29,10 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            bio = null
+            bio = null,
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
         )
 
         assertThrows<IllegalStateException> {
@@ -51,11 +54,14 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            bio = null
+            bio = null,
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
         )
 
         assertThrows<IllegalStateException> {
-            matchmakingService.enqueue(user.id)
+            enqueueForMatchmaking(user.id)
         }
     }
 

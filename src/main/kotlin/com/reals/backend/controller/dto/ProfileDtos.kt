@@ -36,19 +36,7 @@ data class UpdateProfileRequest(
     val country: String? = null,
 
     val intention: Intention? = null,
-    val lookingForGender: LookingForGender? = null,
-
-    @field:Min(18)
-    @field:Max(99)
-    val preferredMinAge: Int? = null,
-
-    @field:Min(18)
-    @field:Max(99)
-    val preferredMaxAge: Int? = null,
-
-    @field:Min(1)
-    @field:Max(1000)
-    val maxDistanceKm: Int? = null
+    val lookingForGender: LookingForGender? = null
 )
 
 data class ReplacePhotoRequest(
@@ -63,15 +51,15 @@ data class ReplacePhotoRequest(
 data class UpdateMatchFiltersRequest(
     @field:Min(18)
     @field:Max(99)
-    val preferredMinAge: Int? = null,
+    val preferredMinAge: Int,
 
     @field:Min(18)
     @field:Max(99)
-    val preferredMaxAge: Int? = null,
+    val preferredMaxAge: Int,
 
     @field:Min(1)
     @field:Max(1000)
-    val maxDistanceKm: Int? = null
+    val maxDistanceKm: Int
 )
 
 data class CreateProfileRequest(
@@ -103,15 +91,15 @@ data class CreateProfileRequest(
 
     @field:Min(18)
     @field:Max(99)
-    val preferredMinAge: Int? = null,
+    val preferredMinAge: Int,
 
     @field:Min(18)
     @field:Max(99)
-    val preferredMaxAge: Int? = null,
+    val preferredMaxAge: Int,
 
     @field:Min(1)
     @field:Max(1000)
-    val maxDistanceKm: Int? = null
+    val maxDistanceKm: Int
 )
 
 data class AddPhotoRequest(
@@ -140,9 +128,9 @@ data class ProfileResponse(
     val city: String,
     val country: String,
     val bio: String?,
-    val preferredMinAge: Int?,
-    val preferredMaxAge: Int?,
-    val maxDistanceKm: Int?,
+    val preferredMinAge: Int,
+    val preferredMaxAge: Int,
+    val maxDistanceKm: Int,
     val status: ProfileStatus,
     val photoCount: Int,
     val createdAt: OffsetDateTime,

@@ -5,7 +5,6 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
-import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -63,7 +62,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `update match filters replaces nullable dynamic filters`() {
+    fun `update match filters replaces required dynamic filters`() {
         val user = userService.createUser("filters-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
             userId = user.id,
@@ -86,17 +85,17 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .content(
                     """
                     {
-                      "preferredMinAge": null,
-                      "preferredMaxAge": null,
-                      "maxDistanceKm": null
+                      "preferredMinAge": 30,
+                      "preferredMaxAge": 38,
+                      "maxDistanceKm": 25
                     }
                     """.trimIndent()
                 )
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.preferredMinAge", nullValue()))
-            .andExpect(jsonPath("$.preferredMaxAge", nullValue()))
-            .andExpect(jsonPath("$.maxDistanceKm", nullValue()))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(38)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(25)))
     }
 
     @Test
@@ -109,7 +108,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGender" to LookingForGender.MEN.name,
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR"
+            "country" to "AR",
+            "preferredMinAge" to 18,
+            "preferredMaxAge" to 99,
+            "maxDistanceKm" to 50
         )
 
         mockMvc.perform(

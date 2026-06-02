@@ -64,9 +64,9 @@ class ProfileService(
         city: String,
         country: String,
         bio: String? = null,
-        preferredMinAge: Int? = null,
-        preferredMaxAge: Int? = null,
-        maxDistanceKm: Int? = null
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
     ): Profile {
         val normalizedDisplayName = displayName.trim()
         val normalizedCity = city.trim()
@@ -210,10 +210,7 @@ class ProfileService(
         city: String? = null,
         country: String? = null,
         intention: Intention? = null,
-        lookingForGender: LookingForGender? = null,
-        preferredMinAge: Int? = null,
-        preferredMaxAge: Int? = null,
-        maxDistanceKm: Int? = null
+        lookingForGender: LookingForGender? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -242,16 +239,6 @@ class ProfileService(
         intention?.let { profile.intention = it }
         lookingForGender?.let { profile.lookingForGender = it }
 
-        validateDynamicMatchFilters(
-            preferredMinAge = preferredMinAge ?: profile.preferredMinAge,
-            preferredMaxAge = preferredMaxAge ?: profile.preferredMaxAge,
-            maxDistanceKm = maxDistanceKm ?: profile.maxDistanceKm
-        )
-
-        preferredMinAge?.let { profile.preferredMinAge = it }
-        preferredMaxAge?.let { profile.preferredMaxAge = it }
-        maxDistanceKm?.let { profile.maxDistanceKm = it }
-
         profile.updatedAt = OffsetDateTime.now()
 
         return profileRepository.save(profile)
@@ -259,9 +246,9 @@ class ProfileService(
 
     fun updateDynamicMatchFilters(
         profileId: UUID,
-        preferredMinAge: Int?,
-        preferredMaxAge: Int?,
-        maxDistanceKm: Int?
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
     ): Profile {
         val profile = findByIdOrThrow(profileId)
 
@@ -374,32 +361,24 @@ class ProfileService(
     }
 
     private fun validateDynamicMatchFilters(
-        preferredMinAge: Int?,
-        preferredMaxAge: Int?,
-        maxDistanceKm: Int?
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
     ) {
-        preferredMinAge?.let {
-            require(it in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
-                "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
-            }
+        require(preferredMinAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
         }
 
-        preferredMaxAge?.let {
-            require(it in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
-                "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
-            }
+        require(preferredMaxAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
         }
 
-        if (preferredMinAge != null && preferredMaxAge != null) {
-            require(preferredMinAge <= preferredMaxAge) {
-                "Preferred minimum age must be less than or equal to preferred maximum age"
-            }
+        require(preferredMinAge <= preferredMaxAge) {
+            "Preferred minimum age must be less than or equal to preferred maximum age"
         }
 
-        maxDistanceKm?.let {
-            require(it in 1..1000) {
-                "Maximum distance must be between 1 and 1000 kilometers"
-            }
+        require(maxDistanceKm in 1..1000) {
+            "Maximum distance must be between 1 and 1000 kilometers"
         }
     }
 
