@@ -8,6 +8,7 @@
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations and state transitions.
 - `service.matching`: compatibility evaluation and scoring.
+- `service.identity`: identity-verification provider abstraction.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
 - `domain`: persisted entities and enums.

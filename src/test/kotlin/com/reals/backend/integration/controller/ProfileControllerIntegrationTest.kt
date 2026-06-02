@@ -52,6 +52,32 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.userId", equalTo(user.id.toString())))
             .andExpect(jsonPath("$.displayName", equalTo("Controller Profile")))
+            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `identity verification is explicit and keeps profile unverified with none provider`() {
+        val user = userService.createUser("identity-verification-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Identity Verification",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            bio = null
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile/identity-verification")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(profile.id.toString())))
+            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
     }
 
