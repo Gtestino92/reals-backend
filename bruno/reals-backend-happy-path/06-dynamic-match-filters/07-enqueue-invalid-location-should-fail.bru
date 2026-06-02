@@ -1,0 +1,30 @@
+meta {
+  name: 07 Enqueue Invalid Location Should Fail
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{dynamicFiltersUserId}}
+}
+
+body:json {
+  {
+    "latitude": -91.0,
+    "longitude": -58.3816,
+    "accuracyMeters": 50
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 400) {
+    throw new Error(`Expected 400 Bad Request, got ${res.getStatus()}`);
+  }
+}

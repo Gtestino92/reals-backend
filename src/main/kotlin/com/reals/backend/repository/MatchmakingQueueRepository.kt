@@ -54,24 +54,24 @@ interface MatchmakingQueueRepository :
                     OR (pa.looking_for_gender = 'OTHER' AND pb.gender IN ('NON_BINARY', 'OTHER'))
                 )
                 AND (
-                    EXTRACT(YEAR FROM :today) - EXTRACT(YEAR FROM pb.birth_date) -
+                    EXTRACT(YEAR FROM CAST(:today AS DATE)) - EXTRACT(YEAR FROM pb.birth_date) -
                     CASE
-                        WHEN EXTRACT(MONTH FROM :today) < EXTRACT(MONTH FROM pb.birth_date)
+                        WHEN EXTRACT(MONTH FROM CAST(:today AS DATE)) < EXTRACT(MONTH FROM pb.birth_date)
                             OR (
-                                EXTRACT(MONTH FROM :today) = EXTRACT(MONTH FROM pb.birth_date)
-                                AND EXTRACT(DAY FROM :today) < EXTRACT(DAY FROM pb.birth_date)
+                                EXTRACT(MONTH FROM CAST(:today AS DATE)) = EXTRACT(MONTH FROM pb.birth_date)
+                                AND EXTRACT(DAY FROM CAST(:today AS DATE)) < EXTRACT(DAY FROM pb.birth_date)
                             )
                         THEN 1
                         ELSE 0
                     END
                 ) BETWEEN pa.preferred_min_age AND pa.preferred_max_age
                 AND (
-                    EXTRACT(YEAR FROM :today) - EXTRACT(YEAR FROM pa.birth_date) -
+                    EXTRACT(YEAR FROM CAST(:today AS DATE)) - EXTRACT(YEAR FROM pa.birth_date) -
                     CASE
-                        WHEN EXTRACT(MONTH FROM :today) < EXTRACT(MONTH FROM pa.birth_date)
+                        WHEN EXTRACT(MONTH FROM CAST(:today AS DATE)) < EXTRACT(MONTH FROM pa.birth_date)
                             OR (
-                                EXTRACT(MONTH FROM :today) = EXTRACT(MONTH FROM pa.birth_date)
-                                AND EXTRACT(DAY FROM :today) < EXTRACT(DAY FROM pa.birth_date)
+                                EXTRACT(MONTH FROM CAST(:today AS DATE)) = EXTRACT(MONTH FROM pa.birth_date)
+                                AND EXTRACT(DAY FROM CAST(:today AS DATE)) < EXTRACT(DAY FROM pa.birth_date)
                             )
                         THEN 1
                         ELSE 0
