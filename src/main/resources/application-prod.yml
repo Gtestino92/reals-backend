@@ -104,7 +104,7 @@ firebase:
 storage:
   s3:
     bucket: ${S3_PROFILE_PHOTOS_BUCKET}
-    region: ${S3_REGION}
+    region: sa-east-1
     upload-prefix: profile-photos/quarantine
     public-prefix: profile-photos/public
 
