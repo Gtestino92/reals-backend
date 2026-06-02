@@ -5,10 +5,10 @@
 The default active profile is:
 
 ```text
-local-nodb
+local-firebase
 ```
 
-Despite the name, this profile uses an H2 file database:
+This profile uses real Firebase ID tokens and an H2 file database:
 
 ```text
 ./data/realsdb
@@ -44,7 +44,7 @@ URL:
 http://localhost:8080/h2-console
 ```
 
-The H2 console is enabled through `spring.h2.console.*` in `application-local-nodb.yml`.
+The H2 console is enabled through `spring.h2.console.*` in the local H2 profiles.
 
 Connection:
 
@@ -54,26 +54,15 @@ Username: sa
 Password: empty
 ```
 
-The actual datasource URL in `application-local-nodb.yml` includes PostgreSQL compatibility mode:
+The local H2 datasource URL includes PostgreSQL compatibility mode:
 
 ```text
 jdbc:h2:file:./data/realsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
 ```
 
-## Local Auth
-
-With `local-nodb`, no authorization header is needed. `DevAutoAuthFilter` injects:
-
-```text
-userId: 00000000-0000-0000-0000-000000000001
-role: ROLE_USER
-```
-
-This filter is scoped to the local profile.
-
 ## Local Firebase Auth
 
-Use `local-firebase` only when you want to test real Firebase ID tokens locally.
+The default `local-firebase` profile verifies real Firebase ID tokens locally.
 It uses the same H2 file database style as `local-nodb`, but disables dev
 auto-auth and enables Firebase token verification.
 
@@ -84,6 +73,17 @@ The local Firebase service-account JSON is expected at:
 ```
 
 The `secrets/` directory is ignored by Git and must never be committed.
+
+## Local Auto-Auth
+
+With `local-nodb`, no authorization header is needed. `DevAutoAuthFilter` injects:
+
+```text
+userId: 00000000-0000-0000-0000-000000000001
+role: ROLE_USER
+```
+
+This filter is scoped to the local profile.
 
 ## Local PostgreSQL
 
@@ -214,7 +214,7 @@ docker compose -f docker-compose.yml -f docker-compose.firebase.yml down
 
 ## Local Jobs
 
-`local-nodb` disables automatic scheduled execution:
+Local profiles disable automatic scheduled execution:
 
 ```yaml
 scheduler.enabled: false
@@ -234,7 +234,7 @@ POST /api/local-dev/jobs/scheduled-second-chat-start/run
 
 ## Local Profile Photo Rules
 
-Local overrides:
+Local H2 profile overrides:
 
 - max photos: `9`
 - required photos: `4`
@@ -250,7 +250,7 @@ Default application rules are stricter:
 
 ## Flyway And Schema
 
-Local `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update`.
+Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`.
 
 Local `local-postgres` enables Flyway and uses Hibernate `ddl-auto: validate`.
 

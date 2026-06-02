@@ -1,0 +1,22 @@
+meta {
+  name: 44 Get Closed Connection
+  type: http
+  seq: 44
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{connectionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "CLOSED") {
+    throw new Error("Expected connection state CLOSED at the end of the happy path.");
+  }
+}

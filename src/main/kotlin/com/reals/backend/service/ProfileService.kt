@@ -3,6 +3,8 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.service.identity.IdentityVerificationRequest
+import com.reals.backend.service.identity.IdentityVerificationService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -18,6 +20,7 @@ class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
+    private val identityVerificationService: IdentityVerificationService,
 
     @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -107,6 +110,26 @@ class ProfileService(
         return profileRepository.save(profile)
     }
 
+    fun verifyIdentity(profileId: UUID): Profile {
+        val profile = findByIdOrThrow(profileId)
+
+        val identityVerification = identityVerificationService.verify(
+            IdentityVerificationRequest(
+                userId = profile.userId,
+                displayName = profile.displayName,
+                birthDate = profile.birthDate
+            )
+        )
+
+        if (identityVerification.verified && !profile.identityVerified) {
+            profile.identityVerified = true
+            profile.updatedAt = OffsetDateTime.now()
+            return profileRepository.save(profile)
+        }
+
+        return profile
+    }
+
     fun activateProfile(profileId: UUID): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -134,7 +157,7 @@ class ProfileService(
         isFullBody: Boolean? = null
     ): ProfilePhoto {
 
-        findByIdOrThrow(profileId)
+        val profile = findByIdOrThrow(profileId)
 
         check(position in 1..maxPhotoCount) {
             "Photo position must be between 1 and $maxPhotoCount"
@@ -153,14 +176,13 @@ class ProfileService(
         val trimmedUrl = url.trim()
         validatePhotoUrl(trimmedUrl)
 
-        // TODO: Limit client overrides for photo semantic flags to local/dev or admin tooling.
-        val validation = profilePhotoValidationService.validate(
-            ProfilePhotoValidationRequest(
-                url = trimmedUrl
-            )
+        val validation = validatePhotoSemanticsWhenNeeded(
+            profileId = profileId,
+            url = trimmedUrl,
+            replacingPhoto = null
         )
 
-        return profilePhotoRepository.save(
+        val photo = profilePhotoRepository.save(
             ProfilePhoto(
                 profileId = profileId,
                 url = trimmedUrl,
@@ -169,6 +191,10 @@ class ProfileService(
                 isFullBody = isFullBody ?: validation.isFullBody
             )
         )
+
+        moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+        return photo
     }
 
     private fun validatePhotosOrThrow(profileId: UUID) {
@@ -282,12 +308,7 @@ class ProfileService(
 
         profilePhotoRepository.delete(existing)
 
-        if (
-            profile.status == ProfileStatus.ACTIVE &&
-            profilePhotoRepository.countByProfileId(profileId) < requiredPhotoCount
-        ) {
-            profile.status = ProfileStatus.DRAFT
-        }
+        moveActiveProfileToDraftAfterPhotoMutation(profile)
 
         profile.updatedAt = OffsetDateTime.now()
 
@@ -302,7 +323,7 @@ class ProfileService(
         isFullBody: Boolean? = null
     ): ProfilePhoto {
 
-        findByIdOrThrow(profileId)
+        val profile = findByIdOrThrow(profileId)
 
         check(position in 1..maxPhotoCount) {
             "Photo position must be between 1 and $maxPhotoCount"
@@ -313,21 +334,20 @@ class ProfileService(
             position
         )
 
+        val trimmedUrl = url.trim()
+        validatePhotoUrl(trimmedUrl)
+
+        val validation = validatePhotoSemanticsWhenNeeded(
+            profileId = profileId,
+            url = trimmedUrl,
+            replacingPhoto = existing
+        )
+
         if (existing != null) {
             profilePhotoRepository.delete(existing)
         }
 
-        val trimmedUrl = url.trim()
-        validatePhotoUrl(trimmedUrl)
-
-        // TODO: Limit client overrides for photo semantic flags to local/dev or admin tooling.
-        val validation = profilePhotoValidationService.validate(
-            ProfilePhotoValidationRequest(
-                url = trimmedUrl
-            )
-        )
-
-        return profilePhotoRepository.save(
+        val photo = profilePhotoRepository.save(
             ProfilePhoto(
                 profileId = profileId,
                 url = trimmedUrl,
@@ -336,6 +356,51 @@ class ProfileService(
                 isFullBody = isFullBody ?: validation.isFullBody
             )
         )
+
+        moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+        return photo
+    }
+
+    private fun moveActiveProfileToDraftAfterPhotoMutation(profile: Profile) {
+        if (profile.status == ProfileStatus.ACTIVE) {
+            profile.status = ProfileStatus.DRAFT
+            profile.updatedAt = OffsetDateTime.now()
+        }
+    }
+
+    private fun validatePhotoSemanticsWhenNeeded(
+        profileId: UUID,
+        url: String,
+        replacingPhoto: ProfilePhoto?
+    ): ProfilePhotoValidationResult {
+        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
+            return ProfilePhotoValidationResult(
+                isPersonPhoto = false,
+                isFullBody = false
+            )
+        }
+
+        return profilePhotoValidationService.validate(
+            ProfilePhotoValidationRequest(
+                url = url
+            )
+        )
+    }
+
+    private fun needsPhotoSemanticValidation(
+        profileId: UUID,
+        replacingPhoto: ProfilePhoto?
+    ): Boolean {
+        val personCount =
+            profilePhotoRepository.countByProfileIdAndIsPersonPhotoTrue(profileId) -
+                if (replacingPhoto?.isPersonPhoto == true) 1 else 0
+
+        val fullBodyCount =
+            profilePhotoRepository.countByProfileIdAndIsFullBodyTrue(profileId) -
+                if (replacingPhoto?.isFullBody == true) 1 else 0
+
+        return personCount < minPersonPhotos || fullBodyCount < minFullBodyPhotos
     }
 
     private fun validateDisplayName(displayName: String) {
@@ -356,8 +421,6 @@ class ProfileService(
         require(age in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
             "Profile age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
         }
-
-        // TODO: Verify user identity through a dedicated identity-verification provider.
     }
 
     private fun validateDynamicMatchFilters(

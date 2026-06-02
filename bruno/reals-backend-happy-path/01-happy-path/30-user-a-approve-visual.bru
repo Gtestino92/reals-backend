@@ -1,0 +1,22 @@
+meta {
+  name: 30 User A Approve Visual
+  type: http
+  seq: 30
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{matchId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

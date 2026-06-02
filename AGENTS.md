@@ -7,19 +7,20 @@ This repository is the backend for Reals, a structured dating / connection produ
 - Kotlin 2.3.21 on Java 21.
 - Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
-- H2 for local `local-nodb` development.
+- H2 for local `local-firebase` and `local-nodb` development.
 - PostgreSQL is the supported non-local database driver. Do not add another database driver unless a concrete environment needs it.
-- Flyway migrations live under `src/main/resources/db/migration`; local `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update`.
+- Flyway migrations live under `src/main/resources/db/migration`; local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`.
 - ShedLock protects scheduler jobs when a `LockProvider` bean exists.
-- Firebase Admin dependency and Firebase auth classes exist, but local development uses dev auto-auth.
+- Firebase Admin dependency and Firebase auth classes exist. The default local profile uses Firebase auth; local no-auth testing uses `local-nodb` or `local-postgres`.
 
 ## Local Development
 
-- Default active Spring profile: `local-nodb`.
-- Local database: H2 file database at `./data/realsdb`.
+- Default active Spring profile: `local-firebase`.
+- Default local database: H2 file database at `./data/realsdb`.
 - H2 console: `http://localhost:8080/h2-console`.
 - H2 JDBC URL: `jdbc:h2:file:./data/realsdb`.
-- Local auth: `DevAutoAuthFilter` injects user `00000000-0000-0000-0000-000000000001` with `ROLE_USER`.
+- Local Firebase auth expects `./secrets/reals-backend-firebase-credentials-dev.json` and a real Firebase ID token.
+- Local no-auth profiles `local-nodb` and `local-postgres` use `DevAutoAuthFilter`, which injects user `00000000-0000-0000-0000-000000000001` with `ROLE_USER`.
 - Sanity endpoint: `GET /api/ping`.
 - Maven CLI may not be installed on the target machine. Prefer IntelliJ IDEA run/build actions unless the user explicitly confirms CLI availability.
 
@@ -35,6 +36,7 @@ This repository is the backend for Reals, a structured dating / connection produ
 - Domain classes under `domain` represent persisted entities and enums.
 - Matching-specific logic belongs under `service.matching`.
 - Reputation-specific logic belongs under `service.reputation`.
+- Identity-verification-specific logic belongs under `service.identity`.
 - Configuration belongs under `config`.
 
 Use this flow unless there is a strong reason not to:
@@ -121,7 +123,7 @@ From `application.yml`:
 - `scheduling.max-proposals-per-round: 3`
 - default profile photos: required `9`, max `9`, min person `3`, min full-body `1`
 
-From `application-local-nodb.yml`:
+From local H2 profiles:
 
 - local profile photos: required `4`, max `9`, min person `1`, min full-body `1`
 

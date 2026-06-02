@@ -153,6 +153,30 @@ class ProfileController(
         )
     }
 
+    @PostMapping("/identity-verification")
+    fun verifyMyIdentity(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ProfileResponse> {
+
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val verified = profileService.verifyIdentity(
+            profileId = profile.id
+        )
+
+        val photos = profileService.getPhotos(verified.id)
+
+        return ResponseEntity.ok(
+            ProfileResponse.from(
+                profile = verified,
+                photoCount = photos.size
+            )
+        )
+    }
+
     /**
      * Positions 1-9 are valid. Each position can only be occupied once
      * Semantic photo classification is delegated to ProfilePhotoValidationService.
