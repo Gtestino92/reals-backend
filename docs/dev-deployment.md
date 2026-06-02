@@ -19,6 +19,10 @@ Dev runtime
 The local `docker-compose.yml` keeps PostgreSQL in Docker only for local
 development convenience.
 
+No cloud deployment automation exists yet. At this stage GitHub Actions builds,
+tests, scans and publishes the container image; the runtime platform still needs
+to be chosen and configured separately.
+
 ## PostgreSQL For Dev
 
 Create a managed PostgreSQL instance in the same platform or region where the
@@ -41,6 +45,9 @@ DATABASE_URL=jdbc:postgresql://<host>:<port>/<database>
 DATABASE_USERNAME=<database-user>
 DATABASE_PASSWORD=<database-password>
 ```
+
+`DATABASE_URL` and `DATABASE_USERNAME` are runtime configuration. `DATABASE_PASSWORD`
+is a runtime secret.
 
 Use the provider's internal/private database hostname when available. Use the
 external hostname only if the runtime cannot access private networking yet.
@@ -92,6 +99,10 @@ ghcr.io/gtestino92/reals-backend:latest
 The deployment platform should pull `:development` for the dev environment.
 Use a `sha-*` tag when you need an immutable rollback target.
 
+Production should not track a moving branch tag. Once a production environment
+exists, publish immutable tags from Git release tags, for example `v1.0.0`, and
+deploy that exact tag.
+
 ## Required Runtime Checks
 
 The platform health check should use:
@@ -108,3 +119,11 @@ The endpoint is public by design and should return:
 
 `/api/local-dev/**` endpoints are local-only and are not available in the cloud `dev`
 profile. Scheduled jobs run automatically in `dev`.
+
+After updating a deployed environment, run the manual GitHub Actions workflow
+`Smoke check` with the environment base URL. It checks:
+
+```http
+GET /actuator/health/readiness
+GET /api/ping
+```

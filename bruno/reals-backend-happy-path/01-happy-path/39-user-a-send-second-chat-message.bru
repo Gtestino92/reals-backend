@@ -1,0 +1,22 @@
+meta {
+  name: 39 User A Send Second Chat Message
+  type: http
+  seq: 39
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{secondChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "content": "Ya quedo habilitado el segundo chat."
+  }
+}
