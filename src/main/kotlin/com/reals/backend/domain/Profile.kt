@@ -1,6 +1,7 @@
 package com.reals.backend.domain
 
 import jakarta.persistence.*
+import org.hibernate.annotations.ColumnDefault
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.*
@@ -74,6 +75,18 @@ data class Profile(
 
     @Column(name = "bio")
     var bio: String? = null,
+
+    @ColumnDefault("18")
+    @Column(name = "preferred_min_age", nullable = false)
+    var preferredMinAge: Int = 18,
+
+    @ColumnDefault("99")
+    @Column(name = "preferred_max_age", nullable = false)
+    var preferredMaxAge: Int = 99,
+
+    @ColumnDefault("50")
+    @Column(name = "max_distance_km", nullable = false)
+    var maxDistanceKm: Int = 50,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

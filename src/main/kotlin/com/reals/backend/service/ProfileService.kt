@@ -66,7 +66,10 @@ class ProfileService(
         intention: Intention,
         city: String,
         country: String,
-        bio: String? = null
+        bio: String? = null,
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
     ): Profile {
         val normalizedDisplayName = displayName.trim()
         val normalizedCity = city.trim()
@@ -77,6 +80,11 @@ class ProfileService(
         validateBirthDate(birthDate)
         validateLocation(normalizedCity, normalizedCountry)
         normalizedBio?.let { validateText("Bio", it, BIO_MAX_LENGTH) }
+        validateDynamicMatchFilters(
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
+        )
 
         check(profileRepository.findByUserId(userId) == null) {
             "User $userId already has a profile"
@@ -93,6 +101,9 @@ class ProfileService(
             city = normalizedCity,
             country = normalizedCountry,
             bio = normalizedBio,
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm,
             status = ProfileStatus.DRAFT
         )
 
@@ -259,6 +270,28 @@ class ProfileService(
         return profileRepository.save(profile)
     }
 
+    fun updateDynamicMatchFilters(
+        profileId: UUID,
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
+    ): Profile {
+        val profile = findByIdOrThrow(profileId)
+
+        validateDynamicMatchFilters(
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
+        )
+
+        profile.preferredMinAge = preferredMinAge
+        profile.preferredMaxAge = preferredMaxAge
+        profile.maxDistanceKm = maxDistanceKm
+        profile.updatedAt = OffsetDateTime.now()
+
+        return profileRepository.save(profile)
+    }
+
     fun deletePhoto(
         profileId: UUID,
         position: Int
@@ -387,6 +420,28 @@ class ProfileService(
 
         require(age in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
             "Profile age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        }
+    }
+
+    private fun validateDynamicMatchFilters(
+        preferredMinAge: Int,
+        preferredMaxAge: Int,
+        maxDistanceKm: Int
+    ) {
+        require(preferredMinAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        }
+
+        require(preferredMaxAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        }
+
+        require(preferredMinAge <= preferredMaxAge) {
+            "Preferred minimum age must be less than or equal to preferred maximum age"
+        }
+
+        require(maxDistanceKm in 1..1000) {
+            "Maximum distance must be between 1 and 1000 kilometers"
         }
     }
 

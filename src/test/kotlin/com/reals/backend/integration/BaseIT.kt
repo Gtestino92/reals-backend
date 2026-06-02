@@ -44,6 +44,11 @@ import java.util.UUID
 @Transactional
 abstract class BaseIT {
 
+    protected companion object {
+        const val BUENOS_AIRES_LATITUDE = -34.6037
+        const val BUENOS_AIRES_LONGITUDE = -58.3816
+    }
+
     @Autowired
     protected lateinit var userService: UserService
 
@@ -109,19 +114,26 @@ abstract class BaseIT {
         displayName: String,
         gender: Gender,
         lookingForGender: LookingForGender,
-        intention: Intention = Intention.DATE
+        intention: Intention = Intention.DATE,
+        birthDate: LocalDate = LocalDate.of(1995, 1, 1),
+        preferredMinAge: Int = 18,
+        preferredMaxAge: Int = 99,
+        maxDistanceKm: Int = 50
     ): UUID {
         val user = userService.createUser(email)
         val profile = profileService.createProfile(
             userId = user.id,
             displayName = displayName,
-            birthDate = LocalDate.of(1995, 1, 1),
+            birthDate = birthDate,
             gender = gender,
             lookingForGender = lookingForGender,
             intention = intention,
             city = "Buenos Aires",
             country = "AR",
-            bio = "Integration test profile"
+            bio = "Integration test profile",
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
         )
 
         repeat(4) { index ->
@@ -136,6 +148,20 @@ abstract class BaseIT {
 
         profileService.activateProfile(profile.id)
         return user.id
+    }
+
+    protected fun enqueueForMatchmaking(
+        userId: UUID,
+        latitude: Double = BUENOS_AIRES_LATITUDE,
+        longitude: Double = BUENOS_AIRES_LONGITUDE,
+        accuracyMeters: Int? = 50
+    ) {
+        matchmakingService.enqueue(
+            userId = userId,
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = accuracyMeters
+        )
     }
 
     protected fun createMatchWithFirstChat(

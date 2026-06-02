@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service
 class IdentityVerificationService(
     providers: List<IdentityVerificationProvider>,
 
-    @param:Value("\${identity-verification.provider:none}")
+    @Value("\${identity-verification.provider:none}")
     providerName: String
 ) {
 
