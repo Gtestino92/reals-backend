@@ -1,9 +1,11 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
+import com.reals.backend.controller.dto.EnqueueMatchmakingRequest
 import com.reals.backend.controller.dto.QueueStatusResponse
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.MatchmakingService
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.util.*
@@ -21,10 +23,15 @@ class MatchmakingController(
      */
     @PostMapping("/queue")
     fun enqueue(
-        @CurrentUserId userId: UUID
+        @CurrentUserId userId: UUID,
+        @Valid
+        @RequestBody request: EnqueueMatchmakingRequest
     ): ResponseEntity<QueueStatusResponse> {
         matchmakingService.enqueue(
-            userId = userId
+            userId = userId,
+            latitude = request.latitude,
+            longitude = request.longitude,
+            accuracyMeters = request.accuracyMeters
         )
         return ResponseEntity.ok(QueueStatusResponse(userId = userId, inQueue = true))
     }

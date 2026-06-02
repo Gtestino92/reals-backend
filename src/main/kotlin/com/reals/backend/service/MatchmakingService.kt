@@ -8,7 +8,14 @@ import com.reals.backend.service.matching.CompatibilityScorer
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 import java.util.*
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @Service
 @Transactional
@@ -40,10 +47,21 @@ class MatchmakingService(
      *  - active match count < maxActiveMatches (configurable, default 5)
      *  - no active penalty
      *  - profile is ACTIVE (photo validation already happened at profile activation)
+     *  - current search location is present and valid
      */
-    fun enqueue(userId: UUID) {
+    fun enqueue(
+        userId: UUID,
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Int? = null
+    ) {
 
         lockUser(userId)
+        validateSearchLocation(
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = accuracyMeters
+        )
 
         val activeMatches = lockRepository.countByUserIdAndEngagementType(
             userId,
@@ -65,12 +83,22 @@ class MatchmakingService(
             "User $userId profile is not active — complete and submit your profile first"
         }
 
-        if (queueRepository.existsByUserId(userId)) {
+        val existingQueueEntry = queueRepository.findByUserId(userId)
+        if (existingQueueEntry != null) {
+            existingQueueEntry.latitude = latitude
+            existingQueueEntry.longitude = longitude
+            existingQueueEntry.accuracyMeters = accuracyMeters
+            queueRepository.save(existingQueueEntry)
             return
         }
 
         queueRepository.save(
-            MatchmakingQueueEntry(userId = userId)
+            MatchmakingQueueEntry(
+                userId = userId,
+                latitude = latitude,
+                longitude = longitude,
+                accuracyMeters = accuracyMeters
+            )
         )
     }
 
@@ -90,9 +118,10 @@ class MatchmakingService(
      *
      * Actual match creation is delegated to MatchService.
      *
-     * The repository query applies cheap SQL-compatible filters such as active
-     * profile, mutual gender preference and intention. CompatibilityScorer is
-     * the extension point for richer probabilistic scoring.
+     * The repository query applies SQL-compatible filters such as active
+     * profile, mutual gender preference, intention and mutual preferred age
+     * range. CompatibilityScorer is the extension point for application-level
+     * filters and richer scoring.
      */
     fun findNextCandidatePair(): Pair<UUID, UUID>? {
         require(candidatePairLimit > 0) {
@@ -108,13 +137,21 @@ class MatchmakingService(
             "Early accept compatibility score must be greater than or equal to minimum compatibility score"
         }
 
+        val today = LocalDate.now()
         val candidatePairs =
             queueRepository
-                .findBasicCompatiblePairsSkipLocked(candidatePairLimit)
+                .findBasicCompatiblePairsSkipLocked(
+                    limit = candidatePairLimit,
+                    today = today
+                )
                 .map {
                     MatchmakingCandidatePair(
                         userAId = UUID.fromString(it.userAId),
-                        userBId = UUID.fromString(it.userBId)
+                        userBId = UUID.fromString(it.userBId),
+                        userALatitude = it.userALatitude,
+                        userALongitude = it.userALongitude,
+                        userBLatitude = it.userBLatitude,
+                        userBLongitude = it.userBLongitude
                     )
                 }
 
@@ -152,6 +189,10 @@ class MatchmakingService(
             val profileB = profilesByUserId[pair.userBId]
 
             if (profileA != null && profileB != null) {
+                if (!distancePreferenceOk(pair, profileA, profileB)) {
+                    return@forEachIndexed
+                }
+
                 val score = compatibilityScorer.score(profileA, profileB)
 
                 if (score >= earlyAcceptCompatibilityScore) {
@@ -183,4 +224,65 @@ class MatchmakingService(
 
         return bestCandidate?.pair
     }
+
+    private fun validateSearchLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Int?
+    ) {
+        require(latitude in -90.0..90.0) {
+            "Latitude must be between -90 and 90"
+        }
+        require(longitude in -180.0..180.0) {
+            "Longitude must be between -180 and 180"
+        }
+        accuracyMeters?.let {
+            require(it in 0..100000) {
+                "Location accuracy must be between 0 and 100000 meters"
+            }
+        }
+    }
+
+    private fun distancePreferenceOk(
+        pair: MatchmakingCandidatePair,
+        profileA: Profile,
+        profileB: Profile
+    ): Boolean {
+        val distanceKm = distanceKm(
+            latitudeA = pair.userALatitude,
+            longitudeA = pair.userALongitude,
+            latitudeB = pair.userBLatitude,
+            longitudeB = pair.userBLongitude
+        )
+
+        return distanceKm <= profileA.maxDistanceKm &&
+            distanceKm <= profileB.maxDistanceKm
+    }
+
+    private fun distanceKm(
+        latitudeA: Double,
+        longitudeA: Double,
+        latitudeB: Double,
+        longitudeB: Double
+    ): Double {
+        val radiusKm = 6371.0
+        val deltaLatitude = degreesToRadians(latitudeB - latitudeA)
+        val deltaLongitude = degreesToRadians(longitudeB - longitudeA)
+        val latA = degreesToRadians(latitudeA)
+        val latB = degreesToRadians(latitudeB)
+
+        val haversine =
+            sin(deltaLatitude / 2).pow(2) +
+                cos(latA) * cos(latB) * sin(deltaLongitude / 2).pow(2)
+
+        val normalizedHaversine = haversine.coerceIn(0.0, 1.0)
+
+        return radiusKm * 2 * atan2(
+            sqrt(normalizedHaversine),
+            sqrt(1 - normalizedHaversine)
+        )
+    }
+
+    private fun degreesToRadians(value: Double): Double =
+        value * PI / 180.0
 }

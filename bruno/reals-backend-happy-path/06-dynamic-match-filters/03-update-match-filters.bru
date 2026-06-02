@@ -1,0 +1,34 @@
+meta {
+  name: 03 Update Match Filters
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/match-filters
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{dynamicFiltersUserId}}
+}
+
+body:json {
+  {
+    "preferredMinAge": 30,
+    "preferredMaxAge": 38,
+    "maxDistanceKm": 25
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (res.getStatus() !== 200) {
+    throw new Error(`Expected 200 OK, got ${res.getStatus()}`);
+  }
+  if (body.preferredMinAge !== 30 || body.preferredMaxAge !== 38 || body.maxDistanceKm !== 25) {
+    throw new Error("Expected updated dynamic match filters.");
+  }
+}

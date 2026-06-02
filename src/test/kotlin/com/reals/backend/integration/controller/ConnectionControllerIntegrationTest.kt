@@ -85,7 +85,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
                     .andReturn()
                     .response
                     .contentAsString
-            )[0]["id"].textValue()
+        )[0]["id"].asString()
 
         mockMvc.perform(
             post("/api/connections/${setup.connectionId}/proposals/$proposalId/acceptance")

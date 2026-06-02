@@ -40,7 +40,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
             "country" to "AR",
-            "bio" to "Created through MockMvc"
+            "bio" to "Created through MockMvc",
+            "preferredMinAge" to 30,
+            "preferredMaxAge" to 40,
+            "maxDistanceKm" to 75
         )
 
         mockMvc.perform(
@@ -52,33 +55,47 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.userId", equalTo(user.id.toString())))
             .andExpect(jsonPath("$.displayName", equalTo("Controller Profile")))
-            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
     }
 
     @Test
-    fun `identity verification is explicit and keeps profile unverified with none provider`() {
-        val user = userService.createUser("identity-verification-${UUID.randomUUID()}@example.com")
-        val profile = profileService.createProfile(
+    fun `update match filters replaces required dynamic filters`() {
+        val user = userService.createUser("filters-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
             userId = user.id,
-            displayName = "Identity Verification",
+            displayName = "Filter Profile",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
             lookingForGender = LookingForGender.MEN,
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            bio = null
+            preferredMinAge = 25,
+            preferredMaxAge = 35,
+            maxDistanceKm = 100
         )
 
         mockMvc.perform(
-            post("/api/me/profile/identity-verification")
+            put("/api/me/profile/match-filters")
                 .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "preferredMinAge": 30,
+                      "preferredMaxAge": 38,
+                      "maxDistanceKm": 25
+                    }
+                    """.trimIndent()
+                )
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.id", equalTo(profile.id.toString())))
-            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
-            .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(38)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(25)))
     }
 
     @Test
@@ -91,7 +108,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGender" to LookingForGender.MEN.name,
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR"
+            "country" to "AR",
+            "preferredMinAge" to 18,
+            "preferredMaxAge" to 99,
+            "maxDistanceKm" to 50
         )
 
         mockMvc.perform(

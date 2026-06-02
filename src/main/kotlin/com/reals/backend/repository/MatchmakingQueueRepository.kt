@@ -5,6 +5,7 @@ import com.reals.backend.repository.projection.MatchmakingCandidatePairProjectio
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.LocalDate
 import java.util.UUID
 
 interface MatchmakingQueueRepository :
@@ -12,13 +13,19 @@ interface MatchmakingQueueRepository :
 
     fun existsByUserId(userId: UUID): Boolean
 
+    fun findByUserId(userId: UUID): MatchmakingQueueEntry?
+
     fun deleteByUserId(userId: UUID)
 
     @Query(
         value = """
             SELECT
                 CAST(qa.user_id AS VARCHAR) AS "userAId",
-                CAST(qb.user_id AS VARCHAR) AS "userBId"
+                CAST(qb.user_id AS VARCHAR) AS "userBId",
+                qa.latitude AS "userALatitude",
+                qa.longitude AS "userALongitude",
+                qb.latitude AS "userBLatitude",
+                qb.longitude AS "userBLongitude"
             FROM matchmaking_queue qa
             JOIN profiles pa
                 ON pa.user_id = qa.user_id
@@ -46,6 +53,30 @@ interface MatchmakingQueueRepository :
                     OR (pa.looking_for_gender = 'WOMEN' AND pb.gender = 'FEMALE')
                     OR (pa.looking_for_gender = 'OTHER' AND pb.gender IN ('NON_BINARY', 'OTHER'))
                 )
+                AND (
+                    EXTRACT(YEAR FROM :today) - EXTRACT(YEAR FROM pb.birth_date) -
+                    CASE
+                        WHEN EXTRACT(MONTH FROM :today) < EXTRACT(MONTH FROM pb.birth_date)
+                            OR (
+                                EXTRACT(MONTH FROM :today) = EXTRACT(MONTH FROM pb.birth_date)
+                                AND EXTRACT(DAY FROM :today) < EXTRACT(DAY FROM pb.birth_date)
+                            )
+                        THEN 1
+                        ELSE 0
+                    END
+                ) BETWEEN pa.preferred_min_age AND pa.preferred_max_age
+                AND (
+                    EXTRACT(YEAR FROM :today) - EXTRACT(YEAR FROM pa.birth_date) -
+                    CASE
+                        WHEN EXTRACT(MONTH FROM :today) < EXTRACT(MONTH FROM pa.birth_date)
+                            OR (
+                                EXTRACT(MONTH FROM :today) = EXTRACT(MONTH FROM pa.birth_date)
+                                AND EXTRACT(DAY FROM :today) < EXTRACT(DAY FROM pa.birth_date)
+                            )
+                        THEN 1
+                        ELSE 0
+                    END
+                ) BETWEEN pb.preferred_min_age AND pb.preferred_max_age
             ORDER BY qa.entered_at, qb.entered_at, qa.id, qb.id
             LIMIT :limit
             FOR UPDATE OF qa, qb SKIP LOCKED
@@ -54,6 +85,8 @@ interface MatchmakingQueueRepository :
     )
     fun findBasicCompatiblePairsSkipLocked(
         @Param("limit")
-        limit: Int
+        limit: Int,
+        @Param("today")
+        today: LocalDate
     ): List<MatchmakingCandidatePairProjection>
 }
