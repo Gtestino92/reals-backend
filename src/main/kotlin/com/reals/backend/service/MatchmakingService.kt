@@ -92,7 +92,7 @@ class MatchmakingService(
      *
      * The repository query applies cheap SQL-compatible filters such as active
      * profile, mutual gender preference and intention. CompatibilityScorer is
-     * the extension point for richer probabilistic scoring.
+     * the extension point for application-level filters and richer scoring.
      */
     fun findNextCandidatePair(): Pair<UUID, UUID>? {
         require(candidatePairLimit > 0) {

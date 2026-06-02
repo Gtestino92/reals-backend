@@ -63,7 +63,10 @@ class ProfileService(
         intention: Intention,
         city: String,
         country: String,
-        bio: String? = null
+        bio: String? = null,
+        preferredMinAge: Int? = null,
+        preferredMaxAge: Int? = null,
+        maxDistanceKm: Int? = null
     ): Profile {
         val normalizedDisplayName = displayName.trim()
         val normalizedCity = city.trim()
@@ -74,6 +77,11 @@ class ProfileService(
         validateBirthDate(birthDate)
         validateLocation(normalizedCity, normalizedCountry)
         normalizedBio?.let { validateText("Bio", it, BIO_MAX_LENGTH) }
+        validateDynamicMatchFilters(
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
+        )
 
         check(profileRepository.findByUserId(userId) == null) {
             "User $userId already has a profile"
@@ -90,6 +98,9 @@ class ProfileService(
             city = normalizedCity,
             country = normalizedCountry,
             bio = normalizedBio,
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm,
             status = ProfileStatus.DRAFT
         )
 
@@ -199,7 +210,10 @@ class ProfileService(
         city: String? = null,
         country: String? = null,
         intention: Intention? = null,
-        lookingForGender: LookingForGender? = null
+        lookingForGender: LookingForGender? = null,
+        preferredMinAge: Int? = null,
+        preferredMaxAge: Int? = null,
+        maxDistanceKm: Int? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -228,6 +242,38 @@ class ProfileService(
         intention?.let { profile.intention = it }
         lookingForGender?.let { profile.lookingForGender = it }
 
+        validateDynamicMatchFilters(
+            preferredMinAge = preferredMinAge ?: profile.preferredMinAge,
+            preferredMaxAge = preferredMaxAge ?: profile.preferredMaxAge,
+            maxDistanceKm = maxDistanceKm ?: profile.maxDistanceKm
+        )
+
+        preferredMinAge?.let { profile.preferredMinAge = it }
+        preferredMaxAge?.let { profile.preferredMaxAge = it }
+        maxDistanceKm?.let { profile.maxDistanceKm = it }
+
+        profile.updatedAt = OffsetDateTime.now()
+
+        return profileRepository.save(profile)
+    }
+
+    fun updateDynamicMatchFilters(
+        profileId: UUID,
+        preferredMinAge: Int?,
+        preferredMaxAge: Int?,
+        maxDistanceKm: Int?
+    ): Profile {
+        val profile = findByIdOrThrow(profileId)
+
+        validateDynamicMatchFilters(
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
+        )
+
+        profile.preferredMinAge = preferredMinAge
+        profile.preferredMaxAge = preferredMaxAge
+        profile.maxDistanceKm = maxDistanceKm
         profile.updatedAt = OffsetDateTime.now()
 
         return profileRepository.save(profile)
@@ -325,6 +371,36 @@ class ProfileService(
         }
 
         // TODO: Verify user identity through a dedicated identity-verification provider.
+    }
+
+    private fun validateDynamicMatchFilters(
+        preferredMinAge: Int?,
+        preferredMaxAge: Int?,
+        maxDistanceKm: Int?
+    ) {
+        preferredMinAge?.let {
+            require(it in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+                "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+            }
+        }
+
+        preferredMaxAge?.let {
+            require(it in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+                "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+            }
+        }
+
+        if (preferredMinAge != null && preferredMaxAge != null) {
+            require(preferredMinAge <= preferredMaxAge) {
+                "Preferred minimum age must be less than or equal to preferred maximum age"
+            }
+        }
+
+        maxDistanceKm?.let {
+            require(it in 1..1000) {
+                "Maximum distance must be between 1 and 1000 kilometers"
+            }
+        }
     }
 
     private fun validateLocation(

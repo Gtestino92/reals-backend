@@ -109,19 +109,26 @@ abstract class BaseIT {
         displayName: String,
         gender: Gender,
         lookingForGender: LookingForGender,
-        intention: Intention = Intention.DATE
+        intention: Intention = Intention.DATE,
+        birthDate: LocalDate = LocalDate.of(1995, 1, 1),
+        preferredMinAge: Int? = null,
+        preferredMaxAge: Int? = null,
+        maxDistanceKm: Int? = null
     ): UUID {
         val user = userService.createUser(email)
         val profile = profileService.createProfile(
             userId = user.id,
             displayName = displayName,
-            birthDate = LocalDate.of(1995, 1, 1),
+            birthDate = birthDate,
             gender = gender,
             lookingForGender = lookingForGender,
             intention = intention,
             city = "Buenos Aires",
             country = "AR",
-            bio = "Integration test profile"
+            bio = "Integration test profile",
+            preferredMinAge = preferredMinAge,
+            preferredMaxAge = preferredMaxAge,
+            maxDistanceKm = maxDistanceKm
         )
 
         repeat(4) { index ->

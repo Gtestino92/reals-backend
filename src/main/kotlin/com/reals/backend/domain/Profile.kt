@@ -75,6 +75,15 @@ data class Profile(
     @Column(name = "bio")
     var bio: String? = null,
 
+    @Column(name = "preferred_min_age")
+    var preferredMinAge: Int? = null,
+
+    @Column(name = "preferred_max_age")
+    var preferredMaxAge: Int? = null,
+
+    @Column(name = "max_distance_km")
+    var maxDistanceKm: Int? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     var status: ProfileStatus = ProfileStatus.DRAFT,
