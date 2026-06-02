@@ -17,8 +17,9 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Real-time chat via WebSocket or SSE.
 - Notification delivery.
 - Reveal quotas.
-- Advanced compatibility scoring. Current matching uses a SQL basic-compatible pair filter plus a rule-based `CompatibilityScorer`; future work should add interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
+- Advanced compatibility scoring. Current matching uses SQL hard-filtered candidate pairs plus a rule-based `CompatibilityScorer`; future work should add interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
 - Improve geographic matching with geohash, bounding boxes or database-supported spatial indexing if queue volume makes application-level Haversine filtering too expensive.
+- Decide how `accuracyMeters` should affect matchmaking. It is currently captured and validated with the queue search location, but does not reject imprecise locations or adjust the effective distance radius.
 - ML-based matching.
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.

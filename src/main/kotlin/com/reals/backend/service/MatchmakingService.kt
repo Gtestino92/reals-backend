@@ -5,17 +5,12 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.matching.CompatibilityScorer
+import com.reals.backend.service.matching.SearchLocationMatchFilter
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.util.*
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 @Service
 @Transactional
@@ -27,6 +22,7 @@ class MatchmakingService(
     private val penaltyService: PenaltyService,
     private val profileService: ProfileService,
     private val compatibilityScorer: CompatibilityScorer,
+    private val searchLocationMatchFilter: SearchLocationMatchFilter,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int,
@@ -113,15 +109,15 @@ class MatchmakingService(
     }
 
     /**
-     * Claims basic-compatible queue pairs using SKIP LOCKED and selects the
+     * Claims hard-filtered queue pairs using SKIP LOCKED and selects the
      * best scored pair.
      *
      * Actual match creation is delegated to MatchService.
      *
-     * The repository query applies SQL-compatible filters such as active
-     * profile, mutual gender preference, intention and mutual preferred age
-     * range. CompatibilityScorer is the extension point for application-level
-     * filters and richer scoring.
+     * The repository query applies hard filters that can run in SQL, such as
+     * active profile, mutual gender preference, intention and mutual preferred
+     * age range. SearchLocationMatchFilter applies the application-level
+     * distance hard filter. CompatibilityScorer ranks the remaining candidates.
      */
     fun findNextCandidatePair(): Pair<UUID, UUID>? {
         require(candidatePairLimit > 0) {
@@ -184,45 +180,67 @@ class MatchmakingService(
 
         var bestCandidate: ScoredMatchmakingCandidatePair? = null
 
-        candidatePairs.forEachIndexed { index, pair ->
+        for ((index, pair) in candidatePairs.withIndex()) {
             val profileA = profilesByUserId[pair.userAId]
+                ?: continue
             val profileB = profilesByUserId[pair.userBId]
+                ?: continue
 
-            if (profileA != null && profileB != null) {
-                if (!distancePreferenceOk(pair, profileA, profileB)) {
-                    return@forEachIndexed
-                }
+            val scoredCandidate =
+                scoreCandidatePair(
+                    pair = pair,
+                    order = index,
+                    profileA = profileA,
+                    profileB = profileB
+                ) ?: continue
 
-                val score = compatibilityScorer.score(profileA, profileB)
+            if (scoredCandidate.score >= earlyAcceptCompatibilityScore) {
+                return scoredCandidate.pair
+            }
 
-                if (score >= earlyAcceptCompatibilityScore) {
-                    return pair
-                }
-
-                if (score >= minCompatibilityScore) {
-                    val scoredCandidate =
-                        ScoredMatchmakingCandidatePair(
-                            pair = pair,
-                            score = score,
-                            order = index
-                        )
-
-                    val currentBest = bestCandidate
-                    if (
-                        currentBest == null ||
-                        scoredCandidate.score > currentBest.score ||
-                        (
-                            scoredCandidate.score == currentBest.score &&
-                                scoredCandidate.order < currentBest.order
-                            )
-                    ) {
-                        bestCandidate = scoredCandidate
-                    }
-                }
+            if (isBetterCandidate(scoredCandidate, bestCandidate)) {
+                bestCandidate = scoredCandidate
             }
         }
 
         return bestCandidate?.pair
+    }
+
+    private fun scoreCandidatePair(
+        pair: MatchmakingCandidatePair,
+        order: Int,
+        profileA: Profile,
+        profileB: Profile
+    ): ScoredMatchmakingCandidatePair? {
+        if (!searchLocationMatchFilter.passes(pair, profileA, profileB)) {
+            return null
+        }
+
+        val score = compatibilityScorer.score(profileA, profileB)
+        if (score < minCompatibilityScore) {
+            return null
+        }
+
+        return ScoredMatchmakingCandidatePair(
+            pair = pair,
+            score = score,
+            order = order
+        )
+    }
+
+    private fun isBetterCandidate(
+        candidate: ScoredMatchmakingCandidatePair,
+        currentBest: ScoredMatchmakingCandidatePair?
+    ): Boolean {
+        if (currentBest == null) {
+            return true
+        }
+
+        if (candidate.score != currentBest.score) {
+            return candidate.score > currentBest.score
+        }
+
+        return candidate.order < currentBest.order
     }
 
     private fun validateSearchLocation(
@@ -242,47 +260,4 @@ class MatchmakingService(
             }
         }
     }
-
-    private fun distancePreferenceOk(
-        pair: MatchmakingCandidatePair,
-        profileA: Profile,
-        profileB: Profile
-    ): Boolean {
-        val distanceKm = distanceKm(
-            latitudeA = pair.userALatitude,
-            longitudeA = pair.userALongitude,
-            latitudeB = pair.userBLatitude,
-            longitudeB = pair.userBLongitude
-        )
-
-        return distanceKm <= profileA.maxDistanceKm &&
-            distanceKm <= profileB.maxDistanceKm
-    }
-
-    private fun distanceKm(
-        latitudeA: Double,
-        longitudeA: Double,
-        latitudeB: Double,
-        longitudeB: Double
-    ): Double {
-        val radiusKm = 6371.0
-        val deltaLatitude = degreesToRadians(latitudeB - latitudeA)
-        val deltaLongitude = degreesToRadians(longitudeB - longitudeA)
-        val latA = degreesToRadians(latitudeA)
-        val latB = degreesToRadians(latitudeB)
-
-        val haversine =
-            sin(deltaLatitude / 2).pow(2) +
-                cos(latA) * cos(latB) * sin(deltaLongitude / 2).pow(2)
-
-        val normalizedHaversine = haversine.coerceIn(0.0, 1.0)
-
-        return radiusKm * 2 * atan2(
-            sqrt(normalizedHaversine),
-            sqrt(1 - normalizedHaversine)
-        )
-    }
-
-    private fun degreesToRadians(value: Double): Double =
-        value * PI / 180.0
 }
