@@ -9,8 +9,8 @@
 environment: dev
 
 image:
-  repository: ghcr.io/your-org/reals-backend
-  tag: dev
+  repository: ghcr.io/gtestino92/reals-backend
+  tag: development
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -45,13 +45,13 @@ resources:
 
 probes:
   readiness:
-    path: /actuator/health
+    path: /actuator/health/readiness
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 6
   liveness:
-    path: /actuator/health
+    path: /actuator/health/liveness
     initialDelaySeconds: 60
     periodSeconds: 20
     timeoutSeconds: 3
@@ -70,19 +70,17 @@ env:
     value: none
 
 configRefs:
-  - name: S3_PROFILE_PHOTOS_BUCKET
-    key: reals-dev-profile-photos
-  - name: S3_REGION
-    key: aws-region
-
-secretRefs:
   - name: DATABASE_URL
     key: database_url
   - name: DATABASE_USERNAME
     key: database_username
+  - name: S3_PROFILE_PHOTOS_BUCKET
+    key: reals-dev-profile-photos
+
+secretRefs:
   - name: DATABASE_PASSWORD
     key: database_password
-  - name: FIREBASE_SERVICE_ACCOUNT_PATH
-    key: firebase_service_account_path
+  - name: FIREBASE_SERVICE_ACCOUNT_BASE64
+    key: firebase_service_account_base64
   - name: IDENTITY_VERIFICATION_API_KEY
     key: identity_verification_api_key
