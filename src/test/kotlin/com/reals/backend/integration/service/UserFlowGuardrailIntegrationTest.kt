@@ -40,6 +40,69 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `adding a photo to an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-add-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Add Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.addPhoto(
+            profileId = profile.id,
+            url = "https://example.com/${profile.id}-extra.jpg",
+            position = 5,
+            isPersonPhoto = false,
+            isFullBody = false
+        )
+
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `replacing a photo in an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-replace-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Replace Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.replacePhoto(
+            profileId = profile.id,
+            position = 1,
+            url = "https://example.com/${profile.id}-replacement.jpg",
+            isPersonPhoto = true,
+            isFullBody = true
+        )
+
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `deleting a photo from an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-delete-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Delete Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.deletePhoto(
+            profileId = profile.id,
+            position = 1
+        )
+
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
     fun `draft profile cannot enter matchmaking`() {
         val user = userService.createUser("queue-draft-${UUID.randomUUID()}@example.com")
         profileService.createProfile(

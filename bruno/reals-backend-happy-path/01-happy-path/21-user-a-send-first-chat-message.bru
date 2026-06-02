@@ -1,0 +1,30 @@
+meta {
+  name: 21 User A Send First Chat Message
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{firstChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "content": "Hola, arranco la conversacion desde el usuario A."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  const expectedUserAId = bru.getEnvVar("userAId");
+  if (!body || body.senderId !== expectedUserAId) {
+    throw new Error(`Expected first-chat message from user A (${expectedUserAId}), got ${body?.senderId}.`);
+  }
+}
