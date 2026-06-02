@@ -1,0 +1,25 @@
+meta {
+  name: 15 Add Profile B Photo 4
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/b-4.jpg",
+    "position": 4,
+    "isPersonPhoto": false,
+    "isFullBody": false
+  }
+}

@@ -1,0 +1,20 @@
+meta {
+  name: 11 Verify Identity B
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/identity-verification
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("profileBIdentityVerified", body.identityVerified);
+}

@@ -38,7 +38,7 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
-| `IDENTITY_VERIFICATION_API_KEY` | when provider is enabled | Keep empty while identity verification is disabled. |
+| `IDENTITY_VERIFICATION_API_KEY` | when a non-`none` provider exists | Keep empty while identity verification is disabled. |
 
 The S3 storage region is intentionally static application config. Shared dev
 and production use `sa-east-1`, AWS South America (Sao Paulo), which is the
@@ -62,6 +62,18 @@ In that setup, CI builds and publishes the image from this repository, then the 
 These files should use placeholders only for environment-specific or secret-backed values, such as database credentials, S3 bucket/region, Firebase service account location and future identity-verification credentials.
 
 Do not commit real credentials in any `application-*.yml` file.
+
+## Identity Verification
+
+`identity-verification.provider` currently supports only `none`. The provider
+abstraction exists so a real identity-verification integration can be added
+later without changing profile creation flow. Identity verification is invoked
+explicitly through `POST /api/me/profile/identity-verification`; profile
+creation does not call the provider. With `provider=none`, profiles keep
+`identityVerified=false`.
+
+`IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
+empty until that provider is implemented.
 
 ## Matchmaking Tuning
 

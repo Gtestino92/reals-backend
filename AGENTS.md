@@ -36,6 +36,7 @@ This repository is the backend for Reals, a structured dating / connection produ
 - Domain classes under `domain` represent persisted entities and enums.
 - Matching-specific logic belongs under `service.matching`.
 - Reputation-specific logic belongs under `service.reputation`.
+- Identity-verification-specific logic belongs under `service.identity`.
 - Configuration belongs under `config`.
 
 Use this flow unless there is a strong reason not to:
