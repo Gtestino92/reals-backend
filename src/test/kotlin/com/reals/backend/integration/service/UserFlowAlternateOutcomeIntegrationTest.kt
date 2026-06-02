@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
@@ -101,6 +102,41 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         assertEquals(Pair(userA, userC), pair)
         assertFalse(matchExistsForUsers(userA, incompatibleUser))
+    }
+
+    @Test
+    fun `matchmaking applies mutual dynamic age filters`() {
+        val userA = createActiveProfile(
+            email = "age-filter-a-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            preferredMinAge = 30,
+            preferredMaxAge = 40
+        )
+        val tooYoungForA = createActiveProfile(
+            email = "age-filter-b-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            birthDate = LocalDate.now().minusYears(25)
+        )
+        val acceptedByA = createActiveProfile(
+            email = "age-filter-c-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter C",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            birthDate = LocalDate.now().minusYears(35)
+        )
+
+        matchmakingService.enqueue(userA)
+        matchmakingService.enqueue(tooYoungForA)
+        matchmakingService.enqueue(acceptedByA)
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, acceptedByA), pair)
+        assertFalse(matchExistsForUsers(userA, tooYoungForA))
     }
 
     @Test

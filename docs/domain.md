@@ -99,6 +99,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Local `local-nodb` overrides required photos to 4, min person to 1 and min full-body to 1.
 - Birth date and gender are immutable after creation.
 - Editable fields include display name, bio, city, country, intention and looking-for gender.
+- Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. Preferred ages are enforced during candidate scoring. Maximum distance is stored and exposed, but not enforced until profile location has canonical coordinates or another distance-ready representation.
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.
 
@@ -108,7 +109,8 @@ Basic filtering is first applied in the matchmaking queue query. Final ranking i
 
 - mutual gender preference
 - same intention
+- mutual dynamic preferred age range
 
-Advanced criteria such as distance, affinity tags, age tolerance or probabilistic scoring are not implemented.
+Advanced criteria such as geographic distance, affinity tags or probabilistic scoring are not implemented.
 
 The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.

@@ -21,6 +21,7 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `GET /api/me/profile`: get authenticated user's profile.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile.
+- `PUT /api/me/profile/match-filters`: replace dynamic matchmaking filters. Body fields are nullable: `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
 - `POST /api/me/profile/photos`: add a profile photo.
 - `GET /api/me/profile/photos`: list profile photos.
 - `DELETE /api/me/profile/photos/{position}`: delete photo at position.

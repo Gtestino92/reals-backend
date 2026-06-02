@@ -39,7 +39,10 @@ class ProfileController(
             intention = request.intention,
             city = request.city,
             country = request.country,
-            bio = request.bio
+            bio = request.bio,
+            preferredMinAge = request.preferredMinAge,
+            preferredMaxAge = request.preferredMaxAge,
+            maxDistanceKm = request.maxDistanceKm
         )
         val photos = profileService.getPhotos(profile.id)
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -85,7 +88,10 @@ class ProfileController(
             city = request.city,
             country = request.country,
             intention = request.intention,
-            lookingForGender = request.lookingForGender
+            lookingForGender = request.lookingForGender,
+            preferredMinAge = request.preferredMinAge,
+            preferredMaxAge = request.preferredMaxAge,
+            maxDistanceKm = request.maxDistanceKm
         )
 
         val photos = profileService.getPhotos(updated.id)
@@ -117,6 +123,34 @@ class ProfileController(
         return ResponseEntity.ok(
             ProfileResponse.from(
                 profile = activated,
+                photoCount = photos.size
+            )
+        )
+    }
+
+    @PutMapping("/match-filters")
+    fun updateMatchFilters(
+        @CurrentUserId userId: UUID,
+        @Valid
+        @RequestBody request: UpdateMatchFiltersRequest
+    ): ResponseEntity<ProfileResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val updated = profileService.updateDynamicMatchFilters(
+            profileId = profile.id,
+            preferredMinAge = request.preferredMinAge,
+            preferredMaxAge = request.preferredMaxAge,
+            maxDistanceKm = request.maxDistanceKm
+        )
+
+        val photos = profileService.getPhotos(updated.id)
+
+        return ResponseEntity.ok(
+            ProfileResponse.from(
+                profile = updated,
                 photoCount = photos.size
             )
         )
