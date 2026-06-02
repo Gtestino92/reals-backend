@@ -65,8 +65,8 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             lookingForGender = LookingForGender.WOMEN
         )
 
-        matchmakingService.enqueue(userA)
-        matchmakingService.enqueue(userB)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
 
         assertTrue(matchmakingService.findNextCandidatePair() == null)
         assertNoMatchLocks(userA, userB)
@@ -94,9 +94,9 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             lookingForGender = LookingForGender.WOMEN
         )
 
-        matchmakingService.enqueue(userA)
-        matchmakingService.enqueue(incompatibleUser)
-        matchmakingService.enqueue(userC)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(incompatibleUser)
+        enqueueForMatchmaking(userC)
 
         val pair = matchmakingService.findNextCandidatePair()
 
@@ -129,14 +129,98 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             birthDate = LocalDate.now().minusYears(35)
         )
 
-        matchmakingService.enqueue(userA)
-        matchmakingService.enqueue(tooYoungForA)
-        matchmakingService.enqueue(acceptedByA)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(tooYoungForA)
+        enqueueForMatchmaking(acceptedByA)
+
+        val basicCandidatePairs =
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+                limit = 5,
+                today = LocalDate.now()
+            )
+        assertFalse(
+            basicCandidatePairs.any {
+                UUID.fromString(it.userAId) == userA &&
+                    UUID.fromString(it.userBId) == tooYoungForA
+            }
+        )
 
         val pair = matchmakingService.findNextCandidatePair()
 
         assertEquals(Pair(userA, acceptedByA), pair)
         assertFalse(matchExistsForUsers(userA, tooYoungForA))
+    }
+
+    @Test
+    fun `matchmaking applies mutual dynamic distance filters from queue location`() {
+        val userA = createActiveProfile(
+            email = "distance-filter-a-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            maxDistanceKm = 10
+        )
+        val tooFarForA = createActiveProfile(
+            email = "distance-filter-b-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            maxDistanceKm = 10
+        )
+        val nearA = createActiveProfile(
+            email = "distance-filter-c-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter C",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            maxDistanceKm = 10
+        )
+
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(
+            userId = tooFarForA,
+            latitude = -31.4201,
+            longitude = -64.1888
+        )
+        enqueueForMatchmaking(
+            userId = nearA,
+            latitude = -34.6040,
+            longitude = -58.3820
+        )
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, nearA), pair)
+        assertFalse(matchExistsForUsers(userA, tooFarForA))
+    }
+
+    @Test
+    fun `enqueue updates search location when user is already queued`() {
+        val user = createActiveProfile(
+            email = "queue-location-refresh-${UUID.randomUUID()}@example.com",
+            displayName = "Queue Location Refresh",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+
+        enqueueForMatchmaking(user)
+        val originalEntry = matchmakingQueueRepository.findByUserId(user)
+            ?: error("Expected user to be queued")
+
+        enqueueForMatchmaking(
+            userId = user,
+            latitude = -31.4201,
+            longitude = -64.1888,
+            accuracyMeters = 25
+        )
+
+        val updatedEntry = matchmakingQueueRepository.findByUserId(user)
+            ?: error("Expected user to remain queued")
+
+        assertEquals(originalEntry.id, updatedEntry.id)
+        assertEquals(originalEntry.enteredAt, updatedEntry.enteredAt)
+        assertEquals(-31.4201, updatedEntry.latitude)
+        assertEquals(-64.1888, updatedEntry.longitude)
+        assertEquals(25, updatedEntry.accuracyMeters)
     }
 
     @Test
@@ -151,10 +235,13 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
                 )
             }
 
-        queuedUsers.forEach { matchmakingService.enqueue(it) }
+        queuedUsers.forEach { enqueueForMatchmaking(it) }
 
         val candidatePairs =
-            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(limit = 3)
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+                limit = 3,
+                today = LocalDate.now()
+            )
 
         assertEquals(3, candidatePairs.size)
         assertEquals(queuedUsers[0], UUID.fromString(candidatePairs[0].userAId))
@@ -173,7 +260,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
                 )
             }
 
-        queuedUsers.forEach { matchmakingService.enqueue(it) }
+        queuedUsers.forEach { enqueueForMatchmaking(it) }
 
         val pair = matchmakingService.findNextCandidatePair()
 

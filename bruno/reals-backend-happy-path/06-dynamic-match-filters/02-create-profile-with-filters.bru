@@ -1,0 +1,43 @@
+meta {
+  name: 02 Create Profile With Filters
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{dynamicFiltersUserId}}
+}
+
+body:json {
+  {
+    "displayName": "Dynamic Filters",
+    "birthDate": "1995-05-20",
+    "gender": "FEMALE",
+    "lookingForGender": "MEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Profile used to validate dynamic match filters.",
+    "preferredMinAge": 28,
+    "preferredMaxAge": 42,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created profile id.");
+  }
+  if (body.preferredMinAge !== 28 || body.preferredMaxAge !== 42 || body.maxDistanceKm !== 50) {
+    throw new Error("Expected created profile to return dynamic match filters.");
+  }
+  bru.setEnvVar("dynamicFiltersProfileId", body.id);
+}

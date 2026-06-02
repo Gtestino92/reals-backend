@@ -55,11 +55,8 @@ class BasicCompatibilityEvaluator : CompatibilityEvaluator {
         today: LocalDate
     ): Boolean {
         val candidateAge = Period.between(candidate.birthDate, today).years
-        val minAge = viewer.preferredMinAge
-        val maxAge = viewer.preferredMaxAge
-
-        if (minAge != null && candidateAge < minAge) return false
-        if (maxAge != null && candidateAge > maxAge) return false
+        if (candidateAge < viewer.preferredMinAge) return false
+        if (candidateAge > viewer.preferredMaxAge) return false
         return true
     }
 }

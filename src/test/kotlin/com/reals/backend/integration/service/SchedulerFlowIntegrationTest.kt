@@ -41,8 +41,8 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             lookingForGender = LookingForGender.WOMEN
         )
 
-        matchmakingService.enqueue(userA)
-        matchmakingService.enqueue(userB)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
 
         MatchmakingJob(
             matchmakingProcessorService = matchmakingProcessorService,

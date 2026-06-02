@@ -17,8 +17,8 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Real-time chat via WebSocket or SSE.
 - Notification delivery.
 - Reveal quotas.
-- Advanced compatibility scoring. Current matching uses a SQL basic-compatible pair filter plus a rule-based `CompatibilityScorer`; future work should add geographic proximity and interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
-- Enforce `Profile.maxDistanceKm` in matching once profile location has canonical coordinates, geohash or another distance-ready representation. The field is currently configurable and persisted, but intentionally not applied to free-text `city`/`country`.
+- Advanced compatibility scoring. Current matching uses a SQL basic-compatible pair filter plus a rule-based `CompatibilityScorer`; future work should add interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
+- Improve geographic matching with geohash, bounding boxes or database-supported spatial indexing if queue volume makes application-level Haversine filtering too expensive.
 - ML-based matching.
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.
