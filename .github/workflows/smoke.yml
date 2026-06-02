@@ -1,0 +1,35 @@
+name: Smoke check
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL to check, for example https://api-dev.example.com"
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    name: Check deployed backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check readiness
+        shell: bash
+        run: |
+          BASE_URL="${{ inputs.base_url }}"
+          BASE_URL="${BASE_URL%/}"
+
+          curl --fail --show-error --silent \
+            --max-time 10 \
+            "${BASE_URL}/actuator/health/readiness"
+
+      - name: Check ping
+        shell: bash
+        run: |
+          BASE_URL="${{ inputs.base_url }}"
+          BASE_URL="${BASE_URL%/}"
+
+          curl --fail --show-error --silent \
+            --max-time 10 \
+            "${BASE_URL}/api/ping"

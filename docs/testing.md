@@ -115,3 +115,13 @@ Pull requests to `development` or `master` run:
 Pushes to `development` or `master` run the same validation and then publish
 the backend image to GHCR. The image publishing job does not run for pull
 requests.
+
+## Smoke Checks
+
+The `Smoke check` GitHub Actions workflow is manual and is intended for a
+deployed environment. Provide the backend base URL and it checks:
+
+- `GET /actuator/health/readiness`
+- `GET /api/ping`
+
+It does not deploy anything and does not require application credentials.

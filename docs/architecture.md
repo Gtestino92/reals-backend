@@ -8,6 +8,7 @@
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations and state transitions.
 - `service.matching`: compatibility evaluation and scoring.
+- `service.identity`: identity-verification provider abstraction.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
 - `domain`: persisted entities and enums.
@@ -54,7 +55,7 @@ Chat responsibilities are split conservatively:
 - Entities use UUID primary keys.
 - Enums are persisted as strings.
 - Initial migration: `src/main/resources/db/migration/V1__init.sql`.
-- Local profile `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update` against H2 file storage.
+- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-firebase` is the default local profile and `local-nodb` is the no-auth local profile.
 
 ## Background Jobs
 

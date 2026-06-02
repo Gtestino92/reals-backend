@@ -1,0 +1,15 @@
+meta {
+  name: 17 Enqueue User A
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}

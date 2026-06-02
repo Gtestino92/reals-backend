@@ -21,25 +21,25 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - ML-based matching.
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.
-- Production trust score based on real behavior.
+- Production trust score based on real behavior. The current `DefaultTrustScoreEvaluator` is intentionally neutral and returns `TrustScore.NEUTRAL`, so penalty duration scaling is effectively disabled. A real implementation needs a product decision on inputs and weights, such as penalty count/recency/severity, abandonment rate from chat history and positive engagement signals like completed connections. Do not introduce popularity, attractiveness, ELO-style ranking or visible reputation badges.
 - Full moderation workflow for safety reports. Current implementation records safety cancellation and applies a penalty, but no manual review workflow exists yet.
 - Firebase/JWT backend wiring exists for `dev` and `prod`, but it still needs production service account configuration and operational validation before production use.
 - Own media storage for profile photos with S3. `ProfilePhoto` already has storage provider/bucket/key fields, but upload endpoints, presigned URL generation, object lifecycle, quarantine path and moderation promotion are not implemented yet.
-- Restrict client overrides of photo validation flags (`isPersonPhoto`, `isFullBody`) to local/dev or trusted admin tooling once automatic validation exists.
-- Identity verification is only represented by `Profile.identityVerified` for now; no dedicated identity-verification provider is called yet.
+- Photo semantic flags (`isPersonPhoto`, `isFullBody`) currently come from the client so the frontend can unblock profile-photo flows. Before production trust is required, move these flags to a trusted source such as automatic media validation, moderation review or admin tooling, and restrict direct client overrides to local/dev/test flows.
+- Identity verification has a provider abstraction and a `none` provider that keeps `Profile.identityVerified=false`. Add a real provider integration, request/response mapping, audit trail and failure policy before requiring verified identity in production flows.
 
 ## Infrastructure Gaps
 
 - PostgreSQL is the only supported non-local database driver for now. Reintroduce another database driver only when a concrete environment needs it.
-- Local profile uses H2 file storage and disables Flyway.
+- Local H2 profiles use file storage and disable Flyway. Keep this local-only; external environments should use PostgreSQL plus Flyway.
 - Keep Spring Boot on the latest stable `4.0.x` patch line until `4.1.x` is stable and the release notes have been reviewed.
 - Remove the temporary `tomcat.version` override once a Spring Boot 4.0.x patch manages Tomcat 11.0.22 or newer.
 - Add production release image tagging when a production environment exists. Dev should keep using moving `development` and immutable `sha-*` tags; production should publish immutable `v*` tags from Git tags, such as `v1.0.0`.
-- Helm values under `deploy/helm` are placeholders; the final chart location and deploy repository convention are not decided yet.
+- Helm-style values under `deploy/helm` are placeholders for app-specific deployment inputs. Decide whether the final chart/deploy config lives in this repository or a separate infrastructure repository once the first runtime platform is chosen.
 - Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run, AWS App Runner or ECS Fargate, and a managed PostgreSQL provider such as Neon, Supabase, Render PostgreSQL, Railway PostgreSQL or AWS RDS.
 - For the first dev environment, prefer a simple container platform plus managed PostgreSQL before Kubernetes. Kubernetes, Helm and Terraform/CDK become worthwhile when there are multiple services, networking rules, autoscaling needs or repeatable environment provisioning requirements.
 - Before enabling deploy automation, define the deployment model: runtime platform, managed PostgreSQL instance, Firebase service-account secret, environment variables, health check path, rollback strategy and which GHCR tag dev should track.
-- Add a post-deploy smoke check that verifies `/actuator/health/readiness` and `/api/ping` after the dev environment is updated.
+- Wire the manual `Smoke check` GitHub Actions workflow into the eventual deploy pipeline once the dev runtime platform exists.
 - Decide whether infrastructure should be represented as Infrastructure as Code. If the first provider is AWS, prefer Terraform or AWS CDK for repeatability; if the first provider is Render, Fly.io or Railway, start with their service config and document manual console steps until the shape stabilizes.
 
 ## Observability And Error Handling
