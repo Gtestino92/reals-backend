@@ -42,6 +42,12 @@ class MatchExpirationJob(
         lockAtMostFor = "PT2M"
     )
     fun run() {
+        val startedAt = System.nanoTime()
+        var processed = 0
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
+
         log.debug(
             "MatchExpirationJob triggered - maxChatDuration={}",
             maxChatDuration
@@ -55,30 +61,31 @@ class MatchExpirationJob(
                 createdAtBefore = cutoff
             )
 
-        if (expiredCandidates.isEmpty()) {
-            log.debug("MatchExpirationJob - no expired matches found")
-        } else {
-            log.info(
-                "MatchExpirationJob - found {} match(es) to expire",
-                expiredCandidates.size
-            )
-
-            expiredCandidates.forEach { match ->
-                try {
-                    matchService.expireMatch(match.id)
-
+        expiredCandidates.forEach { match ->
+            processed += 1
+            try {
+                val changed = matchService.expireMatch(match.id)
+                if (changed) {
+                    succeeded += 1
                     log.info(
                         "MatchExpirationJob - expired match={} (createdAt={})",
                         match.id,
                         match.createdAt
                     )
-                } catch (ex: Exception) {
-                    log.error(
-                        "MatchExpirationJob - failed to expire match={}",
-                        match.id,
-                        ex
+                } else {
+                    skipped += 1
+                    log.debug(
+                        "MatchExpirationJob - skipped match={} because it was already expired",
+                        match.id
                     )
                 }
+            } catch (ex: Exception) {
+                log.error(
+                    "MatchExpirationJob - failed to expire match={}",
+                    match.id,
+                    ex
+                )
+                failed += 1
             }
         }
 
@@ -88,27 +95,43 @@ class MatchExpirationJob(
             )
 
         if (expiredReviews.isNotEmpty()) {
-            log.info(
-                "MatchExpirationJob (fallback) - found {} expired visual review(s)",
-                expiredReviews.size
-            )
-
             expiredReviews.forEach { review ->
+                processed += 1
                 try {
-                    matchService.expireMatch(review.matchId)
-
-                    log.info(
-                        "MatchExpirationJob (fallback) - expired match={}",
-                        review.matchId
-                    )
+                    val changed = matchService.expireMatch(review.matchId)
+                    if (changed) {
+                        succeeded += 1
+                        log.info(
+                            "MatchExpirationJob (fallback) - expired match={}",
+                            review.matchId
+                        )
+                    } else {
+                        skipped += 1
+                        log.debug(
+                            "MatchExpirationJob (fallback) - skipped match={} because it was already expired",
+                            review.matchId
+                        )
+                    }
                 } catch (ex: Exception) {
-                    log.warn(
-                        "MatchExpirationJob (fallback) - skipped match={}",
+                    log.error(
+                        "MatchExpirationJob (fallback) - failed to expire match={}",
                         review.matchId,
                         ex
                     )
+                    failed += 1
                 }
             }
         }
+
+        log.logJobSummary(
+            jobName = "MatchExpirationJob",
+            summary = JobRunSummary(
+                processed = processed,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

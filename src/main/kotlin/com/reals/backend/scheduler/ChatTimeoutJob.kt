@@ -29,19 +29,23 @@ class ChatTimeoutJob(
     }
 
     private fun processTimedOutChats() {
+        val startedAt = System.nanoTime()
         val expiredChats = chatService.findTimedOutChats()
-        if (expiredChats.isEmpty()) return
-
         var succeeded = 0
+        var skipped = 0
         var failed = 0
 
         expiredChats.forEach { chat ->
             try {
-                chatService.endChat(
+                val changed = chatService.endChat(
                     chatId = chat.id,
                     finalStatus = ChatStatus.EXPIRED
                 )
-                succeeded += 1
+                if (changed) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
             } catch (ex: Exception) {
                 failed += 1
                 log.error(
@@ -52,11 +56,15 @@ class ChatTimeoutJob(
             }
         }
 
-        log.info(
-            "ChatTimeoutJob - processed={} succeeded={} failed={}",
-            expiredChats.size,
-            succeeded,
-            failed
+        log.logJobSummary(
+            jobName = "ChatTimeoutJob",
+            summary = JobRunSummary(
+                processed = expiredChats.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
         )
     }
 }
