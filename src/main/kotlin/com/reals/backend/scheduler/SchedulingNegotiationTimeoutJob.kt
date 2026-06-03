@@ -30,6 +30,7 @@ class SchedulingNegotiationTimeoutJob(
         lockAtMostFor = "PT5M"
     )
     fun run() {
+        val startedAt = System.nanoTime()
         log.debug("SchedulingNegotiationTimeoutJob triggered")
 
         val timedOut =
@@ -38,21 +39,15 @@ class SchedulingNegotiationTimeoutJob(
                 before = OffsetDateTime.now()
             )
 
-        if (timedOut.isEmpty()) {
-            log.debug("SchedulingNegotiationTimeoutJob - no timed-out connections found")
-            return
-        }
-
-        log.info(
-            "SchedulingNegotiationTimeoutJob - found {} timed-out connection(s)",
-            timedOut.size
-        )
+        var succeeded = 0
+        var failed = 0
 
         timedOut.forEach { connection ->
             try {
                 schedulingService.expireNegotiation(
                     connectionId = connection.id
                 )
+                succeeded += 1
 
                 log.info(
                     "SchedulingNegotiationTimeoutJob - closed connection={}",
@@ -64,7 +59,19 @@ class SchedulingNegotiationTimeoutJob(
                     connection.id,
                     ex
                 )
+                failed += 1
             }
         }
+
+        log.logJobSummary(
+            jobName = "SchedulingNegotiationTimeoutJob",
+            summary = JobRunSummary(
+                processed = timedOut.size,
+                succeeded = succeeded,
+                skipped = 0,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

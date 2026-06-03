@@ -31,6 +31,7 @@ class InactivityCheckJob(
     )
     @SchedulerLock(name = "InactivityCheckJob", lockAtLeastFor = "PT15s", lockAtMostFor = "PT1M")
     fun run() {
+        val startedAt = System.nanoTime()
 
         val inactiveChats =
             chatService.findInactiveChats(
@@ -39,9 +40,8 @@ class InactivityCheckJob(
 
         val threshold = OffsetDateTime.now().minusMinutes(inactivityThresholdMinutes)
 
-        if (inactiveChats.isEmpty()) return
-
         var succeeded = 0
+        var skipped = 0
         var failed = 0
 
         inactiveChats.forEach { chat: Chat ->
@@ -52,12 +52,16 @@ class InactivityCheckJob(
                     emptyList()
                 }
 
-                chatService.endChat(
+                val changed = chatService.endChat(
                     chatId = chat.id,
                     finalStatus = ChatStatus.ABANDONED,
                     abandonedUserIds = abandonedUserIds
                 )
-                succeeded += 1
+                if (changed) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
             } catch (ex: Exception) {
                 failed += 1
                 log.error(
@@ -68,11 +72,15 @@ class InactivityCheckJob(
             }
         }
 
-        log.info(
-            "InactivityCheckJob - processed={} succeeded={} failed={}",
-            inactiveChats.size,
-            succeeded,
-            failed
+        log.logJobSummary(
+            jobName = "InactivityCheckJob",
+            summary = JobRunSummary(
+                processed = inactiveChats.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
         )
     }
 
