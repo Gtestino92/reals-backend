@@ -40,26 +40,29 @@ class MatchmakingJob(
                 )
             } catch (ex: RuntimeException) {
                 log.error("MatchmakingJob - failed", ex)
+                log.logJobSummary(
+                    jobName = "MatchmakingJob",
+                    summary = JobRunSummary(
+                        processed = 0,
+                        succeeded = 0,
+                        skipped = 0,
+                        failed = 1
+                    ),
+                    startedAt = startedAt
+                )
                 throw ex
             }
 
-        if (result.candidatePairs == 0) {
-            log.debug(
-                "MatchmakingJob - completed candidatePairs=0 matchesCreated=0 failedPairs=0 durationMs={}",
-                elapsedMs(startedAt)
-            )
-            return
-        }
-
-        log.info(
-            "MatchmakingJob - completed candidatePairs={} matchesCreated={} failedPairs={} durationMs={}",
-            result.candidatePairs,
-            result.matchesCreated,
-            result.failedPairs,
-            elapsedMs(startedAt)
+        log.logJobSummary(
+            jobName = "MatchmakingJob",
+            summary = JobRunSummary(
+                processed = result.candidatePairs,
+                succeeded = result.matchesCreated,
+                skipped = (result.candidatePairs - result.matchesCreated - result.failedPairs)
+                    .coerceAtLeast(0),
+                failed = result.failedPairs
+            ),
+            startedAt = startedAt
         )
     }
-
-    private fun elapsedMs(startedAt: Long): Long =
-        (System.nanoTime() - startedAt) / 1_000_000
 }

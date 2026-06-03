@@ -35,21 +35,16 @@ class ScheduledSecondChatStartJob(
         lockAtMostFor = "PT2M"
     )
     fun run() {
+        val startedAt = System.nanoTime()
         val due =
             negotiationRepository.findDueConfirmedNegotiations(
                 status = NegotiationStatus.CONFIRMED,
                 now = OffsetDateTime.now()
             )
 
-        if (due.isEmpty()) {
-            log.debug("ScheduledSecondChatStartJob - no due negotiations found")
-            return
-        }
-
-        log.info(
-            "ScheduledSecondChatStartJob - found {} due negotiation(s)",
-            due.size
-        )
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
 
         due.forEach { negotiation ->
             try {
@@ -62,6 +57,7 @@ class ScheduledSecondChatStartJob(
                         connection.id,
                         connection.state
                     )
+                    skipped += 1
                     return@forEach
                 }
 
@@ -77,13 +73,26 @@ class ScheduledSecondChatStartJob(
                     "ScheduledSecondChatStartJob - made second chat available for connection={}",
                     connection.id
                 )
+                succeeded += 1
             } catch (ex: Exception) {
                 log.error(
                     "ScheduledSecondChatStartJob - failed for connection={}",
                     negotiation.connectionId,
                     ex
                 )
+                failed += 1
             }
         }
+
+        log.logJobSummary(
+            jobName = "ScheduledSecondChatStartJob",
+            summary = JobRunSummary(
+                processed = due.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }
