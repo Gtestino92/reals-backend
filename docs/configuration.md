@@ -110,5 +110,19 @@ GET /actuator/health/liveness
 Post-deploy smoke checks should verify both readiness and:
 
 ```http
+GET /actuator/info
 GET /api/ping
+```
+
+`/actuator/info` includes Docker image metadata when the application is started
+from a CI-built image:
+
+```json
+{
+  "image": {
+    "repository": "ghcr.io/gtestino92/reals-backend",
+    "tag": "development",
+    "revision": "<full-git-sha>"
+  }
+}
 ```
