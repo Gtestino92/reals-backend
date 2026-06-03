@@ -7,6 +7,10 @@ src/test/kotlin/com/reals/backend/integration
 ```
 
 The suite uses Spring Boot integration tests with the `test` profile and H2 in-memory.
+PostgreSQL-specific behavior that H2 cannot model, such as row claiming with
+`FOR UPDATE SKIP LOCKED`, is covered by focused Testcontainers tests under the
+same suite. Those tests require Docker and are skipped when Docker is not
+available.
 
 Structure:
 
@@ -94,6 +98,8 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
+The PostgreSQL concurrency coverage uses Testcontainers, so Docker must be
+running if you want that test to execute locally.
 
 GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
 `master` or `development`.
