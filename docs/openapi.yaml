@@ -1,0 +1,1199 @@
+openapi: 3.0.3
+info:
+  title: Reals Backend API
+  version: 1.0.0
+  description: Current backend contract for the Reals mobile client.
+servers:
+  - url: http://10.0.2.2:8080
+    description: Android emulator against local backend
+  - url: http://localhost:8080
+    description: Local backend from the same machine
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Me
+  - name: Users
+  - name: Profiles
+  - name: Matchmaking
+  - name: Matches
+  - name: Chats
+  - name: Connections
+paths:
+  /api/ping:
+    get:
+      tags: [Health]
+      summary: Sanity check
+      security: []
+      responses:
+        '200':
+          description: API is reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+  /actuator/health/readiness:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      security: []
+      responses:
+        '200':
+          description: Readiness status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /actuator/info:
+    get:
+      tags: [Health]
+      summary: Build and image metadata
+      security: []
+      responses:
+        '200':
+          description: Application info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponse'
+  /api/me/provision:
+    post:
+      tags: [Me]
+      summary: Provision or link the authenticated Firebase identity
+      responses:
+        '200':
+          description: Existing local dev user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '201':
+          description: Created or linked Firebase user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/me:
+    get:
+      tags: [Me]
+      summary: Get authenticated backend user
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/users:
+    post:
+      tags: [Users]
+      summary: Create a user from an email
+      description: Mostly legacy/manual endpoint. Current-user flows should prefer /api/me/provision.
+      requestBody:
+        $ref: '#/components/requestBodies/CreateUser'
+      responses:
+        '201':
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get a user by id
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/me/profile:
+    post:
+      tags: [Profiles]
+      summary: Create authenticated user's profile
+      requestBody:
+        $ref: '#/components/requestBodies/CreateProfile'
+      responses:
+        '201':
+          $ref: '#/components/responses/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [Profiles]
+      summary: Get authenticated user's profile
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Profiles]
+      summary: Update editable profile fields
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProfile'
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/activation:
+    post:
+      tags: [Profiles]
+      summary: Activate authenticated user's profile
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/match-filters:
+    put:
+      tags: [Profiles]
+      summary: Replace dynamic match filters
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateMatchFilters'
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/identity-verification:
+    post:
+      tags: [Profiles]
+      summary: Run identity verification for the profile
+      description: Current provider none keeps identityVerified=false.
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/photos:
+    post:
+      tags: [Profiles]
+      summary: Add a profile photo at a position
+      requestBody:
+        $ref: '#/components/requestBodies/AddPhoto'
+      responses:
+        '201':
+          $ref: '#/components/responses/Photo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [Profiles]
+      summary: List authenticated user's profile photos
+      responses:
+        '200':
+          description: Photos sorted by position
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/me/profile/photos/{position}:
+    parameters:
+      - $ref: '#/components/parameters/PhotoPosition'
+    delete:
+      tags: [Profiles]
+      summary: Delete a profile photo by position
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    put:
+      tags: [Profiles]
+      summary: Replace a profile photo by position
+      requestBody:
+        $ref: '#/components/requestBodies/ReplacePhoto'
+      responses:
+        '200':
+          $ref: '#/components/responses/Photo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matchmaking/queue:
+    post:
+      tags: [Matchmaking]
+      summary: Enter matchmaking queue with current search location
+      requestBody:
+        $ref: '#/components/requestBodies/EnqueueMatchmaking'
+      responses:
+        '200':
+          $ref: '#/components/responses/QueueStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Matchmaking]
+      summary: Leave matchmaking queue
+      responses:
+        '200':
+          $ref: '#/components/responses/QueueStatus'
+    get:
+      tags: [Matchmaking]
+      summary: Check whether authenticated user is queued
+      responses:
+        '200':
+          $ref: '#/components/responses/QueueStatus'
+  /api/matches/{matchId}:
+    get:
+      tags: [Matches]
+      summary: Get match details
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Match'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/matches/{matchId}/chat:
+    get:
+      tags: [Matches]
+      summary: Get active first chat for match
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matches/{matchId}/visual-profile:
+    get:
+      tags: [Matches]
+      summary: Get partner profile visible during visual phase or later
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Partner visual profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisualProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matches/{matchId}/chat-decision:
+    post:
+      tags: [Matches]
+      summary: Submit first-chat continuation decision
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      requestBody:
+        $ref: '#/components/requestBodies/ChatDecision'
+      responses:
+        '200':
+          $ref: '#/components/responses/Match'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matches/{matchId}/visual-decision:
+    post:
+      tags: [Matches]
+      summary: Submit visual decision
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      requestBody:
+        $ref: '#/components/requestBodies/VisualDecision'
+      responses:
+        '200':
+          $ref: '#/components/responses/Match'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matches/{matchId}/personal-messages/me:
+    put:
+      tags: [Matches]
+      summary: Store authenticated user's personal visual-review message
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      requestBody:
+        $ref: '#/components/requestBodies/PersonalMessage'
+      responses:
+        '204':
+          description: Message stored
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/matches/{matchId}/personal-messages/partner:
+    get:
+      tags: [Matches]
+      summary: Get partner personal visual-review message
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Partner message; message is null if not submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PartnerMessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}:
+    get:
+      tags: [Chats]
+      summary: Get chat
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/chats/{chatId}/messages:
+    post:
+      tags: [Chats]
+      summary: Send chat message
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        $ref: '#/components/requestBodies/SendMessage'
+      responses:
+        '200':
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [Chats]
+      summary: List chat messages
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/chats/{chatId}/exit-requests:
+    post:
+      tags: [Chats]
+      summary: Request mutual chat cancellation
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        $ref: '#/components/requestBodies/ChatExitRequestCreate'
+      responses:
+        '201':
+          description: Created exit request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatExitRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [Chats]
+      summary: List visible exit requests for chat participant
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          description: Exit requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatExitRequestResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance:
+    post:
+      tags: [Chats]
+      summary: Accept mutual cancellation request
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/ExitRequestId'
+      responses:
+        '200':
+          $ref: '#/components/responses/ChatExitOutcome'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection:
+    post:
+      tags: [Chats]
+      summary: Reject mutual cancellation request
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/ExitRequestId'
+      responses:
+        '200':
+          description: Rejected exit request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatExitRequestResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}/cancellations:
+    post:
+      tags: [Chats]
+      summary: Unilateral chat cancellation
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        $ref: '#/components/requestBodies/ChatCancellation'
+      responses:
+        '201':
+          $ref: '#/components/responses/ChatExitOutcome'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}/safety-cancellations:
+    post:
+      tags: [Chats]
+      summary: Safety/report chat cancellation
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        $ref: '#/components/requestBodies/ChatSafetyCancellation'
+      responses:
+        '201':
+          $ref: '#/components/responses/ChatExitOutcome'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}:
+    get:
+      tags: [Connections]
+      summary: Get connection
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Connection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/connections/{connectionId}/chat:
+    get:
+      tags: [Connections]
+      summary: Get visible second chat for connection
+      description: If the second chat is AVAILABLE, this call activates it for the authenticated participant.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/negotiation:
+    get:
+      tags: [Connections]
+      summary: Get scheduling negotiation
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Negotiation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/connections/{connectionId}/proposals:
+    post:
+      tags: [Connections]
+      summary: Submit ordered scheduling proposal list for current round
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        $ref: '#/components/requestBodies/AddProposal'
+      responses:
+        '201':
+          description: Created proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleProposalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [Connections]
+      summary: List scheduling proposals
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleProposalResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/connections/{connectionId}/proposals/{proposalId}/acceptance:
+    post:
+      tags: [Connections]
+      summary: Accept partner proposal and schedule second chat
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/ProposalId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Negotiation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/negotiation/rejections:
+    post:
+      tags: [Connections]
+      summary: Explicitly reject current scheduling round
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Negotiation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MatchId:
+      name: matchId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ChatId:
+      name: chatId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ConnectionId:
+      name: connectionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExitRequestId:
+      name: exitRequestId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PhotoPosition:
+      name: position
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1, maximum: 9 }
+  requestBodies:
+    CreateUser:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateUserRequest'
+    CreateProfile:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateProfileRequest'
+    UpdateProfile:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProfileRequest'
+    UpdateMatchFilters:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateMatchFiltersRequest'
+    AddPhoto:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AddPhotoRequest'
+    ReplacePhoto:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReplacePhotoRequest'
+    EnqueueMatchmaking:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnqueueMatchmakingRequest'
+    ChatDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatDecisionRequest'
+    VisualDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VisualDecisionRequest'
+    PersonalMessage:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PersonalMessageRequest'
+    SendMessage:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SendMessageRequest'
+    ChatExitRequestCreate:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatExitRequestCreateRequest'
+    ChatCancellation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatCancellationRequest'
+    ChatSafetyCancellation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatSafetyCancellationRequest'
+    AddProposal:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AddProposalRequest'
+  responses:
+    Profile:
+      description: Profile
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProfileResponse'
+    Photo:
+      description: Photo
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PhotoResponse'
+    QueueStatus:
+      description: Queue status
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QueueStatusResponse'
+    Match:
+      description: Match
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MatchResponse'
+    Chat:
+      description: Chat
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatResponse'
+    ChatExitOutcome:
+      description: Chat exit outcome
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChatExitOutcomeResponse'
+    Connection:
+      description: Connection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionResponse'
+    Negotiation:
+      description: Negotiation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NegotiationResponse'
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Domain conflict or invalid state transition
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    PingResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, example: ok }
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, example: UP }
+    InfoResponse:
+      type: object
+      properties:
+        image:
+          type: object
+          properties:
+            repository: { type: string }
+            tag: { type: string }
+            revision: { type: string }
+    ErrorResponse:
+      type: object
+      required: [code, error, message]
+      properties:
+        code: { type: string, example: PROFILE_NOT_ACTIVE }
+        error: { type: string, example: Conflict }
+        message: { type: string }
+    CreateUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 255 }
+    UserResponse:
+      type: object
+      required: [id, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, nullable: true }
+        createdAt: { type: string, format: date-time }
+    CreateProfileRequest:
+      type: object
+      required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 100 }
+        birthDate: { type: string, format: date }
+        gender: { $ref: '#/components/schemas/Gender' }
+        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        intention: { $ref: '#/components/schemas/Intention' }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        country: { type: string, minLength: 1, maxLength: 100 }
+        bio: { type: string, maxLength: 1000, nullable: true }
+        preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
+        preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
+        maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 100, nullable: true }
+        bio: { type: string, maxLength: 1000, nullable: true }
+        city: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        country: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        intention:
+          allOf: [{ $ref: '#/components/schemas/Intention' }]
+          nullable: true
+        lookingForGender:
+          allOf: [{ $ref: '#/components/schemas/LookingForGender' }]
+          nullable: true
+    UpdateMatchFiltersRequest:
+      type: object
+      required: [preferredMinAge, preferredMaxAge, maxDistanceKm]
+      properties:
+        preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
+        preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
+        maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
+    AddPhotoRequest:
+      type: object
+      required: [url, position]
+      properties:
+        url: { type: string, pattern: '^https://\S+$', maxLength: 512 }
+        position: { type: integer, minimum: 1, maximum: 9 }
+        isPersonPhoto: { type: boolean, nullable: true }
+        isFullBody: { type: boolean, nullable: true }
+    ReplacePhotoRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, pattern: '^https://\S+$', maxLength: 512 }
+        isPersonPhoto: { type: boolean, nullable: true }
+        isFullBody: { type: boolean, nullable: true }
+    ProfileResponse:
+      type: object
+      required: [id, userId, displayName, birthDate, age, identityVerified, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        birthDate: { type: string, format: date }
+        age: { type: integer }
+        identityVerified: { type: boolean }
+        gender: { $ref: '#/components/schemas/Gender' }
+        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        intention: { $ref: '#/components/schemas/Intention' }
+        city: { type: string }
+        country: { type: string }
+        bio: { type: string, nullable: true }
+        preferredMinAge: { type: integer }
+        preferredMaxAge: { type: integer }
+        maxDistanceKm: { type: integer }
+        status: { $ref: '#/components/schemas/ProfileStatus' }
+        photoCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PhotoResponse:
+      type: object
+      required: [id, profileId, url, storageProvider, position, isPersonPhoto, isFullBody, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        profileId: { type: string, format: uuid }
+        url: { type: string }
+        storageProvider: { $ref: '#/components/schemas/PhotoStorageProvider' }
+        position: { type: integer }
+        isPersonPhoto: { type: boolean }
+        isFullBody: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    VisualProfileResponse:
+      type: object
+      required: [profileId, displayName, age, photos]
+      properties:
+        profileId: { type: string, format: uuid }
+        displayName: { type: string }
+        age: { type: integer }
+        bio: { type: string, nullable: true }
+        photos:
+          type: array
+          items: { $ref: '#/components/schemas/PhotoResponse' }
+    EnqueueMatchmakingRequest:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracyMeters: { type: integer, minimum: 0, maximum: 100000, nullable: true }
+    QueueStatusResponse:
+      type: object
+      required: [userId, inQueue]
+      properties:
+        userId: { type: string, format: uuid }
+        inQueue: { type: boolean }
+    MatchResponse:
+      type: object
+      required: [id, userAId, userBId, state, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        userAId: { type: string, format: uuid }
+        userBId: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/MatchState' }
+        connectionId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ChatDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { $ref: '#/components/schemas/ChatContinueDecision' }
+    VisualDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { $ref: '#/components/schemas/VisualDecision' }
+    PersonalMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 280 }
+    PartnerMessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, nullable: true }
+    ChatResponse:
+      type: object
+      required: [id, matchId, chatType, status, startedAt, timeoutAt]
+      properties:
+        id: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid, nullable: true }
+        chatType: { $ref: '#/components/schemas/ChatType' }
+        status: { $ref: '#/components/schemas/ChatStatus' }
+        startedAt: { type: string, format: date-time }
+        availableAt: { type: string, format: date-time, nullable: true }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        timeoutAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time, nullable: true }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 1000 }
+    ChatMessageResponse:
+      type: object
+      required: [id, chatSessionId, senderId, content, sentAt]
+      properties:
+        id: { type: string, format: uuid }
+        chatSessionId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        content: { type: string }
+        sentAt: { type: string, format: date-time }
+    ChatExitRequestCreateRequest:
+      type: object
+      properties:
+        reason:
+          allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
+          default: NO_LONGER_INTERESTED
+          nullable: true
+        details: { type: string, maxLength: 1000, nullable: true }
+    ChatCancellationRequest:
+      type: object
+      properties:
+        reason:
+          allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
+          default: NO_LONGER_INTERESTED
+          nullable: true
+        details: { type: string, maxLength: 1000, nullable: true }
+    ChatSafetyCancellationRequest:
+      type: object
+      required: [reason, details]
+      properties:
+        reason:
+          allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
+          default: INAPPROPRIATE_BEHAVIOR
+        details: { type: string, minLength: 1, maxLength: 1000 }
+    ChatExitRequestResponse:
+      type: object
+      required: [id, chatId, requesterUserId, responderUserId, type, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        chatId: { type: string, format: uuid }
+        requesterUserId: { type: string, format: uuid }
+        responderUserId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ChatExitRequestType' }
+        status: { $ref: '#/components/schemas/ChatExitRequestStatus' }
+        reason: { $ref: '#/components/schemas/ChatExitReason' }
+        details: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+    ChatExitOutcomeResponse:
+      type: object
+      required: [chat, exitRequest, penaltyApplied]
+      properties:
+        chat: { $ref: '#/components/schemas/ChatResponse' }
+        exitRequest: { $ref: '#/components/schemas/ChatExitRequestResponse' }
+        penaltyApplied: { type: boolean }
+        penalizedUserId: { type: string, format: uuid, nullable: true }
+    ConnectionResponse:
+      type: object
+      required: [id, matchId, userAId, userBId, state, schedulingExpiresAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        userAId: { type: string, format: uuid }
+        userBId: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/ConnectionState' }
+        schedulingExpiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AddProposalRequest:
+      type: object
+      required: [proposedDateTimes]
+      properties:
+        proposedDateTimes:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items: { type: string, format: date-time }
+    ScheduleProposalResponse:
+      type: object
+      required: [id, connectionId, userId, roundNumber, preferenceOrder, proposedDateTime, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        roundNumber: { type: integer }
+        preferenceOrder: { type: integer }
+        proposedDateTime: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/ProposalStatus' }
+        chatId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+    NegotiationResponse:
+      type: object
+      required: [id, connectionId, roundNumber, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid }
+        roundNumber: { type: integer }
+        status: { $ref: '#/components/schemas/NegotiationStatus' }
+        confirmedDateTime: { type: string, format: date-time, nullable: true }
+        chatId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Gender:
+      type: string
+      enum: [MALE, FEMALE, NON_BINARY, OTHER]
+    LookingForGender:
+      type: string
+      enum: [MEN, WOMEN, EVERYONE, OTHER]
+    Intention:
+      type: string
+      enum: [DATE, FRIENDSHIP, CASUAL]
+    ProfileStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, INACTIVE]
+    PhotoStorageProvider:
+      type: string
+      enum: [EXTERNAL_URL, S3]
+    MatchState:
+      type: string
+      enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]
+    ChatContinueDecision:
+      type: string
+      enum: [APPROVED, REJECTED]
+    VisualDecision:
+      type: string
+      enum: [APPROVED, REJECTED]
+    ChatType:
+      type: string
+      enum: [FIRST_CHAT, SECOND_CHAT]
+    ChatStatus:
+      type: string
+      enum: [AVAILABLE, ACTIVE, CANCELLED, EXPIRED, ABANDONED, CLOSED, FINISHED]
+    ChatExitRequestType:
+      type: string
+      enum: [MUTUAL_CANCEL, UNILATERAL_CANCEL, SAFETY_REPORT]
+    ChatExitRequestStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, REJECTED]
+    ChatExitReason:
+      type: string
+      enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+    ConnectionState:
+      type: string
+      enum: [SCHEDULING_PHASE, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT, CLOSED]
+    NegotiationStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, FAILED]
+    ProposalStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, REJECTED]
