@@ -85,6 +85,7 @@ The scheduled second-chat availability job is available at:
 
 ```json
 {
+  "code": "DOMAIN_CONFLICT",
   "error": "Conflict",
   "message": "..."
 }
@@ -96,3 +97,23 @@ Common mappings:
 - `IllegalArgumentException`: `400 Bad Request`
 - `IllegalStateException`: `409 Conflict`
 - generic exception: `500 Internal Server Error`
+
+Selected stable frontend-facing domain codes:
+
+- `PROFILE_REQUIRED`: user must create a profile before matchmaking.
+- `PROFILE_NOT_ACTIVE`: profile must be activated before matchmaking.
+- `ACTIVE_PENALTY`: user cannot enter matchmaking while an active penalty exists.
+- `ACTIVE_MATCH_LIMIT_REACHED`: user has reached the active match limit.
+- `INVALID_SEARCH_LOCATION`: provided matchmaking search location is invalid.
+- `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
+- `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
+- `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
+- `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
+- `PROFILE_FULL_BODY_PHOTO_REQUIRED`: activation requires a full-body photo.
+- `PROFILE_PHOTO_LIMIT_REACHED`: profile already has the maximum number of photos.
+- `INVALID_PROFILE_BIRTH_DATE`: birth date is invalid for profile creation.
+- `INVALID_MATCH_FILTERS`: dynamic match filters are internally inconsistent or out of range.
+- `PHOTO_POSITION_INVALID`: requested photo position is outside the configured range.
+- `PHOTO_POSITION_OCCUPIED`: requested photo position is already used.
+- `PHOTO_URL_INVALID`: profile photo URL is not a valid HTTPS URL.
+- `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.
