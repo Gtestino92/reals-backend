@@ -52,5 +52,7 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
     fun `actuator info is available without authentication`() {
         mockMvc.perform(get("/actuator/info"))
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.app.name", equalTo("reals-backend")))
+            .andExpect(jsonPath("$.image").exists())
     }
 }
