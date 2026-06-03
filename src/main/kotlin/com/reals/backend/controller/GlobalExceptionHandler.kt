@@ -1,5 +1,8 @@
 package com.reals.backend.controller
 
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainException
 import jakarta.validation.ConstraintViolationException
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
@@ -163,6 +166,25 @@ class GlobalExceptionHandler {
                     message = "Resource is temporarily busy. Please retry."
                 )
             )
+
+    @ExceptionHandler(DomainException::class)
+    fun handleDomainException(
+        ex: DomainException
+    ): ResponseEntity<ErrorResponse> {
+        val status = when (ex) {
+            is DomainBadRequestException -> HttpStatus.BAD_REQUEST
+            is DomainConflictException -> HttpStatus.CONFLICT
+        }
+
+        return ResponseEntity.status(status)
+            .body(
+                ErrorResponse(
+                    code = ex.code.name,
+                    error = status.reasonPhrase,
+                    message = ex.message
+                )
+            )
+    }
 
     @ExceptionHandler(AccessDeniedException::class)
     fun handleAccessDenied(

@@ -4,6 +4,9 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.matching.CompatibilityScorer
 import com.reals.backend.service.matching.SearchLocationMatchFilter
 import jakarta.transaction.Transactional
@@ -64,19 +67,31 @@ class MatchmakingService(
             EngagementType.MATCH
         )
 
-        check(activeMatches < maxActiveMatches) {
-            "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
+        if (activeMatches >= maxActiveMatches) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED,
+                message = "User has reached the maximum number of active matches ($maxActiveMatches)"
+            )
         }
 
-        check(!penaltyService.hasActivePenalty(userId)) {
-            "User $userId has an active penalty"
+        if (penaltyService.hasActivePenalty(userId)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACTIVE_PENALTY,
+                message = "User has an active penalty"
+            )
         }
 
         val profile = profileService.findByUserId(userId)
-            ?: error("User $userId does not have a profile")
+            ?: throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_REQUIRED,
+                message = "User must create a profile before entering matchmaking"
+            )
 
-        check(profileService.isEligibleForMatchmaking(profile.id)) {
-            "User $userId profile is not active — complete and submit your profile first"
+        if (!profileService.isEligibleForMatchmaking(profile.id)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_NOT_ACTIVE,
+                message = "Profile must be active before entering matchmaking"
+            )
         }
 
         val existingQueueEntry = queueRepository.findByUserId(userId)
@@ -99,8 +114,11 @@ class MatchmakingService(
     }
 
     private fun lockUser(userId: UUID) {
-        check(userRepository.findAllByIdForUpdate(listOf(userId)).size == 1) {
-            "Cannot enqueue: user $userId was not found"
+        if (userRepository.findAllByIdForUpdate(listOf(userId)).size != 1) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_FOUND,
+                message = "Cannot enqueue: user was not found"
+            )
         }
     }
 
@@ -248,15 +266,24 @@ class MatchmakingService(
         longitude: Double,
         accuracyMeters: Int?
     ) {
-        require(latitude in -90.0..90.0) {
-            "Latitude must be between -90 and 90"
+        if (latitude !in -90.0..90.0) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_SEARCH_LOCATION,
+                message = "Latitude must be between -90 and 90"
+            )
         }
-        require(longitude in -180.0..180.0) {
-            "Longitude must be between -180 and 180"
+        if (longitude !in -180.0..180.0) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_SEARCH_LOCATION,
+                message = "Longitude must be between -180 and 180"
+            )
         }
         accuracyMeters?.let {
-            require(it in 0..100000) {
-                "Location accuracy must be between 0 and 100000 meters"
+            if (it !in 0..100000) {
+                throw DomainBadRequestException(
+                    code = DomainErrorCode.INVALID_SEARCH_LOCATION,
+                    message = "Location accuracy must be between 0 and 100000 meters"
+                )
             }
         }
     }
