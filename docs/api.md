@@ -1,6 +1,7 @@
 # API
 
-This file summarizes the current controller surface. It is not a full OpenAPI contract.
+This file summarizes the current controller surface for human readers.
+The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 ## Health
 
