@@ -13,6 +13,7 @@ This directory is the canonical documentation set for the project.
 - `configuration.md`: profile and environment variable reference.
 - `testing.md`: automated test strategy and commands.
 - `api.md`: current HTTP endpoints exposed by controllers.
+- `openapi.yaml`: formal OpenAPI contract for API clients and tooling.
 - `technical-debt.md`: known pending decisions and intentionally unimplemented behavior.
 - `local-h2-fixes.md`: local H2 repair snippets for old development schemas.
 
