@@ -1,0 +1,43 @@
+meta {
+  name: 03 Create Profile Firebase
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+body:json {
+  {
+    "displayName": "Firebase Local",
+    "birthDate": "1996-03-14",
+    "gender": "FEMALE",
+    "lookingForGender": "MEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Perfil creado con Firebase Auth local.",
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created Firebase profile id.");
+  }
+  if (body.displayName !== "Firebase Local") {
+    throw new Error(`Expected displayName Firebase Local, got ${body.displayName}`);
+  }
+  bru.setEnvVar("firebaseProfileId", body.id);
+}

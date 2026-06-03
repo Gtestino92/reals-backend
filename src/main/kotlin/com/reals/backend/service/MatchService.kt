@@ -4,6 +4,7 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.repository.UserRepository
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -18,6 +19,7 @@ class MatchService(
     private val matchRepository: MatchRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
+    private val userRepository: UserRepository,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -46,6 +48,8 @@ class MatchService(
      * The first ChatSession must be started separately via ChatService.startFirstChat().
      */
     fun createMatch(userAId: UUID, userBId: UUID): Match {
+
+        lockUsers(userAId, userBId)
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
@@ -91,6 +95,15 @@ class MatchService(
         }
     }
 
+    private fun lockUsers(vararg userIds: UUID) {
+        val distinctIds = userIds.distinct()
+        val locked = userRepository.findAllByIdForUpdate(distinctIds)
+
+        check(locked.size == distinctIds.size) {
+            "Cannot create match: one or more users were not found"
+        }
+    }
+
     private fun validateParticipant(
         match: Match,
         userId: UUID
@@ -108,6 +121,10 @@ class MatchService(
     fun transitionToVisualPhase(matchId: UUID): Match {
 
         val match = findByIdOrThrow(matchId)
+
+        if (match.state == MatchState.VISUAL_PHASE) {
+            return match
+        }
 
         check(match.state == MatchState.CHAT_ACTIVE) {
             "Cannot transition to visual phase: match is in state ${match.state}"
@@ -128,6 +145,10 @@ class MatchService(
 
         val match = findByIdOrThrow(matchId)
 
+        if (match.state == MatchState.VISUAL_APPROVED) {
+            return match
+        }
+
         check(match.state == MatchState.VISUAL_PHASE) {
             "Cannot approve visual phase: match is in state ${match.state}"
         }
@@ -145,6 +166,10 @@ class MatchService(
     fun rejectChatPhase(matchId: UUID): Match {
 
         val match = findByIdOrThrow(matchId)
+
+        if (match.state == MatchState.CHAT_REJECTED) {
+            return match
+        }
 
         check(match.state == MatchState.CHAT_ACTIVE) {
             "Cannot reject chat phase: match is in state ${match.state}"
@@ -170,6 +195,10 @@ class MatchService(
 
         val match = findByIdOrThrow(matchId)
 
+        if (match.state == MatchState.VISUAL_REJECTED) {
+            return match
+        }
+
         check(match.state == MatchState.VISUAL_PHASE) {
             "Cannot reject visual phase: match is in state ${match.state}"
         }
@@ -190,9 +219,13 @@ class MatchService(
      * Expires a match and releases engagement locks for both users.
      * Valid from CHAT_ACTIVE or VISUAL_PHASE states.
      */
-    fun expireMatch(matchId: UUID) {
+    fun expireMatch(matchId: UUID): Boolean {
 
         val match = findByIdOrThrow(matchId)
+
+        if (match.state == MatchState.EXPIRED) {
+            return false
+        }
 
         check(
             match.state == MatchState.CHAT_ACTIVE ||
@@ -209,5 +242,7 @@ class MatchService(
         lockRepository.deleteByEngagementId(
             engagementId = matchId
         )
+
+        return true
     }
 }

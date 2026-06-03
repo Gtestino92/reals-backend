@@ -1,10 +1,14 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.UserResponse
 import com.reals.backend.service.UserService
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -21,6 +25,34 @@ class MeController(
             userId = userId
         )
         return ResponseEntity.ok(
+            UserResponse.from(user)
+        )
+    }
+
+    @PostMapping("/api/me/provision")
+    fun provisionMe(
+        authentication: Authentication
+    ): ResponseEntity<UserResponse> {
+        val principal = authentication.principal
+
+        if (principal is String) {
+            val user = userService.findByIdOrThrow(
+                userId = UUID.fromString(principal)
+            )
+            return ResponseEntity.ok(
+                UserResponse.from(user)
+            )
+        }
+
+        val firebasePrincipal = principal as? FirebasePrincipal
+            ?: throw IllegalStateException("Firebase principal is required")
+
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebasePrincipal.uid,
+            email = firebasePrincipal.email
+        )
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
             UserResponse.from(user)
         )
     }

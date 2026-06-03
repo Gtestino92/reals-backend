@@ -1,6 +1,6 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.*
 import jakarta.validation.Valid
@@ -56,18 +56,16 @@ class MatchController(
         @PathVariable matchId: UUID
     ): ResponseEntity<VisualProfileResponse> {
 
-        val match = matchService.findByIdOrThrow(
-            matchId = matchId
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
         )
 
         val partnerId =
             when (userId) {
                 match.userAId -> match.userBId
                 match.userBId -> match.userAId
-                else ->
-                    throw IllegalArgumentException(
-                        "User $userId does not belong to match $matchId"
-                    )
+                else -> error("User was already validated as match participant")
             }
 
         val partnerProfile = profileService.findByUserId(partnerId)
@@ -178,10 +176,8 @@ class MatchController(
      * message is null if the partner hasn't submitted one yet
      *
      * Reads the requesting userId from the SecurityContext (DevAutoAuthFilter in local,
-     * JWT in prod - no query param needed, already aligned with PENDING.md #9)
+     * Firebase/JWT in dev/prod - no query param needed)
      * Available from VISUAL_PHASE onwards
-     * TODO (front): llamar al entrar en la pantalla de negociación de horario
-     * TODO (product): ver PENDING.md #17 - visibilidad del mensaje del partner
      */
     @GetMapping("/{matchId}/personal-messages/partner")
     fun getPartnerMessage(

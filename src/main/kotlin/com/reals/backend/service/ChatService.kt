@@ -96,6 +96,23 @@ class ChatService(
         )
     }
 
+    fun makeSecondChatAvailable(
+        matchId: UUID,
+        connectionId: UUID,
+        availableAt: OffsetDateTime
+    ): Chat {
+        val chat =
+            startSecondChat(
+                matchId = matchId,
+                connectionId = connectionId,
+                availableAt = availableAt
+            )
+
+        connectionService.transitionToSecondChatAvailable(connectionId)
+
+        return chat
+    }
+
     fun sendMessage(
         chatId: UUID,
         senderId: UUID,
@@ -186,7 +203,7 @@ class ChatService(
                 chatDecision.userBDecision = decision
             }
 
-            else -> error("User $userId does not belong to match $matchId")
+            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
         }
 
         chatDecision.updatedAt = OffsetDateTime.now()
@@ -209,14 +226,14 @@ class ChatService(
         chatId: UUID,
         finalStatus: ChatStatus,
         abandonedUserIds: List<UUID> = emptyList()
-    ) {
+    ): Boolean {
         require(finalStatus == ChatStatus.EXPIRED || finalStatus == ChatStatus.ABANDONED) {
             "endChat only accepts EXPIRED or ABANDONED, got $finalStatus"
         }
 
         val chat = findByIdOrThrow(chatId)
 
-        if (chat.status != ChatStatus.ACTIVE) return
+        if (chat.status != ChatStatus.ACTIVE) return false
 
         chat.status = finalStatus
         chat.endedAt = OffsetDateTime.now()
@@ -237,6 +254,8 @@ class ChatService(
                 }
             }
         }
+
+        return true
     }
 
     fun getMessages(
@@ -291,15 +310,22 @@ class ChatService(
             )
                 ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
 
-        connectionService.findByIdForUserOrThrow(
+        val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,
             userId = userId
         )
 
-        return activateAvailableSecondChatIfNeeded(
+        val visibleChat = activateAvailableSecondChatIfNeeded(
             chat = chat,
             userId = userId
         )
+
+        check(visibleChat.status == ChatStatus.ACTIVE) {
+            "Second chat for connection $connectionId is not active " +
+                "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
+        }
+
+        return visibleChat
     }
 
     private fun activateAvailableSecondChatIfNeeded(
@@ -319,8 +345,8 @@ class ChatService(
         }
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         val now = OffsetDateTime.now()

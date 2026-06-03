@@ -7,6 +7,10 @@ src/test/kotlin/com/reals/backend/integration
 ```
 
 The suite uses Spring Boot integration tests with the `test` profile and H2 in-memory.
+PostgreSQL-specific behavior that H2 cannot model, such as row claiming with
+`FOR UPDATE SKIP LOCKED`, is covered by focused Testcontainers tests under the
+same suite. Those tests require Docker and are skipped when Docker is not
+available.
 
 Structure:
 
@@ -48,6 +52,7 @@ For those cases, service-level integration tests catch more realistic regression
 - chat rejection state and lock release
 - visual rejection without connection creation
 - incompatible queued users producing no match
+- matchmaking candidate-pair filtering, candidate limit behavior and FIFO tie-breaking
 - second-chat slot auto-confirmation across ordered proposal lists
 - scheduling preference tie-breaks and explicit round rejection
 - scheduling failure after max rounds
@@ -60,6 +65,7 @@ For those cases, service-level integration tests catch more realistic regression
 
 `SchedulerFlowIntegrationTest` covers:
 
+- matchmaking job processing from queue to first chat
 - inactive chat detection
 - first-chat timeout expiration
 - visual phase expiration
@@ -79,9 +85,9 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `01 Happy Path`: successful user flow through second chat.
 - `02 Not Happy Paths`: technical negative checks and guardrails, mostly expected 4xx responses.
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
-- `04 Timeout Outcomes`: local/dev-only manual checks for deadline-driven jobs. These use `/api/dev/timeouts/...` to move deadlines into the past and `/api/dev/jobs/.../run` to trigger the real jobs deterministically.
+- `04 Timeout Outcomes`: local-only manual checks for deadline-driven jobs. These use `/api/local-dev/timeouts/...` to move deadlines into the past and `/api/local-dev/jobs/.../run` to trigger the real jobs deterministically.
 
-The `/api/dev/...` endpoints are only exposed for `local`, `local-nodb` and `dev` profiles. They must not be enabled in production.
+The `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. They must not be enabled in cloud dev or production.
 
 ## Running Tests
 
@@ -92,3 +98,40 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
+The PostgreSQL concurrency coverage uses Testcontainers, so Docker must be
+running if you want that test to execute locally.
+
+GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
+`master` or `development`.
+
+## CI Gates
+
+Pull requests to `development` or `master` run:
+
+- Maven tests.
+- Docker Compose config validation.
+- Backend Docker image build validation without publishing.
+- Trivy image scan. Pull requests and pushes for `development` fail on fixed
+  `CRITICAL` vulnerabilities. Pull requests and pushes for `master` fail on
+  fixed `HIGH` or `CRITICAL` vulnerabilities. The scan table is also published
+  to the GitHub Actions job summary before the job is failed.
+- Dependency review for high-severity dependency changes.
+- CodeQL default setup from GitHub code scanning.
+
+Pushes to `development` or `master` run the same validation and then publish
+the backend image to GHCR. The image publishing job does not run for pull
+requests.
+
+## Smoke Checks
+
+The `Smoke check` GitHub Actions workflow is manual and is intended for a
+deployed environment. Provide the backend base URL and it checks:
+
+- `GET /actuator/health/readiness`
+- `GET /actuator/info`
+- `GET /api/ping`
+
+It does not deploy anything and does not require application credentials.
+Optional inputs `expected_image_tag` and `expected_image_revision` validate the
+image metadata exposed by `/actuator/info`, so the same workflow can be wired
+into deploy automation later.

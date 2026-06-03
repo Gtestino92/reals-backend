@@ -4,9 +4,12 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -28,12 +31,79 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            bio = null
+            bio = null,
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
         )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             profileService.activateProfile(profile.id)
         }
+
+        assertEquals(DomainErrorCode.PROFILE_PHOTOS_REQUIRED, exception.code)
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `adding a photo to an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-add-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Add Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.addPhoto(
+            profileId = profile.id,
+            url = "https://example.com/${profile.id}-extra.jpg",
+            position = 5,
+            isPersonPhoto = false,
+            isFullBody = false
+        )
+
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `replacing a photo in an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-replace-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Replace Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.replacePhoto(
+            profileId = profile.id,
+            position = 1,
+            url = "https://example.com/${profile.id}-replacement.jpg",
+            isPersonPhoto = true,
+            isFullBody = true
+        )
+
+        assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `deleting a photo from an active profile moves it back to draft`() {
+        val userId = createActiveProfile(
+            email = "active-delete-photo-${UUID.randomUUID()}@example.com",
+            displayName = "Active Delete Photo",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val profile = profileService.findByUserId(userId)
+            ?: error("Profile was not created")
+
+        profileService.deletePhoto(
+            profileId = profile.id,
+            position = 1
+        )
 
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
     }
@@ -50,12 +120,17 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            bio = null
+            bio = null,
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
         )
 
-        assertThrows<IllegalStateException> {
-            matchmakingService.enqueue(user.id)
+        val exception = assertThrows<DomainConflictException> {
+            enqueueForMatchmaking(user.id)
         }
+
+        assertEquals(DomainErrorCode.PROFILE_NOT_ACTIVE, exception.code)
     }
 
     @Test
@@ -110,7 +185,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val setup = createConnectionInSchedulingPhase()
         val stranger = userService.createUser("proposal-stranger-${UUID.randomUUID()}@example.com")
 
-        assertThrows<IllegalStateException> {
+        assertThrows<AccessDeniedException> {
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,
@@ -134,6 +209,24 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
                 acceptorUserId = setup.userAId
             )
         }
+    }
+
+    @Test
+    fun `user can accept partner proposal without submitting own proposal`() {
+        val setup = createConnectionInSchedulingPhase()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = futureHalfHourSlot()
+        )
+
+        val negotiation = schedulingService.acceptProposal(
+            proposalId = proposal.id,
+            acceptorUserId = setup.userBId
+        )
+
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(proposal.proposedDateTime.toInstant(), negotiation.confirmedDateTime?.toInstant())
     }
 
     @Test

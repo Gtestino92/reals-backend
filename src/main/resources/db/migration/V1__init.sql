@@ -2,6 +2,8 @@
 -- V1 - Initial schema for reals-backend
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- ShedLock table (required by ShedLock library)
 
 CREATE TABLE IF NOT EXISTS shedlock (
@@ -18,13 +20,15 @@ CREATE TABLE IF NOT EXISTS shedlock (
 
 CREATE TABLE users (
     id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version     BIGINT       NOT NULL DEFAULT 0,
     email       VARCHAR(255),
     firebase_uid VARCHAR(255),
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
-    CONSTRAINT uq_users_email UNIQUE (email)
+    CONSTRAINT uq_users_email UNIQUE (email),
+    CONSTRAINT uq_users_firebase_uid UNIQUE (firebase_uid)
 );
 
 -- ============================================================
@@ -33,6 +37,7 @@ CREATE TABLE users (
 
 CREATE TABLE profiles (
     id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version             BIGINT       NOT NULL DEFAULT 0,
     user_id             UUID         NOT NULL,
     display_name        VARCHAR(100) NOT NULL,
     birth_date          DATE         NOT NULL,
@@ -57,12 +62,16 @@ CREATE TABLE profiles (
         REFERENCES users(id)
 );
 
+CREATE INDEX idx_profiles_matchmaking_basic
+    ON profiles (status, intention, gender, looking_for_gender, user_id);
+
 -- ============================================================
 -- PROFILE PHOTOS
 -- ============================================================
 
 CREATE TABLE profile_photos (
     id              UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version         BIGINT       NOT NULL DEFAULT 0,
     profile_id      UUID         NOT NULL,
     url             VARCHAR(512) NOT NULL,
     storage_provider VARCHAR(32)  NOT NULL DEFAULT 'EXTERNAL_URL',
@@ -74,6 +83,9 @@ CREATE TABLE profile_photos (
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
+
+    CONSTRAINT uq_profile_photo_profile_position
+        UNIQUE (profile_id, position),
 
     CONSTRAINT fk_photos_profile
         FOREIGN KEY (profile_id)
@@ -120,12 +132,16 @@ CREATE TABLE matchmaking_queue (
         UNIQUE (user_id)
 );
 
+CREATE INDEX idx_matchmaking_queue_waiting
+    ON matchmaking_queue (status, entered_at, id);
+
 -- ============================================================
 -- MATCHES
 -- ============================================================
 
 CREATE TABLE matches (
     id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version     BIGINT       NOT NULL DEFAULT 0,
     user_a_id   UUID         NOT NULL,
     user_b_id   UUID         NOT NULL,
     state       VARCHAR(32)  NOT NULL DEFAULT 'CHAT_ACTIVE',
@@ -150,6 +166,7 @@ CREATE INDEX idx_match_state
 
 CREATE TABLE connections (
     id                    UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version               BIGINT       NOT NULL DEFAULT 0,
     match_id              UUID         NOT NULL,
     user_a_id             UUID         NOT NULL,
     user_b_id             UUID         NOT NULL,
@@ -180,6 +197,7 @@ CREATE INDEX idx_connection_state
 
 CREATE TABLE chats (
     id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version          BIGINT       NOT NULL DEFAULT 0,
     match_id         UUID         NOT NULL,
     connection_id    UUID,
     chat_type        VARCHAR(16)  NOT NULL,
@@ -213,6 +231,7 @@ CREATE INDEX idx_chat_match
 
 CREATE TABLE chat_exit_requests (
     id                 UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version            BIGINT       NOT NULL DEFAULT 0,
     chat_id            UUID         NOT NULL,
     requester_user_id  UUID         NOT NULL,
     responder_user_id  UUID         NOT NULL,
@@ -260,6 +279,7 @@ CREATE INDEX idx_message_session
 
 CREATE TABLE chat_decisions (
     id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version          BIGINT       NOT NULL DEFAULT 0,
     chat_id          UUID         NOT NULL,
     match_id         UUID         NOT NULL,
     user_a_decision  VARCHAR(16),
@@ -296,6 +316,7 @@ CREATE INDEX idx_chat_decision_chat
 
 CREATE TABLE visual_reviews (
     id                     UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version                BIGINT       NOT NULL DEFAULT 0,
     match_id               UUID         NOT NULL,
     user_a_visual_decision VARCHAR(16),
     user_b_visual_decision VARCHAR(16),
@@ -324,6 +345,7 @@ CREATE TABLE visual_reviews (
 
 CREATE TABLE schedule_negotiations (
     id                    UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version               BIGINT       NOT NULL DEFAULT 0,
     connection_id         UUID         NOT NULL,
     round_number          INT          NOT NULL DEFAULT 1,
     status                VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
@@ -347,6 +369,7 @@ CREATE TABLE schedule_negotiations (
 
 CREATE TABLE schedule_proposals (
     id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version             BIGINT       NOT NULL DEFAULT 0,
     connection_id       UUID         NOT NULL,
     user_id             UUID         NOT NULL,
     round_number        INT          NOT NULL DEFAULT 1,
@@ -356,6 +379,9 @@ CREATE TABLE schedule_proposals (
     created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
+
+    CONSTRAINT uq_schedule_proposal_user_round_order
+        UNIQUE (connection_id, user_id, round_number, preference_order),
 
     CONSTRAINT fk_proposal_connection
         FOREIGN KEY (connection_id)
@@ -371,6 +397,7 @@ CREATE INDEX idx_proposal_connection
 
 CREATE TABLE penalties (
     id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    version     BIGINT       NOT NULL DEFAULT 0,
     user_id     UUID         NOT NULL,
     reason      VARCHAR(255) NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),

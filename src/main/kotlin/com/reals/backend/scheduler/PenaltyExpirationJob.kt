@@ -19,7 +19,20 @@ class PenaltyExpirationJob(
     )
     @SchedulerLock(name = "PenaltyExpirationJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
     fun run() {
-        log.debug("Penalty Expiration Job triggered")
-        penaltyService.expireOverduePenalties()
+        val startedAt = System.nanoTime()
+        log.debug("PenaltyExpirationJob triggered")
+
+        val expiredCount = penaltyService.expireOverduePenalties()
+
+        log.logJobSummary(
+            jobName = "PenaltyExpirationJob",
+            summary = JobRunSummary(
+                processed = expiredCount,
+                succeeded = expiredCount,
+                skipped = 0,
+                failed = 0
+            ),
+            startedAt = startedAt
+        )
     }
 }

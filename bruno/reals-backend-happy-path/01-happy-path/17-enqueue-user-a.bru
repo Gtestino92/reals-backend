@@ -1,0 +1,23 @@
+meta {
+  name: 17 Enqueue User A
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userAId}}
+}
+body:json {
+  {
+    "latitude": -34.6037,
+    "longitude": -58.3816,
+    "accuracyMeters": 50
+  }
+}

@@ -7,7 +7,8 @@
 - `controller`: HTTP endpoints. Controllers parse request DTOs, call services and map responses.
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations and state transitions.
-- `service.matching`: compatibility evaluation.
+- `service.matching`: hard matching filters, compatibility evaluation and scoring.
+- `service.identity`: identity-verification provider abstraction.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
 - `domain`: persisted entities and enums.
@@ -24,12 +25,12 @@ Schedulers should also call services rather than mutating repositories directly.
 
 ## Current Stack
 
-- Kotlin 2.2.0.
-- Java 17.
-- Spring Boot 3.5.3.
+- Kotlin 2.3.21.
+- Java 21.
+- Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
 - H2 local database.
-- Oracle and PostgreSQL JDBC drivers are present.
+- PostgreSQL JDBC driver is present for non-local environments.
 - Flyway is present; migrations live under `src/main/resources/db/migration`.
 - Caffeine cache.
 - ShedLock for scheduler locking.
@@ -54,12 +55,13 @@ Chat responsibilities are split conservatively:
 - Entities use UUID primary keys.
 - Enums are persisted as strings.
 - Initial migration: `src/main/resources/db/migration/V1__init.sql`.
-- Local profile `local-nodb` disables Flyway and uses Hibernate `ddl-auto: update` against H2 file storage.
+- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-firebase` is the default local profile and `local-nodb` is the no-auth local profile.
 
 ## Background Jobs
 
 Known scheduler jobs:
 
+- `MatchmakingJob`
 - `ChatTimeoutJob`
 - `InactivityCheckJob`
 - `MatchExpirationJob`
@@ -72,7 +74,7 @@ Jobs are guarded with ShedLock infrastructure and should be idempotent where pra
 
 `ScheduledSecondChatStartJob` only makes the second chat visible as `AVAILABLE`; user entry or the first message activates the chat and starts its timeout window.
 
-Local/dev profiles expose `/api/dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. These endpoints are profile-gated and are not part of the production API.
+Local profiles expose `/api/local-dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/local-dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. These endpoints are profile-gated and are not part of the cloud dev or production API.
 
 ## Non-Goals
 

@@ -10,6 +10,10 @@ get {
   auth: none
 }
 
+headers {
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
 script:post-response {
   bru.setEnvVar("negativeFirstChatId", res.getBody().id);
 }

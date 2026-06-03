@@ -6,7 +6,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -31,8 +30,8 @@ class VisualPhaseExpirationJob(
         lockAtLeastFor = "PT30S",
         lockAtMostFor = "PT3M"
     )
-    @Transactional
     fun run() {
+        val startedAt = System.nanoTime()
         log.debug("VisualPhaseExpirationJob triggered")
 
         val expired =
@@ -40,31 +39,45 @@ class VisualPhaseExpirationJob(
                 expiresAt = OffsetDateTime.now()
             )
 
-        if (expired.isEmpty()) {
-            log.debug("VisualPhaseExpirationJob - no expired visual reviews found")
-            return
-        }
-
-        log.info(
-            "VisualPhaseExpirationJob - found {} expired visual review(s)",
-            expired.size
-        )
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
 
         expired.forEach { review ->
             try {
-                matchService.expireMatch(review.matchId)
-
-                log.info(
-                    "VisualPhaseExpirationJob - expired match={}",
-                    review.matchId
-                )
+                val changed = matchService.expireMatch(review.matchId)
+                if (changed) {
+                    succeeded += 1
+                    log.info(
+                        "VisualPhaseExpirationJob - expired match={}",
+                        review.matchId
+                    )
+                } else {
+                    skipped += 1
+                    log.debug(
+                        "VisualPhaseExpirationJob - skipped match={} because it was already expired",
+                        review.matchId
+                    )
+                }
             } catch (ex: Exception) {
-                log.warn(
-                    "VisualPhaseExpirationJob - skipped match={}: {}",
+                log.error(
+                    "VisualPhaseExpirationJob - failed to expire match={}",
                     review.matchId,
-                    ex.message
+                    ex
                 )
+                failed += 1
             }
         }
+
+        log.logJobSummary(
+            jobName = "VisualPhaseExpirationJob",
+            summary = JobRunSummary(
+                processed = expired.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

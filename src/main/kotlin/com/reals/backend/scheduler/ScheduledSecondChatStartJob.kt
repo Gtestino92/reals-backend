@@ -9,7 +9,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -35,23 +34,17 @@ class ScheduledSecondChatStartJob(
         lockAtLeastFor = "PT15S",
         lockAtMostFor = "PT2M"
     )
-    @Transactional
     fun run() {
+        val startedAt = System.nanoTime()
         val due =
             negotiationRepository.findDueConfirmedNegotiations(
                 status = NegotiationStatus.CONFIRMED,
                 now = OffsetDateTime.now()
             )
 
-        if (due.isEmpty()) {
-            log.debug("ScheduledSecondChatStartJob - no due negotiations found")
-            return
-        }
-
-        log.info(
-            "ScheduledSecondChatStartJob - found {} due negotiation(s)",
-            due.size
-        )
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
 
         due.forEach { negotiation ->
             try {
@@ -64,29 +57,42 @@ class ScheduledSecondChatStartJob(
                         connection.id,
                         connection.state
                     )
+                    skipped += 1
                     return@forEach
                 }
 
-                chatService.startSecondChat(
+                chatService.makeSecondChatAvailable(
                     matchId = connection.matchId,
                     connectionId = connection.id,
                     availableAt = checkNotNull(negotiation.confirmedDateTime) {
                         "Confirmed negotiation ${negotiation.id} has no confirmedDateTime"
                     }
                 )
-                connectionService.transitionToSecondChatAvailable(connection.id)
 
                 log.info(
                     "ScheduledSecondChatStartJob - made second chat available for connection={}",
                     connection.id
                 )
+                succeeded += 1
             } catch (ex: Exception) {
                 log.error(
-                    "ScheduledSecondChatStartJob - failed for connection={}: {}",
+                    "ScheduledSecondChatStartJob - failed for connection={}",
                     negotiation.connectionId,
-                    ex.message
+                    ex
                 )
+                failed += 1
             }
         }
+
+        log.logJobSummary(
+            jobName = "ScheduledSecondChatStartJob",
+            summary = JobRunSummary(
+                processed = due.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

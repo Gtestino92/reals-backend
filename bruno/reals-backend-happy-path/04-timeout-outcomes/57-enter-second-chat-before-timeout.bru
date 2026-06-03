@@ -1,0 +1,26 @@
+meta {
+  name: 57 Enter Second Chat Before Timeout
+  type: http
+  seq: 57
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/chat
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "ACTIVE") {
+    throw new Error(`Expected second chat ACTIVE, got ${body.status}`);
+  }
+  if (!body.availableAt || !body.activatedAt || !body.timeoutAt) {
+    throw new Error("Expected availableAt, activatedAt and timeoutAt after entering second chat.");
+  }
+  bru.setEnvVar("timeoutSecondChatId", body.id);
+}

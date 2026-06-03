@@ -19,6 +19,10 @@ class ChatDecision(
     @Column(updatable = false)
     var id: UUID = UUID.randomUUID(),
 
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
+
     /**
      * The chat session this decision belongs to.
      */

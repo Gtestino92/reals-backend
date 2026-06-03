@@ -5,6 +5,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.VisualReviewRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -78,7 +79,7 @@ class VisualReviewService(
         when (userId) {
             match.userAId -> review.userAVisualDecision = decision
             match.userBId -> review.userBVisualDecision = decision
-            else -> throw IllegalArgumentException(
+            else -> throw AccessDeniedException(
                 "User $userId does not belong to match $matchId"
             )
         }
@@ -142,7 +143,7 @@ class VisualReviewService(
             }
 
             else ->
-                throw IllegalArgumentException(
+                throw AccessDeniedException(
                     "User $userId does not belong to match $matchId"
                 )
         }
@@ -177,7 +178,7 @@ class VisualReviewService(
                 review.personalMessageA
             }
 
-            else -> throw IllegalArgumentException(
+            else -> throw AccessDeniedException(
                 "User $requestingUserId does not belong to match $matchId"
             )
         }
@@ -204,7 +205,7 @@ class VisualReviewService(
                     "Cannot approve visual review before reading partner personal message"
                 }
 
-            else -> throw IllegalArgumentException(
+            else -> throw AccessDeniedException(
                 "User $userId does not belong to match ${match.id}"
             )
         }

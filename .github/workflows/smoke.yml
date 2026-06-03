@@ -1,0 +1,154 @@
+name: Smoke check
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL to check, for example https://api-dev.example.com"
+        required: true
+        type: string
+      expected_image_tag:
+        description: "Optional expected GHCR image tag embedded in the image, for example development"
+        required: false
+        type: string
+      expected_image_revision:
+        description: "Optional expected Git commit SHA embedded in the image"
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    name: Check deployed backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Normalize inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${{ inputs.base_url }}"
+          BASE_URL="${BASE_URL%/}"
+
+          {
+            echo "BASE_URL=${BASE_URL}"
+            echo "EXPECTED_IMAGE_TAG=${{ inputs.expected_image_tag }}"
+            echo "EXPECTED_IMAGE_REVISION=${{ inputs.expected_image_revision }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Check readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl --fail --show-error --silent \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            --max-time 10 \
+            "${BASE_URL}/actuator/health/readiness" \
+            | tee readiness.json
+
+          python - <<'PY'
+          import json
+
+          with open("readiness.json", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          status = payload.get("status")
+          if status != "UP":
+              raise SystemExit(f"Expected readiness status UP, got {status!r}")
+          PY
+
+      - name: Check actuator info
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl --fail --show-error --silent \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            --max-time 10 \
+            "${BASE_URL}/actuator/info" \
+            | tee info.json
+
+          python - <<'PY'
+          import json
+          import os
+
+          expected_tag = os.environ.get("EXPECTED_IMAGE_TAG", "").strip()
+          expected_revision = os.environ.get("EXPECTED_IMAGE_REVISION", "").strip()
+
+          with open("info.json", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          image = payload.get("image") or {}
+          actual_tag = image.get("tag") or ""
+          actual_revision = image.get("revision") or ""
+
+          if expected_tag and actual_tag != expected_tag:
+              raise SystemExit(
+                  f"Expected image.tag {expected_tag!r}, got {actual_tag!r}"
+              )
+
+          if expected_revision:
+              revision_matches = (
+                  actual_revision == expected_revision
+                  or actual_revision.startswith(expected_revision)
+              )
+              if not revision_matches:
+                  raise SystemExit(
+                      "Expected image.revision "
+                      f"{expected_revision!r}, got {actual_revision!r}"
+                  )
+          PY
+
+      - name: Check ping
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl --fail --show-error --silent \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 3 \
+            --max-time 10 \
+            "${BASE_URL}/api/ping" \
+            | tee ping.json
+
+          python - <<'PY'
+          import json
+
+          with open("ping.json", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          status = payload.get("status")
+          if status != "ok":
+              raise SystemExit(f"Expected ping status ok, got {status!r}")
+          PY
+
+      - name: Publish smoke summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### Smoke check"
+            echo
+            echo "| Check | Target |"
+            echo "| --- | --- |"
+            echo "| Base URL | ${BASE_URL:-} |"
+            echo "| Readiness | /actuator/health/readiness |"
+            echo "| Info | /actuator/info |"
+            echo "| Ping | /api/ping |"
+
+            if [ -n "${EXPECTED_IMAGE_TAG:-}" ]; then
+              echo "| Expected image tag | ${EXPECTED_IMAGE_TAG} |"
+            fi
+
+            if [ -n "${EXPECTED_IMAGE_REVISION:-}" ]; then
+              echo "| Expected image revision | ${EXPECTED_IMAGE_REVISION} |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

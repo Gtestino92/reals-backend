@@ -1,0 +1,33 @@
+meta {
+  name: 31 User B Approve Visual
+  type: http
+  seq: 31
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{matchId}}/visual-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{userBId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.state !== "VISUAL_APPROVED") {
+    throw new Error("Expected match state VISUAL_APPROVED after both visual approvals.");
+  }
+  if (!body.connectionId) {
+    throw new Error("Expected connectionId after mutual visual approval.");
+  }
+  bru.setEnvVar("connectionId", body.connectionId);
+}

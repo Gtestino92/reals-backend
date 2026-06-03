@@ -7,6 +7,7 @@ import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Past
@@ -47,6 +48,20 @@ data class ReplacePhotoRequest(
     val isFullBody: Boolean? = null
 )
 
+data class UpdateMatchFiltersRequest(
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMinAge: Int,
+
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMaxAge: Int,
+
+    @field:Min(1)
+    @field:Max(1000)
+    val maxDistanceKm: Int
+)
+
 data class CreateProfileRequest(
     @field:NotBlank
     @field:Size(min = 2, max = 100)
@@ -72,7 +87,19 @@ data class CreateProfileRequest(
 
     @field:Size(max = 1000)
     @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
-    val bio: String? = null
+    val bio: String? = null,
+
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMinAge: Int,
+
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMaxAge: Int,
+
+    @field:Min(1)
+    @field:Max(1000)
+    val maxDistanceKm: Int
 )
 
 data class AddPhotoRequest(
@@ -101,6 +128,9 @@ data class ProfileResponse(
     val city: String,
     val country: String,
     val bio: String?,
+    val preferredMinAge: Int,
+    val preferredMaxAge: Int,
+    val maxDistanceKm: Int,
     val status: ProfileStatus,
     val photoCount: Int,
     val createdAt: OffsetDateTime,
@@ -123,6 +153,9 @@ data class ProfileResponse(
             city = profile.city,
             country = profile.country,
             bio = profile.bio,
+            preferredMinAge = profile.preferredMinAge,
+            preferredMaxAge = profile.preferredMaxAge,
+            maxDistanceKm = profile.maxDistanceKm,
             status = profile.status,
             photoCount = photoCount,
             createdAt = profile.createdAt,

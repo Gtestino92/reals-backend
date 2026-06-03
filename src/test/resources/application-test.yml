@@ -6,7 +6,6 @@ spring:
     password:
 
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: create-drop
     properties:
@@ -23,8 +22,17 @@ logging:
   level:
     root: WARN
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 scheduler:
   enabled: false
+  matchmaking-job:
+    fixed-delay: 3600000
+    max-pairs-per-run: 10
   chat-timeout-job:
     fixed-delay: 3600000
   match-expiration-job:
@@ -38,6 +46,11 @@ scheduler:
     fixed-delay: 3600000
   scheduling-timeout-job:
     fixed-delay: 3600000
+
+matchmaking:
+  candidate-pair-limit: 5
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
 
 chat:
   first-chat:

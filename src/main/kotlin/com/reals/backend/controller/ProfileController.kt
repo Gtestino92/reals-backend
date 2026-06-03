@@ -1,6 +1,6 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.service.ProfileService
 import jakarta.validation.Valid
@@ -39,7 +39,10 @@ class ProfileController(
             intention = request.intention,
             city = request.city,
             country = request.country,
-            bio = request.bio
+            bio = request.bio,
+            preferredMinAge = request.preferredMinAge,
+            preferredMaxAge = request.preferredMaxAge,
+            maxDistanceKm = request.maxDistanceKm
         )
         val photos = profileService.getPhotos(profile.id)
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -117,6 +120,58 @@ class ProfileController(
         return ResponseEntity.ok(
             ProfileResponse.from(
                 profile = activated,
+                photoCount = photos.size
+            )
+        )
+    }
+
+    @PutMapping("/match-filters")
+    fun updateMatchFilters(
+        @CurrentUserId userId: UUID,
+        @Valid
+        @RequestBody request: UpdateMatchFiltersRequest
+    ): ResponseEntity<ProfileResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val updated = profileService.updateDynamicMatchFilters(
+            profileId = profile.id,
+            preferredMinAge = request.preferredMinAge,
+            preferredMaxAge = request.preferredMaxAge,
+            maxDistanceKm = request.maxDistanceKm
+        )
+
+        val photos = profileService.getPhotos(updated.id)
+
+        return ResponseEntity.ok(
+            ProfileResponse.from(
+                profile = updated,
+                photoCount = photos.size
+            )
+        )
+    }
+
+    @PostMapping("/identity-verification")
+    fun verifyMyIdentity(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ProfileResponse> {
+
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val verified = profileService.verifyIdentity(
+            profileId = profile.id
+        )
+
+        val photos = profileService.getPhotos(verified.id)
+
+        return ResponseEntity.ok(
+            ProfileResponse.from(
+                profile = verified,
                 photoCount = photos.size
             )
         )

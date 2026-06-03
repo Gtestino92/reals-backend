@@ -2,14 +2,30 @@ spring:
   application:
     name: reals-backend
 
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.actuate.autoconfigure.metrics.cache.CacheMetricsAutoConfiguration
+
   profiles:
+    #active: local-firebase
     active: local-nodb
+
+  jpa:
+    open-in-view: false
 
 logging:
   level:
     root: INFO
+  pattern:
+    level: "%5p [requestId:%X{requestId:-}]"
 
 management:
+  info:
+    env:
+      enabled: true
+  metrics:
+    enable:
+      all: false
   endpoints:
     web:
       exposure:
@@ -111,3 +127,13 @@ engagement:
   # Maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
   max-active-connections: 2
+
+info:
+  app:
+    name: ${spring.application.name}
+  image:
+    repository: ${IMAGE_REPOSITORY:}
+    tag: ${IMAGE_TAG:}
+    revision: ${IMAGE_REVISION:}
+
+kind: Application

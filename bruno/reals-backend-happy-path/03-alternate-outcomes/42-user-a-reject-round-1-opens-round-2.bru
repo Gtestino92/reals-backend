@@ -1,0 +1,22 @@
+meta {
+  name: 42 User A Reject Round 1 Opens Round 2
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "PENDING" || body.roundNumber !== 2) {
+    throw new Error(`Expected PENDING round 2, got ${body.status} round ${body.roundNumber}`);
+  }
+}

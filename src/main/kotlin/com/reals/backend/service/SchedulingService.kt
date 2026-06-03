@@ -7,6 +7,7 @@ import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -45,9 +46,7 @@ class SchedulingService(
      */
     fun initializeNegotiation(connectionId: UUID): ScheduleNegotiation {
 
-        check(negotiationRepository.findByConnectionId(connectionId) == null) {
-            "ScheduleNegotiation already exists for connection: $connectionId"
-        }
+        negotiationRepository.findByConnectionId(connectionId)?.let { return it }
 
         return negotiationRepository.save(
             ScheduleNegotiation(
@@ -79,8 +78,8 @@ class SchedulingService(
 
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
@@ -187,7 +186,6 @@ class SchedulingService(
      *
      * Rules:
      * - [acceptorUserId] must NOT be the proposer of [proposalId].
-     * - [acceptorUserId] must have already submitted their own proposals this round.
      * - The proposal must be in PENDING state.
      * - Confirms the negotiation and transitions Connection to SECOND_CHAT_SCHEDULED.
      */
@@ -209,20 +207,12 @@ class SchedulingService(
             "User $acceptorUserId cannot accept their own proposal"
         }
 
-        check(
-            proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                proposal.connectionId,
-                acceptorUserId,
-                proposal.roundNumber
-            )
-        ) {
-            "User $acceptorUserId must submit their own proposals before accepting the partner's"
-        }
-
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
 
-        check(acceptorUserId == connection.userAId || acceptorUserId == connection.userBId) {
-            "User $acceptorUserId does not belong to connection ${proposal.connectionId}"
+        if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
+            throw AccessDeniedException(
+                "User $acceptorUserId does not belong to connection ${proposal.connectionId}"
+            )
         }
 
         check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
@@ -276,8 +266,8 @@ class SchedulingService(
 
         val connection = connectionService.findByIdOrThrow(connectionId)
 
-        check(userId == connection.userAId || userId == connection.userBId) {
-            "User $userId does not belong to connection $connectionId"
+        if (userId != connection.userAId && userId != connection.userBId) {
+            throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
         val currentRoundProposals =

@@ -1,0 +1,25 @@
+meta {
+  name: 48 User A Reject Round 3 Fails Negotiation
+  type: http
+  seq: 48
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "FAILED" || body.roundNumber !== 3) {
+    throw new Error(`Expected FAILED round 3, got ${body.status} round ${body.roundNumber}`);
+  }
+  if (body.chatId) {
+    throw new Error("Failed negotiation must not create a second chat.");
+  }
+}

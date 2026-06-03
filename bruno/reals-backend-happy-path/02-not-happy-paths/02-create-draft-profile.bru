@@ -24,11 +24,21 @@ body:json {
     "intention": "DATE",
     "city": "Buenos Aires",
     "country": "AR",
-    "bio": "Draft profile for negative tests."
+    "bio": "Draft profile for negative tests.",
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
   }
 }
 
 script:post-response {
   const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created draft profile id.");
+  }
+  if (!body.userId) {
+    throw new Error("Expected created draft profile userId.");
+  }
+  bru.setEnvVar("negativeDraftUserId", body.userId);
   bru.setEnvVar("negativeDraftProfileId", body.id);
 }

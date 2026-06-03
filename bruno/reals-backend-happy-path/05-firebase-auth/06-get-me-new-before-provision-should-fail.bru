@@ -1,0 +1,26 @@
+meta {
+  name: 06 Get Me New Before Provision Should Fail
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_new_id_token}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 403) {
+    throw new Error(`Expected 403 Forbidden before backend provisioning, got ${res.getStatus()}`);
+  }
+
+  const body = res.getBody();
+  if (!body || body.code !== "ACCESS_DENIED") {
+    throw new Error(`Expected ACCESS_DENIED, got ${body && body.code}`);
+  }
+}

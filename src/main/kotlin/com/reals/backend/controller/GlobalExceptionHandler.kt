@@ -1,10 +1,20 @@
 package com.reals.backend.controller
 
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainException
 import jakarta.validation.ConstraintViolationException
+import org.hibernate.exception.JDBCConnectionException
+import org.slf4j.LoggerFactory
+import org.springframework.dao.CannotAcquireLockException
+import org.springframework.dao.DataAccessResourceFailureException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.jdbc.CannotGetJdbcConnectionException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.validation.FieldError
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -12,11 +22,16 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import java.sql.SQLException
+import java.sql.SQLTransientConnectionException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     data class ErrorResponse(
+        val code: String,
         val error: String,
         val message: String?
     )
@@ -28,6 +43,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = ex.bindingResult.fieldErrors
                         .joinToString("; ") { it.toValidationMessage() }
@@ -42,6 +58,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = "Request validation failed"
                 )
@@ -54,6 +71,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "VALIDATION_ERROR",
                     error = "Bad Request",
                     message = ex.constraintViolations
                         .joinToString("; ") { "${it.propertyPath}: ${it.message}" }
@@ -68,6 +86,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "MALFORMED_REQUEST",
                     error = "Bad Request",
                     message = "Malformed request body or invalid field value"
                 )
@@ -80,6 +99,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = "Invalid value for ${ex.name}"
                 )
@@ -92,10 +112,79 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(
                 ErrorResponse(
+                    code = "DATA_INTEGRITY_CONFLICT",
                     error = "Conflict",
                     message = "Data integrity constraint violation"
                 )
             )
+
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleOptimisticLockingFailure(
+        ex: OptimisticLockingFailureException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    code = "CONCURRENT_MODIFICATION",
+                    error = "Conflict",
+                    message = "Resource was modified concurrently. Please retry."
+                )
+            )
+
+    @ExceptionHandler(
+        CannotGetJdbcConnectionException::class,
+        DataAccessResourceFailureException::class,
+        SQLTransientConnectionException::class
+    )
+    fun handleDatabaseUnavailable(
+        ex: Exception
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Database unavailable while processing request: {}", ex.message)
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(
+                ErrorResponse(
+                    code = "DATABASE_UNAVAILABLE",
+                    error = "Service Unavailable",
+                    message = "Database is temporarily unavailable. Please retry later."
+                )
+            )
+    }
+
+    @ExceptionHandler(
+        CannotAcquireLockException::class,
+        PessimisticLockingFailureException::class
+    )
+    fun handleTransientConcurrencyFailure(
+        ex: Exception
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    code = "TRANSIENT_CONCURRENCY_CONFLICT",
+                    error = "Conflict",
+                    message = "Resource is temporarily busy. Please retry."
+                )
+            )
+
+    @ExceptionHandler(DomainException::class)
+    fun handleDomainException(
+        ex: DomainException
+    ): ResponseEntity<ErrorResponse> {
+        val status = when (ex) {
+            is DomainBadRequestException -> HttpStatus.BAD_REQUEST
+            is DomainConflictException -> HttpStatus.CONFLICT
+        }
+
+        return ResponseEntity.status(status)
+            .body(
+                ErrorResponse(
+                    code = ex.code.name,
+                    error = status.reasonPhrase,
+                    message = ex.message
+                )
+            )
+    }
 
     @ExceptionHandler(AccessDeniedException::class)
     fun handleAccessDenied(
@@ -104,6 +193,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(
                 ErrorResponse(
+                    code = "ACCESS_DENIED",
                     error = "Forbidden",
                     message = ex.message
                 )
@@ -116,6 +206,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(
                 ErrorResponse(
+                    code = "RESOURCE_NOT_FOUND",
                     error = "Not Found",
                     message = ex.message
                 )
@@ -128,6 +219,7 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
+                    code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = ex.message
                 )
@@ -141,6 +233,7 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(
                 ErrorResponse(
+                    code = "DOMAIN_CONFLICT",
                     error = "Conflict",
                     message = ex.message
                 )
@@ -149,15 +242,48 @@ class GlobalExceptionHandler {
     @ExceptionHandler(Exception::class)
     fun handleGeneric(
         ex: Exception
-    ): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    ): ResponseEntity<ErrorResponse> {
+        if (ex.isDatabaseUnavailable()) {
+            return handleDatabaseUnavailable(ex)
+        }
+
+        log.error("Unhandled exception while processing request", ex)
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(
                 ErrorResponse(
+                    code = "INTERNAL_ERROR",
                     error = "Internal Server Error",
-                    message = ex.message
+                    message = "Unexpected server error"
                 )
             )
+    }
 
     private fun FieldError.toValidationMessage(): String =
         "$field: ${defaultMessage ?: "invalid value"}"
+
+    private fun Throwable.isDatabaseUnavailable(): Boolean {
+        var current: Throwable? = this
+
+        while (current != null) {
+            when (current) {
+                is CannotGetJdbcConnectionException,
+                is DataAccessResourceFailureException,
+                is SQLTransientConnectionException,
+                is JDBCConnectionException -> return true
+                is SQLException ->
+                    if (current.sqlState?.startsWith(CONNECTION_EXCEPTION_SQL_STATE_CLASS) == true) {
+                        return true
+                    }
+            }
+
+            current = current.cause
+        }
+
+        return false
+    }
+
+    private companion object {
+        const val CONNECTION_EXCEPTION_SQL_STATE_CLASS = "08"
+    }
 }

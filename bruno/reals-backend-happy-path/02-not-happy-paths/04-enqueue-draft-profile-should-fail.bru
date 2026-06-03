@@ -6,16 +6,24 @@ meta {
 
 post {
   url: {{baseUrl}}/api/matchmaking/queue
-  body: none
+  body: json
   auth: none
 }
 
 headers {
+  Content-Type: application/json
   X-Dev-User-Id: {{negativeDraftUserId}}
 }
 
 script:post-response {
   if (res.getStatus() !== 409) {
     throw new Error(`Expected 409 Conflict, got ${res.getStatus()}`);
+  }
+}
+body:json {
+  {
+    "latitude": -34.6037,
+    "longitude": -58.3816,
+    "accuracyMeters": 50
   }
 }

@@ -1,6 +1,7 @@
 package com.reals.backend.domain
 
 import jakarta.persistence.*
+import org.hibernate.annotations.ColumnDefault
 import java.time.OffsetDateTime
 import java.util.*
 
@@ -22,6 +23,17 @@ data class MatchmakingQueueEntry(
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     var status: QueueStatus = QueueStatus.WAITING,
+
+    @ColumnDefault("0")
+    @Column(name = "latitude", nullable = false)
+    var latitude: Double,
+
+    @ColumnDefault("0")
+    @Column(name = "longitude", nullable = false)
+    var longitude: Double,
+
+    @Column(name = "accuracy_meters")
+    var accuracyMeters: Int? = null,
 
     @Column(name = "entered_at", nullable = false)
     var enteredAt: OffsetDateTime = OffsetDateTime.now(),

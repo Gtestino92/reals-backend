@@ -1,6 +1,6 @@
 package com.reals.backend.controller
 
-import com.reals.backend.config.CurrentUserId
+import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.AddProposalRequest
 import com.reals.backend.controller.dto.ChatResponse
 import com.reals.backend.controller.dto.ConnectionResponse
@@ -120,7 +120,6 @@ class ConnectionController(
      *
      * Rules enforced by SchedulingService
      *  - [userId] must NOT be the proposer of [proposalId]
-     *  - [userId] must have already submitted their own proposal this round
      *  - Once confirmed -> Connection transitions to SECOND_CHAT_SCHEDULED. The second chat
      *    starts at confirmedDateTime.
      */
