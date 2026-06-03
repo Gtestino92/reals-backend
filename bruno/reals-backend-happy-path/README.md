@@ -11,8 +11,9 @@ Bruno collection for local `local-nodb` or `local-postgres` manual testing.
    bruno/reals-backend-happy-path
    ```
 
-3. Select the `local` environment.
-4. Run one folder at a time, always in request order.
+3. Copy `environments/local.template.bru` to `environments/local.bru`.
+4. Select the `local` environment.
+5. Run one folder at a time, always in request order.
 
 The first request generates unique test emails and a future half-hour second-chat slot. The next two requests create real `users` rows and store `userAId` and `userBId` in the active Bruno environment. The following requests use `X-Dev-User-Id` to impersonate each local user.
 
@@ -22,6 +23,7 @@ The first request generates unique test emails and a future half-hour second-cha
 - `02 Not Happy Paths`: HTTP-level guardrails and invalid operations that should return 4xx responses.
 - `03 Alternate Outcomes`: valid business flows that do not end in a successful second chat.
 - `04 Timeout Outcomes`: local-only deadline and job-trigger flows for time-based outcomes.
+- `05 Firebase Auth`: optional Firebase smoke flow. Fill `firebase_api_key`, `firebase_email` and `firebase_password` in `environments/local.bru` before running it. `local.bru` is ignored by Git; never commit real Firebase values.
 
 ## Happy Path Covered Flow
 
