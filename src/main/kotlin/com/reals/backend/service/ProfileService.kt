@@ -3,6 +3,9 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
 import jakarta.transaction.Transactional
@@ -86,8 +89,11 @@ class ProfileService(
             maxDistanceKm = maxDistanceKm
         )
 
-        check(profileRepository.findByUserId(userId) == null) {
-            "User $userId already has a profile"
+        if (profileRepository.findByUserId(userId) != null) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_ALREADY_EXISTS,
+                message = "User already has a profile"
+            )
         }
 
         val profile = Profile(
@@ -134,11 +140,14 @@ class ProfileService(
 
         val profile = findByIdOrThrow(profileId)
 
-        check(
-            profile.status == ProfileStatus.DRAFT ||
-                profile.status == ProfileStatus.INACTIVE
+        if (
+            profile.status != ProfileStatus.DRAFT &&
+                profile.status != ProfileStatus.INACTIVE
         ) {
-            "Profile $profileId cannot be activated from status ${profile.status}"
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_NOT_ACTIVATABLE,
+                message = "Profile cannot be activated from status ${profile.status}"
+            )
         }
 
         validatePhotosOrThrow(profileId)
@@ -159,18 +168,22 @@ class ProfileService(
 
         val profile = findByIdOrThrow(profileId)
 
-        check(position in 1..maxPhotoCount) {
-            "Photo position must be between 1 and $maxPhotoCount"
-        }
+        validatePhotoPosition(position)
 
-        check(profilePhotoRepository.findByProfileIdAndPosition(profileId, position) == null) {
-            "Photo position $position is already used"
+        if (profilePhotoRepository.findByProfileIdAndPosition(profileId, position) != null) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PHOTO_POSITION_OCCUPIED,
+                message = "Photo position $position is already used"
+            )
         }
 
         val currentCount = profilePhotoRepository.countByProfileId(profileId)
 
-        check(currentCount < maxPhotoCount) {
-            "Profile $profileId already has the maximum number of photos ($maxPhotoCount)"
+        if (currentCount >= maxPhotoCount) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_LIMIT_REACHED,
+                message = "Profile already has the maximum number of photos ($maxPhotoCount)"
+            )
         }
 
         val trimmedUrl = url.trim()
@@ -205,16 +218,25 @@ class ProfileService(
         val fullBody =
             profilePhotoRepository.countByProfileIdAndIsFullBodyTrue(profileId)
 
-        check(total >= requiredPhotoCount) {
-            "Profile must have at least $requiredPhotoCount photos"
+        if (total < requiredPhotoCount) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTOS_REQUIRED,
+                message = "Profile must have at least $requiredPhotoCount photos"
+            )
         }
 
-        check(personCount >= minPersonPhotos) {
-            "Profile must have at least $minPersonPhotos person photos"
+        if (personCount < minPersonPhotos) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PERSON_PHOTO_REQUIRED,
+                message = "Profile must have at least $minPersonPhotos person photos"
+            )
         }
 
-        check(fullBody >= minFullBodyPhotos) {
-            "Profile must have at least $minFullBodyPhotos full-body photos"
+        if (fullBody < minFullBodyPhotos) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_FULL_BODY_PHOTO_REQUIRED,
+                message = "Profile must have at least $minFullBodyPhotos full-body photos"
+            )
         }
     }
 
@@ -325,9 +347,7 @@ class ProfileService(
 
         val profile = findByIdOrThrow(profileId)
 
-        check(position in 1..maxPhotoCount) {
-            "Photo position must be between 1 and $maxPhotoCount"
-        }
+        validatePhotoPosition(position)
 
         val existing = profilePhotoRepository.findByProfileIdAndPosition(
             profileId,
@@ -412,14 +432,20 @@ class ProfileService(
     }
 
     private fun validateBirthDate(birthDate: LocalDate) {
-        require(birthDate.isBefore(LocalDate.now())) {
-            "Birth date must be in the past"
+        if (!birthDate.isBefore(LocalDate.now())) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_PROFILE_BIRTH_DATE,
+                message = "Birth date must be in the past"
+            )
         }
 
         val age = Period.between(birthDate, LocalDate.now()).years
 
-        require(age in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
-            "Profile age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        if (age !in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_PROFILE_BIRTH_DATE,
+                message = "Profile age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+            )
         }
     }
 
@@ -428,20 +454,41 @@ class ProfileService(
         preferredMaxAge: Int,
         maxDistanceKm: Int
     ) {
-        require(preferredMinAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
-            "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        if (preferredMinAge !in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_MATCH_FILTERS,
+                message = "Preferred minimum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+            )
         }
 
-        require(preferredMaxAge in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
-            "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+        if (preferredMaxAge !in MIN_PROFILE_AGE..MAX_PROFILE_AGE) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_MATCH_FILTERS,
+                message = "Preferred maximum age must be between $MIN_PROFILE_AGE and $MAX_PROFILE_AGE"
+            )
         }
 
-        require(preferredMinAge <= preferredMaxAge) {
-            "Preferred minimum age must be less than or equal to preferred maximum age"
+        if (preferredMinAge > preferredMaxAge) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_MATCH_FILTERS,
+                message = "Preferred minimum age must be less than or equal to preferred maximum age"
+            )
         }
 
-        require(maxDistanceKm in 1..1000) {
-            "Maximum distance must be between 1 and 1000 kilometers"
+        if (maxDistanceKm !in 1..1000) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_MATCH_FILTERS,
+                message = "Maximum distance must be between 1 and 1000 kilometers"
+            )
+        }
+    }
+
+    private fun validatePhotoPosition(position: Int) {
+        if (position !in 1..maxPhotoCount) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PHOTO_POSITION_INVALID,
+                message = "Photo position must be between 1 and $maxPhotoCount"
+            )
         }
     }
 
@@ -481,11 +528,17 @@ class ProfileService(
             try {
                 URI(url)
             } catch (ex: IllegalArgumentException) {
-                throw IllegalArgumentException("Photo URL must be a valid HTTPS URL", ex)
+                throw DomainBadRequestException(
+                    code = DomainErrorCode.PHOTO_URL_INVALID,
+                    message = "Photo URL must be a valid HTTPS URL"
+                )
             }
 
-        require(uri.scheme == "https" && !uri.host.isNullOrBlank()) {
-            "Photo URL must be a valid HTTPS URL"
+        if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PHOTO_URL_INVALID,
+                message = "Photo URL must be a valid HTTPS URL"
+            )
         }
     }
 

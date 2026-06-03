@@ -8,6 +8,8 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -35,10 +37,11 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             maxDistanceKm = 50
         )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             profileService.activateProfile(profile.id)
         }
 
+        assertEquals(DomainErrorCode.PROFILE_PHOTOS_REQUIRED, exception.code)
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
     }
 
@@ -123,9 +126,11 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             maxDistanceKm = 50
         )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             enqueueForMatchmaking(user.id)
         }
+
+        assertEquals(DomainErrorCode.PROFILE_NOT_ACTIVE, exception.code)
     }
 
     @Test
