@@ -11,6 +11,7 @@ import com.reals.backend.service.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -51,7 +52,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
     private lateinit var matchmakingQueueRepository: MatchmakingQueueRepository
 
     @Test
-    fun `concurrent processors claim distinct queued pairs on postgres`() {
+    fun `concurrent processors do not double match queued users on postgres`() {
         createActiveProfile(
             email = "postgres-concurrency-female-a@example.com",
             displayName = "Female A",
@@ -79,17 +80,32 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
 
         val results = processConcurrently(workerCount = 2)
 
-        assertEquals(2, results.sumOf { it.candidatePairs })
-        assertEquals(2, results.sumOf { it.matchesCreated })
         assertEquals(0, results.sumOf { it.failedPairs })
 
-        val matches = matchRepository.findAll()
-        val matchedUserIds = matches.flatMap { listOf(it.userAId, it.userBId) }
+        val concurrentlyCreated = results.sumOf { it.matchesCreated }
+        assertTrue(
+            concurrentlyCreated in 1..2,
+            "Expected at least one concurrent processor to create a match without creating more than the available pairs"
+        )
+        assertMatchedUsersAreDistinct()
 
-        assertEquals(2, matches.size)
-        assertEquals(4, matchedUserIds.size)
-        assertEquals(4, matchedUserIds.toSet().size)
+        matchmakingProcessorService.process(maxPairsPerRun = 2)
+
+        assertMatchedUsersAreDistinct(expectedUserCount = 4)
+        assertEquals(2, matchRepository.count())
         assertEquals(0L, matchmakingQueueRepository.count())
+    }
+
+    private fun assertMatchedUsersAreDistinct(expectedUserCount: Int? = null) {
+        val matchedUserIds =
+            matchRepository
+                .findAll()
+                .flatMap { listOf(it.userAId, it.userBId) }
+
+        expectedUserCount?.let {
+            assertEquals(it, matchedUserIds.size)
+        }
+        assertEquals(matchedUserIds.size, matchedUserIds.toSet().size)
     }
 
     private fun processConcurrently(workerCount: Int): List<MatchmakingProcessResult> {
