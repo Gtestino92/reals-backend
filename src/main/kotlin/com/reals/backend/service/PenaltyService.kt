@@ -77,7 +77,7 @@ class PenaltyService(
      * Deactivates all expired penalties.
      * Called by PenaltyExpirationJob.
      */
-    fun expireOverduePenalties() {
+    fun expireOverduePenalties(): Int {
 
         val expired =
             penaltyRepository.findExpiredActivePenalties(
@@ -87,6 +87,8 @@ class PenaltyService(
         expired.forEach { it.active = false }
 
         penaltyRepository.saveAll(expired)
+
+        return expired.size
     }
 
 }

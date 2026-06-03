@@ -226,14 +226,14 @@ class ChatService(
         chatId: UUID,
         finalStatus: ChatStatus,
         abandonedUserIds: List<UUID> = emptyList()
-    ) {
+    ): Boolean {
         require(finalStatus == ChatStatus.EXPIRED || finalStatus == ChatStatus.ABANDONED) {
             "endChat only accepts EXPIRED or ABANDONED, got $finalStatus"
         }
 
         val chat = findByIdOrThrow(chatId)
 
-        if (chat.status != ChatStatus.ACTIVE) return
+        if (chat.status != ChatStatus.ACTIVE) return false
 
         chat.status = finalStatus
         chat.endedAt = OffsetDateTime.now()
@@ -254,6 +254,8 @@ class ChatService(
                 }
             }
         }
+
+        return true
     }
 
     fun getMessages(

@@ -219,12 +219,12 @@ class MatchService(
      * Expires a match and releases engagement locks for both users.
      * Valid from CHAT_ACTIVE or VISUAL_PHASE states.
      */
-    fun expireMatch(matchId: UUID) {
+    fun expireMatch(matchId: UUID): Boolean {
 
         val match = findByIdOrThrow(matchId)
 
         if (match.state == MatchState.EXPIRED) {
-            return
+            return false
         }
 
         check(
@@ -242,5 +242,7 @@ class MatchService(
         lockRepository.deleteByEngagementId(
             engagementId = matchId
         )
+
+        return true
     }
 }
