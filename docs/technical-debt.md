@@ -4,6 +4,11 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Product Decisions
 
+- Immediate pre-infrastructure objectives:
+  1. Add a PostgreSQL-backed concurrency test for `MatchmakingProcessorService` with two simultaneous processors.
+  2. Add basic job-level summaries for scheduler/worker runs: processed, succeeded, skipped and failed.
+  3. Review frequent frontend-facing errors and introduce stable error codes only where current generic exceptions are already painful.
+  4. Keep the manual smoke workflow aligned with the Docker image so it can be wired into deploy automation later.
 - Guided first-chat questions or conversation starters.
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
@@ -17,8 +22,9 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Real-time chat via WebSocket or SSE.
 - Notification delivery.
 - Reveal quotas.
-- Advanced compatibility scoring. Current matching uses a SQL basic-compatible pair filter plus a rule-based `CompatibilityScorer`; future work should add interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
+- Advanced compatibility scoring. Current matching uses SQL hard-filtered candidate pairs plus a rule-based `CompatibilityScorer`; future work should add interest/affinity overlap without introducing popularity, attractiveness or ELO-style ranking.
 - Improve geographic matching with geohash, bounding boxes or database-supported spatial indexing if queue volume makes application-level Haversine filtering too expensive.
+- Decide how `accuracyMeters` should affect matchmaking. It is currently captured and validated with the queue search location, but does not reject imprecise locations or adjust the effective distance radius.
 - ML-based matching.
 - Popularity, attractiveness or ELO ranking.
 - Gamified reputation badges.
@@ -51,6 +57,11 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Consider explicit domain exception types with stable error codes for frontend handling, instead of relying only on `IllegalArgumentException` and `IllegalStateException`.
 - Add production log policy for sensitive fields. Do not log tokens, chat contents, personal messages, full emails, private media URLs or raw request bodies.
 
+## Security Decisions
+
+- CSRF protection is intentionally disabled while Reals remains a stateless API authenticated with explicit `Authorization: Bearer ...` tokens and no cookie-based browser session. Re-enable and test CSRF protection before introducing cookie authentication, form login, browser-managed sessions or any credential automatically attached by the browser.
+- Never commit real Firebase Web API keys, Firebase test user passwords, ID tokens or service-account credentials. Bruno tracked environments must keep placeholders; real values belong only in local uncommitted environment state or deployment secrets.
+
 ## Multi-Instance Deployment Risks
 
 - Scheduler jobs must remain safe when more than one app instance exists. ShedLock prevents most duplicate scheduled executions, but each job should still be idempotent: re-running it should not create duplicate chats, penalties, locks or state transitions.
@@ -63,6 +74,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Concurrency Hardening Tasks
 
+- Before starting infrastructure work, consider a small branch that adds a PostgreSQL-backed concurrency check for matchmaking. Scope it narrowly to two simultaneous `MatchmakingProcessorService` executions against the same queue and verify that `FOR UPDATE SKIP LOCKED` prevents duplicate matches.
 - Add PostgreSQL-backed concurrency tests for `MatchmakingProcessorService` with two simultaneous processors. Assert that the same queued user is never matched twice and that queue rows are removed exactly once. H2 is not enough for validating `FOR UPDATE SKIP LOCKED`.
 - Add explicit tests for concurrent mutual visual approval. Assert that only one `Connection` is created for a match, locks are upgraded once and repeated/competing approvals do not duplicate state.
 - Add explicit tests for concurrent scheduling confirmation and scheduled second-chat availability. Assert that only one second chat exists per connection and repeated job runs are idempotent.

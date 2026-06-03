@@ -99,19 +99,19 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Local `local-nodb` overrides required photos to 4, min person to 1 and min full-body to 1.
 - Birth date and gender are immutable after creation.
 - Editable fields include display name, bio, city, country, intention and looking-for gender.
-- Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced during candidate scoring. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.
+- Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced in the basic matchmaking query. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.
 
-## Compatibility
+## Match Filtering And Compatibility
 
-Basic filtering is first applied in the matchmaking queue query. Final ranking is delegated to `CompatibilityScorer`. The query filters:
+Hard filtering is first applied in the matchmaking queue query. The query filters:
 
 - mutual gender preference
 - same intention
 - mutual dynamic preferred age range
 
-`MatchmakingService` also applies mutual dynamic maximum distance from queue search locations before accepting a scored pair. The current basic scorer uses `CompatibilityEvaluator`, which repeats profile-level compatibility checks as a service-layer guard.
+`SearchLocationMatchFilter` applies mutual dynamic maximum distance from queue search locations before a pair can be accepted. Final ranking is delegated to `CompatibilityScorer`. The current basic scorer uses `CompatibilityEvaluator`, which repeats profile-level compatibility checks as a service-layer guard.
 
 Advanced criteria such as affinity tags or probabilistic scoring are not implemented.
 
