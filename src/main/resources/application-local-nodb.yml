@@ -10,7 +10,6 @@ spring:
     password:
 
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: update
 
@@ -29,9 +28,14 @@ logging:
     root: INFO
 
 scheduler:
-  # Local manual testing should be deterministic. Use /api/dev/jobs/.../run
+  # Local manual testing should be deterministic. Use /api/local-dev/jobs/.../run
   # endpoints from Bruno instead of background execution.
   enabled: false
+
+matchmaking:
+  candidate-pair-limit: 5
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
 
 profile:
   photos:

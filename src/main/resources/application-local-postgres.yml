@@ -1,0 +1,56 @@
+spring:
+  config:
+    activate:
+      on-profile: local-postgres
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/reals
+    driver-class-name: org.postgresql.Driver
+    username: reals
+    password: reals
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 2000
+      max-lifetime: 1800000
+      keepalive-time: 300000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+
+  h2:
+    console:
+      enabled: false
+
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: INFO
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+scheduler:
+  # Keep local PostgreSQL runs deterministic. Use /api/local-dev/jobs/.../run
+  # endpoints from Bruno instead of background execution.
+  enabled: false
+
+matchmaking:
+  candidate-pair-limit: 5
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
+
+profile:
+  photos:
+    max-count: 9
+    required-count: 4
+    min-person-photos: 1
+    min-full-body-photos: 1

@@ -6,6 +6,8 @@ import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
+import jakarta.persistence.Version
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -15,11 +17,23 @@ enum class PhotoStorageProvider {
 }
 
 @Entity
-@Table(name = "profile_photos")
+@Table(
+    name = "profile_photos",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uq_profile_photo_profile_position",
+            columnNames = ["profile_id", "position"]
+        )
+    ]
+)
 data class ProfilePhoto(
 
     @Id
     var id: UUID = UUID.randomUUID(),
+
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
 
     @Column(name = "profile_id", nullable = false)
     var profileId: UUID,

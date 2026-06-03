@@ -1,16 +1,14 @@
 # Helm values reference for the prod environment.
 #
-# TODO(deploy): revisit the final deploy convention. The Helm chart may live in
-# a separate infrastructure repository; this file documents the app-specific
-# values that such a chart would consume.
-#
+# This documents the app-specific values a future chart or deploy pipeline
+# would consume. The final deploy convention is tracked in docs/technical-debt.md.
 # Do not put real secret values here.
 
 environment: prod
 
 image:
-  repository: ghcr.io/your-org/reals-backend
-  tag: stable
+  repository: ghcr.io/gtestino92/reals-backend
+  tag: vX.Y.Z
   pullPolicy: IfNotPresent
 
 replicaCount: 2
@@ -48,13 +46,13 @@ resources:
 
 probes:
   readiness:
-    path: /actuator/health
+    path: /actuator/health/readiness
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 6
   liveness:
-    path: /actuator/health
+    path: /actuator/health/liveness
     initialDelaySeconds: 60
     periodSeconds: 20
     timeoutSeconds: 3
@@ -71,21 +69,19 @@ env:
     value: prod
 
 configRefs:
-  - name: S3_PROFILE_PHOTOS_BUCKET
-    key: reals-prod-profile-photos
-  - name: S3_REGION
-    key: aws-region
-  - name: IDENTITY_VERIFICATION_PROVIDER
-    key: identity-verification-provider
-
-secretRefs:
   - name: DATABASE_URL
     key: database_url
   - name: DATABASE_USERNAME
     key: database_username
+  - name: S3_PROFILE_PHOTOS_BUCKET
+    key: reals-prod-profile-photos
+  - name: IDENTITY_VERIFICATION_PROVIDER
+    key: identity-verification-provider
+
+secretRefs:
   - name: DATABASE_PASSWORD
     key: database_password
-  - name: FIREBASE_SERVICE_ACCOUNT_PATH
-    key: firebase_service_account_path
+  - name: FIREBASE_SERVICE_ACCOUNT_BASE64
+    key: firebase_service_account_base64
   - name: IDENTITY_VERIFICATION_API_KEY
     key: identity_verification_api_key

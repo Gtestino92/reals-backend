@@ -1,0 +1,22 @@
+meta {
+  name: 49 User A Approve First Chat For Second Chat Timeout
+  type: http
+  seq: 49
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{timeoutSecondChatMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}

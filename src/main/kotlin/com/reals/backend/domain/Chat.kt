@@ -38,6 +38,10 @@ data class Chat(
     @Id
     var id: UUID = UUID.randomUUID(),
 
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
+
     @Column(name = "match_id", nullable = false)
     var matchId: UUID,
 

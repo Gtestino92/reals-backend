@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.UserRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -15,6 +16,7 @@ import java.util.*
 class ConnectionService(
     private val connectionRepository: ConnectionRepository,
     private val lockRepository: ActiveEngagementLockRepository,
+    private val userRepository: UserRepository,
 
     @param:Value("\${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
@@ -56,6 +58,8 @@ class ConnectionService(
 
         connectionRepository.findByMatchId(match.id)?.let { return it }
 
+        lockUsers(match.userAId, match.userBId)
+
         checkConnectionLimit(match.userAId)
         checkConnectionLimit(match.userBId)
 
@@ -96,6 +100,15 @@ class ConnectionService(
         }
     }
 
+    private fun lockUsers(vararg userIds: UUID) {
+        val distinctIds = userIds.distinct()
+        val locked = userRepository.findAllByIdForUpdate(distinctIds)
+
+        check(locked.size == distinctIds.size) {
+            "Cannot create connection: one or more users were not found"
+        }
+    }
+
     private fun validateParticipant(
         connection: Connection,
         userId: UUID
@@ -130,6 +143,10 @@ class ConnectionService(
 
         val connection = findByIdOrThrow(connectionId)
 
+        if (connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
+            return connection
+        }
+
         check(connection.state == ConnectionState.SCHEDULING_PHASE) {
             "Cannot transition to SECOND_CHAT_SCHEDULED: connection is in state ${connection.state}"
         }
@@ -147,6 +164,10 @@ class ConnectionService(
     fun transitionToSecondChatAvailable(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+
+        if (connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
+            return connection
+        }
 
         check(connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
             "Cannot transition to SECOND_CHAT_AVAILABLE: connection is in state ${connection.state}"
@@ -166,6 +187,10 @@ class ConnectionService(
 
         val connection = findByIdOrThrow(connectionId)
 
+        if (connection.state == ConnectionState.SECOND_CHAT) {
+            return connection
+        }
+
         check(connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
             "Cannot transition to SECOND_CHAT: connection is in state ${connection.state}"
         }
@@ -182,6 +207,10 @@ class ConnectionService(
     fun closeConnection(connectionId: UUID) {
 
         val connection = findByIdOrThrow(connectionId)
+
+        if (connection.state == ConnectionState.CLOSED) {
+            return
+        }
 
         check(
             connection.state == ConnectionState.SCHEDULING_PHASE ||

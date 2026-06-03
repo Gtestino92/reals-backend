@@ -1,0 +1,29 @@
+meta {
+  name: 01 Create User
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/users
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{dynamicFiltersUserEmail}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected created user id.");
+  }
+  bru.setEnvVar("dynamicFiltersUserId", body.id);
+}

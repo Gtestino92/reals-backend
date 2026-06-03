@@ -8,6 +8,11 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 2000
+      max-lifetime: 1800000
+      keepalive-time: 300000
 
   jpa:
     hibernate:
@@ -28,6 +33,10 @@ logging:
     root: INFO
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
   endpoints:
     web:
       exposure:
@@ -35,6 +44,9 @@ management:
 
 scheduler:
   enabled: true
+  matchmaking-job:
+    fixed-delay: 60000
+    max-pairs-per-run: 10
   chat-timeout-job:
     fixed-delay: 120000
   match-expiration-job:
@@ -51,6 +63,11 @@ scheduler:
     fixed-delay: 900000
   scheduled-second-chat-start-job:
     fixed-delay: 60000
+
+matchmaking:
+  candidate-pair-limit: 50
+  min-compatibility-score: 0.20
+  early-accept-compatibility-score: 0.90
 
 chat:
   first-chat:
@@ -81,11 +98,13 @@ engagement:
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
+  service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
+  service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
 
 storage:
   s3:
     bucket: ${S3_PROFILE_PHOTOS_BUCKET:}
-    region: ${S3_REGION:}
+    region: sa-east-1
     upload-prefix: profile-photos/quarantine
     public-prefix: profile-photos/public
 

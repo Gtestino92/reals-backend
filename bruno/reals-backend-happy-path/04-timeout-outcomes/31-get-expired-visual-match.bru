@@ -10,6 +10,10 @@ get {
   auth: none
 }
 
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
 script:post-response {
   const body = res.getBody();
   if (body.state !== "EXPIRED") {

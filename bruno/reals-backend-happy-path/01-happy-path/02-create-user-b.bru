@@ -25,5 +25,8 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error("Expected created user B id.");
   }
+  if (body.id === bru.getEnvVar("userAId")) {
+    throw new Error("Expected user B id to be different from user A id.");
+  }
   bru.setEnvVar("userBId", body.id);
 }

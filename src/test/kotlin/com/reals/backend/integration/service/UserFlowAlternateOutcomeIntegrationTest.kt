@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
@@ -64,12 +65,206 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             lookingForGender = LookingForGender.WOMEN
         )
 
-        matchmakingService.enqueue(userA)
-        matchmakingService.enqueue(userB)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
 
-        assertTrue(matchmakingService.findCandidatePairs(batchSize = 1).isEmpty())
+        assertTrue(matchmakingService.findNextCandidatePair() == null)
         assertNoMatchLocks(userA, userB)
         assertFalse(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `basic compatible query can skip an incompatible queued user`() {
+        val userA = createActiveProfile(
+            email = "compatible-skip-a-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val incompatibleUser = createActiveProfile(
+            email = "compatible-skip-b-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val userC = createActiveProfile(
+            email = "compatible-skip-c-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible Skip C",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(incompatibleUser)
+        enqueueForMatchmaking(userC)
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, userC), pair)
+        assertFalse(matchExistsForUsers(userA, incompatibleUser))
+    }
+
+    @Test
+    fun `matchmaking applies mutual dynamic age filters`() {
+        val userA = createActiveProfile(
+            email = "age-filter-a-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            preferredMinAge = 30,
+            preferredMaxAge = 40
+        )
+        val tooYoungForA = createActiveProfile(
+            email = "age-filter-b-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            birthDate = LocalDate.now().minusYears(25)
+        )
+        val acceptedByA = createActiveProfile(
+            email = "age-filter-c-${UUID.randomUUID()}@example.com",
+            displayName = "Age Filter C",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            birthDate = LocalDate.now().minusYears(35)
+        )
+
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(tooYoungForA)
+        enqueueForMatchmaking(acceptedByA)
+
+        val basicCandidatePairs =
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+                limit = 5,
+                today = LocalDate.now()
+            )
+        assertFalse(
+            basicCandidatePairs.any {
+                UUID.fromString(it.userAId) == userA &&
+                    UUID.fromString(it.userBId) == tooYoungForA
+            }
+        )
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, acceptedByA), pair)
+        assertFalse(matchExistsForUsers(userA, tooYoungForA))
+    }
+
+    @Test
+    fun `matchmaking applies mutual dynamic distance filters from queue location`() {
+        val userA = createActiveProfile(
+            email = "distance-filter-a-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            maxDistanceKm = 10
+        )
+        val tooFarForA = createActiveProfile(
+            email = "distance-filter-b-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            maxDistanceKm = 10
+        )
+        val nearA = createActiveProfile(
+            email = "distance-filter-c-${UUID.randomUUID()}@example.com",
+            displayName = "Distance Filter C",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN,
+            maxDistanceKm = 10
+        )
+
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(
+            userId = tooFarForA,
+            latitude = -31.4201,
+            longitude = -64.1888
+        )
+        enqueueForMatchmaking(
+            userId = nearA,
+            latitude = -34.6040,
+            longitude = -58.3820
+        )
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(userA, nearA), pair)
+        assertFalse(matchExistsForUsers(userA, tooFarForA))
+    }
+
+    @Test
+    fun `enqueue updates search location when user is already queued`() {
+        val user = createActiveProfile(
+            email = "queue-location-refresh-${UUID.randomUUID()}@example.com",
+            displayName = "Queue Location Refresh",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+
+        enqueueForMatchmaking(user)
+        val originalEntry = matchmakingQueueRepository.findByUserId(user)
+            ?: error("Expected user to be queued")
+
+        enqueueForMatchmaking(
+            userId = user,
+            latitude = -31.4201,
+            longitude = -64.1888,
+            accuracyMeters = 25
+        )
+
+        val updatedEntry = matchmakingQueueRepository.findByUserId(user)
+            ?: error("Expected user to remain queued")
+
+        assertEquals(originalEntry.id, updatedEntry.id)
+        assertEquals(originalEntry.enteredAt, updatedEntry.enteredAt)
+        assertEquals(-31.4201, updatedEntry.latitude)
+        assertEquals(-64.1888, updatedEntry.longitude)
+        assertEquals(25, updatedEntry.accuracyMeters)
+    }
+
+    @Test
+    fun `basic compatible query returns bounded deterministic candidate pairs`() {
+        val queuedUsers =
+            (1..4).map { index ->
+                createActiveProfile(
+                    email = "bounded-candidate-$index-${UUID.randomUUID()}@example.com",
+                    displayName = "Bounded Candidate $index",
+                    gender = Gender.FEMALE,
+                    lookingForGender = LookingForGender.WOMEN
+                )
+            }
+
+        queuedUsers.forEach { enqueueForMatchmaking(it) }
+
+        val candidatePairs =
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+                limit = 3,
+                today = LocalDate.now()
+            )
+
+        assertEquals(3, candidatePairs.size)
+        assertEquals(queuedUsers[0], UUID.fromString(candidatePairs[0].userAId))
+        assertEquals(queuedUsers[1], UUID.fromString(candidatePairs[0].userBId))
+    }
+
+    @Test
+    fun `matchmaking service uses FIFO tie breaker when multiple deterministic pairs are compatible`() {
+        val queuedUsers =
+            (1..4).map { index ->
+                createActiveProfile(
+                    email = "fifo-candidate-$index-${UUID.randomUUID()}@example.com",
+                    displayName = "Fifo Candidate $index",
+                    gender = Gender.FEMALE,
+                    lookingForGender = LookingForGender.WOMEN
+                )
+            }
+
+        queuedUsers.forEach { enqueueForMatchmaking(it) }
+
+        val pair = matchmakingService.findNextCandidatePair()
+
+        assertEquals(Pair(queuedUsers[0], queuedUsers[1]), pair)
     }
 
     @Test

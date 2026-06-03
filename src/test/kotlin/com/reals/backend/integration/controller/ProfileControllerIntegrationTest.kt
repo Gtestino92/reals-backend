@@ -40,7 +40,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
             "country" to "AR",
-            "bio" to "Created through MockMvc"
+            "bio" to "Created through MockMvc",
+            "preferredMinAge" to 30,
+            "preferredMaxAge" to 40,
+            "maxDistanceKm" to 75
         )
 
         mockMvc.perform(
@@ -52,7 +55,47 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.userId", equalTo(user.id.toString())))
             .andExpect(jsonPath("$.displayName", equalTo("Controller Profile")))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `update match filters replaces required dynamic filters`() {
+        val user = userService.createUser("filters-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Filter Profile",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 25,
+            preferredMaxAge = 35,
+            maxDistanceKm = 100
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/match-filters")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "preferredMinAge": 30,
+                      "preferredMaxAge": 38,
+                      "maxDistanceKm": 25
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(38)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(25)))
     }
 
     @Test
@@ -65,7 +108,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGender" to LookingForGender.MEN.name,
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR"
+            "country" to "AR",
+            "preferredMinAge" to 18,
+            "preferredMaxAge" to 99,
+            "maxDistanceKm" to 50
         )
 
         mockMvc.perform(
@@ -76,6 +122,107 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+            .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_BIRTH_DATE")))
+    }
+
+    @Test
+    fun `create duplicate profile returns stable error code`() {
+        val user = userService.createUser("duplicate-profile-${UUID.randomUUID()}@example.com")
+        val body = mapOf(
+            "displayName" to "Duplicate Profile",
+            "birthDate" to LocalDate.of(1995, 1, 1).toString(),
+            "gender" to Gender.FEMALE.name,
+            "lookingForGender" to LookingForGender.MEN.name,
+            "intention" to Intention.DATE.name,
+            "city" to "Buenos Aires",
+            "country" to "AR",
+            "preferredMinAge" to 18,
+            "preferredMaxAge" to 99,
+            "maxDistanceKm" to 50
+        )
+
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Existing Profile",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_ALREADY_EXISTS")))
+    }
+
+    @Test
+    fun `activate profile without required photos returns stable error code`() {
+        val user = userService.createUser("activate-missing-photos-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Missing Photos",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile/activation")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTOS_REQUIRED")))
+    }
+
+    @Test
+    fun `update match filters rejects inverted age range with stable error code`() {
+        val user = userService.createUser("filters-invalid-range-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Invalid Filters",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/match-filters")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "preferredMinAge": 40,
+                      "preferredMaxAge": 30,
+                      "maxDistanceKm": 50
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("INVALID_MATCH_FILTERS")))
     }
 
     @Test

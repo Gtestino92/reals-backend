@@ -1,0 +1,30 @@
+meta {
+  name: 42 User B Accept Partner Proposal Without Own Proposal
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals/{{negativeProposalAId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{negativeUserBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "CONFIRMED") {
+    throw new Error(`Expected CONFIRMED negotiation, got ${body.status}`);
+  }
+  const expected = new Date(bru.getEnvVar("negativeSecondChatDateTime")).getTime();
+  const actual = new Date(body.confirmedDateTime).getTime();
+  if (expected !== actual) {
+    throw new Error(`Expected confirmedDateTime ${bru.getEnvVar("negativeSecondChatDateTime")}, got ${body.confirmedDateTime}`);
+  }
+  if (body.chatId) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
+  }
+}

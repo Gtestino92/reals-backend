@@ -1,0 +1,21 @@
+meta {
+  name: 62 Get Second Chat By Connection After Timeout Should Fail
+  type: http
+  seq: 62
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/chat
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 409) {
+    throw new Error(`Expected 409 because second chat is no longer active, got ${res.getStatus()}`);
+  }
+}

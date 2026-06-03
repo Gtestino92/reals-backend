@@ -1,0 +1,21 @@
+meta {
+  name: 06 Enqueue Without Location Should Fail
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{dynamicFiltersUserId}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 400) {
+    throw new Error(`Expected 400 Bad Request, got ${res.getStatus()}`);
+  }
+}

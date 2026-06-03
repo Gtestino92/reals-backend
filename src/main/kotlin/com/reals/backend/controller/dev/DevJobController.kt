@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
 
 @RestController
-@Profile("local", "local-nodb", "dev")
-@RequestMapping("/api/dev/jobs")
+@Profile("local", "local-nodb", "local-postgres")
+@RequestMapping("/api/local-dev/jobs")
 class DevJobController(
     private val chatTimeoutJob: ObjectProvider<ChatTimeoutJob>,
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
@@ -31,7 +31,7 @@ class DevJobController(
     @PostMapping("/chat-timeout/run")
     fun runChatTimeout(): ResponseEntity<DevJobRunResponse> =
         runJob("ChatTimeoutJob") {
-            requireJob(chatTimeoutJob, "ChatTimeoutJob").run()
+            requireJob(chatTimeoutJob, "ChatTimeoutJob").runNowForDev()
         }
 
     @PostMapping("/inactivity-check/run")
@@ -83,7 +83,7 @@ class DevJobController(
         )
     }
 
-    private fun <T> requireJob(
+    private fun <T : Any> requireJob(
         provider: ObjectProvider<T>,
         name: String
     ): T =

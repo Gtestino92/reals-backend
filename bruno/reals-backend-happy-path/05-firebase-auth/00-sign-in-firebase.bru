@@ -1,0 +1,32 @@
+meta {
+  name: 00 Sign In Firebase
+  type: http
+  seq: 0
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_email}}",
+    "password": "{{firebase_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken) {
+    throw new Error("Expected Firebase idToken.");
+  }
+  bru.setEnvVar("firebase_id_token", body.idToken);
+  bru.setEnvVar("firebase_uid", body.localId);
+}

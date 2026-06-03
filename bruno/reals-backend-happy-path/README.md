@@ -1,6 +1,6 @@
 # Reals Backend Happy Path
 
-Bruno collection for local `local-nodb` manual testing.
+Bruno collection for local `local-nodb` or `local-postgres` manual testing.
 
 ## How To Use
 
@@ -11,8 +11,9 @@ Bruno collection for local `local-nodb` manual testing.
    bruno/reals-backend-happy-path
    ```
 
-3. Select the `local` environment.
-4. Run one folder at a time, always in request order.
+3. Copy `environments/local.template.bru` to `environments/local.bru`.
+4. Select the `local` environment.
+5. Run one folder at a time, always in request order.
 
 The first request generates unique test emails and a future half-hour second-chat slot. The next two requests create real `users` rows and store `userAId` and `userBId` in the active Bruno environment. The following requests use `X-Dev-User-Id` to impersonate each local user.
 
@@ -21,7 +22,8 @@ The first request generates unique test emails and a future half-hour second-cha
 - `01 Happy Path`: complete successful path through second chat and closed connection.
 - `02 Not Happy Paths`: HTTP-level guardrails and invalid operations that should return 4xx responses.
 - `03 Alternate Outcomes`: valid business flows that do not end in a successful second chat.
-- `04 Timeout Outcomes`: local/dev-only deadline and job-trigger flows for time-based outcomes.
+- `04 Timeout Outcomes`: local-only deadline and job-trigger flows for time-based outcomes.
+- `05 Firebase Auth`: optional Firebase smoke flow. Fill `firebase_api_key`, `firebase_email` and `firebase_password` in `environments/local.bru` before running it. `local.bru` is ignored by Git; never commit real Firebase values.
 
 ## Happy Path Covered Flow
 
@@ -35,8 +37,8 @@ The first request generates unique test emails and a future half-hour second-cha
 - approve visual review
 - create connection
 - confirm the second-chat slot with matching ordered proposal lists
-- force the confirmed start time and trigger the scheduled second-chat availability job in local/dev
+- force the confirmed start time and trigger the scheduled second-chat availability job locally
 - enter the available second chat, which activates it and starts its timeout window
 - request and accept mutual second-chat cancellation, closing the connection without penalty
 
-This collection assumes local photo requirements from `application-local-nodb.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.
+This collection assumes local photo requirements from `application-local-nodb.yml` or `application-local-postgres.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.

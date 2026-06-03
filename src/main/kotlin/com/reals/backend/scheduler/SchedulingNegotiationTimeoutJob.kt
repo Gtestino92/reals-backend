@@ -7,7 +7,6 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 
 /**
@@ -30,8 +29,8 @@ class SchedulingNegotiationTimeoutJob(
         lockAtLeastFor = "PT30S",
         lockAtMostFor = "PT5M"
     )
-    @Transactional
     fun run() {
+        val startedAt = System.nanoTime()
         log.debug("SchedulingNegotiationTimeoutJob triggered")
 
         val timedOut =
@@ -40,21 +39,15 @@ class SchedulingNegotiationTimeoutJob(
                 before = OffsetDateTime.now()
             )
 
-        if (timedOut.isEmpty()) {
-            log.debug("SchedulingNegotiationTimeoutJob - no timed-out connections found")
-            return
-        }
-
-        log.info(
-            "SchedulingNegotiationTimeoutJob - found {} timed-out connection(s)",
-            timedOut.size
-        )
+        var succeeded = 0
+        var failed = 0
 
         timedOut.forEach { connection ->
             try {
                 schedulingService.expireNegotiation(
                     connectionId = connection.id
                 )
+                succeeded += 1
 
                 log.info(
                     "SchedulingNegotiationTimeoutJob - closed connection={}",
@@ -62,11 +55,23 @@ class SchedulingNegotiationTimeoutJob(
                 )
             } catch (ex: Exception) {
                 log.error(
-                    "SchedulingNegotiationTimeoutJob - failed for connection={}: {}",
+                    "SchedulingNegotiationTimeoutJob - failed for connection={}",
                     connection.id,
-                    ex.message
+                    ex
                 )
+                failed += 1
             }
         }
+
+        log.logJobSummary(
+            jobName = "SchedulingNegotiationTimeoutJob",
+            summary = JobRunSummary(
+                processed = timedOut.size,
+                succeeded = succeeded,
+                skipped = 0,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

@@ -107,7 +107,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .response
                 .contentAsString
 
-        val exitRequestId = objectMapper.readTree(exitRequestBody).get("id").asText()
+        val exitRequestId = objectMapper.readTree(exitRequestBody).get("id").asString()
 
         mockMvc.perform(
             post("/api/chats/${setup.firstChatId}/exit-requests/$exitRequestId/acceptance")

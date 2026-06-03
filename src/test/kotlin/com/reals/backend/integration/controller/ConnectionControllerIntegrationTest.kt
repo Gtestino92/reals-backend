@@ -68,6 +68,35 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `user can accept partner proposal without own proposal over http`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val body = mapOf("proposedDateTimes" to listOf(slot.toString()))
+
+        val proposalId =
+            objectMapper.readTree(
+                mockMvc.perform(
+                    post("/api/connections/${setup.connectionId}/proposals")
+                        .with(authenticatedAs(setup.userAId))
+                        .contentType(jsonContentType)
+                        .content(jsonBody(body))
+                )
+                    .andExpect(status().isCreated)
+                    .andReturn()
+                    .response
+                    .contentAsString
+        )[0]["id"].asString()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals/$proposalId/acceptance")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo(NegotiationStatus.CONFIRMED.name)))
+            .andExpect(jsonPath("$.confirmedDateTime").exists())
+    }
+
+    @Test
     fun `non participant cannot get connection`() {
         val setup = createConnectionInSchedulingPhase()
         val stranger = userService.createUser("connection-stranger-${java.util.UUID.randomUUID()}@example.com")

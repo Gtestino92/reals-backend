@@ -1,0 +1,33 @@
+meta {
+  name: 42 Request Mutual Second Chat Cancellation
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{secondChatId}}/exit-requests
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+body:json {
+  {
+    "reason": "NO_LONGER_INTERESTED",
+    "details": "Happy path mutual closure request."
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.type !== "MUTUAL_CANCEL") {
+    throw new Error(`Expected MUTUAL_CANCEL, got ${body.type}`);
+  }
+  if (body.status !== "PENDING") {
+    throw new Error(`Expected cancellation request PENDING, got ${body.status}`);
+  }
+  bru.setEnvVar("secondChatExitRequestId", body.id);
+}

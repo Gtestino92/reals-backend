@@ -4,6 +4,7 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -14,10 +15,14 @@ data class User(
     @Id
     var id: UUID = UUID.randomUUID(),
 
-    @Column(name = "email")
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
+
+    @Column(name = "email", unique = true)
     var email: String? = null,
 
-    @Column(name = "firebase_uid")
+    @Column(name = "firebase_uid", unique = true)
     var firebaseUid: String? = null,
 
     @Column(name = "created_at", nullable = false)

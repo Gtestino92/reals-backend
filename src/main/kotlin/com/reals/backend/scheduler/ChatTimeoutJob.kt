@@ -21,14 +21,50 @@ class ChatTimeoutJob(
     @Scheduled(fixedDelayString = "\${scheduler.chat-timeout-job.fixed-delay}")
     @SchedulerLock(name = "ChatTimeoutJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
     fun run() {
+        processTimedOutChats()
+    }
+
+    fun runNowForDev() {
+        processTimedOutChats()
+    }
+
+    private fun processTimedOutChats() {
+        val startedAt = System.nanoTime()
         val expiredChats = chatService.findTimedOutChats()
-        if (expiredChats.isEmpty()) return
-        log.info("ChatTimeoutJob expiring : ${expiredChats.size} chats")
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
+
         expiredChats.forEach { chat ->
-            chatService.endChat(
-                chatId = chat.id,
-                finalStatus = ChatStatus.EXPIRED
-            )
+            try {
+                val changed = chatService.endChat(
+                    chatId = chat.id,
+                    finalStatus = ChatStatus.EXPIRED
+                )
+                if (changed) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "ChatTimeoutJob - failed to expire chat={}",
+                    chat.id,
+                    ex
+                )
+            }
         }
+
+        log.logJobSummary(
+            jobName = "ChatTimeoutJob",
+            summary = JobRunSummary(
+                processed = expiredChats.size,
+                succeeded = succeeded,
+                skipped = skipped,
+                failed = failed
+            ),
+            startedAt = startedAt
+        )
     }
 }

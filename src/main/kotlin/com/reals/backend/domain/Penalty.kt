@@ -4,6 +4,7 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -13,6 +14,10 @@ data class Penalty(
 
     @Id
     var id: UUID = UUID.randomUUID(),
+
+    @Version
+    @Column(name = "version", nullable = false)
+    var version: Long = 0,
 
     @Column(name = "user_id", nullable = false)
     var userId: UUID,

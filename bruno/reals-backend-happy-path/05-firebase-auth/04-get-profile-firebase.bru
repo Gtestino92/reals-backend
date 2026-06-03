@@ -1,0 +1,27 @@
+meta {
+  name: 04 Get Profile Firebase
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected Firebase profile response with id.");
+  }
+  const expectedProfileId = bru.getEnvVar("firebaseProfileId");
+  if (expectedProfileId && body.id !== expectedProfileId) {
+    throw new Error(`Expected Firebase profile ${bru.getEnvVar("firebaseProfileId")}, got ${body.id}`);
+  }
+  bru.setEnvVar("firebaseProfileId", body.id);
+}

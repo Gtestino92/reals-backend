@@ -4,6 +4,10 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
+import jakarta.validation.constraints.DecimalMax
+import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
@@ -48,12 +52,28 @@ data class PersonalMessageRequest(
 
 data class ProcessQueueResponse(
     val matchesCreated: Int,
+    val candidatePairs: Int,
+    val failedPairs: Int,
     val pairs: List<MatchResponse>
 )
 
 data class QueueStatusResponse(
     val userId: UUID,
     val inQueue: Boolean
+)
+
+data class EnqueueMatchmakingRequest(
+    @field:DecimalMin("-90.0")
+    @field:DecimalMax("90.0")
+    val latitude: Double,
+
+    @field:DecimalMin("-180.0")
+    @field:DecimalMax("180.0")
+    val longitude: Double,
+
+    @field:Min(0)
+    @field:Max(100000)
+    val accuracyMeters: Int? = null
 )
 
 data class ChatDecisionRequest(

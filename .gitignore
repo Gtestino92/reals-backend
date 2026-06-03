@@ -10,6 +10,10 @@ target/
 
 ### Local data ###
 data/
+secrets/
+bruno/reals-backend-happy-path/environments/local.bru
+*firebase*credentials*.json
+*service-account*.json
 
 ### Kotlin ###
 .kotlin

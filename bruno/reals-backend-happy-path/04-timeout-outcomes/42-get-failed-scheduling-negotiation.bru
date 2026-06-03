@@ -10,6 +10,10 @@ get {
   auth: none
 }
 
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
 script:post-response {
   if (res.getBody().status !== "FAILED") {
     throw new Error(`Expected scheduling negotiation FAILED, got ${res.getBody().status}`);
