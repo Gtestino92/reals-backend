@@ -99,6 +99,19 @@ ghcr.io/gtestino92/reals-backend:latest
 The deployment platform should pull `:development` for the dev environment.
 Use a `sha-*` tag when you need an immutable rollback target.
 
+The Docker image embeds runtime metadata in environment variables and exposes it
+through `GET /actuator/info`:
+
+```json
+{
+  "image": {
+    "repository": "ghcr.io/gtestino92/reals-backend",
+    "tag": "development",
+    "revision": "<full-git-sha>"
+  }
+}
+```
+
 Production should not track a moving branch tag. Once a production environment
 exists, publish immutable tags from Git release tags, for example `v1.0.0`, and
 deploy that exact tag.
@@ -121,9 +134,12 @@ The endpoint is public by design and should return:
 profile. Scheduled jobs run automatically in `dev`.
 
 After updating a deployed environment, run the manual GitHub Actions workflow
-`Smoke check` with the environment base URL. It checks:
+`Smoke check` with the environment base URL. Optionally provide the expected
+image tag and Git revision to verify that the runtime is serving the intended
+container image. It checks:
 
 ```http
 GET /actuator/health/readiness
+GET /actuator/info
 GET /api/ping
 ```

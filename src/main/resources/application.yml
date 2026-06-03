@@ -20,6 +20,9 @@ logging:
     level: "%5p [requestId:%X{requestId:-}]"
 
 management:
+  info:
+    env:
+      enabled: true
   metrics:
     enable:
       all: false
@@ -122,7 +125,15 @@ engagement:
   max-active-matches: 5
 
   # Maximum number of simultaneous active Connections a user can participate in
-  # A connection is active while its lock of type CONNECTION exists
-  max-active-connections: 2
+    # A connection is active while its lock of type CONNECTION exists
+    max-active-connections: 2
+
+info:
+  app:
+    name: ${spring.application.name}
+  image:
+    repository: ${IMAGE_REPOSITORY:}
+    tag: ${IMAGE_TAG:}
+    revision: ${IMAGE_REVISION:}
 
 kind: Application

@@ -11,8 +11,17 @@ RUN ./mvnw -DskipTests package
 
 FROM eclipse-temurin:21-jre-jammy
 
+ARG IMAGE_REPOSITORY="ghcr.io/gtestino92/reals-backend"
+ARG IMAGE_TAG="local"
+ARG IMAGE_REVISION="unknown"
+
 LABEL org.opencontainers.image.source="https://github.com/Gtestino92/reals-backend"
 LABEL org.opencontainers.image.description="Reals backend service"
+LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
+
+ENV IMAGE_REPOSITORY="${IMAGE_REPOSITORY}" \
+    IMAGE_TAG="${IMAGE_TAG}" \
+    IMAGE_REVISION="${IMAGE_REVISION}"
 
 WORKDIR /app
 
