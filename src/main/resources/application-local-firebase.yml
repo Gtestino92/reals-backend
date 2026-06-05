@@ -19,6 +19,23 @@ spring:
   flyway:
       enabled: true
 
+storage:
+  provider: r2
+  r2:
+    endpoint: ${R2_ENDPOINT}
+    region: auto
+    bucket: ${R2_BUCKET}
+    access-key-id: ${R2_ACCESS_KEY_ID}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY}
+    public-base-url: ${R2_PUBLIC_BASE_URL:}
+    signed-url-duration-minutes: 15
+  profile-photos:
+    max-size-bytes: 5242880
+    allowed-content-types:
+      - image/jpeg
+      - image/png
+      - image/webp
+      -
 logging:
   level:
     root: INFO

@@ -60,6 +60,16 @@ data class ProfilePhoto(
     @Column(name = "is_full_body", nullable = false)
     var isFullBody: Boolean = false,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "validation_status", nullable = false)
+    var validationStatus: PhotoValidationStatus = PhotoValidationStatus.PENDING,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now()
 )
+
+enum class PhotoValidationStatus {
+    PENDING,
+    VALIDATED,
+    FAILED
+}

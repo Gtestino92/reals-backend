@@ -101,12 +101,12 @@ firebase:
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
 
-storage:
-  s3:
-    bucket: ${S3_PROFILE_PHOTOS_BUCKET:}
-    region: sa-east-1
-    upload-prefix: profile-photos/quarantine
-    public-prefix: profile-photos/public
+#storage:
+#  s3:
+#    bucket: ${S3_PROFILE_PHOTOS_BUCKET:}
+#    region: sa-east-1
+#    upload-prefix: profile-photos/quarantine
+#    public-prefix: profile-photos/public
 
 identity-verification:
   provider: ${IDENTITY_VERIFICATION_PROVIDER:none}
