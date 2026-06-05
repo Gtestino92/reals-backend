@@ -7,6 +7,7 @@ import com.reals.backend.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
@@ -27,6 +28,16 @@ class MeController(
         return ResponseEntity.ok(
             UserResponse.from(user)
         )
+    }
+
+    @DeleteMapping("/api/me")
+    fun deleteMe(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<Void> {
+        userService.deleteUser(
+            userId = userId
+        )
+        return ResponseEntity.ok().build()
     }
 
     @PostMapping("/api/me/provision")
