@@ -3,6 +3,7 @@ package com.reals.backend.config.security.authentication
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
+import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -68,6 +69,16 @@ class FirebaseTokenFilter(
                 .verifyIdToken(token)
 
             val user = userService.findByFirebaseUid(decoded.uid)
+
+            if (user?.status == UserStatus.DELETED) {
+                SecurityContextHolder.clearContext()
+                writeUnauthorized(
+                    response = response,
+                    code = "ACCOUNT_DELETED",
+                    message = "Account was deleted"
+                )
+                return
+            }
 
             SecurityContextHolder.getContext().authentication =
                 if (user == null) {

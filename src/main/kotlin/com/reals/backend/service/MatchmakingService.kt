@@ -21,7 +21,7 @@ class MatchmakingService(
 
     private val queueRepository: MatchmakingQueueRepository,
     private val lockRepository: ActiveEngagementLockRepository,
-    private val userRepository: UserRepository,
+    private val userService: UserService,
     private val penaltyService: PenaltyService,
     private val profileService: ProfileService,
     private val compatibilityScorer: CompatibilityScorer,
@@ -55,7 +55,8 @@ class MatchmakingService(
         accuracyMeters: Int? = null
     ) {
 
-        lockUser(userId)
+        userService.lockActiveUserOrThrow(userId, "Cannot add in queue: user not found")
+
         validateSearchLocation(
             latitude = latitude,
             longitude = longitude,
@@ -111,15 +112,6 @@ class MatchmakingService(
                 accuracyMeters = accuracyMeters
             )
         )
-    }
-
-    private fun lockUser(userId: UUID) {
-        if (userRepository.findAllByIdForUpdate(listOf(userId)).size != 1) {
-            throw DomainConflictException(
-                code = DomainErrorCode.USER_NOT_FOUND,
-                message = "Cannot enqueue: user was not found"
-            )
-        }
     }
 
     fun dequeue(userId: UUID) {

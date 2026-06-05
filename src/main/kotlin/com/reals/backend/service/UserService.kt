@@ -1,16 +1,23 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.User
+import com.reals.backend.domain.UserStatus
+import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
-import java.util.UUID
+import java.util.*
 
 @Service
 @Transactional
 class UserService(
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val matchmakingQueueRepository: MatchmakingQueueRepository,
+    private val activeEngagementLockRepository: ActiveEngagementLockRepository,
 ) {
 
     private companion object {
@@ -66,6 +73,10 @@ class UserService(
 
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
+            check(existingByFirebaseUid.status == UserStatus.ACTIVE) {
+                "Account was deleted"
+            }
+
             return updateFirebaseUserEmailIfNeeded(
                 user = existingByFirebaseUid,
                 normalizedEmail = normalizedEmail
@@ -74,19 +85,84 @@ class UserService(
 
         if (normalizedEmail != null) {
             val existingByEmail = userRepository.findByEmail(normalizedEmail)
-            if (existingByEmail != null && existingByEmail.firebaseUid == null) {
-                existingByEmail.firebaseUid = firebaseUid
-                existingByEmail.updatedAt = OffsetDateTime.now()
-                return userRepository.save(existingByEmail)
+
+            if (existingByEmail != null) {
+                check(existingByEmail.status == UserStatus.ACTIVE) {
+                    "Deleted user still owns email: $normalizedEmail"
+                }
+
+                if (existingByEmail.firebaseUid == null) {
+                    existingByEmail.firebaseUid = firebaseUid
+                    existingByEmail.updatedAt = OffsetDateTime.now()
+                    return userRepository.save(existingByEmail)
+                }
+
+                check(false) {
+                    "Email already belongs to another Firebase user: $normalizedEmail"
+                }
             }
         }
 
         return userRepository.save(
             User(
                 firebaseUid = firebaseUid,
-                email = normalizedEmail?.takeUnless { userRepository.existsByEmail(it) }
+                email = normalizedEmail,
+                status = UserStatus.ACTIVE,
             )
         )
+    }
+
+    fun deleteUser(userId: UUID) {
+        val now = OffsetDateTime.now()
+        matchmakingQueueRepository.deleteByUserId(userId)
+        activeEngagementLockRepository.deleteByUserId(userId)
+        val updatedRows = userRepository.softDeleteActiveById(
+            userId = userId,
+            deletedAt = now,
+            deletedEmail = "deleted.$userId@deleted.reals.local"
+        )
+
+        check(updatedRows == 1) { "Active user not found: $userId" }
+    }
+
+    fun lockActiveUserOrThrow(userId: UUID, action: String): User {
+        val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
+            ?: throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_FOUND,
+                message = "$action: user was not found"
+            )
+
+        if (user.status != UserStatus.ACTIVE) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_ACTIVE,
+                message = "$action: user is not active"
+            )
+        }
+
+        return user
+    }
+
+    fun lockActiveUsersOrThrow(userIds: Collection<UUID>, action: String): List<User> {
+        val distinctIds = userIds.distinct()
+
+        val users = userRepository.findAllByIdForUpdate(distinctIds)
+
+        if (users.size != distinctIds.size) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_FOUND,
+                message = "$action: one or more users were not found"
+            )
+        }
+
+        val inactiveUser = users.firstOrNull { it.status != UserStatus.ACTIVE }
+        if (inactiveUser != null) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_ACTIVE,
+                message = "$action: one or more users are not active"
+            )
+        }
+
+        return users
     }
 
     private fun updateFirebaseUserEmailIfNeeded(
