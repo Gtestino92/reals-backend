@@ -17,7 +17,8 @@ enum class DomainErrorCode {
     PROFILE_PHOTO_LIMIT_REACHED,
     PROFILE_PHOTOS_REQUIRED,
     PROFILE_REQUIRED,
-    USER_NOT_FOUND
+    USER_NOT_FOUND,
+    USER_NOT_ACTIVE,
 }
 
 sealed class DomainException(
