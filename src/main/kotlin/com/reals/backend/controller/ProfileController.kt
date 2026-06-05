@@ -6,9 +6,11 @@ import com.reals.backend.service.ProfileService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 import java.util.*
 
 @RestController
@@ -181,7 +183,10 @@ class ProfileController(
      * Positions 1-9 are valid. Each position can only be occupied once
      * Semantic photo classification is delegated to ProfilePhotoValidationService.
      */
-    @PostMapping("/photos")
+    @PostMapping(
+        "/photos",
+        consumes = [MediaType.APPLICATION_JSON_VALUE]
+    )
     fun addPhoto(
         @CurrentUserId userId: UUID,
         @Valid
@@ -198,6 +203,43 @@ class ProfileController(
             position = request.position,
             isPersonPhoto = request.isPersonPhoto,
             isFullBody = request.isFullBody
+        )
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            PhotoResponse.from(photo)
+        )
+    }
+
+    /**
+     * Uploads a profile photo file to object storage.
+     *
+     * Positions 1-9 are valid. Each position can only be occupied once.
+     * Photo semantic classification is performed by the backend.
+     */
+    @PostMapping(
+        "/photos",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
+    )
+    fun uploadPhoto(
+        @CurrentUserId userId: UUID,
+
+        @RequestPart("file")
+        file: MultipartFile,
+
+        @RequestParam("position")
+        @Min(1)
+        position: Int
+    ): ResponseEntity<PhotoResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val photo = profileService.uploadPhoto(
+            profileId = profile.id,
+            position = position,
+            contentType = file.contentType,
+            bytes = file.bytes
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -268,5 +310,34 @@ class ProfileController(
             isFullBody = request.isFullBody
         )
         return ResponseEntity.ok(PhotoResponse.from(photo))
+    }
+
+    @PutMapping(
+        "/photos/{photoId}",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
+    )
+    fun replacePhoto(
+        @CurrentUserId userId: UUID,
+        @PathVariable photoId: UUID,
+        @RequestPart("file") file: MultipartFile
+    ): ResponseEntity<PhotoResponse> {
+        val profile = profileService.findByUserId(userId)
+            ?: throw NoSuchElementException(
+                "Profile not found for user: $userId"
+            )
+
+        val photo = profileService.replacePhoto(
+            profileId = profile.id,
+            photoId = photoId,
+            contentType = file.contentType,
+            bytes = file.bytes,
+        )
+
+        return ResponseEntity.ok(
+            PhotoResponse.from(
+                photo = photo,
+                url = profileService.resolvePhotoReadUrlForResponse(photo)
+            )
+        )
     }
 }
