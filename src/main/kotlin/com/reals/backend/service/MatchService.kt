@@ -19,7 +19,7 @@ class MatchService(
     private val matchRepository: MatchRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
-    private val userRepository: UserRepository,
+    private val userService: UserService,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -49,7 +49,8 @@ class MatchService(
      */
     fun createMatch(userAId: UUID, userBId: UUID): Match {
 
-        lockUsers(userAId, userBId)
+        userService.lockActiveUsersOrThrow(listOf(userAId, userBId),
+            "Cannot create match: one or more users were not found")
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
@@ -92,15 +93,6 @@ class MatchService(
 
         check(active < maxActiveMatches) {
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
-        }
-    }
-
-    private fun lockUsers(vararg userIds: UUID) {
-        val distinctIds = userIds.distinct()
-        val locked = userRepository.findAllByIdForUpdate(distinctIds)
-
-        check(locked.size == distinctIds.size) {
-            "Cannot create match: one or more users were not found"
         }
     }
 

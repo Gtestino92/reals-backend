@@ -8,10 +8,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: local-postgres
+      SPRING_PROFILES_ACTIVE: local-firebase
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/reals
       SPRING_DATASOURCE_USERNAME: reals
       SPRING_DATASOURCE_PASSWORD: reals
+    volumes:
+      - ./secrets/reals-backend-firebase-credentials-dev.json:/app/secrets/reals-backend-firebase-credentials-dev.json:ro
     ports:
       - "8080:8080"
 
