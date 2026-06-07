@@ -1,7 +1,13 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
-import com.reals.backend.controller.dto.*
+import com.reals.backend.controller.dto.AddPhotoRequest
+import com.reals.backend.controller.dto.CreateProfileRequest
+import com.reals.backend.controller.dto.PhotoResponse
+import com.reals.backend.controller.dto.ProfileResponse
+import com.reals.backend.controller.dto.ReplacePhotoRequest
+import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
+import com.reals.backend.controller.dto.UpdateProfileRequest
 import com.reals.backend.service.ProfileService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
@@ -9,9 +15,19 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RequestPart
+import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
-import java.util.*
+import java.util.UUID
 
 @RestController
 @RequestMapping("/api/me/profile")
@@ -20,10 +36,9 @@ class ProfileController(
     private val profileService: ProfileService
 ) {
 
-
     /**
-     * Creates a RAFT profile for a user
-     * A user can only have one profile
+     * Creates a DRAFT profile for a user.
+     * A user can only have one profile.
      */
     @PostMapping
     fun createProfile(
@@ -31,7 +46,6 @@ class ProfileController(
         @Valid
         @RequestBody request: CreateProfileRequest
     ): ResponseEntity<ProfileResponse> {
-
         val profile = profileService.createProfile(
             userId = userId,
             displayName = request.displayName,
@@ -46,7 +60,9 @@ class ProfileController(
             preferredMaxAge = request.preferredMaxAge,
             maxDistanceKm = request.maxDistanceKm
         )
+
         val photos = profileService.getPhotos(profile.id)
+
         return ResponseEntity.status(HttpStatus.CREATED).body(
             ProfileResponse.from(profile, photos.size)
         )
@@ -56,7 +72,6 @@ class ProfileController(
     fun getMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-
         val profile = profileService.findByUserId(userId)
             ?: return ResponseEntity.notFound().build()
 
@@ -70,14 +85,12 @@ class ProfileController(
         )
     }
 
-
     @PatchMapping
     fun updateMyProfile(
         @CurrentUserId userId: UUID,
         @Valid
         @RequestBody request: UpdateProfileRequest
     ): ResponseEntity<ProfileResponse> {
-
         val profile = profileService.findByUserId(userId)
             ?: throw NoSuchElementException(
                 "Profile not found for user: $userId"
@@ -107,7 +120,6 @@ class ProfileController(
     fun activateMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-
         val profile = profileService.findByUserId(userId)
             ?: throw NoSuchElementException(
                 "Profile not found for user: $userId"
@@ -159,7 +171,6 @@ class ProfileController(
     fun verifyMyIdentity(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-
         val profile = profileService.findByUserId(userId)
             ?: throw NoSuchElementException(
                 "Profile not found for user: $userId"
@@ -180,8 +191,10 @@ class ProfileController(
     }
 
     /**
-     * Positions 1-9 are valid. Each position can only be occupied once
-     * Semantic photo classification is delegated to ProfilePhotoValidationService.
+     * Legacy endpoint.
+     *
+     * Adds a profile photo using an external URL.
+     * New production flow should use multipart upload instead.
      */
     @PostMapping(
         "/photos",
@@ -206,15 +219,18 @@ class ProfileController(
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            PhotoResponse.from(photo)
+            PhotoResponse.from(
+                photo = photo,
+                url = profileService.resolvePhotoReadUrlForResponse(photo)
+            )
         )
     }
 
     /**
-     * Uploads a profile photo file to object storage.
+     * Uploads a new profile photo file to object storage.
      *
-     * Positions 1-9 are valid. Each position can only be occupied once.
-     * Photo semantic classification is performed by the backend.
+     * Used when adding a new photo to an empty position.
+     * Position is provided because the photo does not exist yet.
      */
     @PostMapping(
         "/photos",
@@ -243,10 +259,19 @@ class ProfileController(
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            PhotoResponse.from(photo)
+            PhotoResponse.from(
+                photo = photo,
+                url = profileService.resolvePhotoReadUrlForResponse(photo)
+            )
         )
     }
 
+    /**
+     * Returns all photos for the authenticated user's profile.
+     *
+     * URLs are resolved by the service, so the frontend never depends on
+     * internal storage keys such as s3://bucket/key.
+     */
     @GetMapping("/photos")
     fun getPhotos(
         @CurrentUserId userId: UUID
@@ -256,44 +281,58 @@ class ProfileController(
                 "Profile not found for user: $userId"
             )
 
-        val photos = profileService.getPhotos(profileId = profile.id)
-            .sortedBy { it.position }
-            .map { PhotoResponse.from(it) }
-
-        return ResponseEntity.ok(photos)
+        return ResponseEntity.ok(
+            profileService.getPhotoResponses(profileId = profile.id)
+        )
     }
 
-    @DeleteMapping("/photos/{position}")
+    /**
+     * Deletes an existing photo by photo id.
+     *
+     * photoId identifies the photo entity.
+     * position should only be treated as an editable/order attribute.
+     */
+    @DeleteMapping("/photos/{photoId}")
     fun deletePhoto(
         @CurrentUserId userId: UUID,
-        @Min(1)
-        @PathVariable position: Int
+        @PathVariable photoId: UUID
     ): ResponseEntity<ProfileResponse> {
-        val existing = profileService.findByUserId(userId)
+        val profile = profileService.findByUserId(userId)
             ?: throw NoSuchElementException(
                 "Profile not found for user: $userId"
             )
 
-        val profile = profileService.deletePhoto(
-            profileId = existing.id,
-            position = position
+        val updated = profileService.deletePhoto(
+            profileId = profile.id,
+            photoId = photoId
         )
 
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profileService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
-                profile = profile,
+                profile = updated,
                 photoCount = photos.size
             )
         )
     }
 
-    @PutMapping("/photos/{position}")
-    fun replacePhoto(
+    /**
+     * Legacy endpoint.
+     *
+     * Replaces a photo URL by position.
+     * Kept temporarily for the old frontend flow.
+     */
+    @PutMapping(
+        "/photos/position/{position}",
+        consumes = [MediaType.APPLICATION_JSON_VALUE]
+    )
+    fun replacePhotoByPosition(
         @CurrentUserId userId: UUID,
+
         @Min(1)
         @PathVariable position: Int,
+
         @Valid
         @RequestBody request: ReplacePhotoRequest
     ): ResponseEntity<PhotoResponse> {
@@ -309,17 +348,32 @@ class ProfileController(
             isPersonPhoto = request.isPersonPhoto,
             isFullBody = request.isFullBody
         )
-        return ResponseEntity.ok(PhotoResponse.from(photo))
+
+        return ResponseEntity.ok(
+            PhotoResponse.from(
+                photo = photo,
+                url = profileService.resolvePhotoReadUrlForResponse(photo)
+            )
+        )
     }
 
+    /**
+     * Replaces the binary file of an existing photo.
+     *
+     * photoId is used because this operation targets an existing photo entity.
+     * The current position is preserved.
+     */
     @PutMapping(
-        "/photos/{photoId}",
+        "/photos/{photoId}/file",
         consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
     )
-    fun replacePhoto(
+    fun replacePhotoFile(
         @CurrentUserId userId: UUID,
+
         @PathVariable photoId: UUID,
-        @RequestPart("file") file: MultipartFile
+
+        @RequestPart("file")
+        file: MultipartFile
     ): ResponseEntity<PhotoResponse> {
         val profile = profileService.findByUserId(userId)
             ?: throw NoSuchElementException(
@@ -330,7 +384,7 @@ class ProfileController(
             profileId = profile.id,
             photoId = photoId,
             contentType = file.contentType,
-            bytes = file.bytes,
+            bytes = file.bytes
         )
 
         return ResponseEntity.ok(

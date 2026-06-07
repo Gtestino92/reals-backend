@@ -1,0 +1,19 @@
+meta {
+  name: Replace Profile Photo File
+  type: http
+  seq: 2
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/photos/{{photoId}}/file
+  body: multipartForm
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+body:multipart-form {
+  file: @file(C:\Users\Administrador\Downloads\dniDorso.JPG)
+}

@@ -19,26 +19,30 @@ spring:
   flyway:
       enabled: true
 
+logging:
+  level:
+    root: INFO
+
 storage:
-  provider: r2
-  r2:
-    endpoint: ${R2_ENDPOINT}
-    region: auto
-    bucket: ${R2_BUCKET}
-    access-key-id: ${R2_ACCESS_KEY_ID}
-    secret-access-key: ${R2_SECRET_ACCESS_KEY}
-    public-base-url: ${R2_PUBLIC_BASE_URL:}
+  s3:
+    endpoint: http://minio:9000
+    #endpoint: https://<account-id>.r2.cloudflarestorage.com PARA R2
+    region: us-east-1
+    bucket: reals-profile-photos
+    access-key-id: reals
+    secret-access-key: reals-password
+    #access-key-id: ${R2_ACCESS_KEY_ID}
+    #secret-access-key: ${R2_SECRET_ACCESS_KEY}
+    public-base-url: http://localhost:9000/reals-profile-photos
+    path-style-access-enabled: true
     signed-url-duration-minutes: 15
+
   profile-photos:
     max-size-bytes: 5242880
     allowed-content-types:
       - image/jpeg
       - image/png
       - image/webp
-      -
-logging:
-  level:
-    root: INFO
 
 scheduler:
   enabled: false

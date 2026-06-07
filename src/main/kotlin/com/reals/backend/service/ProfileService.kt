@@ -1,6 +1,6 @@
 package com.reals.backend.service
 
-import com.reals.backend.config.r2.ProfilePhotoStorageProperties
+import com.reals.backend.config.s3.ProfilePhotoStorageProperties
 import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ProfilePhotoRepository
@@ -26,7 +26,7 @@ class ProfileService(
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
     private val identityVerificationService: IdentityVerificationService,
-    private val storageService: R2StorageService,
+    private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
 
     @param:Value("\${profile.photos.max-count}")
@@ -317,17 +317,12 @@ class ProfileService(
 
     fun deletePhoto(
         profileId: UUID,
-        position: Int
+        photoId: UUID
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
 
-        val existing = profilePhotoRepository.findByProfileIdAndPosition(
-            profileId,
-            position
-        ) ?: throw NoSuchElementException(
-            "Photo not found for profile $profileId at position $position"
-        )
+        val existing = profilePhotoRepository.findById(photoId).get()
 
         profilePhotoRepository.delete(existing)
 
@@ -428,7 +423,6 @@ class ProfileService(
         try {
             val storedObject = storageService.uploadProfilePhoto(
                 userId = profile.userId,
-                profileId = profileId,
                 photoId = newObjectPhotoId,
                 contentType = normalizedContentType,
                 bytes = bytes
@@ -500,7 +494,6 @@ class ProfileService(
         try {
             val storedObject = storageService.uploadProfilePhoto(
                 userId = profile.userId,
-                profileId = profileId,
                 photoId = photoId,
                 contentType = normalizedContentType,
                 bytes = bytes

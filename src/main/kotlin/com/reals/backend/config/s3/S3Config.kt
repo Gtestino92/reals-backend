@@ -1,10 +1,9 @@
-package com.reals.backend.config.r2
+package com.reals.backend.config.s3
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Profile
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
@@ -35,37 +34,6 @@ data class ProfilePhotoStorageProperties(
 )
 
 @Configuration
-@Profile("dev", "prod")
-@EnableConfigurationProperties(
-    S3StorageProperties::class,
-    ProfilePhotoStorageProperties::class
-)
-class R2StorageConfig {
-
-    @Bean
-    fun s3Client(properties: S3StorageProperties): S3Client {
-        return S3Client.builder()
-            .endpointOverride(URI.create(properties.endpoint))
-            .region(Region.of(properties.region))
-            .credentialsProvider(
-                StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(
-                        properties.accessKeyId,
-                        properties.secretAccessKey
-                    )
-                )
-            )
-            .serviceConfiguration(
-                S3Configuration.builder()
-                    .pathStyleAccessEnabled(true)
-                    .build()
-            )
-            .build()
-    }
-}
-
-@Configuration
-@Profile("local-firebase")
 @EnableConfigurationProperties(
     S3StorageProperties::class,
     ProfilePhotoStorageProperties::class

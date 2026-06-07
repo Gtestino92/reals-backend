@@ -100,9 +100,10 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
 
+        val photo = profileService.getPhotos(profile.id)[0]
         profileService.deletePhoto(
             profileId = profile.id,
-            position = 1
+            photoId = photo.id
         )
 
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
