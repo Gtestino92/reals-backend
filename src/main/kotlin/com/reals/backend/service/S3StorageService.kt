@@ -1,8 +1,9 @@
 package com.reals.backend.service
 
-import com.reals.backend.config.r2.R2StorageProperties
+import com.reals.backend.config.s3.S3StorageProperties
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.service.exception.ObjectStorageException
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
@@ -11,9 +12,10 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import java.util.*
 
 @Service
+@Profile("dev","prod")
 class R2StorageService(
     private val s3Client: S3Client,
-    private val properties: R2StorageProperties
+    private val properties: S3StorageProperties
 ) {
     fun uploadProfilePhoto(
         userId: UUID,
