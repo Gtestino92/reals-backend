@@ -18,7 +18,7 @@ class ProfilePhotoValidationService {
         return ProfilePhotoValidationResult(
             isPersonPhoto = true,
             isFullBody = false,
-            status = PhotoValidationStatus.VALIDATED
+            status = PhotoValidationStatus.PENDING
         )
     }
 
