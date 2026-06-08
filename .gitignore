@@ -10,6 +10,7 @@ target/
 
 ### Local data ###
 data/
+minio-data/
 secrets/
 bruno/reals-backend-happy-path/environments/local.bru
 *firebase*credentials*.json

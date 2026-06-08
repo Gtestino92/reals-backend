@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
 import java.util.UUID
 
-data class CreateUserRequest(
+data class DevCreateUserRequest(
     @field:NotBlank
     @field:Email
     @field:Size(max = 255)

@@ -4,7 +4,7 @@ Production and shared development profiles should receive environment-specific v
 
 ## Profiles
 
-- `local-firebase`: default local profile, H2 file database, Firebase auth and schedulers disabled.
+- `local-firebase`: default local profile, Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
 - `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.

@@ -13,7 +13,6 @@ security:
 tags:
   - name: Health
   - name: Me
-  - name: Users
   - name: Profiles
   - name: Matchmaking
   - name: Matches
@@ -90,41 +89,17 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/users:
-    post:
-      tags: [Users]
-      summary: Create a user from an email
-      description: Mostly legacy/manual endpoint. Current-user flows should prefer /api/me/provision.
-      requestBody:
-        $ref: '#/components/requestBodies/CreateUser'
-      responses:
-        '201':
-          description: Created user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /api/users/{userId}:
-    get:
-      tags: [Users]
-      summary: Get a user by id
-      parameters:
-        - $ref: '#/components/parameters/UserId'
+    delete:
+      tags: [Me]
+      summary: Soft-delete the authenticated backend user
+      description: Marks the authenticated backend user as deleted and prevents future Firebase-token access for that Firebase identity.
       responses:
         '200':
-          description: User
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserResponse'
+          description: Account soft-deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -672,11 +647,6 @@ components:
       scheme: bearer
       bearerFormat: Firebase ID token
   parameters:
-    UserId:
-      name: userId
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
     MatchId:
       name: matchId
       in: path
@@ -713,12 +683,6 @@ components:
       required: true
       schema: { type: integer, minimum: 1, maximum: 9 }
   requestBodies:
-    CreateUser:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/CreateUserRequest'
     CreateProfile:
       required: true
       content:
@@ -912,11 +876,6 @@ components:
         code: { type: string, example: PROFILE_NOT_ACTIVE }
         error: { type: string, example: Conflict }
         message: { type: string }
-    CreateUserRequest:
-      type: object
-      required: [email]
-      properties:
-        email: { type: string, format: email, maxLength: 255 }
     UserResponse:
       type: object
       required: [id, createdAt]
