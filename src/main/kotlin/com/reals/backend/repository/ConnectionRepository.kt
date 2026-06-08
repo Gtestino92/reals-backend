@@ -21,6 +21,18 @@ interface ConnectionRepository :
         before: OffsetDateTime
     ): List<Connection>
 
+    @Query(
+        """
+        select c from Connection c
+        where (c.userAId = :userId or c.userBId = :userId)
+          and c.state in :states
+        """
+    )
+    fun findByParticipantIdAndStateIn(
+        @Param("userId") userId: UUID,
+        @Param("states") states: Collection<ConnectionState>
+    ): List<Connection>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Connection c set c.schedulingExpiresAt = :expiresAt where c.id = :connectionId")
     fun updateSchedulingExpiresAt(

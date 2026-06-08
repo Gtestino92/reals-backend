@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
@@ -20,6 +21,16 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         connectionId: UUID,
         chatType: ChatType
     ): Chat?
+
+    fun findByMatchIdInAndStatusIn(
+        matchIds: Collection<UUID>,
+        statuses: Collection<ChatStatus>
+    ): List<Chat>
+
+    fun findByConnectionIdInAndStatusIn(
+        connectionIds: Collection<UUID>,
+        statuses: Collection<ChatStatus>
+    ): List<Chat>
 
     @Query(
         "select c from Chat c where c.status = 'ACTIVE' and c.timeoutAt <= :now"

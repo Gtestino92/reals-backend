@@ -8,10 +8,11 @@ The default active profile is:
 local-firebase
 ```
 
-This profile uses real Firebase ID tokens and an H2 file database:
+This profile uses real Firebase ID tokens and, in the current Docker-oriented
+local setup, a PostgreSQL database:
 
 ```text
-./data/realsdb
+jdbc:postgresql://postgres:5432/reals
 ```
 
 ## Run Locally
@@ -45,6 +46,7 @@ http://localhost:8080/h2-console
 ```
 
 The H2 console is enabled through `spring.h2.console.*` in the local H2 profiles.
+Use `local-nodb` when you specifically want the H2 file database path.
 
 Connection:
 
@@ -63,7 +65,7 @@ jdbc:h2:file:./data/realsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=f
 ## Local Firebase Auth
 
 The default `local-firebase` profile verifies real Firebase ID tokens locally.
-It uses the same H2 file database style as `local-nodb`, but disables dev
+It is configured for Docker-based local testing with PostgreSQL, disables dev
 auto-auth and enables Firebase token verification.
 
 The local Firebase service-account JSON is expected at:
@@ -73,6 +75,13 @@ The local Firebase service-account JSON is expected at:
 ```
 
 The `secrets/` directory is ignored by Git and must never be committed.
+
+When running the app from the host instead of inside Docker, override the
+datasource host because `postgres` is the Docker Compose service name:
+
+```text
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/reals
+```
 
 ## Local Auto-Auth
 
@@ -137,7 +146,7 @@ docker compose up -d --build backend
 The `backend` service runs with:
 
 ```text
-SPRING_PROFILES_ACTIVE=local-postgres
+SPRING_PROFILES_ACTIVE=local-firebase
 SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reals
 ```
 
@@ -170,8 +179,8 @@ docker compose down
 
 ### Local Docker App With Firebase
 
-Use this mode when you want Docker to run the backend plus PostgreSQL, but
-authenticate requests with real Firebase ID tokens instead of local auto-auth.
+The default `docker-compose.yml` already runs the backend with
+`local-firebase`, PostgreSQL and real Firebase token verification.
 
 The Firebase service-account JSON must exist locally at:
 
@@ -184,19 +193,19 @@ The `secrets/` directory is ignored by Git and must never be committed.
 Build and run the Firebase-backed Docker app:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.firebase.yml up -d --build backend
+docker compose up -d --build backend
 ```
 
-This override runs the backend with:
+This Compose setup runs the backend with:
 
 ```text
-SPRING_PROFILES_ACTIVE=dev
-DATABASE_URL=jdbc:postgresql://postgres:5432/reals
-FIREBASE_SERVICE_ACCOUNT_PATH=/run/secrets/firebase-service-account.json
+SPRING_PROFILES_ACTIVE=local-firebase
+SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reals
+firebase.service-account-path=./secrets/reals-backend-firebase-credentials-dev.json
 ```
 
 The service-account file is mounted read-only inside the backend container.
-Automatic schedulers are disabled through `SCHEDULER_ENABLED=false` so local
+Automatic schedulers are disabled by the `local-firebase` profile so local
 manual testing stays deterministic.
 
 Check the backend:
@@ -209,7 +218,7 @@ curl http://localhost:8080/actuator/health/readiness
 Stop backend and database without deleting the database volume:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.firebase.yml down
+docker compose down
 ```
 
 ## Local Jobs
@@ -225,6 +234,14 @@ Use the dev endpoints for deterministic manual testing:
 ```http
 POST /api/local-dev/jobs/{job}/run
 ```
+
+Local-only user provisioning for Bruno/dev flows is available at:
+
+```http
+POST /api/local-dev/users
+```
+
+This endpoint exists only on local dev-auto-auth profiles and is not part of the production API contract.
 
 For example:
 
