@@ -76,6 +76,15 @@ scheduler:
   scheduled-second-chat-start-job:
     fixed-delay: 60000
 
+  # Finalizes recoverable account deletions after the recovery window expires.
+  # Runs every hour because finalization is not user-facing urgent.
+  account-deletion-finalization-job:
+    fixed-delay: 3600000
+
+account:
+  deletion:
+    recovery-window-days: 30
+
 chat:
   # Maximum duration for the anonymous first chat between matched users
   first-chat:

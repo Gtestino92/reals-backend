@@ -2,13 +2,16 @@ package com.reals.backend.service
 
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.identity.FirebaseExternalAccountService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
@@ -20,10 +23,13 @@ import java.util.*
 @Transactional
 class UserService(
     private val userRepository: UserRepository,
+    private val profileRepository: ProfileRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
     private val accountDeletionService: AccountDeletionService,
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
+    @param:Value("\${account.deletion.recovery-window-days:30}")
+    private val accountDeletionRecoveryWindowDays: Long,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -55,9 +61,16 @@ class UserService(
      */
     fun createUser(email: String): User {
         val normalizedEmail = normalizeRequiredEmail(email)
+        val existingByEmail = userRepository.findByEmail(normalizedEmail)
 
-        check(!userRepository.existsByEmail(normalizedEmail)) {
-            "Email already registered: $normalizedEmail"
+        if (existingByEmail != null) {
+            if (existingByEmail.status == UserStatus.DELETED) {
+                throw pendingOrFinalizedDeletionConflict(existingByEmail, OffsetDateTime.now())
+            }
+
+            check(false) {
+                "Email already registered: $normalizedEmail"
+            }
         }
 
         return userRepository.save(
@@ -81,8 +94,8 @@ class UserService(
 
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
-            check(existingByFirebaseUid.status == UserStatus.ACTIVE) {
-                "Account was deleted"
+            if (existingByFirebaseUid.status == UserStatus.DELETED) {
+                throw pendingOrFinalizedDeletionConflict(existingByFirebaseUid, OffsetDateTime.now())
             }
 
             return updateFirebaseUserEmailIfNeeded(
@@ -95,8 +108,8 @@ class UserService(
             val existingByEmail = userRepository.findByEmail(normalizedEmail)
 
             if (existingByEmail != null) {
-                check(existingByEmail.status == UserStatus.ACTIVE) {
-                    "Deleted user still owns email: $normalizedEmail"
+                if (existingByEmail.status == UserStatus.DELETED) {
+                    throw pendingOrFinalizedDeletionConflict(existingByEmail, OffsetDateTime.now())
                 }
 
                 if (existingByEmail.firebaseUid == null) {
@@ -122,6 +135,7 @@ class UserService(
 
     fun deleteUser(userId: UUID) {
         val now = OffsetDateTime.now()
+        val deletionFinalizesAt = now.plusDays(accountDeletionRecoveryWindowDays)
         val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
             ?: throw IllegalStateException("Active user not found: $userId")
 
@@ -134,18 +148,73 @@ class UserService(
 
         matchmakingQueueRepository.deleteByUserId(userId)
         activeEngagementLockRepository.deleteByUserId(userId)
+        moveProfileToDraft(userId = userId, now = now)
 
         val updatedRows = userRepository.softDeleteActiveById(
             userId = userId,
             deletedAt = now,
-            deletedEmail = "deleted.$userId@deleted.reals.local"
+            deletionFinalizesAt = deletionFinalizesAt
         )
 
         check(updatedRows == 1) { "Active user not found: $userId" }
 
         user.firebaseUid?.let {
-            disableExternalAccountAfterCommit(firebaseUid = it)
+            revokeExternalTokensAfterCommit(firebaseUid = it)
         }
+    }
+
+    fun reactivateUser(userId: UUID): User {
+        val now = OffsetDateTime.now()
+        val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
+            ?: throw IllegalStateException("User not found: $userId")
+
+        if (user.status == UserStatus.ACTIVE) {
+            return user
+        }
+
+        val deletionFinalizesAt = user.deletionFinalizesAt
+            ?: throw DomainConflictException(
+                code = DomainErrorCode.ACCOUNT_DELETION_FINALIZED,
+                message = "Account deletion is finalized"
+            )
+
+        if (!now.isBefore(deletionFinalizesAt)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACCOUNT_DELETION_FINALIZED,
+                message = "Account deletion is finalized"
+            )
+        }
+
+        user.status = UserStatus.ACTIVE
+        user.deletedAt = null
+        user.deletionFinalizesAt = null
+        user.updatedAt = now
+        moveProfileToDraft(userId = userId, now = now)
+
+        user.firebaseUid?.let {
+            enableExternalAccountAfterCommit(firebaseUid = it)
+        }
+
+        return userRepository.save(user)
+    }
+
+    fun finalizeRecoverableAccountDeletions(now: OffsetDateTime = OffsetDateTime.now()): Int {
+        val deletedUsers = userRepository.findByStatusAndDeletionFinalizesAtLessThanEqual(
+            status = UserStatus.DELETED,
+            deletionFinalizesAt = now
+        )
+
+        var finalized = 0
+
+        deletedUsers.forEach { user ->
+            finalized += userRepository.finalizeDeletedUser(
+                userId = user.id,
+                finalizedEmail = "deleted.${user.id}@deleted.reals.local",
+                now = now
+            )
+        }
+
+        return finalized
     }
 
     fun lockActiveUserOrThrow(userId: UUID, action: String): User {
@@ -236,15 +305,65 @@ class UserService(
         }
     }
 
-    private fun disableExternalAccountAfterCommit(firebaseUid: String) {
+    private fun pendingOrFinalizedDeletionConflict(
+        user: User,
+        now: OffsetDateTime
+    ): DomainConflictException {
+        val deletionFinalizesAt = user.deletionFinalizesAt
+
+        return if (deletionFinalizesAt != null && now.isBefore(deletionFinalizesAt)) {
+            DomainConflictException(
+                code = DomainErrorCode.ACCOUNT_PENDING_DELETION,
+                message = "Account is pending deletion until $deletionFinalizesAt"
+            )
+        } else {
+            DomainConflictException(
+                code = DomainErrorCode.ACCOUNT_DELETION_FINALIZED,
+                message = "Account deletion is finalized"
+            )
+        }
+    }
+
+    private fun moveProfileToDraft(
+        userId: UUID,
+        now: OffsetDateTime
+    ) {
+        val profile = profileRepository.findByUserId(userId) ?: return
+
+        if (profile.status != ProfileStatus.DRAFT) {
+            profile.status = ProfileStatus.DRAFT
+            profile.updatedAt = now
+            profileRepository.save(profile)
+        }
+    }
+
+    private fun revokeExternalTokensAfterCommit(firebaseUid: String) {
         val action = {
             runCatching {
-                firebaseExternalAccountService.disableAccount(firebaseUid)
+                firebaseExternalAccountService.revokeRefreshTokens(firebaseUid)
             }.onFailure {
-                log.warn("Failed to disable external account for Firebase UID {}", firebaseUid, it)
+                log.warn("Failed to revoke external tokens for Firebase UID {}", firebaseUid, it)
             }
+            Unit
         }
 
+        runAfterCommit(action)
+    }
+
+    private fun enableExternalAccountAfterCommit(firebaseUid: String) {
+        val action = {
+            runCatching {
+                firebaseExternalAccountService.enableAccount(firebaseUid)
+            }.onFailure {
+                log.warn("Failed to enable external account for Firebase UID {}", firebaseUid, it)
+            }
+            Unit
+        }
+
+        runAfterCommit(action)
+    }
+
+    private fun runAfterCommit(action: () -> Unit) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                 object : TransactionSynchronization {

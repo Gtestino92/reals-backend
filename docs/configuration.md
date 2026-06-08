@@ -27,6 +27,7 @@ Non-sensitive runtime configuration:
 | `SPRING_PROFILES_ACTIVE` | yes | Use `dev` or `prod` outside local development. |
 | `DATABASE_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/reals`. |
 | `DATABASE_USERNAME` | yes | PostgreSQL user. |
+| `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
 | `S3_PROFILE_PHOTOS_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. |
 | `IDENTITY_VERIFICATION_PROVIDER` | no | Defaults to `none`. |
 

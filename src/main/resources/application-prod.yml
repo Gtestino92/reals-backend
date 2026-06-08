@@ -63,6 +63,12 @@ scheduler:
     fixed-delay: 900000
   scheduled-second-chat-start-job:
     fixed-delay: 60000
+  account-deletion-finalization-job:
+    fixed-delay: 3600000
+
+account:
+  deletion:
+    recovery-window-days: ${ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS:30}
 
 matchmaking:
   candidate-pair-limit: 100

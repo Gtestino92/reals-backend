@@ -1,6 +1,8 @@
 package com.reals.backend.service.exception
 
 enum class DomainErrorCode {
+    ACCOUNT_DELETION_FINALIZED,
+    ACCOUNT_PENDING_DELETION,
     ACTIVE_MATCH_LIMIT_REACHED,
     ACTIVE_PENALTY,
     INVALID_MATCH_FILTERS,
