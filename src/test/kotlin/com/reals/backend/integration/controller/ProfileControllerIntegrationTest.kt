@@ -230,7 +230,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         val user = userService.createUser("photo-position-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
-            put("/api/me/profile/photos/0")
+            put("/api/me/profile/photos/position/0")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg"}""")

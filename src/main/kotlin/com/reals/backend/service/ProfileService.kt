@@ -322,9 +322,27 @@ class ProfileService(
 
         val profile = findByIdOrThrow(profileId)
 
-        val existing = profilePhotoRepository.findById(photoId).get()
+        val existing = profilePhotoRepository.findById(photoId)
+            .orElseThrow {
+                NoSuchElementException("Photo not found: $photoId")
+            }
+
+        if (existing.profileId != profileId) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
+                message = "Photo does not belong to profile"
+            )
+        }
+
+        val storageKey = existing.storageKey
 
         profilePhotoRepository.delete(existing)
+
+        storageKey?.let { key ->
+            runCatching {
+                storageService.delete(key)
+            }
+        }
 
         moveActiveProfileToDraftAfterPhotoMutation(profile)
 
