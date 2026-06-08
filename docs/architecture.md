@@ -55,7 +55,7 @@ Chat responsibilities are split conservatively:
 - Entities use UUID primary keys.
 - Enums are persisted as strings.
 - Initial migration: `src/main/resources/db/migration/V1__init.sql`.
-- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-firebase` is the default local profile and `local-nodb` is the no-auth local profile.
+- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-nodb` is the no-auth local H2 profile. `local-firebase` is the default local Firebase profile and currently targets the Docker PostgreSQL datasource.
 
 ## Background Jobs
 
