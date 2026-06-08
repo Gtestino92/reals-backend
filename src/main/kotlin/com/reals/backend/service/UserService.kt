@@ -7,8 +7,12 @@ import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.identity.FirebaseExternalAccountService
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.OffsetDateTime
 import java.util.*
 
@@ -18,7 +22,11 @@ class UserService(
     private val userRepository: UserRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
+    private val accountDeletionService: AccountDeletionService,
+    private val firebaseExternalAccountService: FirebaseExternalAccountService,
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     private companion object {
         private val EMAIL_PATTERN =
@@ -114,8 +122,19 @@ class UserService(
 
     fun deleteUser(userId: UUID) {
         val now = OffsetDateTime.now()
+        val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
+            ?: throw IllegalStateException("Active user not found: $userId")
+
+        check(user.status == UserStatus.ACTIVE) { "Active user not found: $userId" }
+
+        accountDeletionService.closeActiveEngagementsForDeletedUser(
+            userId = userId,
+            now = now
+        )
+
         matchmakingQueueRepository.deleteByUserId(userId)
         activeEngagementLockRepository.deleteByUserId(userId)
+
         val updatedRows = userRepository.softDeleteActiveById(
             userId = userId,
             deletedAt = now,
@@ -123,6 +142,10 @@ class UserService(
         )
 
         check(updatedRows == 1) { "Active user not found: $userId" }
+
+        user.firebaseUid?.let {
+            disableExternalAccountAfterCommit(firebaseUid = it)
+        }
     }
 
     fun lockActiveUserOrThrow(userId: UUID, action: String): User {
@@ -210,6 +233,28 @@ class UserService(
 
         require(EMAIL_PATTERN.matches(normalizedEmail)) {
             "Email format is invalid"
+        }
+    }
+
+    private fun disableExternalAccountAfterCommit(firebaseUid: String) {
+        val action = {
+            runCatching {
+                firebaseExternalAccountService.disableAccount(firebaseUid)
+            }.onFailure {
+                log.warn("Failed to disable external account for Firebase UID {}", firebaseUid, it)
+            }
+        }
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                object : TransactionSynchronization {
+                    override fun afterCommit() {
+                        action()
+                    }
+                }
+            )
+        } else {
+            action()
         }
     }
 }
