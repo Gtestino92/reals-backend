@@ -66,17 +66,29 @@ class FirebaseTokenFilter(
 
         try {
             val decoded = FirebaseAuth.getInstance()
-                .verifyIdToken(token)
+                .verifyIdToken(token, true)
 
             val user = userService.findByFirebaseUid(decoded.uid)
 
             if (user?.status == UserStatus.DELETED) {
-                SecurityContextHolder.clearContext()
-                writeUnauthorized(
-                    response = response,
-                    code = "ACCOUNT_DELETED",
-                    message = "Account was deleted"
-                )
+                if (!isDeletedAccountAllowedPath(request)) {
+                    SecurityContextHolder.clearContext()
+                    writeUnauthorized(
+                        response = response,
+                        code = "ACCOUNT_DELETED",
+                        message = "Account is pending deletion"
+                    )
+                    return
+                }
+
+                SecurityContextHolder.getContext().authentication =
+                    UsernamePasswordAuthenticationToken(
+                        user.id.toString(),
+                        null,
+                        listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                    )
+
+                filterChain.doFilter(request, response)
                 return
             }
 
@@ -109,6 +121,20 @@ class FirebaseTokenFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun isDeletedAccountAllowedPath(request: HttpServletRequest): Boolean {
+        val path = request.servletPath.ifBlank {
+            request.requestURI.removePrefix(request.contextPath)
+        }
+
+        return (
+            request.method.equals("GET", ignoreCase = true) &&
+                path == "/api/me"
+        ) || (
+            request.method.equals("POST", ignoreCase = true) &&
+                path == "/api/me/reactivation"
+        )
     }
 
     private fun writeUnauthorized(

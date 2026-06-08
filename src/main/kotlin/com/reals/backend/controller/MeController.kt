@@ -40,6 +40,18 @@ class MeController(
         return ResponseEntity.ok().build()
     }
 
+    @PostMapping("/api/me/reactivation")
+    fun reactivateMe(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<UserResponse> {
+        val user = userService.reactivateUser(
+            userId = userId
+        )
+        return ResponseEntity.ok(
+            UserResponse.from(user)
+        )
+    }
+
     @PostMapping("/api/me/provision")
     fun provisionMe(
         authentication: Authentication

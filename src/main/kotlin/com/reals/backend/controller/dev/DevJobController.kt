@@ -1,5 +1,6 @@
 package com.reals.backend.controller.dev
 
+import com.reals.backend.scheduler.AccountDeletionFinalizationJob
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.InactivityCheckJob
 import com.reals.backend.scheduler.MatchExpirationJob
@@ -19,6 +20,7 @@ import java.time.OffsetDateTime
 @Profile("local", "local-nodb", "local-postgres")
 @RequestMapping("/api/local-dev/jobs")
 class DevJobController(
+    private val accountDeletionFinalizationJob: ObjectProvider<AccountDeletionFinalizationJob>,
     private val chatTimeoutJob: ObjectProvider<ChatTimeoutJob>,
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
     private val matchExpirationJob: ObjectProvider<MatchExpirationJob>,
@@ -32,6 +34,12 @@ class DevJobController(
     fun runChatTimeout(): ResponseEntity<DevJobRunResponse> =
         runJob("ChatTimeoutJob") {
             requireJob(chatTimeoutJob, "ChatTimeoutJob").runNowForDev()
+        }
+
+    @PostMapping("/account-deletion-finalization/run")
+    fun runAccountDeletionFinalization(): ResponseEntity<DevJobRunResponse> =
+        runJob("AccountDeletionFinalizationJob") {
+            requireJob(accountDeletionFinalizationJob, "AccountDeletionFinalizationJob").runNowForDev()
         }
 
     @PostMapping("/inactivity-check/run")

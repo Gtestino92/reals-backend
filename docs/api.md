@@ -11,7 +11,8 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
-- `DELETE /api/me`: soft-delete the authenticated user account.
+- `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
+- `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -23,10 +24,11 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `POST /api/me/profile/activation`: activate authenticated user's profile.
 - `PUT /api/me/profile/match-filters`: replace dynamic matchmaking filters. Body: `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
 - `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` keeps `identityVerified=false`.
-- `POST /api/me/profile/photos`: add a profile photo.
+- `POST /api/me/profile/photos`: add a profile photo. Supports legacy JSON URL bodies and multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
-- `DELETE /api/me/profile/photos/{position}`: delete photo at position.
-- `PUT /api/me/profile/photos/{position}`: replace photo at position.
+- `DELETE /api/me/profile/photos/{photoId}`: delete photo by id.
+- `PUT /api/me/profile/photos/position/{position}`: replace a photo URL by position. Legacy JSON URL flow.
+- `PUT /api/me/profile/photos/{photoId}/file`: replace an existing photo file by id.
 
 ## Matchmaking
 
@@ -111,9 +113,13 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
 - `PROFILE_FULL_BODY_PHOTO_REQUIRED`: activation requires a full-body photo.
 - `PROFILE_PHOTO_LIMIT_REACHED`: profile already has the maximum number of photos.
+- `ACCOUNT_PENDING_DELETION`: account/email is still inside the deletion recovery window.
+- `ACCOUNT_DELETION_FINALIZED`: account deletion can no longer be recovered.
 - `INVALID_PROFILE_BIRTH_DATE`: birth date is invalid for profile creation.
 - `INVALID_MATCH_FILTERS`: dynamic match filters are internally inconsistent or out of range.
 - `PHOTO_POSITION_INVALID`: requested photo position is outside the configured range.
 - `PHOTO_POSITION_OCCUPIED`: requested photo position is already used.
 - `PHOTO_URL_INVALID`: profile photo URL is not a valid HTTPS URL.
+- `INVALID_PROFILE_PHOTO`: uploaded profile photo file is invalid.
+- `PROFILE_PHOTO_NOT_FOUND`: requested profile photo does not belong to the current profile.
 - `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.

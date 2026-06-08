@@ -11,7 +11,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
 - Revisit a dedicated matchmaking worker process or external queue only if matchmaking volume, latency requirements or CPU cost make the scheduled DB-queue `MatchmakingJob` too expensive for app instances.
-- Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`.
+- Profile location should eventually be validated against a canonical country/city cache instead of only accepting free-text `country` and `city`. Prefer a separate reference endpoint such as `GET /api/reference/countries` returning ISO-3166 alpha-2 country codes and display names, rather than embedding global reference data in `GET /api/me/profile`.
 - Decide where geolocation enters the product flow. The likely point is before first-chat matchmaking/search, using profile location plus future latitude/longitude, geohash or search radius fields.
 - Decide final visibility and UX timing for visual-review personal messages. Current behavior allows reading the partner message during visual review and requires reading it before approving if the partner already submitted one.
 
