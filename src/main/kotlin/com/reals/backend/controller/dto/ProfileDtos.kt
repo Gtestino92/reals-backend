@@ -4,6 +4,7 @@ import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
@@ -165,28 +166,41 @@ data class ProfileResponse(
 }
 
 data class PhotoResponse(
-    val id: UUID,
-    val profileId: UUID,
-    val url: String,
-    val storageProvider: PhotoStorageProvider,
-    val position: Int,
-    val isPersonPhoto: Boolean,
-    val isFullBody: Boolean,
-    val createdAt: OffsetDateTime
+val id: UUID,
+val url: String,
+val position: Int,
+val isPersonPhoto: Boolean,
+val isFullBody: Boolean,
+val validationStatus: PhotoValidationStatus
 ) {
     companion object {
-        fun from(photo: ProfilePhoto) = PhotoResponse(
-            id = photo.id,
-            profileId = photo.profileId,
-            url = photo.url,
-            storageProvider = photo.storageProvider,
-            position = photo.position,
-            isPersonPhoto = photo.isPersonPhoto,
-            isFullBody = photo.isFullBody,
-            createdAt = photo.createdAt
-        )
+        fun from(photo: ProfilePhoto): PhotoResponse {
+            return PhotoResponse(
+                id = photo.id,
+                url = photo.url,
+                position = photo.position,
+                isPersonPhoto = photo.isPersonPhoto,
+                isFullBody = photo.isFullBody,
+                validationStatus = photo.validationStatus
+            )
+        }
+
+        fun from(
+            photo: ProfilePhoto,
+            url: String
+        ): PhotoResponse {
+            return PhotoResponse(
+                id = photo.id,
+                url = url,
+                position = photo.position,
+                isPersonPhoto = photo.isPersonPhoto,
+                isFullBody = photo.isFullBody,
+                validationStatus = photo.validationStatus
+            )
+        }
     }
 }
+
 
 /**
  * Partial profile revealed during the visual phase.

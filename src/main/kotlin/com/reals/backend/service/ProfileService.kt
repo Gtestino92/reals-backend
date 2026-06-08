@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.config.s3.ProfilePhotoStorageProperties
+import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
@@ -15,7 +17,7 @@ import java.net.URI
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
-import java.util.UUID
+import java.util.*
 
 @Service
 @Transactional
@@ -24,6 +26,8 @@ class ProfileService(
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
     private val identityVerificationService: IdentityVerificationService,
+    private val storageService: S3StorageService,
+    private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
 
     @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -142,7 +146,7 @@ class ProfileService(
 
         if (
             profile.status != ProfileStatus.DRAFT &&
-                profile.status != ProfileStatus.INACTIVE
+            profile.status != ProfileStatus.INACTIVE
         ) {
             throw DomainConflictException(
                 code = DomainErrorCode.PROFILE_NOT_ACTIVATABLE,
@@ -158,6 +162,7 @@ class ProfileService(
         return profileRepository.save(profile)
     }
 
+    @Transactional
     fun addPhoto(
         profileId: UUID,
         url: String,
@@ -170,6 +175,42 @@ class ProfileService(
 
         validatePhotoPosition(position)
 
+        validatePhotoCount(profileId, position)
+
+        val trimmedUrl = url.trim()
+        validatePhotoUrl(trimmedUrl)
+
+        val validation = validatePhotoSemanticsWhenNeeded(
+            profileId = profileId,
+            url = trimmedUrl,
+            replacingPhoto = null,
+            isPersonPhoto = isPersonPhoto,
+            isFullBody = isFullBody
+        )
+
+        val photo = profilePhotoRepository.save(
+            ProfilePhoto(
+                profileId = profileId,
+                url = trimmedUrl,
+                storageProvider = PhotoStorageProvider.EXTERNAL_URL,
+                storageBucket = null,
+                storageKey = null,
+                position = position,
+                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
+                isFullBody = isFullBody ?: validation.isFullBody,
+                validationStatus = when {
+                    isPersonPhoto != null || isFullBody != null -> PhotoValidationStatus.VALIDATED
+                    else -> validation.status
+                }
+            )
+        )
+
+        moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+        return photo
+    }
+
+    private fun validatePhotoCount(profileId: UUID, position: Int) {
         if (profilePhotoRepository.findByProfileIdAndPosition(profileId, position) != null) {
             throw DomainConflictException(
                 code = DomainErrorCode.PHOTO_POSITION_OCCUPIED,
@@ -185,59 +226,6 @@ class ProfileService(
                 message = "Profile already has the maximum number of photos ($maxPhotoCount)"
             )
         }
-
-        val trimmedUrl = url.trim()
-        validatePhotoUrl(trimmedUrl)
-
-        val validation = validatePhotoSemanticsWhenNeeded(
-            profileId = profileId,
-            url = trimmedUrl,
-            replacingPhoto = null
-        )
-
-        val photo = profilePhotoRepository.save(
-            ProfilePhoto(
-                profileId = profileId,
-                url = trimmedUrl,
-                position = position,
-                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
-                isFullBody = isFullBody ?: validation.isFullBody
-            )
-        )
-
-        moveActiveProfileToDraftAfterPhotoMutation(profile)
-
-        return photo
-    }
-
-    private fun validatePhotosOrThrow(profileId: UUID) {
-
-        val total = profilePhotoRepository.countByProfileId(profileId)
-        val personCount =
-            profilePhotoRepository.countByProfileIdAndIsPersonPhotoTrue(profileId)
-        val fullBody =
-            profilePhotoRepository.countByProfileIdAndIsFullBodyTrue(profileId)
-
-        if (total < requiredPhotoCount) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_PHOTOS_REQUIRED,
-                message = "Profile must have at least $requiredPhotoCount photos"
-            )
-        }
-
-        if (personCount < minPersonPhotos) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_PERSON_PHOTO_REQUIRED,
-                message = "Profile must have at least $minPersonPhotos person photos"
-            )
-        }
-
-        if (fullBody < minFullBodyPhotos) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_FULL_BODY_PHOTO_REQUIRED,
-                message = "Profile must have at least $minFullBodyPhotos full-body photos"
-            )
-        }
     }
 
     fun isEligibleForMatchmaking(profileId: UUID): Boolean {
@@ -249,6 +237,19 @@ class ProfileService(
         findByIdOrThrow(profileId)
         return profilePhotoRepository.findByProfileId(profileId)
             .sortedBy { it.position }
+    }
+
+    fun getPhotoResponses(profileId: UUID): List<PhotoResponse> {
+        findByIdOrThrow(profileId)
+
+        return profilePhotoRepository.findByProfileId(profileId)
+            .sortedBy { it.position }
+            .map { photo ->
+                PhotoResponse.from(
+                    photo = photo,
+                    url = resolvePhotoReadUrl(photo)
+                )
+            }
     }
 
     fun updateProfile(
@@ -316,19 +317,32 @@ class ProfileService(
 
     fun deletePhoto(
         profileId: UUID,
-        position: Int
+        photoId: UUID
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
 
-        val existing = profilePhotoRepository.findByProfileIdAndPosition(
-            profileId,
-            position
-        ) ?: throw NoSuchElementException(
-            "Photo not found for profile $profileId at position $position"
-        )
+        val existing = profilePhotoRepository.findById(photoId)
+            .orElseThrow {
+                NoSuchElementException("Photo not found: $photoId")
+            }
+
+        if (existing.profileId != profileId) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
+                message = "Photo does not belong to profile"
+            )
+        }
+
+        val storageKey = existing.storageKey
 
         profilePhotoRepository.delete(existing)
+
+        storageKey?.let { key ->
+            runCatching {
+                storageService.delete(key)
+            }
+        }
 
         moveActiveProfileToDraftAfterPhotoMutation(profile)
 
@@ -337,6 +351,7 @@ class ProfileService(
         return profileRepository.save(profile)
     }
 
+    @Transactional
     fun replacePhoto(
         profileId: UUID,
         position: Int,
@@ -349,9 +364,11 @@ class ProfileService(
 
         validatePhotoPosition(position)
 
-        val existing = profilePhotoRepository.findByProfileIdAndPosition(
-            profileId,
-            position
+        val existingPhoto = profilePhotoRepository.findByProfileIdAndPosition(
+            profileId = profileId,
+            position = position
+        ) ?: throw NoSuchElementException(
+            "Photo not found at position $position for profile $profileId"
         )
 
         val trimmedUrl = url.trim()
@@ -360,26 +377,186 @@ class ProfileService(
         val validation = validatePhotoSemanticsWhenNeeded(
             profileId = profileId,
             url = trimmedUrl,
-            replacingPhoto = existing
+            replacingPhoto = existingPhoto,
+            isPersonPhoto = isPersonPhoto,
+            isFullBody = isFullBody
         )
 
-        if (existing != null) {
-            profilePhotoRepository.delete(existing)
+        val oldStorageKey = existingPhoto.storageKey
+
+        existingPhoto.url = trimmedUrl
+        existingPhoto.storageProvider = PhotoStorageProvider.EXTERNAL_URL
+        existingPhoto.storageBucket = null
+        existingPhoto.storageKey = null
+        existingPhoto.isPersonPhoto = validation.isPersonPhoto
+        existingPhoto.isFullBody = validation.isFullBody
+        existingPhoto.validationStatus = validation.status
+
+        val saved = profilePhotoRepository.save(existingPhoto)
+
+        oldStorageKey?.let { key ->
+            runCatching {
+                storageService.delete(key)
+            }
         }
-
-        val photo = profilePhotoRepository.save(
-            ProfilePhoto(
-                profileId = profileId,
-                url = trimmedUrl,
-                position = position,
-                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
-                isFullBody = isFullBody ?: validation.isFullBody
-            )
-        )
 
         moveActiveProfileToDraftAfterPhotoMutation(profile)
 
-        return photo
+        return saved
+    }
+
+    @Transactional
+    fun replacePhoto(
+        profileId: UUID,
+        photoId: UUID,
+        contentType: String?,
+        bytes: ByteArray
+    ): ProfilePhoto {
+
+        val profile = findByIdOrThrow(profileId)
+
+        val existingPhoto = profilePhotoRepository.findById(photoId)
+            .orElseThrow {
+                NoSuchElementException("Photo not found: $photoId")
+            }
+
+        if (existingPhoto.profileId != profileId) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
+                message = "Photo does not belong to profile"
+            )
+        }
+
+        validatePhotoUpload(
+            contentType = contentType,
+            sizeBytes = bytes.size.toLong()
+        )
+
+        val normalizedContentType = contentType!!.lowercase()
+        val newObjectPhotoId = UUID.randomUUID()
+
+        var newUploadedKey: String? = null
+        val oldStorageKey = existingPhoto.storageKey
+
+        try {
+            val storedObject = storageService.uploadProfilePhoto(
+                userId = profile.userId,
+                photoId = newObjectPhotoId,
+                contentType = normalizedContentType,
+                bytes = bytes
+            )
+
+            newUploadedKey = storedObject.key
+
+            val validation = profilePhotoValidationService.validateUploadedPhoto(
+                contentType = normalizedContentType,
+                bytes = bytes,
+                replacingPhoto = existingPhoto
+            )
+
+            existingPhoto.url = storedObject.url
+            existingPhoto.storageProvider = PhotoStorageProvider.S3
+            existingPhoto.storageBucket = storedObject.bucket
+            existingPhoto.storageKey = storedObject.key
+            existingPhoto.isPersonPhoto = validation.isPersonPhoto
+            existingPhoto.isFullBody = validation.isFullBody
+            existingPhoto.validationStatus = validation.status
+
+            val saved = profilePhotoRepository.save(existingPhoto)
+
+            oldStorageKey?.let { key ->
+                runCatching {
+                    storageService.delete(key)
+                }
+            }
+
+            moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+            return saved
+
+        } catch (ex: Exception) {
+            newUploadedKey?.let { key ->
+                runCatching {
+                    storageService.delete(key)
+                }
+            }
+
+            throw ex
+        }
+    }
+
+    @Transactional
+    fun uploadPhoto(
+        profileId: UUID,
+        position: Int,
+        contentType: String?,
+        bytes: ByteArray
+    ): ProfilePhoto {
+
+        val profile = findByIdOrThrow(profileId)
+
+        validatePhotoPosition(position)
+
+        validatePhotoUpload(
+            contentType = contentType,
+            sizeBytes = bytes.size.toLong()
+        )
+
+        validatePhotoCount(profileId, position)
+
+        val normalizedContentType = contentType!!.lowercase()
+        val photoId = UUID.randomUUID()
+
+        var uploadedKey: String? = null
+
+        try {
+            val storedObject = storageService.uploadProfilePhoto(
+                userId = profile.userId,
+                photoId = photoId,
+                contentType = normalizedContentType,
+                bytes = bytes
+            )
+
+            uploadedKey = storedObject.key
+
+            val validation = profilePhotoValidationService.validateUploadedPhoto(
+                contentType = normalizedContentType,
+                bytes = bytes,
+                replacingPhoto = null
+            )
+
+            val photo = profilePhotoRepository.save(
+                ProfilePhoto(
+                    id = photoId,
+                    profileId = profileId,
+                    url = storedObject.url,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = storedObject.bucket,
+                    storageKey = storedObject.key,
+                    position = position,
+                    isPersonPhoto = validation.isPersonPhoto,
+                    isFullBody = validation.isFullBody,
+                    validationStatus = validation.status
+                )
+            )
+
+            moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+            return photo
+
+        } catch (ex: Exception) {
+            uploadedKey?.let { key ->
+                runCatching {
+                    storageService.delete(key)
+                }
+            }
+
+            throw ex
+        }
+    }
+
+    fun resolvePhotoReadUrlForResponse(photo: ProfilePhoto): String {
+        return resolvePhotoReadUrl(photo)
     }
 
     private fun moveActiveProfileToDraftAfterPhotoMutation(profile: Profile) {
@@ -392,20 +569,49 @@ class ProfileService(
     private fun validatePhotoSemanticsWhenNeeded(
         profileId: UUID,
         url: String,
-        replacingPhoto: ProfilePhoto?
+        replacingPhoto: ProfilePhoto?,
+        isPersonPhoto: Boolean?,
+        isFullBody: Boolean?
     ): ProfilePhotoValidationResult {
-        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
+        if (isPersonPhoto != null && isFullBody != null) {
             return ProfilePhotoValidationResult(
-                isPersonPhoto = false,
-                isFullBody = false
+                isPersonPhoto = isPersonPhoto,
+                isFullBody = isFullBody,
+                status = PhotoValidationStatus.VALIDATED
             )
         }
 
-        return profilePhotoValidationService.validate(
-            ProfilePhotoValidationRequest(
-                url = url
+        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
+            return ProfilePhotoValidationResult(
+                isPersonPhoto = isPersonPhoto ?: false,
+                isFullBody = isFullBody ?: false,
+                status = PhotoValidationStatus.PENDING
             )
+        }
+
+        val validation = profilePhotoValidationService.validateExternalUrl(
+            url = url,
+            replacingPhoto = replacingPhoto
         )
+
+        return ProfilePhotoValidationResult(
+            isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
+            isFullBody = isFullBody ?: validation.isFullBody,
+            status = validation.status
+        )
+    }
+
+    private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
+        return when (photo.storageProvider) {
+            PhotoStorageProvider.EXTERNAL_URL -> photo.url
+
+            PhotoStorageProvider.S3 -> {
+                val key = photo.storageKey
+                    ?: throw IllegalStateException("S3 photo without storage key: ${photo.id}")
+
+                storageService.getReadUrl(key)
+            }
+        }
     }
 
     private fun needsPhotoSemanticValidation(
@@ -414,11 +620,11 @@ class ProfileService(
     ): Boolean {
         val personCount =
             profilePhotoRepository.countByProfileIdAndIsPersonPhotoTrue(profileId) -
-                if (replacingPhoto?.isPersonPhoto == true) 1 else 0
+                    if (replacingPhoto?.isPersonPhoto == true) 1 else 0
 
         val fullBodyCount =
             profilePhotoRepository.countByProfileIdAndIsFullBodyTrue(profileId) -
-                if (replacingPhoto?.isFullBody == true) 1 else 0
+                    if (replacingPhoto?.isFullBody == true) 1 else 0
 
         return personCount < minPersonPhotos || fullBodyCount < minFullBodyPhotos
     }
@@ -527,7 +733,7 @@ class ProfileService(
         val uri =
             try {
                 URI(url)
-            } catch (ex: IllegalArgumentException) {
+            } catch (_: IllegalArgumentException) {
                 throw DomainBadRequestException(
                     code = DomainErrorCode.PHOTO_URL_INVALID,
                     message = "Photo URL must be a valid HTTPS URL"
@@ -542,6 +748,71 @@ class ProfileService(
         }
     }
 
+    private fun validatePhotoUpload(
+        contentType: String?,
+        sizeBytes: Long
+    ) {
+        if (contentType.isNullOrBlank()) {
+            throw DomainConflictException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Photo content type is required"
+            )
+        }
+
+        val normalizedContentType = contentType.lowercase()
+
+        if (!profilePhotoStorageProperties.allowedContentTypes.contains(normalizedContentType)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Unsupported photo content type: $contentType"
+            )
+        }
+
+        if (sizeBytes <= 0) {
+            throw DomainConflictException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Photo file is empty"
+            )
+        }
+
+        if (sizeBytes > profilePhotoStorageProperties.maxSizeBytes) {
+            throw DomainConflictException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Photo exceeds maximum size"
+            )
+        }
+    }
+
+    private fun validatePhotosOrThrow(profileId: UUID) {
+        val photos = profilePhotoRepository.findByProfileId(profileId)
+            .filter { it.validationStatus == PhotoValidationStatus.VALIDATED }
+
+        val total = photos.size
+        val personCount = photos.count { it.isPersonPhoto }
+        val fullBodyCount = photos.count { it.isFullBody }
+
+        if (total < requiredPhotoCount) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTOS_REQUIRED,
+                message = "Profile must have at least $requiredPhotoCount validated photos"
+            )
+        }
+
+        if (personCount < minPersonPhotos) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PERSON_PHOTO_REQUIRED,
+                message = "Profile must have at least $minPersonPhotos validated person photos"
+            )
+        }
+
+        if (fullBodyCount < minFullBodyPhotos) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_FULL_BODY_PHOTO_REQUIRED,
+                message = "Profile must have at least $minFullBodyPhotos validated full-body photos"
+            )
+        }
+    }
+
     private fun normalizeOptionalText(value: String?): String? =
         value?.trim()?.takeIf { it.isNotBlank() }
 
@@ -552,5 +823,40 @@ class ProfileService(
         require(value.none { it.isISOControl() }) {
             "$fieldName cannot contain control characters"
         }
+    }
+
+    private fun validateUploadedPhotoOrPending(
+        contentType: String,
+        bytes: ByteArray,
+        replacingPhoto: ProfilePhoto?
+    ): ProfilePhotoValidationResult {
+        return profilePhotoValidationService.validateUploadedPhoto(
+            contentType = contentType,
+            bytes = bytes,
+            replacingPhoto = replacingPhoto
+        )
+    }
+
+    /*
+     * Este método puede quedar solo para el endpoint legacy addPhoto(url).
+     * Para el flujo nuevo multipart, no se usa.
+     */
+    private fun validateExternalPhotoSemanticsWhenNeeded(
+        profileId: UUID,
+        url: String,
+        replacingPhoto: ProfilePhoto?
+    ): ProfilePhotoValidationResult {
+        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
+            return ProfilePhotoValidationResult(
+                isPersonPhoto = false,
+                isFullBody = false,
+                status = PhotoValidationStatus.PENDING
+            )
+        }
+
+        return profilePhotoValidationService.validateExternalUrl(
+            url = url,
+            replacingPhoto = replacingPhoto
+        )
     }
 }

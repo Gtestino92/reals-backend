@@ -92,10 +92,26 @@ paths:
     delete:
       tags: [Me]
       summary: Soft-delete the authenticated backend user
-      description: Marks the authenticated backend user as deleted and prevents future Firebase-token access for that Firebase identity.
+      description: Marks the authenticated backend user as pending deletion, closes active engagements, moves the profile back to DRAFT, and keeps the account recoverable during the configured recovery window.
       responses:
         '200':
-          description: Account soft-deleted
+          description: Account deletion scheduled
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/reactivation:
+    post:
+      tags: [Me]
+      summary: Reactivate the authenticated backend user
+      description: Restores a deleted account while it is still inside the deletion recovery window. Profile data and photos are preserved, but profile status remains DRAFT and previous engagements are not reopened.
+      responses:
+        '200':
+          description: Reactivated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -177,6 +193,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Add a profile photo at a position
+      description: Supports legacy JSON external URL uploads and multipart file uploads.
       requestBody:
         $ref: '#/components/requestBodies/AddPhoto'
       responses:
@@ -202,12 +219,12 @@ paths:
                   $ref: '#/components/schemas/PhotoResponse'
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/me/profile/photos/{position}:
+  /api/me/profile/photos/{photoId}:
     parameters:
-      - $ref: '#/components/parameters/PhotoPosition'
+      - $ref: '#/components/parameters/PhotoId'
     delete:
       tags: [Profiles]
-      summary: Delete a profile photo by position
+      summary: Delete a profile photo by id
       responses:
         '200':
           $ref: '#/components/responses/Profile'
@@ -217,11 +234,32 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/me/profile/photos/position/{position}:
+    parameters:
+      - $ref: '#/components/parameters/PhotoPosition'
     put:
       tags: [Profiles]
-      summary: Replace a profile photo by position
+      summary: Replace a profile photo URL by position
+      description: Legacy JSON external URL flow.
       requestBody:
         $ref: '#/components/requestBodies/ReplacePhoto'
+      responses:
+        '200':
+          $ref: '#/components/responses/Photo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/photos/{photoId}/file:
+    parameters:
+      - $ref: '#/components/parameters/PhotoId'
+    put:
+      tags: [Profiles]
+      summary: Replace a profile photo file by id
+      requestBody:
+        $ref: '#/components/requestBodies/ReplacePhotoFile'
       responses:
         '200':
           $ref: '#/components/responses/Photo'
@@ -650,6 +688,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    PhotoId:
+      name: photoId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     PhotoPosition:
       name: position
       in: path
@@ -680,12 +723,21 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AddPhotoRequest'
+        multipart/form-data:
+          schema:
+            $ref: '#/components/schemas/UploadPhotoFileRequest'
     ReplacePhoto:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ReplacePhotoRequest'
+    ReplacePhotoFile:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            $ref: '#/components/schemas/ReplacePhotoFileRequest'
     EnqueueMatchmaking:
       required: true
       content:
@@ -842,10 +894,13 @@ components:
         message: { type: string }
     UserResponse:
       type: object
-      required: [id, createdAt]
+      required: [id, status, createdAt]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email, nullable: true }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        deletedAt: { type: string, format: date-time, nullable: true }
+        deletionFinalizesAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
     CreateProfileRequest:
       type: object
@@ -897,6 +952,21 @@ components:
         url: { type: string, pattern: '^https://\S+$', maxLength: 512 }
         isPersonPhoto: { type: boolean, nullable: true }
         isFullBody: { type: boolean, nullable: true }
+    UploadPhotoFileRequest:
+      type: object
+      required: [file, position]
+      properties:
+        file:
+          type: string
+          format: binary
+        position: { type: integer, minimum: 1, maximum: 9 }
+    ReplacePhotoFileRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
     ProfileResponse:
       type: object
       required: [id, userId, displayName, birthDate, age, identityVerified, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
@@ -922,16 +992,14 @@ components:
         updatedAt: { type: string, format: date-time }
     PhotoResponse:
       type: object
-      required: [id, profileId, url, storageProvider, position, isPersonPhoto, isFullBody, createdAt]
+      required: [id, url, position, isPersonPhoto, isFullBody, validationStatus]
       properties:
         id: { type: string, format: uuid }
-        profileId: { type: string, format: uuid }
         url: { type: string }
-        storageProvider: { $ref: '#/components/schemas/PhotoStorageProvider' }
         position: { type: integer }
         isPersonPhoto: { type: boolean }
         isFullBody: { type: boolean }
-        createdAt: { type: string, format: date-time }
+        validationStatus: { $ref: '#/components/schemas/PhotoValidationStatus' }
     VisualProfileResponse:
       type: object
       required: [profileId, displayName, age, photos]
@@ -1120,9 +1188,15 @@ components:
     ProfileStatus:
       type: string
       enum: [DRAFT, ACTIVE, INACTIVE]
+    UserStatus:
+      type: string
+      enum: [ACTIVE, DELETED]
     PhotoStorageProvider:
       type: string
       enum: [EXTERNAL_URL, S3]
+    PhotoValidationStatus:
+      type: string
+      enum: [PENDING, VALIDATED, FAILED]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]

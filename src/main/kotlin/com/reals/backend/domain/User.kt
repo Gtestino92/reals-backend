@@ -9,7 +9,6 @@ import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.time.OffsetDateTime
 import java.util.UUID
-import kotlin.time.Instant
 
 @Entity
 @Table(name = "users")
@@ -40,6 +39,9 @@ data class User(
 
     @Column(name = "deleted_at")
     var deletedAt: OffsetDateTime? = null,
+
+    @Column(name = "deletion_finalizes_at")
+    var deletionFinalizesAt: OffsetDateTime? = null,
 )
 
 enum class UserStatus {

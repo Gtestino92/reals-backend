@@ -18,6 +18,8 @@ import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.service.ChatExitService
@@ -108,6 +110,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository
+
+    @Autowired
+    protected lateinit var userRepository: UserRepository
+
+    @Autowired
+    protected lateinit var profileRepository: ProfileRepository
 
     protected fun createActiveProfile(
         email: String,

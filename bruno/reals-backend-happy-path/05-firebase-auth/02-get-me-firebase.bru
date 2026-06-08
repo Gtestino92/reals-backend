@@ -19,8 +19,8 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error("Expected authenticated user response with id.");
   }
-  if (body.email !== "test@example.com") {
-    throw new Error(`Expected Firebase user email test@example.com, got ${body.email}`);
+  if (body.email !== "test@test.com") {
+    throw new Error(`Expected Firebase user email test@test.com, got ${body.email}`);
   }
   bru.setEnvVar("firebaseUserId", body.id);
 }

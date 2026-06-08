@@ -41,5 +41,8 @@ bin/
 ### VS Code ###
 .vscode/
 
+### VS Code ###
+minio-data/
+
 ### Mac OS ###
 .DS_Store

@@ -2,6 +2,7 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -75,6 +76,8 @@ class MeControllerIntegrationTest : ControllerIT() {
         val deletedUser = userService.findByIdOrThrow(user.id)
         kotlin.test.assertEquals(com.reals.backend.domain.UserStatus.DELETED, deletedUser.status)
         kotlin.test.assertNotNull(deletedUser.deletedAt)
+        kotlin.test.assertNotNull(deletedUser.deletionFinalizesAt)
+        kotlin.test.assertEquals(user.email, deletedUser.email)
     }
 
     @Test
@@ -88,5 +91,42 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+    }
+
+    @Test
+    fun `reactivate me restores deleted authenticated user`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-${UUID.randomUUID()}",
+            email = "reactivate-me-${UUID.randomUUID()}@example.com"
+        )
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            post("/api/me/reactivation")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.deletedAt").doesNotExist())
+            .andExpect(jsonPath("$.deletionFinalizesAt").doesNotExist())
+    }
+
+    @Test
+    fun `get me returns pending deletion account state`() {
+        val user = userService.createUser("deleted-me-${UUID.randomUUID()}@example.com")
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            get("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+            .andExpect(jsonPath("$.status", equalTo("DELETED")))
+            .andExpect(jsonPath("$.deletedAt", notNullValue()))
+            .andExpect(jsonPath("$.deletionFinalizesAt", notNullValue()))
     }
 }
