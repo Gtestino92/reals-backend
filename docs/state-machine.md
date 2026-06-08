@@ -26,6 +26,7 @@ Terminal states:
 Allowed transitions:
 
 - `AVAILABLE -> ACTIVE`
+- `AVAILABLE -> CANCELLED` only for explicit account-deletion closure
 - `ACTIVE -> FINISHED`
 - `ACTIVE -> CANCELLED`
 - `ACTIVE -> EXPIRED`
@@ -84,5 +85,6 @@ Terminal states:
 - Match rejection or expiration deletes `MATCH` locks.
 - Connection creation upgrades locks from `MATCH` to `CONNECTION`.
 - Connection closure deletes `CONNECTION` locks.
+- Account deletion closes active visible chats, rejects in-progress match phases, closes active connections, fails pending scheduling negotiations and deletes the deleted user's locks while preserving historical rows for the remaining participant.
 
 State transitions and lock changes should stay coupled in service methods.

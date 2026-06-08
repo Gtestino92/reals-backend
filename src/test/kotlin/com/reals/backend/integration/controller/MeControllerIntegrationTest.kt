@@ -4,6 +4,7 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -56,5 +57,36 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
+    }
+
+    @Test
+    fun `delete me soft deletes authenticated user`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-${UUID.randomUUID()}",
+            email = "delete-me-${UUID.randomUUID()}@example.com"
+        )
+
+        mockMvc.perform(
+            delete("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+
+        val deletedUser = userService.findByIdOrThrow(user.id)
+        kotlin.test.assertEquals(com.reals.backend.domain.UserStatus.DELETED, deletedUser.status)
+        kotlin.test.assertNotNull(deletedUser.deletedAt)
+    }
+
+    @Test
+    fun `delete me returns conflict when account is already deleted`() {
+        val user = userService.createUser("already-deleted-${UUID.randomUUID()}@example.com")
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            delete("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
     }
 }
