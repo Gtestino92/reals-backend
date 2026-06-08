@@ -46,6 +46,12 @@ scheduler:
     fixed-delay: 3600000
   scheduling-timeout-job:
     fixed-delay: 3600000
+  account-deletion-finalization-job:
+    fixed-delay: 3600000
+
+account:
+  deletion:
+    recovery-window-days: 30
 
 matchmaking:
   candidate-pair-limit: 5

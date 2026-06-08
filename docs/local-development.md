@@ -249,6 +249,12 @@ For example:
 POST /api/local-dev/jobs/scheduled-second-chat-start/run
 ```
 
+Recoverable account deletion finalization can be triggered manually with:
+
+```http
+POST /api/local-dev/jobs/account-deletion-finalization/run
+```
+
 ## Local Profile Photo Rules
 
 Local H2 profile overrides:
@@ -281,4 +287,7 @@ Current migration:
 
 ```text
 V1__init.sql
+V2__profile_dynamic_match_filters.sql
+V3__add_user_soft_delete.sql
+V4__account_deletion_recovery_window.sql
 ```
