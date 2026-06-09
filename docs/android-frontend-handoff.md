@@ -87,6 +87,7 @@ more important to prove auth, local networking and backend error handling first.
 - Treat enum values as exact uppercase backend strings from `docs/openapi.yaml`.
 - Handle `409 Conflict` as domain state feedback, not as a generic network error.
 - Do not persist profile-photo read URLs as permanent media identifiers. They may expire; refresh them by fetching the profile/photos again.
+- Use `GET /api/me/home` as the current-state discovery endpoint for home/navigation after profile activation.
 
 ## First Authenticated Flow
 
@@ -114,7 +115,7 @@ Build thin vertical slices in this order:
 2. Profile create/edit.
 3. Photo manager with file picker, multipart upload, replace and delete.
 4. Profile activation and match filters.
-5. Matchmaking queue with location permission.
+5. Matchmaking queue with location permission and `GET /api/me/home` polling.
 6. First chat with REST polling/manual refresh.
 7. First-chat decision.
 8. Visual review.

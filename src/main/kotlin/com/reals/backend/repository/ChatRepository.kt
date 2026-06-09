@@ -22,6 +22,16 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         chatType: ChatType
     ): Chat?
 
+    fun findByMatchIdInAndChatType(
+        matchIds: Collection<UUID>,
+        chatType: ChatType
+    ): List<Chat>
+
+    fun findByConnectionIdInAndChatType(
+        connectionIds: Collection<UUID>,
+        chatType: ChatType
+    ): List<Chat>
+
     fun findByMatchIdInAndStatusIn(
         matchIds: Collection<UUID>,
         statuses: Collection<ChatStatus>
