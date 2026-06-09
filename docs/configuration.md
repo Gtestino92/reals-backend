@@ -119,7 +119,8 @@ Runtime liveness checks should call:
 GET /actuator/health/liveness
 ```
 
-Post-deploy smoke checks should verify both readiness and:
+Post-deploy smoke checks should verify readiness, ping and the image metadata
+served by `/actuator/info`:
 
 ```http
 GET /actuator/info
@@ -138,3 +139,8 @@ from a CI-built image:
   }
 }
 ```
+
+Use the manual `Smoke check` GitHub Actions workflow after a runtime update. For
+the dev environment, set `expected_image_repository` to
+`ghcr.io/gtestino92/reals-backend`, `expected_image_tag` to `development` and
+`expected_image_revision` to the deployed commit SHA or its prefix.
