@@ -88,6 +88,7 @@ engagement:
 storage:
   s3:
     endpoint: http://localhost:9000
+    presigned-url-endpoint: http://localhost:9000
     region: us-east-1
     bucket: reals-profile-photos-test
     access-key-id: test
@@ -95,6 +96,7 @@ storage:
     public-base-url: http://localhost:9000/reals-profile-photos-test
     path-style-access-enabled: true
     signed-url-duration-minutes: 15
+    read-url-mode: PRESIGNED
   profile-photos:
     max-size-bytes: 5242880
     allowed-content-types:
