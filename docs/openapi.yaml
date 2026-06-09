@@ -995,7 +995,9 @@ components:
       required: [id, url, position, isPersonPhoto, isFullBody, validationStatus]
       properties:
         id: { type: string, format: uuid }
-        url: { type: string }
+        url:
+          type: string
+          description: Renderable photo read URL. May be a time-limited presigned URL for private object storage.
         position: { type: integer }
         isPersonPhoto: { type: boolean }
         isFullBody: { type: boolean }

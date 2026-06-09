@@ -30,6 +30,10 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `PUT /api/me/profile/photos/position/{position}`: replace a photo URL by position. Legacy JSON URL flow.
 - `PUT /api/me/profile/photos/{photoId}/file`: replace an existing photo file by id.
 
+Photo response `url` values are renderable read URLs. For private S3/R2/MinIO
+storage they may be presigned and time-limited, so clients should use them for
+display and refetch them when needed instead of persisting them permanently.
+
 ## Matchmaking
 
 - `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`.
@@ -98,6 +102,7 @@ Common mappings:
 - `NoSuchElementException`: `404 Not Found`
 - `IllegalArgumentException`: `400 Bad Request`
 - `IllegalStateException`: `409 Conflict`
+- `DomainNotFoundException`: `404 Not Found` with stable domain code
 - generic exception: `500 Internal Server Error`
 
 Selected stable frontend-facing domain codes:
@@ -108,6 +113,7 @@ Selected stable frontend-facing domain codes:
 - `ACTIVE_MATCH_LIMIT_REACHED`: user has reached the active match limit.
 - `INVALID_SEARCH_LOCATION`: provided matchmaking search location is invalid.
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
+- `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
 - `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
 - `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
