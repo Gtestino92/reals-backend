@@ -13,6 +13,7 @@ enum class DomainErrorCode {
     PHOTO_URL_INVALID,
     PROFILE_ALREADY_EXISTS,
     PROFILE_FULL_BODY_PHOTO_REQUIRED,
+    PROFILE_NOT_FOUND,
     PROFILE_NOT_ACTIVE,
     PROFILE_NOT_ACTIVATABLE,
     PROFILE_PERSON_PHOTO_REQUIRED,
@@ -36,6 +37,11 @@ class DomainBadRequestException(
 ) : DomainException(code, message)
 
 class DomainConflictException(
+    code: DomainErrorCode,
+    message: String
+) : DomainException(code, message)
+
+class DomainNotFoundException(
     code: DomainErrorCode,
     message: String
 ) : DomainException(code, message)
