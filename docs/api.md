@@ -11,6 +11,7 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
+- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, queue state, active matches with first-chat ids and active connections with second-chat ids when available.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
@@ -30,11 +31,18 @@ Most current-user flows should prefer `@CurrentUserId` instead of accepting arbi
 - `PUT /api/me/profile/photos/position/{position}`: replace a photo URL by position. Legacy JSON URL flow.
 - `PUT /api/me/profile/photos/{photoId}/file`: replace an existing photo file by id.
 
+Photo response `url` values are renderable read URLs. For private S3/R2/MinIO
+storage they may be presigned and time-limited, so clients should use them for
+display and refetch them when needed instead of persisting them permanently.
+
 ## Matchmaking
 
 - `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`.
 - `DELETE /api/matchmaking/queue`: remove authenticated user from queue.
 - `GET /api/matchmaking/queue`: check queue status for authenticated user.
+
+After enqueueing, clients should poll `GET /api/me/home` to discover whether the
+queue entry has become an active match. Do not infer match/chat ids locally.
 
 ## Matches
 
@@ -98,6 +106,7 @@ Common mappings:
 - `NoSuchElementException`: `404 Not Found`
 - `IllegalArgumentException`: `400 Bad Request`
 - `IllegalStateException`: `409 Conflict`
+- `DomainNotFoundException`: `404 Not Found` with stable domain code
 - generic exception: `500 Internal Server Error`
 
 Selected stable frontend-facing domain codes:
@@ -108,6 +117,7 @@ Selected stable frontend-facing domain codes:
 - `ACTIVE_MATCH_LIMIT_REACHED`: user has reached the active match limit.
 - `INVALID_SEARCH_LOCATION`: provided matchmaking search location is invalid.
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
+- `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
 - `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
 - `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.

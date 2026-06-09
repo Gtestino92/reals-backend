@@ -100,6 +100,24 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/me/home:
+    get:
+      tags: [Me]
+      summary: Get authenticated user's current home state
+      description: Returns profile status, queue state and active engagement discovery data. Clients should poll this after enqueueing to discover active match/chat ids.
+      responses:
+        '200':
+          description: Current home state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/me/reactivation:
     post:
       tags: [Me]
@@ -853,6 +871,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated user is not allowed to access this resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource not found
       content:
@@ -902,6 +926,57 @@ components:
         deletedAt: { type: string, format: date-time, nullable: true }
         deletionFinalizesAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+    HomeResponse:
+      type: object
+      required: [queue, activeMatches, activeConnections]
+      properties:
+        profileStatus:
+          allOf:
+            - $ref: '#/components/schemas/ProfileStatus'
+          nullable: true
+        queue:
+          $ref: '#/components/schemas/HomeQueueResponse'
+        activeMatches:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomeMatchResponse'
+        activeConnections:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomeConnectionResponse'
+    HomeQueueResponse:
+      type: object
+      required: [inQueue]
+      properties:
+        inQueue: { type: boolean }
+    HomeMatchResponse:
+      type: object
+      required: [matchId, matchState]
+      properties:
+        matchId: { type: string, format: uuid }
+        matchState: { $ref: '#/components/schemas/MatchState' }
+        firstChat:
+          allOf:
+            - $ref: '#/components/schemas/HomeChatResponse'
+          nullable: true
+    HomeConnectionResponse:
+      type: object
+      required: [connectionId, matchId, connectionState]
+      properties:
+        connectionId: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        connectionState: { $ref: '#/components/schemas/ConnectionState' }
+        secondChat:
+          allOf:
+            - $ref: '#/components/schemas/HomeChatResponse'
+          nullable: true
+    HomeChatResponse:
+      type: object
+      required: [chatId, chatType, chatStatus]
+      properties:
+        chatId: { type: string, format: uuid }
+        chatType: { $ref: '#/components/schemas/ChatType' }
+        chatStatus: { $ref: '#/components/schemas/ChatStatus' }
     CreateProfileRequest:
       type: object
       required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
@@ -995,7 +1070,9 @@ components:
       required: [id, url, position, isPersonPhoto, isFullBody, validationStatus]
       properties:
         id: { type: string, format: uuid }
-        url: { type: string }
+        url:
+          type: string
+          description: Renderable photo read URL. May be a time-limited presigned URL for private object storage.
         position: { type: integer }
         isPersonPhoto: { type: boolean }
         isFullBody: { type: boolean }

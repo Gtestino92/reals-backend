@@ -8,6 +8,7 @@ import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
 import jakarta.transaction.Transactional
@@ -324,14 +325,11 @@ class ProfileService(
 
         val existing = profilePhotoRepository.findById(photoId)
             .orElseThrow {
-                NoSuchElementException("Photo not found: $photoId")
+                profilePhotoNotFound(photoId)
             }
 
         if (existing.profileId != profileId) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
-                message = "Photo does not belong to profile"
-            )
+            throw profilePhotoNotFound(photoId)
         }
 
         val storageKey = existing.storageKey
@@ -417,14 +415,11 @@ class ProfileService(
 
         val existingPhoto = profilePhotoRepository.findById(photoId)
             .orElseThrow {
-                NoSuchElementException("Photo not found: $photoId")
+                profilePhotoNotFound(photoId)
             }
 
         if (existingPhoto.profileId != profileId) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
-                message = "Photo does not belong to profile"
-            )
+            throw profilePhotoNotFound(photoId)
         }
 
         validatePhotoUpload(
@@ -859,4 +854,10 @@ class ProfileService(
             replacingPhoto = replacingPhoto
         )
     }
+
+    private fun profilePhotoNotFound(photoId: UUID): DomainNotFoundException =
+        DomainNotFoundException(
+            code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
+            message = "Profile photo not found: $photoId"
+        )
 }

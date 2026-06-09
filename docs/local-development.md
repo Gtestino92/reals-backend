@@ -83,6 +83,14 @@ datasource host because `postgres` is the Docker Compose service name:
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/reals
 ```
 
+If the host-run app uses Docker Compose MinIO, also use a host-reachable S3
+endpoint:
+
+```text
+S3_ENDPOINT=http://localhost:9000
+S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+```
+
 ## Local Auto-Auth
 
 With `local-nodb`, no authorization header is needed. `DevAutoAuthFilter` injects:
@@ -221,6 +229,39 @@ Stop backend and database without deleting the database volume:
 docker compose down
 ```
 
+### Local MinIO Profile Photos
+
+The Docker Compose setup also runs MinIO for profile photo uploads:
+
+```text
+S3_ENDPOINT=http://minio:9000
+S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+S3_READ_URL_MODE=PRESIGNED
+```
+
+The backend uploads objects through the internal Docker hostname `minio`, but
+generates browser-facing presigned read URLs with `localhost`. Buckets remain
+private locally; frontend clients should render the returned `url` directly and
+must not persist it as a permanent object URL because it expires.
+
+For Android Emulator rendering, `localhost` points to the emulator itself. Use a
+local runtime override instead:
+
+```text
+S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
+```
+
+Keep that override local. It is developer-machine specific and should not be
+committed to `docker-compose.yml`.
+
+Bruno tracked environment templates must contain placeholders only. Put real
+Firebase API keys, test-user passwords and tokens in ignored local environment
+files such as:
+
+```text
+bruno/reals-backend-happy-path/environments/local.bru
+```
+
 ## Local Jobs
 
 Local profiles disable automatic scheduled execution:
@@ -257,7 +298,7 @@ POST /api/local-dev/jobs/account-deletion-finalization/run
 
 ## Local Profile Photo Rules
 
-Local H2 profile overrides:
+Local/test profile overrides:
 
 - max photos: `9`
 - required photos: `4`
@@ -289,5 +330,6 @@ Current migration:
 V1__init.sql
 V2__profile_dynamic_match_filters.sql
 V3__add_user_soft_delete.sql
-V4__account_deletion_recovery_window.sql
+V4__profile_photo_storage_validation.sql
+V5__account_deletion_recovery_window.sql
 ```

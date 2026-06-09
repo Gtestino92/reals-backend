@@ -4,7 +4,7 @@ This document describes the current backend flow. It separates implemented behav
 
 ## 1. User And Profile
 
-Local development injects a fixed authenticated user through `DevAutoAuthFilter`. Real authentication is intended to use Firebase-backed current-user resolution.
+Local no-auth development can inject a fixed authenticated user through `DevAutoAuthFilter`. The default local Firebase profile and shared environments use Firebase-backed current-user resolution.
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
@@ -50,10 +50,12 @@ Approval still requires both users. Cancellation can end the chat earlier throug
 
 Each user submits one `VisualDecision`.
 
-- Mutual `APPROVED`: personal messages become visible, match moves to `VISUAL_APPROVED`, connection is created and scheduling is initialized.
+- Mutual `APPROVED`: match moves to `VISUAL_APPROVED`, connection is created and scheduling is initialized.
 - Any `REJECTED`: match moves to `VISUAL_REJECTED`, locks are released.
 
-Personal messages are stored on `VisualReview` and are only visible after mutual visual approval.
+Personal messages are stored on `VisualReview`. Current behavior allows reading
+the partner message during visual review once it exists, and requires reading it
+before approving if the partner already submitted one.
 
 ## 6. Connection Creation
 

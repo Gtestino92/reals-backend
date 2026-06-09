@@ -46,3 +46,6 @@ minio-data/
 
 ### Mac OS ###
 .DS_Store
+bruno/reals-backend-happy-path/environments/*.local.bru
+bruno/reals-backend-happy-path/environments/local.*.bru
+!bruno/reals-backend-happy-path/environments/local.template.bru

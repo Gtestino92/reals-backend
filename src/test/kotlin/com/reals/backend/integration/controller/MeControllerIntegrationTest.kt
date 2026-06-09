@@ -1,5 +1,7 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.Gender
+import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
@@ -128,5 +130,66 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.status", equalTo("DELETED")))
             .andExpect(jsonPath("$.deletedAt", notNullValue()))
             .andExpect(jsonPath("$.deletionFinalizesAt", notNullValue()))
+    }
+
+    @Test
+    fun `home returns profile and queue state`() {
+        val userId = createActiveProfile(
+            email = "home-queue-${UUID.randomUUID()}@example.com",
+            displayName = "Home Queue",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        enqueueForMatchmaking(userId)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(true)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns active first chat discovery data`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("CHAT_ACTIVE")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatType", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns active connection discovery data`() {
+        val setup = createAvailableSecondChat()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeConnections[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.activeConnections[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeConnections[0].connectionState", equalTo("SECOND_CHAT_AVAILABLE")))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatStatus", equalTo("AVAILABLE")))
     }
 }

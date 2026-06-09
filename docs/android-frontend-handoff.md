@@ -27,7 +27,8 @@ Optional but useful later:
 - Auth is Firebase ID token as `Authorization: Bearer <id-token>`.
 - There is no cloud dev URL yet, so Android development starts against a local backend.
 - Chats are REST-only for now; do not assume WebSockets or push notifications.
-- Profile photos currently use HTTPS URLs; direct mobile upload is not implemented yet.
+- Profile photos support multipart file upload. Returned photo `url` values are renderable read URLs and may be time-limited presigned MinIO/S3/R2 URLs.
+- Account deletion is recoverable during the backend recovery window. Reactivation is explicit through `POST /api/me/reactivation`; a deleted account should not be silently recreated through provisioning.
 - Backend is state-machine driven. The UI should render actions from backend state instead of inventing local transitions.
 
 ## Local Base URLs
@@ -85,6 +86,8 @@ more important to prove auth, local networking and backend error handling first.
 - Treat UUIDs as strings at the API edge.
 - Treat enum values as exact uppercase backend strings from `docs/openapi.yaml`.
 - Handle `409 Conflict` as domain state feedback, not as a generic network error.
+- Do not persist profile-photo read URLs as permanent media identifiers. They may expire; refresh them by fetching the profile/photos again.
+- Use `GET /api/me/home` as the current-state discovery endpoint for home/navigation after profile activation.
 
 ## First Authenticated Flow
 
@@ -98,15 +101,21 @@ After Firebase login:
 6. If profile exists but `status != ACTIVE`, route to completion/activation.
 7. If profile is `ACTIVE`, route to matchmaking/home.
 
+If provisioning returns `ACCOUNT_PENDING_DELETION`, route to a recovery screen
+instead of profile creation. The user can call `POST /api/me/reactivation` while
+the recovery window is open. Reactivation restores the account, keeps profile
+data/photos, leaves the profile in `DRAFT` and does not reopen previous chats or
+connections.
+
 ## Suggested First App Areas
 
 Build thin vertical slices in this order:
 
 1. Auth/provision gate.
 2. Profile create/edit.
-3. Photo manager placeholder using HTTPS URL input.
+3. Photo manager with file picker, multipart upload, replace and delete.
 4. Profile activation and match filters.
-5. Matchmaking queue with location permission.
+5. Matchmaking queue with location permission and `GET /api/me/home` polling.
 6. First chat with REST polling/manual refresh.
 7. First-chat decision.
 8. Visual review.
@@ -150,7 +159,27 @@ source of truth when writing DTOs or generating a client.
 
 ## Open Questions For Frontend Planning
 
-- Photo upload: start with URL input, or wait for upload infrastructure.
 - Remote testing: no deployed dev URL exists yet.
 - Chat refresh: decide polling interval and manual refresh behavior.
 - Client generation: decide whether to generate Retrofit/Ktor models from OpenAPI or maintain handwritten DTOs initially.
+- Photo preprocessing: decide client-side crop/compression/EXIF handling before upload.
+- Firebase email verification: backend currently trusts Firebase-authenticated users even if the email is not verified; enforcement is tracked as technical debt.
+
+## Local MinIO Photo URLs
+
+For Android Emulator testing, the backend API base URL is:
+
+```text
+http://10.0.2.2:8080
+```
+
+If the backend runs inside Docker Compose and returns MinIO presigned URLs, those
+URLs must also use a host reachable from the emulator. Set the backend runtime
+override to:
+
+```text
+S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
+```
+
+For same-machine browser/Bruno testing, `http://localhost:9000` is fine. The
+value is environment-specific; do not hardcode it in the Android app.

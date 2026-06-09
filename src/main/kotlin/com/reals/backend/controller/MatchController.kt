@@ -2,6 +2,8 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
@@ -69,8 +71,9 @@ class MatchController(
             }
 
         val partnerProfile = profileService.findByUserId(partnerId)
-            ?: throw NoSuchElementException(
-                "Profile not found for partner: $partnerId"
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.PROFILE_NOT_FOUND,
+                message = "Partner profile not found"
             )
 
         val photos = profileService.getPhotos(
