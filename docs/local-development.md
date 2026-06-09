@@ -221,6 +221,21 @@ Stop backend and database without deleting the database volume:
 docker compose down
 ```
 
+### Local MinIO Profile Photos
+
+The Docker Compose setup also runs MinIO for profile photo uploads:
+
+```text
+S3_ENDPOINT=http://minio:9000
+S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+S3_READ_URL_MODE=PRESIGNED
+```
+
+The backend uploads objects through the internal Docker hostname `minio`, but
+generates browser-facing presigned read URLs with `localhost`. Buckets remain
+private locally; frontend clients should render the returned `url` directly and
+must not persist it as a permanent object URL because it expires.
+
 ## Local Jobs
 
 Local profiles disable automatic scheduled execution:
@@ -289,5 +304,6 @@ Current migration:
 V1__init.sql
 V2__profile_dynamic_match_filters.sql
 V3__add_user_soft_delete.sql
-V4__account_deletion_recovery_window.sql
+V4__profile_photo_storage_validation.sql
+V5__account_deletion_recovery_window.sql
 ```

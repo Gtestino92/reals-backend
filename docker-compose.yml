@@ -19,11 +19,12 @@ services:
       SPRING_DATASOURCE_PASSWORD: reals
 
       S3_ENDPOINT: http://minio:9000
+      S3_PRESIGNED_URL_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1
-      S3_BUCKET: reals-profile-photos
+      S3_PROFILE_PHOTOS_BUCKET: reals-profile-photos
       S3_ACCESS_KEY_ID: reals
       S3_SECRET_ACCESS_KEY: reals-password
-      S3_PUBLIC_BASE_URL: http://localhost:9000/reals-profile-photos
+      S3_READ_URL_MODE: PRESIGNED
       S3_PATH_STYLE_ACCESS_ENABLED: "true"
 
     volumes:
@@ -79,7 +80,7 @@ services:
         sleep 2;
       done;
       mc mb --ignore-existing local/reals-profile-photos;
-      mc anonymous set download local/reals-profile-photos;
+      mc anonymous set none local/reals-profile-photos;
       "
 
 volumes:
