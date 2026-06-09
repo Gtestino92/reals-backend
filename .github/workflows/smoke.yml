@@ -16,6 +16,8 @@ on:
         required: false
         type: string
 
+permissions: {}
+
 jobs:
   smoke:
     name: Check deployed backend
