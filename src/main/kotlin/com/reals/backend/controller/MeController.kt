@@ -2,7 +2,9 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.security.authentication.FirebasePrincipal
 import com.reals.backend.config.security.currentuser.CurrentUserId
+import com.reals.backend.controller.dto.HomeResponse
 import com.reals.backend.controller.dto.UserResponse
+import com.reals.backend.service.MeHomeService
 import com.reals.backend.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -15,7 +17,8 @@ import java.util.UUID
 
 @RestController
 class MeController(
-    private val userService: UserService
+    private val userService: UserService,
+    private val meHomeService: MeHomeService
 ) {
 
     @GetMapping("/api/me")
@@ -29,6 +32,14 @@ class MeController(
             UserResponse.from(user)
         )
     }
+
+    @GetMapping("/api/me/home")
+    fun getHome(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<HomeResponse> =
+        ResponseEntity.ok(
+            meHomeService.getHome(userId = userId)
+        )
 
     @DeleteMapping("/api/me")
     fun deleteMe(

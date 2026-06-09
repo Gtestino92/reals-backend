@@ -11,6 +11,7 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
+- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, queue state, active matches with first-chat ids and active connections with second-chat ids when available.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
@@ -39,6 +40,9 @@ display and refetch them when needed instead of persisting them permanently.
 - `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`.
 - `DELETE /api/matchmaking/queue`: remove authenticated user from queue.
 - `GET /api/matchmaking/queue`: check queue status for authenticated user.
+
+After enqueueing, clients should poll `GET /api/me/home` to discover whether the
+queue entry has become an active match. Do not infer match/chat ids locally.
 
 ## Matches
 
