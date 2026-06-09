@@ -9,6 +9,8 @@ import com.reals.backend.controller.dto.ReplacePhotoRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
@@ -72,8 +74,7 @@ class ProfileController(
     fun getMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: return ResponseEntity.notFound().build()
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photos = profileService.getPhotos(profile.id)
 
@@ -91,10 +92,7 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateProfileRequest
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateProfile(
             profileId = profile.id,
@@ -120,10 +118,7 @@ class ProfileController(
     fun activateMyProfile(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val activated = profileService.activateProfile(
             profileId = profile.id
@@ -145,10 +140,7 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateMatchFiltersRequest
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateDynamicMatchFilters(
             profileId = profile.id,
@@ -171,10 +163,7 @@ class ProfileController(
     fun verifyMyIdentity(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val verified = profileService.verifyIdentity(
             profileId = profile.id
@@ -205,10 +194,7 @@ class ProfileController(
         @Valid
         @RequestBody request: AddPhotoRequest
     ): ResponseEntity<PhotoResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.addPhoto(
             profileId = profile.id,
@@ -246,10 +232,7 @@ class ProfileController(
         @Min(1)
         position: Int
     ): ResponseEntity<PhotoResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.uploadPhoto(
             profileId = profile.id,
@@ -276,10 +259,7 @@ class ProfileController(
     fun getPhotos(
         @CurrentUserId userId: UUID
     ): ResponseEntity<List<PhotoResponse>> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         return ResponseEntity.ok(
             profileService.getPhotoResponses(profileId = profile.id)
@@ -297,10 +277,7 @@ class ProfileController(
         @CurrentUserId userId: UUID,
         @PathVariable photoId: UUID
     ): ResponseEntity<ProfileResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.deletePhoto(
             profileId = profile.id,
@@ -336,10 +313,7 @@ class ProfileController(
         @Valid
         @RequestBody request: ReplacePhotoRequest
     ): ResponseEntity<PhotoResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.replacePhoto(
             profileId = profile.id,
@@ -375,10 +349,7 @@ class ProfileController(
         @RequestPart("file")
         file: MultipartFile
     ): ResponseEntity<PhotoResponse> {
-        val profile = profileService.findByUserId(userId)
-            ?: throw NoSuchElementException(
-                "Profile not found for user: $userId"
-            )
+        val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.replacePhoto(
             profileId = profile.id,
@@ -394,4 +365,11 @@ class ProfileController(
             )
         )
     }
+
+    private fun findProfileForCurrentUserOrThrow(userId: UUID) =
+        profileService.findByUserId(userId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.PROFILE_NOT_FOUND,
+                message = "Profile not found for current user"
+            )
 }

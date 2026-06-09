@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainException
+import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.validation.ConstraintViolationException
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
@@ -174,6 +175,7 @@ class GlobalExceptionHandler {
         val status = when (ex) {
             is DomainBadRequestException -> HttpStatus.BAD_REQUEST
             is DomainConflictException -> HttpStatus.CONFLICT
+            is DomainNotFoundException -> HttpStatus.NOT_FOUND
         }
 
         return ResponseEntity.status(status)

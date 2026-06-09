@@ -10,6 +10,7 @@ import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -130,7 +131,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             ?: error("Other profile was not created")
         val ownerPhoto = profileService.getPhotos(ownerProfile.id).first()
 
-        val exception = assertThrows<DomainConflictException> {
+        val exception = assertThrows<DomainNotFoundException> {
             profileService.deletePhoto(
                 profileId = otherProfile.id,
                 photoId = ownerPhoto.id
