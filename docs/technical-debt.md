@@ -4,9 +4,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 
 ## Product Decisions
 
-- Immediate pre-infrastructure objectives:
-  1. Continue converting high-frequency frontend-facing generic failures into stable error codes where they are painful in the Android flow.
-  2. Keep the manual smoke workflow aligned with the Docker image so it can be wired into deploy automation later.
+- Immediate pre-infrastructure objective: continue converting high-frequency frontend-facing generic failures into stable error codes where they are painful in the Android flow.
 - Guided first-chat questions or conversation starters.
 - Whether guided questions belong to frontend or backend.
 - Exact visibility rule for visual-review personal messages beyond current `VISUAL_APPROVED` enforcement.
@@ -45,7 +43,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - Decide the first external development deploy target. Candidates to compare: Render, Fly.io, Railway, Google Cloud Run, AWS App Runner or ECS Fargate, and a managed PostgreSQL provider such as Neon, Supabase, Render PostgreSQL, Railway PostgreSQL or AWS RDS.
 - For the first dev environment, prefer a simple container platform plus managed PostgreSQL before Kubernetes. Kubernetes, Helm and Terraform/CDK become worthwhile when there are multiple services, networking rules, autoscaling needs or repeatable environment provisioning requirements.
 - Before enabling deploy automation, define the deployment model: runtime platform, managed PostgreSQL instance, Firebase service-account secret, environment variables, health check path, rollback strategy and which GHCR tag dev should track.
-- Wire the manual `Smoke check` GitHub Actions workflow into the eventual deploy pipeline once the dev runtime platform exists.
+- Wire the manual `Smoke check` GitHub Actions workflow into the eventual deploy pipeline once the dev runtime platform exists. The workflow is already aligned with the Docker image metadata exposed by `/actuator/info`.
 - Decide whether infrastructure should be represented as Infrastructure as Code. If the first provider is AWS, prefer Terraform or AWS CDK for repeatability; if the first provider is Render, Fly.io or Railway, start with their service config and document manual console steps until the shape stabilizes.
 
 ## Observability And Error Handling
