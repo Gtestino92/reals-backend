@@ -11,6 +11,7 @@ import com.reals.backend.domain.ChatType
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -308,9 +309,7 @@ class ChatExitService(
                 "Details must be at most $DETAILS_MAX_LENGTH characters"
             }
 
-            require(normalized.none { it.isISOControl() }) {
-                "Details cannot contain control characters"
-            }
+            PlainText.requireValid("Details", normalized)
         }
 
         return normalized
