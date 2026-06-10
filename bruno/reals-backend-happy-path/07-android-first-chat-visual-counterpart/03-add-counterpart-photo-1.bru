@@ -1,0 +1,25 @@
+﻿meta {
+  name: 03 Add Counterpart Photo 1
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/android-counterpart-{{counterpartRunId}}-1.jpg",
+    "position": 1,
+    "isPersonPhoto": true,
+    "isFullBody": true
+  }
+}

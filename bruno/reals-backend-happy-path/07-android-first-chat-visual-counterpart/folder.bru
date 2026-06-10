@@ -1,0 +1,22 @@
+﻿meta {
+  name: Android First Chat Visual Counterpart
+  type: folder
+  seq: 7
+}
+
+docs {
+  Use this folder to simulate the other participant while the Android emulator drives the real/current user.
+
+  Assumptions:
+  - Backend is running with local-nodb or local-postgres so DevAutoAuthFilter accepts X-Dev-User-Id.
+  - The Android user already has an ACTIVE profile and is queued from the app.
+  - Optional: set androidUserId in the Bruno environment. If set, the process request verifies the created match contains that user.
+
+  Typical flow:
+  1. Android app enters matchmaking room and calls POST /api/matchmaking/queue.
+  2. Run 00-08 in this folder to create/enqueue the counterpart and process matchmaking.
+  3. Android app polls GET /api/me/home and should see activeMatches[0].
+  4. Run 09-14 to make the counterpart send/approve first chat and approve visual review.
+
+  If the backend is local-firebase, these local-dev/X-Dev-User-Id requests will not work. Use a second Firebase test user instead, or add a dev-only fixture endpoint guarded by local profiles.
+}

@@ -1,0 +1,35 @@
+﻿meta {
+  name: 00 Setup Counterpart Run
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "counterpartRunId",
+    "counterpartEmail",
+    "counterpartUserId",
+    "counterpartProfileId",
+    "counterpartMatchId",
+    "counterpartFirstChatId",
+    "counterpartConnectionId"
+  ]);
+
+  const runId = Date.now().toString();
+  bru.setEnvVar("counterpartRunId", runId);
+  bru.setEnvVar("counterpartEmail", `android.counterpart.${runId}@example.com`);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response before counterpart setup.");
+  }
+}

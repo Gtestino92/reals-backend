@@ -1,0 +1,28 @@
+﻿meta {
+  name: 14 Counterpart Add Visual Personal Message
+  type: http
+  seq: 14
+}
+
+put {
+  url: {{baseUrl}}/api/matches/{{counterpartMatchId}}/personal-messages/me
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+body:json {
+  {
+    "message": "Me gusto la charla. Sigamos con la etapa visual."
+  }
+}
+
+script:post-response {
+  if (res.status !== 204) {
+    throw new Error(`Expected 204 after counterpart personal message, got ${res.status}. The Android user may still need to approve first chat.`);
+  }
+}
