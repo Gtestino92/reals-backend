@@ -1,0 +1,29 @@
+﻿meta {
+  name: 13 Counterpart Approve First Chat
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{counterpartMatchId}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || (body.state !== "CHAT_ACTIVE" && body.state !== "VISUAL_PHASE")) {
+    throw new Error(`Expected CHAT_ACTIVE or VISUAL_PHASE after counterpart first-chat approval, got ${body && body.state}.`);
+  }
+}

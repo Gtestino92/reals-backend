@@ -1,0 +1,23 @@
+﻿meta {
+  name: 11 Counterpart Get First Chat
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{counterpartMatchId}}/chat
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id || body.chatType !== "FIRST_CHAT") {
+    throw new Error("Expected active first chat for counterpart.");
+  }
+  bru.setEnvVar("counterpartFirstChatId", body.id);
+}

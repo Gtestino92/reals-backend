@@ -1,0 +1,22 @@
+﻿meta {
+  name: 12 Counterpart Send First Chat Message
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+body:json {
+  {
+    "content": "Mensaje desde Bruno para simular a la otra persona en el primer chat."
+  }
+}

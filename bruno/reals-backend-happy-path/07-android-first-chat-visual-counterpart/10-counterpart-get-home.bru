@@ -1,0 +1,28 @@
+﻿meta {
+  name: 10 Counterpart Get Home
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/me/home
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.activeMatches || !body.activeMatches[0]) {
+    throw new Error("Expected counterpart active match in home response.");
+  }
+
+  const active = body.activeMatches.find((m) => m.matchId === bru.getEnvVar("counterpartMatchId")) || body.activeMatches[0];
+  bru.setEnvVar("counterpartMatchId", active.matchId);
+  if (active.firstChat && active.firstChat.chatId) {
+    bru.setEnvVar("counterpartFirstChatId", active.firstChat.chatId);
+  }
+}

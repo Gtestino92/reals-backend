@@ -1,0 +1,40 @@
+﻿meta {
+  name: 02 Create Counterpart Profile
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+body:json {
+  {
+    "displayName": "Counterpart Local",
+    "birthDate": "1995-05-10",
+    "gender": "MALE",
+    "lookingForGender": "WOMEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Usuario local generado desde Bruno para probar primer chat y review visual.",
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected counterpart profile id.");
+  }
+  bru.setEnvVar("counterpartProfileId", body.id);
+}

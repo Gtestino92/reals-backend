@@ -1,0 +1,36 @@
+﻿meta {
+  name: 09 Process Matchmaking For Android User
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matchmaking/process?maxPairsPerRun=1
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.matchesCreated < 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("No match was created. Make sure the Android user is queued with an ACTIVE compatible profile.");
+  }
+
+  const match = body.pairs[0];
+  const counterpartUserId = bru.getEnvVar("counterpartUserId");
+  const androidUserId = bru.getEnvVar("androidUserId");
+  const participants = [match.userAId, match.userBId];
+
+  if (!participants.includes(counterpartUserId)) {
+    throw new Error(`Created match does not contain counterpart user ${counterpartUserId}. Got ${participants.join("/")}.`);
+  }
+
+  if (androidUserId && !participants.includes(androidUserId)) {
+    throw new Error(
+      `Created match does not contain androidUserId ${androidUserId}. ` +
+      `Got ${participants.join("/")}. Clear stale queue rows or set androidUserId correctly.`
+    );
+  }
+
+  bru.setEnvVar("counterpartMatchId", match.id);
+}

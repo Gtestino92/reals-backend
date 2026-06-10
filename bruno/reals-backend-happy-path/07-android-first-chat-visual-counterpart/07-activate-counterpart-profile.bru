@@ -1,0 +1,22 @@
+﻿meta {
+  name: 07 Activate Counterpart Profile
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/activation
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{counterpartUserId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ACTIVE") {
+    throw new Error(`Expected counterpart profile ACTIVE, got ${body && body.status}.`);
+  }
+}
