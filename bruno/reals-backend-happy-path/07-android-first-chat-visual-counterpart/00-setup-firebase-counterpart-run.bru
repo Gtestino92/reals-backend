@@ -1,5 +1,5 @@
 ﻿meta {
-  name: 00 Setup Counterpart Run
+  name: 00 Setup Firebase Counterpart Run
   type: http
   seq: 0
 }
@@ -14,7 +14,9 @@ script:pre-request {
   const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
   clearEnvVars([
     "counterpartRunId",
-    "counterpartEmail",
+    "firebase_counterpart_email",
+    "firebase_counterpart_id_token",
+    "firebase_counterpart_uid",
     "counterpartUserId",
     "counterpartProfileId",
     "counterpartMatchId",
@@ -24,12 +26,13 @@ script:pre-request {
 
   const runId = Date.now().toString();
   bru.setEnvVar("counterpartRunId", runId);
-  bru.setEnvVar("counterpartEmail", `android.counterpart.${runId}@example.com`);
+  bru.setEnvVar("firebase_counterpart_email", `android.counterpart.${runId}@example.com`);
+  bru.setEnvVar("firebase_counterpart_password", bru.getEnvVar("firebase_counterpart_password") || "Password123!");
 }
 
 script:post-response {
   const body = res.getBody();
   if (!body || body.status !== "ok") {
-    throw new Error("Expected ping response before counterpart setup.");
+    throw new Error("Expected ping response before Firebase counterpart setup.");
   }
 }

@@ -1,7 +1,7 @@
 ﻿meta {
-  name: 02 Create Counterpart Profile
+  name: 03 Create Counterpart Profile
   type: http
-  seq: 2
+  seq: 3
 }
 
 post {
@@ -12,19 +12,19 @@ post {
 
 headers {
   Content-Type: application/json
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 body:json {
   {
-    "displayName": "Counterpart Local",
+    "displayName": "Counterpart Firebase",
     "birthDate": "1995-05-10",
     "gender": "MALE",
     "lookingForGender": "WOMEN",
     "intention": "DATE",
     "city": "Buenos Aires",
     "country": "AR",
-    "bio": "Usuario local generado desde Bruno para probar primer chat y review visual.",
+    "bio": "Usuario Firebase generado desde Bruno para probar primer chat y review visual.",
     "preferredMinAge": 18,
     "preferredMaxAge": 99,
     "maxDistanceKm": 50

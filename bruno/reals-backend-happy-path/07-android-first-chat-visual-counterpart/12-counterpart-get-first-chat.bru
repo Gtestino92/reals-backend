@@ -1,7 +1,7 @@
 ﻿meta {
-  name: 11 Counterpart Get First Chat
+  name: 12 Counterpart Get First Chat
   type: http
-  seq: 11
+  seq: 12
 }
 
 get {
@@ -11,7 +11,7 @@ get {
 }
 
 headers {
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 script:post-response {
