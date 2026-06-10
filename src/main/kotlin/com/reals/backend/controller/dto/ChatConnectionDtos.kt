@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.*
+import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Pattern
@@ -45,7 +46,7 @@ data class ChatResponse(
 data class SendMessageRequest(
     @field:NotBlank
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val content: String
 )
 
@@ -53,7 +54,7 @@ data class ChatExitRequestCreateRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String? = null
 )
 
@@ -61,7 +62,7 @@ data class ChatCancellationRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String? = null
 )
 
@@ -70,7 +71,7 @@ data class ChatSafetyCancellationRequest(
 
     @field:NotBlank
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String
 )
 

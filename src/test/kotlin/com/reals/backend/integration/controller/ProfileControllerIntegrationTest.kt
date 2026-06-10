@@ -63,6 +63,33 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `create profile rejects markup in text fields`() {
+        val user = userService.createUser("profile-markup-${UUID.randomUUID()}@example.com")
+        val body = mapOf(
+            "displayName" to "<script>alert(1)</script>",
+            "birthDate" to LocalDate.of(1995, 1, 1).toString(),
+            "gender" to Gender.FEMALE.name,
+            "lookingForGender" to LookingForGender.MEN.name,
+            "intention" to Intention.DATE.name,
+            "city" to "Buenos Aires",
+            "country" to "AR",
+            "bio" to "Plain bio",
+            "preferredMinAge" to 30,
+            "preferredMaxAge" to 40,
+            "maxDistanceKm" to 75
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
     fun `get missing profile returns stable error code`() {
         val user = userService.createUser("missing-profile-${UUID.randomUUID()}@example.com")
 

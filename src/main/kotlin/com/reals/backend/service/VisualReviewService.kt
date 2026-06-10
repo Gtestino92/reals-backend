@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.*
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -222,9 +223,7 @@ class VisualReviewService(
             "Personal message must be at most $PERSONAL_MESSAGE_MAX_LENGTH characters"
         }
 
-        require(normalized.none { it.isISOControl() }) {
-            "Personal message cannot contain control characters"
-        }
+        PlainText.requireValid("Personal message", normalized)
 
         return normalized
     }
