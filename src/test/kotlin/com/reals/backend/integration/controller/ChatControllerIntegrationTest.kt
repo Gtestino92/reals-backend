@@ -79,6 +79,20 @@ class ChatControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `chat message rejects markup`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"<img src=x onerror=alert(1)>"}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
     fun `invalid chat id returns bad request`() {
         mockMvc.perform(
             get("/api/chats/not-a-uuid/messages")
@@ -117,5 +131,19 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
             .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.ACCEPTED.name)))
             .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+    }
+
+    @Test
+    fun `mutual cancellation details reject markup`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"reason":"NO_LONGER_INTERESTED","details":"<b>cancel</b>"}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
     }
 }

@@ -8,6 +8,7 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -21,19 +22,19 @@ import java.util.UUID
 
 data class UpdateProfileRequest(
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val displayName: String? = null,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val bio: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val city: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val country: String? = null,
 
     val intention: Intention? = null,
@@ -43,7 +44,7 @@ data class UpdateProfileRequest(
 data class ReplacePhotoRequest(
     @field:NotBlank
     @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://\\S+$")
+    @field:Pattern(regexp = "^https://[^\\s<>]+$")
     val url: String,
     val isPersonPhoto: Boolean? = null,
     val isFullBody: Boolean? = null
@@ -66,7 +67,7 @@ data class UpdateMatchFiltersRequest(
 data class CreateProfileRequest(
     @field:NotBlank
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val displayName: String,
 
     @field:Past
@@ -78,16 +79,16 @@ data class CreateProfileRequest(
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val city: String,
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val country: String,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val bio: String? = null,
 
     @field:Min(18)
@@ -106,7 +107,7 @@ data class CreateProfileRequest(
 data class AddPhotoRequest(
     @field:NotBlank
     @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://\\S+$")
+    @field:Pattern(regexp = "^https://[^\\s<>]+$")
     val url: String,
 
     @field:Min(1)

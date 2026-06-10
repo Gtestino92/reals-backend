@@ -17,6 +17,11 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
+User-generated text fields are plain text. The backend rejects control
+characters and markup delimiters `<` / `>` in profile text, chat messages,
+visual personal messages and cancellation/report details. Frontends must render
+these values as text, not HTML.
+
 ## Profiles
 
 - `POST /api/me/profile`: create the authenticated user's profile.
@@ -106,6 +111,7 @@ Common mappings:
 - `NoSuchElementException`: `404 Not Found`
 - `IllegalArgumentException`: `400 Bad Request`
 - `IllegalStateException`: `409 Conflict`
+- Bean validation failures: `400 Bad Request` with `VALIDATION_ERROR`
 - `DomainNotFoundException`: `404 Not Found` with stable domain code
 - generic exception: `500 Internal Server Error`
 

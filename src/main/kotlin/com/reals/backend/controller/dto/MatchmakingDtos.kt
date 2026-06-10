@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
+import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Max
@@ -46,7 +47,7 @@ data class VisualDecisionRequest(
 data class PersonalMessageRequest(
     @field:NotBlank
     @field:Size(max = 280)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val message: String
 )
 

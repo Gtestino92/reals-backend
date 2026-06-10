@@ -98,6 +98,20 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `personal message rejects markup`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"<script>alert(1)</script>"}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
     fun `invalid enum request returns bad request`() {
         val setup = createMatchWithFirstChat()
 
