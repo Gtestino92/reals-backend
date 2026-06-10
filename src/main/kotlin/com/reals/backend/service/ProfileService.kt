@@ -11,6 +11,7 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
+import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -629,7 +630,7 @@ class ProfileService(
             "Display name must be between $DISPLAY_NAME_MIN_LENGTH and $DISPLAY_NAME_MAX_LENGTH characters"
         }
 
-        requireNoControlCharacters("Display name", displayName)
+        PlainText.requireValid("Display name", displayName)
     }
 
     private fun validateBirthDate(birthDate: LocalDate) {
@@ -715,7 +716,7 @@ class ProfileService(
             "$fieldName must be at most $maxLength characters"
         }
 
-        requireNoControlCharacters(fieldName, value)
+        PlainText.requireValid(fieldName, value)
     }
 
     private fun validatePhotoUrl(url: String) {
@@ -723,7 +724,7 @@ class ProfileService(
             "Photo URL must be at most $PHOTO_URL_MAX_LENGTH characters"
         }
 
-        requireNoControlCharacters("Photo URL", url)
+        PlainText.requireValid("Photo URL", url)
 
         val uri =
             try {
@@ -810,15 +811,6 @@ class ProfileService(
 
     private fun normalizeOptionalText(value: String?): String? =
         value?.trim()?.takeIf { it.isNotBlank() }
-
-    private fun requireNoControlCharacters(
-        fieldName: String,
-        value: String
-    ) {
-        require(value.none { it.isISOControl() }) {
-            "$fieldName cannot contain control characters"
-        }
-    }
 
     private fun validateUploadedPhotoOrPending(
         contentType: String,

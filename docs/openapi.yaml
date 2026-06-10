@@ -981,24 +981,24 @@ components:
       type: object
       required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100 }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
         birthDate: { type: string, format: date }
         gender: { $ref: '#/components/schemas/Gender' }
         lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string, minLength: 1, maxLength: 100 }
-        country: { type: string, minLength: 1, maxLength: 100 }
-        bio: { type: string, maxLength: 1000, nullable: true }
+        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
+        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
     UpdateProfileRequest:
       type: object
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, nullable: true }
-        bio: { type: string, maxLength: 1000, nullable: true }
-        city: { type: string, minLength: 1, maxLength: 100, nullable: true }
-        country: { type: string, minLength: 1, maxLength: 100, nullable: true }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
         intention:
           allOf: [{ $ref: '#/components/schemas/Intention' }]
           nullable: true
@@ -1016,7 +1016,7 @@ components:
       type: object
       required: [url, position]
       properties:
-        url: { type: string, pattern: '^https://\S+$', maxLength: 512 }
+        url: { type: string, pattern: '^https://[^\s<>]+$', maxLength: 512 }
         position: { type: integer, minimum: 1, maximum: 9 }
         isPersonPhoto: { type: boolean, nullable: true }
         isFullBody: { type: boolean, nullable: true }
@@ -1024,7 +1024,7 @@ components:
       type: object
       required: [url]
       properties:
-        url: { type: string, pattern: '^https://\S+$', maxLength: 512 }
+        url: { type: string, pattern: '^https://[^\s<>]+$', maxLength: 512 }
         isPersonPhoto: { type: boolean, nullable: true }
         isFullBody: { type: boolean, nullable: true }
     UploadPhotoFileRequest:
@@ -1126,7 +1126,7 @@ components:
       type: object
       required: [message]
       properties:
-        message: { type: string, minLength: 1, maxLength: 280 }
+        message: { type: string, minLength: 1, maxLength: 280, pattern: '^[^\p{Cntrl}<>]*$' }
     PartnerMessageResponse:
       type: object
       required: [message]
@@ -1151,7 +1151,7 @@ components:
       type: object
       required: [content]
       properties:
-        content: { type: string, minLength: 1, maxLength: 1000 }
+        content: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
     ChatMessageResponse:
       type: object
       required: [id, chatSessionId, senderId, content, sentAt]
@@ -1168,7 +1168,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
     ChatCancellationRequest:
       type: object
       properties:
@@ -1176,7 +1176,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
     ChatSafetyCancellationRequest:
       type: object
       required: [reason, details]
@@ -1184,7 +1184,7 @@ components:
         reason:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
-        details: { type: string, minLength: 1, maxLength: 1000 }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
     ChatExitRequestResponse:
       type: object
       required: [id, chatId, requesterUserId, responderUserId, type, status, createdAt]

@@ -11,6 +11,7 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -392,9 +393,7 @@ class ChatService(
             "Message content must be at most $MESSAGE_MAX_LENGTH characters"
         }
 
-        require(normalized.none { it.isISOControl() }) {
-            "Message content cannot contain control characters"
-        }
+        PlainText.requireValid("Message content", normalized)
 
         return normalized
     }
