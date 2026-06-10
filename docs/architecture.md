@@ -29,8 +29,8 @@ Schedulers should also call services rather than mutating repositories directly.
 - Java 21.
 - Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
-- H2 local database.
-- PostgreSQL JDBC driver is present for non-local environments.
+- PostgreSQL is the supported shared/dev/prod database and the default Docker local database.
+- H2 is used for local no-auth development and the in-memory test profile.
 - Flyway is present; migrations live under `src/main/resources/db/migration`.
 - Caffeine cache.
 - ShedLock for scheduler locking.
@@ -54,8 +54,8 @@ Chat responsibilities are split conservatively:
 
 - Entities use UUID primary keys.
 - Enums are persisted as strings.
-- Initial migration: `src/main/resources/db/migration/V1__init.sql`.
-- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-firebase` is the default local profile and `local-nodb` is the no-auth local profile.
+- Migrations live under `src/main/resources/db/migration`.
+- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-nodb` is the no-auth local H2 profile. `local-firebase` is the default local Firebase profile and currently targets the Docker PostgreSQL datasource.
 
 ## Background Jobs
 
@@ -69,6 +69,7 @@ Known scheduler jobs:
 - `SchedulingNegotiationTimeoutJob`
 - `ScheduledSecondChatStartJob`
 - `VisualPhaseExpirationJob`
+- `AccountDeletionFinalizationJob`
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
 

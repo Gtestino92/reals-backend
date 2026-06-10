@@ -63,6 +63,19 @@ For those cases, service-level integration tests catch more realistic regression
 - safety cancellation and reported-user penalty
 - unilateral second-chat cancellation penalty behavior
 
+`UserSoftDeleteIntegrationTest` covers:
+
+- soft deletion state, Firebase disable/revocation integration boundary and recovery window behavior
+- active engagement closure and lock release
+- reactivation without reopening previous matches/connections
+
+`ProfilePhotoFileControllerIntegrationTest` covers:
+
+- multipart upload and replace flows
+- storage-backed read URLs
+- object deletion when a stored photo is deleted or replaced
+- file validation errors and ownership checks
+
 `SchedulerFlowIntegrationTest` covers:
 
 - matchmaking job processing from queue to first chat
@@ -79,6 +92,7 @@ Controller integration tests cover representative HTTP contract checks for:
 - `MatchController`: chat decision response, conflict mapping and personal-message write.
 - `ConnectionController`: proposal submission, negotiation confirmation and proposal validation errors.
 - `ChatController`: sending/listing messages, non-participant rejection and mutual cancellation over HTTP.
+- `ProfilePhotoController`: multipart profile-photo upload/replace and stable photo error codes.
 
 Bruno also includes manual HTTP collections that are convenient to run against the local application:
 

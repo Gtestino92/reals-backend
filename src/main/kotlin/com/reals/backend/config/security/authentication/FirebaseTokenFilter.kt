@@ -3,6 +3,7 @@ package com.reals.backend.config.security.authentication
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
+import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -65,9 +66,31 @@ class FirebaseTokenFilter(
 
         try {
             val decoded = FirebaseAuth.getInstance()
-                .verifyIdToken(token)
+                .verifyIdToken(token, true)
 
             val user = userService.findByFirebaseUid(decoded.uid)
+
+            if (user?.status == UserStatus.DELETED) {
+                if (!isDeletedAccountAllowedPath(request)) {
+                    SecurityContextHolder.clearContext()
+                    writeUnauthorized(
+                        response = response,
+                        code = "ACCOUNT_DELETED",
+                        message = "Account is pending deletion"
+                    )
+                    return
+                }
+
+                SecurityContextHolder.getContext().authentication =
+                    UsernamePasswordAuthenticationToken(
+                        user.id.toString(),
+                        null,
+                        listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                    )
+
+                filterChain.doFilter(request, response)
+                return
+            }
 
             SecurityContextHolder.getContext().authentication =
                 if (user == null) {
@@ -98,6 +121,20 @@ class FirebaseTokenFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun isDeletedAccountAllowedPath(request: HttpServletRequest): Boolean {
+        val path = request.servletPath.ifBlank {
+            request.requestURI.removePrefix(request.contextPath)
+        }
+
+        return (
+            request.method.equals("GET", ignoreCase = true) &&
+                path == "/api/me"
+        ) || (
+            request.method.equals("POST", ignoreCase = true) &&
+                path == "/api/me/reactivation"
+        )
     }
 
     private fun writeUnauthorized(

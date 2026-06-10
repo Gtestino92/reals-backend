@@ -1,0 +1,22 @@
+meta {
+  name: 04b Upload Profile Photo
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: multipartForm
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+
+body:multipart-form {
+  position: 1
+  file: @file({{profile_photo_file_path}})
+  ~isPersonPhoto: true
+  ~isFullBody: false
+}

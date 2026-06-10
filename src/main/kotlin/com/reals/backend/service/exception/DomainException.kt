@@ -1,6 +1,8 @@
 package com.reals.backend.service.exception
 
 enum class DomainErrorCode {
+    ACCOUNT_DELETION_FINALIZED,
+    ACCOUNT_PENDING_DELETION,
     ACTIVE_MATCH_LIMIT_REACHED,
     ACTIVE_PENALTY,
     INVALID_MATCH_FILTERS,
@@ -11,13 +13,17 @@ enum class DomainErrorCode {
     PHOTO_URL_INVALID,
     PROFILE_ALREADY_EXISTS,
     PROFILE_FULL_BODY_PHOTO_REQUIRED,
+    PROFILE_NOT_FOUND,
     PROFILE_NOT_ACTIVE,
     PROFILE_NOT_ACTIVATABLE,
     PROFILE_PERSON_PHOTO_REQUIRED,
     PROFILE_PHOTO_LIMIT_REACHED,
     PROFILE_PHOTOS_REQUIRED,
     PROFILE_REQUIRED,
-    USER_NOT_FOUND
+    USER_NOT_FOUND,
+    USER_NOT_ACTIVE,
+    INVALID_PROFILE_PHOTO,
+    PROFILE_PHOTO_NOT_FOUND,
 }
 
 sealed class DomainException(
@@ -31,6 +37,11 @@ class DomainBadRequestException(
 ) : DomainException(code, message)
 
 class DomainConflictException(
+    code: DomainErrorCode,
+    message: String
+) : DomainException(code, message)
+
+class DomainNotFoundException(
     code: DomainErrorCode,
     message: String
 ) : DomainException(code, message)

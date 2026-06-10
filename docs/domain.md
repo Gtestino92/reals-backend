@@ -52,6 +52,10 @@ Engagement:
 
 - `EngagementType`: `MATCH`, `CONNECTION`
 
+User:
+
+- `UserStatus`: `ACTIVE`, `DELETED`
+
 ## Relationships
 
 - A `User` may have one `Profile`.
@@ -96,12 +100,23 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Only `ACTIVE` profiles can enter matchmaking.
 - Activation validates photo requirements from `profile.photos.*`.
 - Default photo requirements are 9 photos, 3 person photos and 1 full-body photo.
-- Local `local-nodb` overrides required photos to 4, min person to 1 and min full-body to 1.
+- Local and test profiles override required photos to 4, min person to 1 and min full-body to 1.
 - Birth date and gender are immutable after creation.
 - Editable fields include display name, bio, city, country, intention and looking-for gender.
 - Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced in the basic matchmaking query. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.
+- File-backed profile photos store provider, bucket and object key. API responses expose renderable read URLs; private storage should use presigned URLs and clients should refresh them instead of treating them as permanent identifiers.
+
+## Account Deletion And Recovery
+
+- `DELETE /api/me` moves the user to `DELETED` and sets `deletedAt` plus `deletionFinalizesAt`.
+- The account remains recoverable until `deletionFinalizesAt`.
+- During the recovery window, the email and Firebase UID remain reserved and cannot provision a new account.
+- Deletion closes active matches/connections and releases engagement locks. Reactivation does not reopen previous engagements.
+- Deletion moves the profile back to `DRAFT` while preserving profile data and photos.
+- `POST /api/me/reactivation` restores the user to `ACTIVE` only while the recovery window is still open. The profile remains `DRAFT` and must be activated again before matchmaking.
+- The account-deletion finalization job anonymizes the email and releases the Firebase UID after the recovery window expires.
 
 ## Match Filtering And Compatibility
 

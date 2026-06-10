@@ -17,6 +17,23 @@ interface ScheduleNegotiationRepository :
         connectionId: UUID
     ): ScheduleNegotiation?
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update ScheduleNegotiation n
+        set n.status = :failedStatus,
+            n.updatedAt = :updatedAt
+        where n.connectionId in :connectionIds
+          and n.status = :pendingStatus
+        """
+    )
+    fun failPendingByConnectionIds(
+        @Param("connectionIds") connectionIds: Collection<UUID>,
+        @Param("updatedAt") updatedAt: OffsetDateTime,
+        @Param("failedStatus") failedStatus: NegotiationStatus = NegotiationStatus.FAILED,
+        @Param("pendingStatus") pendingStatus: NegotiationStatus = NegotiationStatus.PENDING
+    ): Int
+
     @Query(
         """select n from ScheduleNegotiation n
            , Connection c

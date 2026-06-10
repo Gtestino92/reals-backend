@@ -2,6 +2,8 @@ package com.reals.backend.domain
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.Version
@@ -29,5 +31,20 @@ data class User(
     var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
     @Column(name = "updated_at", nullable = false)
-    var updatedAt: OffsetDateTime = OffsetDateTime.now()
+    var updatedAt: OffsetDateTime = OffsetDateTime.now(),
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    var status: UserStatus = UserStatus.ACTIVE,
+
+    @Column(name = "deleted_at")
+    var deletedAt: OffsetDateTime? = null,
+
+    @Column(name = "deletion_finalizes_at")
+    var deletionFinalizesAt: OffsetDateTime? = null,
 )
+
+enum class UserStatus {
+    ACTIVE,
+    DELETED
+}

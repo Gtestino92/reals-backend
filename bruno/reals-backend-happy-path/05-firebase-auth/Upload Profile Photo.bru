@@ -1,0 +1,19 @@
+meta {
+  name: Upload Profile Photo
+  type: http
+  seq: 4
+}
+
+post {
+  url: http://localhost:8080/api/me/profile/photos
+  body: multipartForm
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+body:multipart-form {
+  file: @file({{profile_photo_file_path}})
+  position: 1
+}
