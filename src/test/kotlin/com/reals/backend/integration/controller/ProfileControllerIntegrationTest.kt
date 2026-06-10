@@ -6,6 +6,7 @@ import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -59,6 +60,32 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `get missing profile returns stable error code`() {
+        val user = userService.createUser("missing-profile-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            get("/api/me/profile")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_NOT_FOUND")))
+    }
+
+    @Test
+    fun `profile action without profile returns stable error code`() {
+        val user = userService.createUser("missing-profile-action-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            post("/api/me/profile/photos")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content("""{"url":"https://example.com/photo.jpg","position":1}""")
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_NOT_FOUND")))
     }
 
     @Test
@@ -230,12 +257,37 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         val user = userService.createUser("photo-position-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
-            put("/api/me/profile/photos/0")
+            put("/api/me/profile/photos/position/0")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg"}""")
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+    }
+
+    @Test
+    fun `delete missing photo returns stable error code`() {
+        val user = userService.createUser("missing-photo-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Missing Photo",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            delete("/api/me/profile/photos/${UUID.randomUUID()}")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
     }
 }

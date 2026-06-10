@@ -134,9 +134,10 @@ The endpoint is public by design and should return:
 profile. Scheduled jobs run automatically in `dev`.
 
 After updating a deployed environment, run the manual GitHub Actions workflow
-`Smoke check` with the environment base URL. Optionally provide the expected
-image tag and Git revision to verify that the runtime is serving the intended
-container image. It checks:
+`Smoke check` with the environment base URL. The workflow verifies readiness,
+ping and Docker image metadata exposed by `/actuator/info`. It accepts optional
+expected image repository, tag and Git revision values so it can fail fast when
+the runtime is serving an old or unintended container image. It checks:
 
 ```http
 GET /actuator/health/readiness

@@ -8,10 +8,11 @@ The default active profile is:
 local-firebase
 ```
 
-This profile uses real Firebase ID tokens and an H2 file database:
+This profile uses real Firebase ID tokens and, in the current Docker-oriented
+local setup, a PostgreSQL database:
 
 ```text
-./data/realsdb
+jdbc:postgresql://postgres:5432/reals
 ```
 
 ## Run Locally
@@ -45,6 +46,7 @@ http://localhost:8080/h2-console
 ```
 
 The H2 console is enabled through `spring.h2.console.*` in the local H2 profiles.
+Use `local-nodb` when you specifically want the H2 file database path.
 
 Connection:
 
@@ -63,7 +65,7 @@ jdbc:h2:file:./data/realsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=f
 ## Local Firebase Auth
 
 The default `local-firebase` profile verifies real Firebase ID tokens locally.
-It uses the same H2 file database style as `local-nodb`, but disables dev
+It is configured for Docker-based local testing with PostgreSQL, disables dev
 auto-auth and enables Firebase token verification.
 
 The local Firebase service-account JSON is expected at:
@@ -73,6 +75,21 @@ The local Firebase service-account JSON is expected at:
 ```
 
 The `secrets/` directory is ignored by Git and must never be committed.
+
+When running the app from the host instead of inside Docker, override the
+datasource host because `postgres` is the Docker Compose service name:
+
+```text
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/reals
+```
+
+If the host-run app uses Docker Compose MinIO, also use a host-reachable S3
+endpoint:
+
+```text
+S3_ENDPOINT=http://localhost:9000
+S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+```
 
 ## Local Auto-Auth
 
@@ -137,7 +154,7 @@ docker compose up -d --build backend
 The `backend` service runs with:
 
 ```text
-SPRING_PROFILES_ACTIVE=local-postgres
+SPRING_PROFILES_ACTIVE=local-firebase
 SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reals
 ```
 
@@ -170,8 +187,8 @@ docker compose down
 
 ### Local Docker App With Firebase
 
-Use this mode when you want Docker to run the backend plus PostgreSQL, but
-authenticate requests with real Firebase ID tokens instead of local auto-auth.
+The default `docker-compose.yml` already runs the backend with
+`local-firebase`, PostgreSQL and real Firebase token verification.
 
 The Firebase service-account JSON must exist locally at:
 
@@ -184,19 +201,19 @@ The `secrets/` directory is ignored by Git and must never be committed.
 Build and run the Firebase-backed Docker app:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.firebase.yml up -d --build backend
+docker compose up -d --build backend
 ```
 
-This override runs the backend with:
+This Compose setup runs the backend with:
 
 ```text
-SPRING_PROFILES_ACTIVE=dev
-DATABASE_URL=jdbc:postgresql://postgres:5432/reals
-FIREBASE_SERVICE_ACCOUNT_PATH=/run/secrets/firebase-service-account.json
+SPRING_PROFILES_ACTIVE=local-firebase
+SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reals
+firebase.service-account-path=./secrets/reals-backend-firebase-credentials-dev.json
 ```
 
 The service-account file is mounted read-only inside the backend container.
-Automatic schedulers are disabled through `SCHEDULER_ENABLED=false` so local
+Automatic schedulers are disabled by the `local-firebase` profile so local
 manual testing stays deterministic.
 
 Check the backend:
@@ -209,7 +226,40 @@ curl http://localhost:8080/actuator/health/readiness
 Stop backend and database without deleting the database volume:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.firebase.yml down
+docker compose down
+```
+
+### Local MinIO Profile Photos
+
+The Docker Compose setup also runs MinIO for profile photo uploads:
+
+```text
+S3_ENDPOINT=http://minio:9000
+S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+S3_READ_URL_MODE=PRESIGNED
+```
+
+The backend uploads objects through the internal Docker hostname `minio`, but
+generates browser-facing presigned read URLs with `localhost`. Buckets remain
+private locally; frontend clients should render the returned `url` directly and
+must not persist it as a permanent object URL because it expires.
+
+For Android Emulator rendering, `localhost` points to the emulator itself. Use a
+local runtime override instead:
+
+```text
+S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
+```
+
+Keep that override local. It is developer-machine specific and should not be
+committed to `docker-compose.yml`.
+
+Bruno tracked environment templates must contain placeholders only. Put real
+Firebase API keys, test-user passwords and tokens in ignored local environment
+files such as:
+
+```text
+bruno/reals-backend-happy-path/environments/local.bru
 ```
 
 ## Local Jobs
@@ -226,15 +276,29 @@ Use the dev endpoints for deterministic manual testing:
 POST /api/local-dev/jobs/{job}/run
 ```
 
+Local-only user provisioning for Bruno/dev flows is available at:
+
+```http
+POST /api/local-dev/users
+```
+
+This endpoint exists only on local dev-auto-auth profiles and is not part of the production API contract.
+
 For example:
 
 ```http
 POST /api/local-dev/jobs/scheduled-second-chat-start/run
 ```
 
+Recoverable account deletion finalization can be triggered manually with:
+
+```http
+POST /api/local-dev/jobs/account-deletion-finalization/run
+```
+
 ## Local Profile Photo Rules
 
-Local H2 profile overrides:
+Local/test profile overrides:
 
 - max photos: `9`
 - required photos: `4`
@@ -264,4 +328,8 @@ Current migration:
 
 ```text
 V1__init.sql
+V2__profile_dynamic_match_filters.sql
+V3__add_user_soft_delete.sql
+V4__profile_photo_storage_validation.sql
+V5__account_deletion_recovery_window.sql
 ```

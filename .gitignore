@@ -10,6 +10,7 @@ target/
 
 ### Local data ###
 data/
+minio-data/
 secrets/
 bruno/reals-backend-happy-path/environments/local.bru
 *firebase*credentials*.json
@@ -40,5 +41,11 @@ bin/
 ### VS Code ###
 .vscode/
 
+### VS Code ###
+minio-data/
+
 ### Mac OS ###
 .DS_Store
+bruno/reals-backend-happy-path/environments/*.local.bru
+bruno/reals-backend-happy-path/environments/local.*.bru
+!bruno/reals-backend-happy-path/environments/local.template.bru

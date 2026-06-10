@@ -1,9 +1,13 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.Gender
+import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -56,5 +60,136 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
+    }
+
+    @Test
+    fun `delete me soft deletes authenticated user`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-${UUID.randomUUID()}",
+            email = "delete-me-${UUID.randomUUID()}@example.com"
+        )
+
+        mockMvc.perform(
+            delete("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+
+        val deletedUser = userService.findByIdOrThrow(user.id)
+        kotlin.test.assertEquals(com.reals.backend.domain.UserStatus.DELETED, deletedUser.status)
+        kotlin.test.assertNotNull(deletedUser.deletedAt)
+        kotlin.test.assertNotNull(deletedUser.deletionFinalizesAt)
+        kotlin.test.assertEquals(user.email, deletedUser.email)
+    }
+
+    @Test
+    fun `delete me returns conflict when account is already deleted`() {
+        val user = userService.createUser("already-deleted-${UUID.randomUUID()}@example.com")
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            delete("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+    }
+
+    @Test
+    fun `reactivate me restores deleted authenticated user`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-${UUID.randomUUID()}",
+            email = "reactivate-me-${UUID.randomUUID()}@example.com"
+        )
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            post("/api/me/reactivation")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.deletedAt").doesNotExist())
+            .andExpect(jsonPath("$.deletionFinalizesAt").doesNotExist())
+    }
+
+    @Test
+    fun `get me returns pending deletion account state`() {
+        val user = userService.createUser("deleted-me-${UUID.randomUUID()}@example.com")
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            get("/api/me")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+            .andExpect(jsonPath("$.status", equalTo("DELETED")))
+            .andExpect(jsonPath("$.deletedAt", notNullValue()))
+            .andExpect(jsonPath("$.deletionFinalizesAt", notNullValue()))
+    }
+
+    @Test
+    fun `home returns profile and queue state`() {
+        val userId = createActiveProfile(
+            email = "home-queue-${UUID.randomUUID()}@example.com",
+            displayName = "Home Queue",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        enqueueForMatchmaking(userId)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(true)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns active first chat discovery data`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("CHAT_ACTIVE")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatType", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns active connection discovery data`() {
+        val setup = createAvailableSecondChat()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeConnections[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.activeConnections[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeConnections[0].connectionState", equalTo("SECOND_CHAT_AVAILABLE")))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatStatus", equalTo("AVAILABLE")))
     }
 }

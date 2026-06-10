@@ -7,6 +7,11 @@ on:
         description: "Base URL to check, for example https://api-dev.example.com"
         required: true
         type: string
+      expected_image_repository:
+        description: "Optional expected image repository embedded in the image"
+        required: false
+        default: "ghcr.io/gtestino92/reals-backend"
+        type: string
       expected_image_tag:
         description: "Optional expected GHCR image tag embedded in the image, for example development"
         required: false
@@ -16,10 +21,13 @@ on:
         required: false
         type: string
 
+permissions: {}
+
 jobs:
   smoke:
     name: Check deployed backend
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Normalize inputs
@@ -30,8 +38,14 @@ jobs:
           BASE_URL="${{ inputs.base_url }}"
           BASE_URL="${BASE_URL%/}"
 
+          if [[ ! "$BASE_URL" =~ ^https?:// ]]; then
+            echo "base_url must start with http:// or https://, got: $BASE_URL" >&2
+            exit 1
+          fi
+
           {
             echo "BASE_URL=${BASE_URL}"
+            echo "EXPECTED_IMAGE_REPOSITORY=${{ inputs.expected_image_repository }}"
             echo "EXPECTED_IMAGE_TAG=${{ inputs.expected_image_tag }}"
             echo "EXPECTED_IMAGE_REVISION=${{ inputs.expected_image_revision }}"
           } >> "$GITHUB_ENV"
@@ -77,6 +91,7 @@ jobs:
           import json
           import os
 
+          expected_repository = os.environ.get("EXPECTED_IMAGE_REPOSITORY", "").strip()
           expected_tag = os.environ.get("EXPECTED_IMAGE_TAG", "").strip()
           expected_revision = os.environ.get("EXPECTED_IMAGE_REVISION", "").strip()
 
@@ -84,8 +99,20 @@ jobs:
               payload = json.load(handle)
 
           image = payload.get("image") or {}
+          actual_repository = image.get("repository") or ""
           actual_tag = image.get("tag") or ""
           actual_revision = image.get("revision") or ""
+
+          with open("image-metadata.env", "w", encoding="utf-8") as handle:
+              handle.write(f"ACTUAL_IMAGE_REPOSITORY={actual_repository}\n")
+              handle.write(f"ACTUAL_IMAGE_TAG={actual_tag}\n")
+              handle.write(f"ACTUAL_IMAGE_REVISION={actual_revision}\n")
+
+          if expected_repository and actual_repository != expected_repository:
+              raise SystemExit(
+                  "Expected image.repository "
+                  f"{expected_repository!r}, got {actual_repository!r}"
+              )
 
           if expected_tag and actual_tag != expected_tag:
               raise SystemExit(
@@ -103,6 +130,8 @@ jobs:
                       f"{expected_revision!r}, got {actual_revision!r}"
                   )
           PY
+
+          cat image-metadata.env >> "$GITHUB_ENV"
 
       - name: Check ping
         shell: bash
@@ -143,6 +172,22 @@ jobs:
             echo "| Readiness | /actuator/health/readiness |"
             echo "| Info | /actuator/info |"
             echo "| Ping | /api/ping |"
+
+            if [ -n "${ACTUAL_IMAGE_REPOSITORY:-}" ]; then
+              echo "| Actual image repository | ${ACTUAL_IMAGE_REPOSITORY} |"
+            fi
+
+            if [ -n "${ACTUAL_IMAGE_TAG:-}" ]; then
+              echo "| Actual image tag | ${ACTUAL_IMAGE_TAG} |"
+            fi
+
+            if [ -n "${ACTUAL_IMAGE_REVISION:-}" ]; then
+              echo "| Actual image revision | ${ACTUAL_IMAGE_REVISION} |"
+            fi
+
+            if [ -n "${EXPECTED_IMAGE_REPOSITORY:-}" ]; then
+              echo "| Expected image repository | ${EXPECTED_IMAGE_REPOSITORY} |"
+            fi
 
             if [ -n "${EXPECTED_IMAGE_TAG:-}" ]; then
               echo "| Expected image tag | ${EXPECTED_IMAGE_TAG} |"

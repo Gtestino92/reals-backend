@@ -2,13 +2,18 @@ spring:
   application:
     name: reals-backend
 
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
   autoconfigure:
     exclude:
       - org.springframework.boot.actuate.autoconfigure.metrics.cache.CacheMetricsAutoConfiguration
 
   profiles:
-    #active: local-firebase
-    active: local-nodb
+    active: local-firebase
+    #active: local-nodb
 
   jpa:
     open-in-view: false
@@ -70,6 +75,15 @@ scheduler:
   # Runs every minute so users can enter the chat close to the agreed slot
   scheduled-second-chat-start-job:
     fixed-delay: 60000
+
+  # Finalizes recoverable account deletions after the recovery window expires.
+  # Runs every hour because finalization is not user-facing urgent.
+  account-deletion-finalization-job:
+    fixed-delay: 3600000
+
+account:
+  deletion:
+    recovery-window-days: 30
 
 chat:
   # Maximum duration for the anonymous first chat between matched users

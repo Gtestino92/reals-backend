@@ -4,7 +4,7 @@ Production and shared development profiles should receive environment-specific v
 
 ## Profiles
 
-- `local-firebase`: default local profile, H2 file database, Firebase auth and schedulers disabled.
+- `local-firebase`: default local profile, Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
 - `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.
@@ -27,7 +27,16 @@ Non-sensitive runtime configuration:
 | `SPRING_PROFILES_ACTIVE` | yes | Use `dev` or `prod` outside local development. |
 | `DATABASE_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/reals`. |
 | `DATABASE_USERNAME` | yes | PostgreSQL user. |
+| `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
+| `S3_ENDPOINT` | when media upload is enabled | S3-compatible API endpoint used by the backend for object operations. For AWS S3 this can be omitted. |
+| `S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Endpoint used only when generating presigned read URLs, for example Android Emulator local MinIO. |
+| `S3_REGION` | when media upload is enabled | Defaults per profile; use the real bucket region in shared environments. |
 | `S3_PROFILE_PHOTOS_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. |
+| `S3_PUBLIC_BASE_URL` | only with `S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. |
+| `S3_PATH_STYLE_ACCESS_ENABLED` | no | Use `true` for MinIO and many S3-compatible providers; AWS S3 usually supports virtual-hosted style. |
+| `S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. |
+| `S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to a short-lived local/dev value. |
+| `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
 | `IDENTITY_VERIFICATION_PROVIDER` | no | Defaults to `none`. |
 
 Sensitive runtime secrets:
@@ -38,11 +47,14 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
+| `S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Prefer runtime IAM roles for AWS. |
+| `S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. |
 | `IDENTITY_VERIFICATION_API_KEY` | when a non-`none` provider exists | Keep empty while identity verification is disabled. |
 
-The S3 storage region is intentionally static application config. Shared dev
-and production use `sa-east-1`, AWS South America (Sao Paulo), which is the
-closest broadly available AWS S3 region for Argentina.
+S3-compatible storage has two endpoint concerns. `S3_ENDPOINT` is where the
+backend writes and deletes objects. `S3_PRESIGNED_URL_ENDPOINT` is the host
+embedded in returned presigned URLs and must be reachable by the client that
+renders the image.
 
 For AWS deployments, prefer IAM roles for S3 access instead of long-lived access keys. In that setup the application usually only needs the bucket setting; AWS credentials come from the runtime role.
 
@@ -107,7 +119,8 @@ Runtime liveness checks should call:
 GET /actuator/health/liveness
 ```
 
-Post-deploy smoke checks should verify both readiness and:
+Post-deploy smoke checks should verify readiness, ping and the image metadata
+served by `/actuator/info`:
 
 ```http
 GET /actuator/info
@@ -126,3 +139,8 @@ from a CI-built image:
   }
 }
 ```
+
+Use the manual `Smoke check` GitHub Actions workflow after a runtime update. For
+the dev environment, set `expected_image_repository` to
+`ghcr.io/gtestino92/reals-backend`, `expected_image_tag` to `development` and
+`expected_image_revision` to the deployed commit SHA or its prefix.

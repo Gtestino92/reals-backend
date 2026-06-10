@@ -10,7 +10,9 @@ import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.access.AccessDeniedException
@@ -100,12 +102,44 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
 
+        val photo = profileService.getPhotos(profile.id)[0]
         profileService.deletePhoto(
             profileId = profile.id,
-            position = 1
+            photoId = photo.id
         )
 
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
+    }
+
+    @Test
+    fun `user cannot delete a photo from another profile`() {
+        val ownerUserId = createActiveProfile(
+            email = "photo-owner-${UUID.randomUUID()}@example.com",
+            displayName = "Photo Owner",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val otherUserId = createActiveProfile(
+            email = "photo-other-${UUID.randomUUID()}@example.com",
+            displayName = "Photo Other",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+        val ownerProfile = profileService.findByUserId(ownerUserId)
+            ?: error("Owner profile was not created")
+        val otherProfile = profileService.findByUserId(otherUserId)
+            ?: error("Other profile was not created")
+        val ownerPhoto = profileService.getPhotos(ownerProfile.id).first()
+
+        val exception = assertThrows<DomainNotFoundException> {
+            profileService.deletePhoto(
+                profileId = otherProfile.id,
+                photoId = ownerPhoto.id
+            )
+        }
+
+        assertEquals(DomainErrorCode.PROFILE_PHOTO_NOT_FOUND, exception.code)
+        assertTrue(profileService.getPhotos(ownerProfile.id).any { it.id == ownerPhoto.id })
     }
 
     @Test

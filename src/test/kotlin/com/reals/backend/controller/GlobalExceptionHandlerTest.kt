@@ -2,6 +2,8 @@ package com.reals.backend.controller
 
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
@@ -95,5 +97,21 @@ class GlobalExceptionHandlerTest {
         assertEquals("TRANSIENT_CONCURRENCY_CONFLICT", response.body?.code)
         assertEquals("Conflict", response.body?.error)
         assertEquals("Resource is temporarily busy. Please retry.", response.body?.message)
+    }
+
+    @Test
+    fun `domain not found errors expose stable not found response`() {
+        val response =
+            handler.handleDomainException(
+                DomainNotFoundException(
+                    code = DomainErrorCode.PROFILE_NOT_FOUND,
+                    message = "Profile not found for current user"
+                )
+            )
+
+        assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
+        assertEquals("PROFILE_NOT_FOUND", response.body?.code)
+        assertEquals("Not Found", response.body?.error)
+        assertEquals("Profile not found for current user", response.body?.message)
     }
 }
