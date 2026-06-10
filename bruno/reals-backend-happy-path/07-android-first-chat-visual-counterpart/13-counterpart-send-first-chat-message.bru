@@ -1,7 +1,7 @@
 ﻿meta {
-  name: 12 Counterpart Send First Chat Message
+  name: 13 Counterpart Send First Chat Message
   type: http
-  seq: 12
+  seq: 13
 }
 
 post {
@@ -12,7 +12,7 @@ post {
 
 headers {
   Content-Type: application/json
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 body:json {

@@ -1,5 +1,5 @@
 ﻿meta {
-  name: 05 Add Counterpart Photo 3
+  name: 05 Add Counterpart Photo 2
   type: http
   seq: 5
 }
@@ -12,13 +12,13 @@ post {
 
 headers {
   Content-Type: application/json
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 body:json {
   {
-    "url": "https://example.com/android-counterpart-{{counterpartRunId}}-3.jpg",
-    "position": 3,
+    "url": "https://example.com/android-counterpart-{{counterpartRunId}}-2.jpg",
+    "position": 2,
     "isPersonPhoto": false,
     "isFullBody": false
   }

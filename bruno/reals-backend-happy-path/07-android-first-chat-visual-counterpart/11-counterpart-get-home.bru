@@ -1,7 +1,7 @@
 ﻿meta {
-  name: 10 Counterpart Get Home
+  name: 11 Counterpart Get Home
   type: http
-  seq: 10
+  seq: 11
 }
 
 get {
@@ -11,7 +11,7 @@ get {
 }
 
 headers {
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 script:post-response {

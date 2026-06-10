@@ -1,7 +1,7 @@
 ﻿meta {
-  name: 07 Activate Counterpart Profile
+  name: 08 Activate Counterpart Profile
   type: http
-  seq: 7
+  seq: 8
 }
 
 post {
@@ -11,7 +11,7 @@ post {
 }
 
 headers {
-  X-Dev-User-Id: {{counterpartUserId}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 script:post-response {
