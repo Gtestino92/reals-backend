@@ -85,6 +85,10 @@ engagement:
   max-active-matches: 5
   max-active-connections: 2
 
+security:
+  rate-limit:
+    enabled: false
+
 storage:
   s3:
     endpoint: http://localhost:9000

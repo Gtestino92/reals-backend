@@ -142,6 +142,22 @@ engagement:
   # A connection is active while its lock of type CONNECTION exists
   max-active-connections: 2
 
+security:
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    default-capacity: ${RATE_LIMIT_DEFAULT_CAPACITY:180}
+    default-refill-tokens: ${RATE_LIMIT_DEFAULT_REFILL_TOKENS:180}
+    default-refill-period-seconds: ${RATE_LIMIT_DEFAULT_REFILL_PERIOD_SECONDS:60}
+    provision-capacity: ${RATE_LIMIT_PROVISION_CAPACITY:10}
+    provision-refill-tokens: ${RATE_LIMIT_PROVISION_REFILL_TOKENS:10}
+    provision-refill-period-seconds: ${RATE_LIMIT_PROVISION_REFILL_PERIOD_SECONDS:60}
+    message-capacity: ${RATE_LIMIT_MESSAGE_CAPACITY:60}
+    message-refill-tokens: ${RATE_LIMIT_MESSAGE_REFILL_TOKENS:60}
+    message-refill-period-seconds: ${RATE_LIMIT_MESSAGE_REFILL_PERIOD_SECONDS:60}
+    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:30}
+    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:30}
+    profile-photo-refill-period-seconds: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_PERIOD_SECONDS:60}
+
 info:
   app:
     name: ${spring.application.name}
