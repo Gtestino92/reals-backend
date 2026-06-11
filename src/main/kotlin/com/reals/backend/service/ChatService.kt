@@ -294,10 +294,8 @@ class ChatService(
             "Message $afterMessageId does not belong to chat $chatId"
         }
 
-        return chatMessageRepository.findByChatSessionIdAndSentAtGreaterThanEqualOrderBySentAtAscIdAsc(
-            chatSessionId = chatId,
-            sentAt = afterMessage.sentAt
-        ).dropWhile { it.id != afterMessageId }
+        return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
+            .dropWhile { it.id != afterMessageId }
             .drop(1)
     }
 
