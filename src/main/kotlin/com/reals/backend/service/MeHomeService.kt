@@ -77,6 +77,19 @@ class MeHomeService(
                 .toMap()
         }
 
+        val partnerUserIds =
+            activeMatches.map { partnerUserId(it.userAId, it.userBId, userId) } +
+                activeConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
+
+        val partnerProfilesByUserId =
+            if (partnerUserIds.isEmpty()) {
+                emptyMap()
+            } else {
+                profileRepository
+                    .findByUserIdIn(partnerUserIds)
+                    .associateBy { it.userId }
+            }
+
         return HomeResponse(
             profileStatus = profileStatus,
             queue = HomeQueueResponse(
@@ -86,14 +99,32 @@ class MeHomeService(
                 HomeMatchResponse.from(
                     match = match,
                     firstChat = firstChatsByMatchId[match.id]
+                        ?.takeIf { match.state == MatchState.CHAT_ACTIVE },
+                    partner = partnerProfilesByUserId[
+                        partnerUserId(match.userAId, match.userBId, userId)
+                    ]
                 )
             },
             activeConnections = activeConnections.map { connection ->
                 HomeConnectionResponse.from(
                     connection = connection,
-                    secondChat = secondChatsByConnectionId[connection.id]
+                    secondChat = secondChatsByConnectionId[connection.id],
+                    partner = partnerProfilesByUserId[
+                        partnerUserId(connection.userAId, connection.userBId, userId)
+                    ]
                 )
             }
         )
     }
+
+    private fun partnerUserId(
+        userAId: UUID,
+        userBId: UUID,
+        currentUserId: UUID
+    ): UUID =
+        when (currentUserId) {
+            userAId -> userBId
+            userBId -> userAId
+            else -> error("Current user is not a participant")
+        }
 }
