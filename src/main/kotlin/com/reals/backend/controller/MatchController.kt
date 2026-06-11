@@ -37,15 +37,42 @@ class MatchController(
     fun getFirstChat(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID
-    ): ResponseEntity<ChatResponse> =
-        ResponseEntity.ok(
-            ChatResponse.from(
-                chatService.findActiveFirstChatForUserOrThrow(
-                    matchId = matchId,
-                    userId = userId
-                )
+    ): ResponseEntity<FirstChatResponse> {
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
+        val partnerId =
+            when (userId) {
+                match.userAId -> match.userBId
+                match.userBId -> match.userAId
+                else -> error("User was already validated as match participant")
+            }
+
+        val partnerProfile = profileService.findByUserId(partnerId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.PROFILE_NOT_FOUND,
+                message = "Partner profile not found"
+            )
+
+        val decisions = chatService.getFirstChatDecisionStatuses(
+            matchId = matchId,
+            userId = userId
+        )
+        val chat = chatService.findActiveFirstChatForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
+
+        return ResponseEntity.ok(
+            FirstChatResponse.from(
+                chat = chat,
+                partner = partnerProfile,
+                myDecision = decisions.myDecision,
+                partnerDecision = decisions.partnerDecision
             )
         )
+    }
 
     /*
         Returns the profile of the OTHER user in the match, ass seen from [requestingUserId]

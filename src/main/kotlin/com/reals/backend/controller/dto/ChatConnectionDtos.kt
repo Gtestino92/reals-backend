@@ -21,6 +21,7 @@ data class ChatResponse(
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?
 ) {
@@ -35,8 +36,66 @@ data class ChatResponse(
             availableAt = c.availableAt,
             activatedAt = c.activatedAt,
             timeoutAt = c.timeoutAt,
+            expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
             lastMessageAt = c.lastMessageAt
+        )
+    }
+}
+
+data class PartnerSummaryResponse(
+    val userId: UUID,
+    val profileId: UUID,
+    val displayName: String
+) {
+    companion object {
+        fun from(profile: Profile) = PartnerSummaryResponse(
+            userId = profile.userId,
+            profileId = profile.id,
+            displayName = profile.displayName
+        )
+    }
+}
+
+data class FirstChatResponse(
+    val id: UUID,
+    val matchId: UUID,
+    val connectionId: UUID?,
+    val chatType: ChatType,
+    val status: ChatStatus,
+    val startedAt: OffsetDateTime,
+    val availableAt: OffsetDateTime?,
+    val activatedAt: OffsetDateTime?,
+    val timeoutAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime,
+    val endedAt: OffsetDateTime?,
+    val lastMessageAt: OffsetDateTime?,
+    val partner: PartnerSummaryResponse,
+    val myDecision: ChatParticipantDecisionStatus,
+    val partnerDecision: ChatParticipantDecisionStatus
+) {
+    companion object {
+        fun from(
+            chat: Chat,
+            partner: Profile,
+            myDecision: ChatParticipantDecisionStatus,
+            partnerDecision: ChatParticipantDecisionStatus
+        ) = FirstChatResponse(
+            id = chat.id,
+            matchId = chat.matchId,
+            connectionId = chat.connectionId,
+            chatType = chat.chatType,
+            status = chat.status,
+            startedAt = chat.startedAt,
+            availableAt = chat.availableAt,
+            activatedAt = chat.activatedAt,
+            timeoutAt = chat.timeoutAt,
+            expiresAt = chat.timeoutAt,
+            endedAt = chat.endedAt,
+            lastMessageAt = chat.lastMessageAt,
+            partner = PartnerSummaryResponse.from(partner),
+            myDecision = myDecision,
+            partnerDecision = partnerDecision
         )
     }
 }
@@ -89,6 +148,24 @@ data class ChatMessageResponse(
             senderId = m.senderId,
             content = m.content,
             sentAt = m.sentAt
+        )
+    }
+}
+
+data class ChatMessagesResponse(
+    val messages: List<ChatMessageResponse>,
+    val hasMore: Boolean,
+    val serverTime: OffsetDateTime
+) {
+    companion object {
+        fun from(
+            messages: List<ChatMessage>,
+            hasMore: Boolean = false,
+            serverTime: OffsetDateTime = OffsetDateTime.now()
+        ) = ChatMessagesResponse(
+            messages = messages.map { ChatMessageResponse.from(it) },
+            hasMore = hasMore,
+            serverTime = serverTime
         )
     }
 }

@@ -19,7 +19,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
     fun `send and list messages over http`() {
         val setup = createMatchWithFirstChat()
 
-        mockMvc.perform(
+        val firstMessageBody = mockMvc.perform(
             post("/api/chats/${setup.firstChatId}/messages")
                 .with(authenticatedAs(setup.userAId))
                 .contentType(jsonContentType)
@@ -28,14 +28,37 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.senderId", equalTo(setup.userAId.toString())))
             .andExpect(jsonPath("$.content", equalTo("Hola desde controller")))
+            .andReturn()
+            .response
+            .contentAsString
+        val firstMessageId = objectMapper.readTree(firstMessageBody).get("id").asString()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Respuesta desde controller"}""")
+        )
+            .andExpect(status().isOk)
 
         mockMvc.perform(
             get("/api/chats/${setup.firstChatId}/messages")
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$", hasSize<Any>(1)))
+            .andExpect(jsonPath("$", hasSize<Any>(2)))
             .andExpect(jsonPath("$[0].senderId", equalTo(setup.userAId.toString())))
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=$firstMessageId")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(1)))
+            .andExpect(jsonPath("$.messages[0].senderId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("Respuesta desde controller")))
+            .andExpect(jsonPath("$.hasMore", equalTo(false)))
+            .andExpect(jsonPath("$.serverTime").exists())
     }
 
     @Test
