@@ -1,0 +1,48 @@
+meta {
+  name: 10 Process Matchmaking For Android User
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matchmaking/process?maxPairsPerRun=1
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 404 || status === 403) {
+    throw new Error(
+      `Expected local Firebase matchmaking process endpoint to be available, got ${status}. ` +
+      `Make sure the backend includes DevMatchmakingController under local-firebase and the counterpart is provisioned.`
+    );
+  }
+
+  const body = res.getBody();
+  if (!body || body.matchesCreated < 1 || !body.pairs || !body.pairs[0]) {
+    throw new Error("No match was created. Make sure the Android user is queued with an ACTIVE compatible profile.");
+  }
+
+  const match = body.pairs[0];
+  const counterpartUserId = bru.getEnvVar("counterpartUserId");
+  const androidUserId = bru.getEnvVar("androidUserId");
+  const participants = [match.userAId, match.userBId];
+
+  if (!participants.includes(counterpartUserId)) {
+    throw new Error(`Created match does not contain counterpart user ${counterpartUserId}. Got ${participants.join("/")}.`);
+  }
+
+  if (androidUserId && !participants.includes(androidUserId)) {
+    throw new Error(
+      `Created match does not contain androidUserId ${androidUserId}. ` +
+      `Got ${participants.join("/")}. Clear stale queue rows or set androidUserId correctly.`
+    );
+  }
+
+  bru.setEnvVar("counterpartMatchId", match.id);
+}
