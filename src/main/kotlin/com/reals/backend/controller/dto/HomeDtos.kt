@@ -7,7 +7,9 @@ import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileStatus
+import java.time.OffsetDateTime
 import java.util.UUID
 
 data class HomeResponse(
@@ -29,11 +31,12 @@ data class HomeMatchResponse(
     companion object {
         fun from(
             match: Match,
-            firstChat: Chat?
+            firstChat: Chat?,
+            partner: Profile?
         ) = HomeMatchResponse(
             matchId = match.id,
             matchState = match.state,
-            firstChat = firstChat?.let { HomeChatResponse.from(it) }
+            firstChat = firstChat?.let { HomeChatResponse.from(it, partner) }
         )
     }
 }
@@ -47,12 +50,13 @@ data class HomeConnectionResponse(
     companion object {
         fun from(
             connection: Connection,
-            secondChat: Chat?
+            secondChat: Chat?,
+            partner: Profile?
         ) = HomeConnectionResponse(
             connectionId = connection.id,
             matchId = connection.matchId,
             connectionState = connection.state,
-            secondChat = secondChat?.let { HomeChatResponse.from(it) }
+            secondChat = secondChat?.let { HomeChatResponse.from(it, partner) }
         )
     }
 }
@@ -60,13 +64,20 @@ data class HomeConnectionResponse(
 data class HomeChatResponse(
     val chatId: UUID,
     val chatType: ChatType,
-    val chatStatus: ChatStatus
+    val chatStatus: ChatStatus,
+    val expiresAt: OffsetDateTime,
+    val partner: PartnerSummaryResponse?
 ) {
     companion object {
-        fun from(chat: Chat) = HomeChatResponse(
+        fun from(
+            chat: Chat,
+            partner: Profile?
+        ) = HomeChatResponse(
             chatId = chat.id,
             chatType = chat.chatType,
-            chatStatus = chat.status
+            chatStatus = chat.status,
+            expiresAt = chat.timeoutAt,
+            partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }
 }

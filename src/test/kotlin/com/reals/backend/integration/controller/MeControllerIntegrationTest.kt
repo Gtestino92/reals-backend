@@ -170,7 +170,25 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.activeMatches[0].firstChat.chatId", equalTo(setup.firstChatId.toString())))
             .andExpect(jsonPath("$.activeMatches[0].firstChat.chatType", equalTo("FIRST_CHAT")))
             .andExpect(jsonPath("$.activeMatches[0].firstChat.chatStatus", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.expiresAt").exists())
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home keeps visual phase match without active first chat`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("VISUAL_PHASE")))
+            .andExpect(jsonPath("$.activeMatches[0].firstChat").doesNotExist())
     }
 
     @Test
@@ -191,5 +209,8 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.activeConnections[0].connectionState", equalTo("SECOND_CHAT_AVAILABLE")))
             .andExpect(jsonPath("$.activeConnections[0].secondChat.chatType", equalTo("SECOND_CHAT")))
             .andExpect(jsonPath("$.activeConnections[0].secondChat.chatStatus", equalTo("AVAILABLE")))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.expiresAt").exists())
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.activeConnections[0].secondChat.partner.displayName", equalTo("Match B")))
     }
 }

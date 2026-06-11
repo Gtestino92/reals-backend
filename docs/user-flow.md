@@ -35,6 +35,12 @@ ChatService.startFirstChat(matchId)
 
 Messages can be sent only when the chat is active, not timed out and the sender belongs to the match. Sending a message updates `Chat.lastMessageAt`.
 
+Clients discover active first chats through `GET /api/me/home`. While a match is in `CHAT_ACTIVE`, `activeMatches[].firstChat` includes the first-chat id, `expiresAt` and a partner summary (`userId`, `profileId`, `displayName`). When the match moves to `VISUAL_PHASE`, Home keeps the match visible with `matchState = VISUAL_PHASE` but no longer exposes it as an active `firstChat`.
+
+`GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`, `myDecision`, `partnerDecision` and `expiresAt`. The decision fields are API-facing statuses from the current user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+
+Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
+
 ## 4. Chat Decision
 
 Each user can approve continuation, request mutual cancellation or cancel explicitly.

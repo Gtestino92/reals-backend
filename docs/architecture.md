@@ -29,8 +29,8 @@ Schedulers should also call services rather than mutating repositories directly.
 - Java 21.
 - Spring Boot 4.0.6.
 - Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
-- PostgreSQL is the supported shared/dev/prod database and the default Docker local database.
-- H2 is used for local no-auth development and the in-memory test profile.
+- PostgreSQL is the supported non-local database driver.
+- H2 is used by the default local `local-firebase` file database, local no-auth development and the in-memory test profile.
 - Flyway is present; migrations live under `src/main/resources/db/migration`.
 - Caffeine cache.
 - ShedLock for scheduler locking.
@@ -55,7 +55,7 @@ Chat responsibilities are split conservatively:
 - Entities use UUID primary keys.
 - Enums are persisted as strings.
 - Migrations live under `src/main/resources/db/migration`.
-- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-nodb` is the no-auth local H2 profile. `local-firebase` is the default local Firebase profile and currently targets the Docker PostgreSQL datasource.
+- Local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`; `local-firebase` is the default local Firebase profile and `local-nodb` is the no-auth local H2 profile.
 
 ## Background Jobs
 
