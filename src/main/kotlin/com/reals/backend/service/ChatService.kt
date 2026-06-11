@@ -4,7 +4,10 @@ import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatDecision
 import com.reals.backend.domain.ChatExitReason
+import com.reals.backend.domain.ChatExitRequestStatus
+import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.MatchState
@@ -45,6 +48,11 @@ class ChatService(
     private companion object {
         const val MESSAGE_MAX_LENGTH = 1000
     }
+
+    data class ParticipantDecisionStatuses(
+        val myDecision: ChatParticipantDecisionStatus,
+        val partnerDecision: ChatParticipantDecisionStatus
+    )
 
     fun findByIdOrThrow(chatId: UUID): Chat {
         return chatRepository.findById(chatId)
@@ -268,6 +276,67 @@ class ChatService(
         return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
     }
 
+    fun getMessagesAfter(
+        chatId: UUID,
+        userId: UUID,
+        afterMessageId: UUID
+    ): List<ChatMessage> {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, userId)
+
+        val afterMessage =
+            chatMessageRepository.findById(afterMessageId)
+                .orElseThrow {
+                    NoSuchElementException("Chat message not found: $afterMessageId")
+                }
+
+        check(afterMessage.chatSessionId == chatId) {
+            "Message $afterMessageId does not belong to chat $chatId"
+        }
+
+        return chatMessageRepository.findByChatSessionIdAndSentAtGreaterThanEqualOrderBySentAtAscIdAsc(
+            chatSessionId = chatId,
+            sentAt = afterMessage.sentAt
+        ).dropWhile { it.id != afterMessageId }
+            .drop(1)
+    }
+
+    fun getFirstChatDecisionStatuses(
+        matchId: UUID,
+        userId: UUID
+    ): ParticipantDecisionStatuses {
+        val match = matchService.findByIdOrThrow(matchId)
+        val chat = findActiveFirstChatOrThrow(matchId)
+        validateChatParticipant(chat, userId)
+
+        val chatDecision = chatDecisionRepository.findByChatId(chat.id)
+
+        val userADecision = resolveParticipantDecisionStatus(
+            chat = chat,
+            userId = match.userAId,
+            chatDecisionValue = chatDecision?.userADecision
+        )
+        val userBDecision = resolveParticipantDecisionStatus(
+            chat = chat,
+            userId = match.userBId,
+            chatDecisionValue = chatDecision?.userBDecision
+        )
+
+        return when (userId) {
+            match.userAId -> ParticipantDecisionStatuses(
+                myDecision = userADecision,
+                partnerDecision = userBDecision
+            )
+
+            match.userBId -> ParticipantDecisionStatuses(
+                myDecision = userBDecision,
+                partnerDecision = userADecision
+            )
+
+            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
+        }
+    }
+
     fun findInactiveChats(inactivityMinutes: Long): List<Chat> {
         val threshold = OffsetDateTime.now().minusMinutes(inactivityMinutes)
         return chatRepository.findInactiveActiveChats(threshold)
@@ -396,5 +465,36 @@ class ChatService(
         PlainText.requireValid("Message content", normalized)
 
         return normalized
+    }
+
+    private fun resolveParticipantDecisionStatus(
+        chat: Chat,
+        userId: UUID,
+        chatDecisionValue: ChatContinueDecision?
+    ): ChatParticipantDecisionStatus {
+        if (chat.status == ChatStatus.ABANDONED) {
+            return ChatParticipantDecisionStatus.ABANDONED
+        }
+
+        val terminalExit =
+            chatExitService.findExitRequests(
+                chatId = chat.id,
+                userId = userId
+            ).firstOrNull {
+                it.status == ChatExitRequestStatus.ACCEPTED &&
+                    (it.type == ChatExitRequestType.UNILATERAL_CANCEL ||
+                        it.type == ChatExitRequestType.SAFETY_REPORT) &&
+                    it.requesterUserId == userId
+            }
+
+        if (terminalExit != null) {
+            return ChatParticipantDecisionStatus.REJECTED
+        }
+
+        return when (chatDecisionValue) {
+            ChatContinueDecision.APPROVED -> ChatParticipantDecisionStatus.APPROVED
+            ChatContinueDecision.REJECTED -> ChatParticipantDecisionStatus.REJECTED
+            null -> ChatParticipantDecisionStatus.PENDING
+        }
     }
 }

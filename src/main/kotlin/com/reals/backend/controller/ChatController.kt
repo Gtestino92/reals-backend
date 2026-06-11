@@ -55,15 +55,30 @@ class ChatController(
     @GetMapping("/{chatId}/messages")
     fun getMessages(
         @CurrentUserId userId: UUID,
-        @PathVariable chatId: UUID
-    ): ResponseEntity<List<ChatMessageResponse>> {
+        @PathVariable chatId: UUID,
+        @RequestParam(required = false) after: UUID?,
+        @RequestParam(required = false) afterMessageId: UUID?
+    ): ResponseEntity<Any> {
+        val effectiveAfterMessageId = after ?: afterMessageId
+
+        if (effectiveAfterMessageId != null) {
+            val messages = chatService.getMessagesAfter(
+                chatId = chatId,
+                userId = userId,
+                afterMessageId = effectiveAfterMessageId
+            )
+
+            return ResponseEntity.ok<Any>(
+                ChatMessagesResponse.from(messages)
+            )
+        }
 
         val messages = chatService.getMessages(
             chatId = chatId,
             userId = userId
         )
 
-        return ResponseEntity.ok(
+        return ResponseEntity.ok<Any>(
             messages.map { ChatMessageResponse.from(it) }
         )
     }

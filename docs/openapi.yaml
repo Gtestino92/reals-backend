@@ -331,7 +331,11 @@ paths:
         - $ref: '#/components/parameters/MatchId'
       responses:
         '200':
-          $ref: '#/components/responses/Chat'
+          description: Active first chat with partner and participant decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstChatResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -458,15 +462,27 @@ paths:
       summary: List chat messages
       parameters:
         - $ref: '#/components/parameters/ChatId'
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Return messages after this message id using the incremental response shape.
+        - name: afterMessageId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Alias for `after`.
       responses:
         '200':
-          description: Messages
+          description: Messages. Without a cursor this is the legacy array; with a cursor this is ChatMessagesResponse.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ChatMessageResponse'
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/ChatMessageResponse'
+                  - $ref: '#/components/schemas/ChatMessagesResponse'
         '404':
           $ref: '#/components/responses/NotFound'
   /api/chats/{chatId}/exit-requests:
@@ -972,11 +988,23 @@ components:
           nullable: true
     HomeChatResponse:
       type: object
-      required: [chatId, chatType, chatStatus]
+      required: [chatId, chatType, chatStatus, expiresAt]
       properties:
         chatId: { type: string, format: uuid }
         chatType: { $ref: '#/components/schemas/ChatType' }
         chatStatus: { $ref: '#/components/schemas/ChatStatus' }
+        expiresAt: { type: string, format: date-time }
+        partner:
+          allOf:
+            - $ref: '#/components/schemas/PartnerSummaryResponse'
+          nullable: true
+    PartnerSummaryResponse:
+      type: object
+      required: [userId, profileId, displayName]
+      properties:
+        userId: { type: string, format: uuid }
+        profileId: { type: string, format: uuid }
+        displayName: { type: string }
     CreateProfileRequest:
       type: object
       required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
@@ -1134,7 +1162,7 @@ components:
         message: { type: string, nullable: true }
     ChatResponse:
       type: object
-      required: [id, matchId, chatType, status, startedAt, timeoutAt]
+      required: [id, matchId, chatType, status, startedAt, timeoutAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
         matchId: { type: string, format: uuid }
@@ -1145,8 +1173,18 @@ components:
         availableAt: { type: string, format: date-time, nullable: true }
         activatedAt: { type: string, format: date-time, nullable: true }
         timeoutAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
+    FirstChatResponse:
+      allOf:
+        - $ref: '#/components/schemas/ChatResponse'
+        - type: object
+          required: [partner, myDecision, partnerDecision]
+          properties:
+            partner: { $ref: '#/components/schemas/PartnerSummaryResponse' }
+            myDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
+            partnerDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
     SendMessageRequest:
       type: object
       required: [content]
@@ -1161,6 +1199,16 @@ components:
         senderId: { type: string, format: uuid }
         content: { type: string }
         sentAt: { type: string, format: date-time }
+    ChatMessagesResponse:
+      type: object
+      required: [messages, hasMore, serverTime]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessageResponse'
+        hasMore: { type: boolean }
+        serverTime: { type: string, format: date-time }
     ChatExitRequestCreateRequest:
       type: object
       properties:
@@ -1280,6 +1328,9 @@ components:
     ChatContinueDecision:
       type: string
       enum: [APPROVED, REJECTED]
+    ChatParticipantDecisionStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, ABANDONED]
     VisualDecision:
       type: string
       enum: [APPROVED, REJECTED]

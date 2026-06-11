@@ -15,6 +15,28 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 class MatchControllerIntegrationTest : ControllerIT() {
 
     @Test
+    fun `get first chat returns partner and participant decisions`() {
+        val setup = createMatchWithFirstChat()
+        chatService.recordChatDecision(
+            matchId = setup.matchId,
+            userId = setup.userAId,
+            decision = ChatContinueDecision.APPROVED
+        )
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/chat")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.expiresAt").exists())
+            .andExpect(jsonPath("$.partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
+            .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))
+            .andExpect(jsonPath("$.partnerDecision", equalTo("PENDING")))
+    }
+
+    @Test
     fun `chat decision endpoint returns match state after both approvals`() {
         val setup = createMatchWithFirstChat()
 
