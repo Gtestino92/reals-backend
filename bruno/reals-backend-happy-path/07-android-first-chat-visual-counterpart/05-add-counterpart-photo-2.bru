@@ -1,0 +1,25 @@
+meta {
+  name: 05 Add Counterpart Photo 2
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "url": "https://example.com/android-counterpart-{{counterpartRunId}}-2.jpg",
+    "position": 2,
+    "isPersonPhoto": false,
+    "isFullBody": false
+  }
+}
