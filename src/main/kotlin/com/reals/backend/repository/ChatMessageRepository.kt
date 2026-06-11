@@ -21,11 +21,6 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         sentAt: OffsetDateTime
     ): List<ChatMessage>
 
-    fun findByChatSessionIdAndSentAtGreaterThanEqualOrderBySentAtAscIdAsc(
-        chatSessionId: UUID,
-        sentAt: OffsetDateTime
-    ): List<ChatMessage>
-
     fun countByChatSessionIdAndSenderId(
         chatSessionId: UUID,
         senderId: UUID
