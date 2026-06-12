@@ -1,0 +1,42 @@
+meta {
+  name: 02 Rate Limit Exceeded
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebaseIdToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  if (res.status !== 429) {
+      throw new Error(
+        `Expected 429. Start the backend with RATE_LIMIT_PROVISION_CAPACITY=1, ` +
+        `RATE_LIMIT_PROVISION_REFILL_TOKENS=1 and RATE_LIMIT_PROVISION_REFILL_PERIOD_SECONDS=60. Got ${res.status}.`
+      );
+    }
+  
+    const retryAfter =
+      res.getHeader("Retry-After") ||
+      res.getHeader("retry-after");
+  
+    if (!retryAfter) {
+      throw new Error("Expected Retry-After header.");
+    }
+  
+    const body = res.getBody();
+    if (!body || body.code !== "RATE_LIMIT_EXCEEDED") {
+      throw new Error("Expected RATE_LIMIT_EXCEEDED response body.");
+    }
+}
