@@ -1,0 +1,38 @@
+meta {
+  name: 00 Setup Firebase Counterpart Run
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "counterpartRunId",
+    "firebase_counterpart_email",
+    "firebase_counterpart_id_token",
+    "firebase_counterpart_uid",
+    "counterpartUserId",
+    "counterpartProfileId",
+    "counterpartMatchId",
+    "counterpartFirstChatId",
+    "counterpartConnectionId"
+  ]);
+
+  const runId = Date.now().toString();
+  bru.setEnvVar("counterpartRunId", runId);
+  bru.setEnvVar("firebase_counterpart_email", `android.counterpart.${runId}@example.com`);
+  bru.setEnvVar("firebase_counterpart_password", bru.getEnvVar("firebase_counterpart_password") || "Password123!");
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response before Firebase counterpart setup.");
+  }
+}
