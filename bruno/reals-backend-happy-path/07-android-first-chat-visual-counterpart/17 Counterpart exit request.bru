@@ -1,11 +1,11 @@
 meta {
-  name: 13 Counterpart Send First Chat Message
+  name: 17 Counterpart exit request
   type: http
-  seq: 16
+  seq: 20
 }
 
 post {
-  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/messages
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests
   body: json
   auth: none
 }
@@ -17,6 +17,7 @@ headers {
 
 body:json {
   {
-    "content": "????"
+    "reason": "NO_LONGER_INTERESTED",
+    "details": null
   }
 }
