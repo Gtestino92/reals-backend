@@ -17,6 +17,8 @@ interface VisualReviewRepository :
         matchId: UUID
     ): VisualReview?
 
+    fun findByMatchIdIn(matchIds: Collection<UUID>): List<VisualReview>
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select v from VisualReview v where v.matchId = :matchId")
     fun findByMatchIdForUpdate(
