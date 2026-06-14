@@ -26,7 +26,8 @@ data class HomeQueueResponse(
 data class HomeMatchResponse(
     val matchId: UUID,
     val matchState: MatchState,
-    val firstChat: HomeChatResponse?
+    val firstChat: HomeChatResponse?,
+    val partner: PartnerSummaryResponse?
 ) {
     companion object {
         fun from(
@@ -36,7 +37,8 @@ data class HomeMatchResponse(
         ) = HomeMatchResponse(
             matchId = match.id,
             matchState = match.state,
-            firstChat = firstChat?.let { HomeChatResponse.from(it, partner) }
+            firstChat = firstChat?.let { HomeChatResponse.from(it, partner) },
+            partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }
 }
