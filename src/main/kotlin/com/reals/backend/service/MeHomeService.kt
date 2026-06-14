@@ -12,8 +12,10 @@ import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.VisualReviewRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
 import java.util.UUID
 
 @Service
@@ -22,7 +24,8 @@ class MeHomeService(
     private val queueRepository: MatchmakingQueueRepository,
     private val matchRepository: MatchRepository,
     private val chatRepository: ChatRepository,
-    private val connectionRepository: ConnectionRepository
+    private val connectionRepository: ConnectionRepository,
+    private val visualReviewRepository: VisualReviewRepository,
 ) {
 
     @Transactional(readOnly = true)
@@ -30,14 +33,36 @@ class MeHomeService(
         val profileStatus = profileRepository.findByUserId(userId)?.status
         val inQueue = queueRepository.existsByUserId(userId)
 
-        val activeMatches = matchRepository
+        val now = OffsetDateTime.now()
+
+        val candidateMatches = matchRepository
             .findByParticipantIdAndStateIn(
                 userId = userId,
                 states = listOf(
                     MatchState.CHAT_ACTIVE,
-                    MatchState.VISUAL_PHASE
-                )
+                    MatchState.VISUAL_PHASE,
+                ),
             )
+
+        val visualReviewByMatchId = candidateMatches
+            .filter { it.state == MatchState.VISUAL_PHASE }
+            .takeIf { it.isNotEmpty() }
+            ?.let { visualMatches ->
+                visualReviewRepository
+                    .findByMatchIdIn(visualMatches.map { it.id })
+                    .associateBy { it.matchId }
+            }
+            ?: emptyMap()
+
+        val activeMatches = candidateMatches
+            .filter { match ->
+                if (match.state != MatchState.VISUAL_PHASE) {
+                    true
+                } else {
+                    val review = visualReviewByMatchId[match.id]
+                    review?.expiresAt?.isAfter(now) == true
+                }
+            }
             .sortedByDescending { it.updatedAt }
 
         val firstChatsByMatchId = if (activeMatches.isEmpty()) {
