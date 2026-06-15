@@ -43,6 +43,8 @@ Terminal states:
 
 Allowed transitions:
 
+- `SCHEDULING_PENDING -> SCHEDULING_PHASE`
+- `SCHEDULING_PENDING -> CLOSED`
 - `SCHEDULING_PHASE -> SECOND_CHAT_SCHEDULED`
 - `SCHEDULING_PHASE -> CLOSED`
 - `SECOND_CHAT_SCHEDULED -> SECOND_CHAT_AVAILABLE`
@@ -82,8 +84,10 @@ Terminal states:
 ## Lock Behavior
 
 - Match creation creates `MATCH` locks for both users.
-- Match rejection or expiration deletes `MATCH` locks.
-- Connection creation upgrades locks from `MATCH` to `CONNECTION`.
+- Chat rejection or match expiration deletes `MATCH` locks for both users.
+- A visual decision deletes the deciding user's `MATCH` lock immediately.
+- Mutual visual approval creates a `SCHEDULING_PENDING` connection and `CONNECTION` locks immediately. This pending connection counts against connection capacity even though it is not returned in Home `activeConnections`.
+- Visual rejection closes the match and releases any remaining `MATCH` locks after both users decide or visual phase expiration handles the match.
 - Connection closure deletes `CONNECTION` locks.
 - Account deletion closes active visible chats, rejects in-progress match phases, closes active connections, fails pending scheduling negotiations, deletes the deleted user's locks and moves the profile back to `DRAFT` while preserving historical rows. Reactivation restores the user account only; it does not reopen prior engagements.
 

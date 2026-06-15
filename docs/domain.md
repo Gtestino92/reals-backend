@@ -43,9 +43,14 @@ Matching and chat:
 
 Connection and scheduling:
 
-- `ConnectionState`: `SCHEDULING_PHASE`, `SECOND_CHAT_SCHEDULED`, `SECOND_CHAT_AVAILABLE`, `SECOND_CHAT`, `CLOSED`
+- `ConnectionState`: `SCHEDULING_PENDING`, `SCHEDULING_PHASE`, `SECOND_CHAT_SCHEDULED`, `SECOND_CHAT_AVAILABLE`, `SECOND_CHAT`, `CLOSED`
 - `NegotiationStatus`: `PENDING`, `CONFIRMED`, `FAILED`
 - `ProposalStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
+
+`SCHEDULING_PENDING` is created after mutual visual approval. It counts as an
+active connection and has `schedulingAvailableAt`, but it is not actionable in
+Home until a scheduling activation job moves it to `SCHEDULING_PHASE` and
+initializes negotiation.
 
 Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is reached the chat becomes visible as `AVAILABLE`, and the timeout window starts only when a participant enters or sends the first message.
 
@@ -81,8 +86,10 @@ Users can have multiple active matches and connections up to configured limits:
 The lock table is the source of truth for active engagement counting.
 
 - Match creation creates one `MATCH` lock per user.
-- Match rejection or expiration deletes match locks.
-- Connection creation upgrades match locks to `CONNECTION` locks.
+- Chat rejection or match expiration deletes match locks for both users.
+- A visual decision releases the deciding user's match lock immediately.
+- Mutual visual approval creates a `SCHEDULING_PENDING` connection and creates `CONNECTION` locks immediately, so the pending connection occupies connection capacity before scheduling is actionable.
+- Visual rejection closes the match and releases remaining match locks only after both users have decided or the visual phase expires.
 - Connection closure deletes connection locks.
 
 Do not infer active engagement counts from match or connection state alone.

@@ -14,9 +14,17 @@ import java.util.UUID
 
 data class HomeResponse(
     val profileStatus: ProfileStatus?,
+    val engagementSummary: HomeEngagementSummaryResponse,
     val queue: HomeQueueResponse,
     val activeMatches: List<HomeMatchResponse>,
     val activeConnections: List<HomeConnectionResponse>
+)
+
+data class HomeEngagementSummaryResponse(
+    val activeMatchCount: Int,
+    val activeConnectionCount: Int,
+    val pendingSchedulingConnectionCount: Int,
+    val actionableConnectionCount: Int
 )
 
 data class HomeQueueResponse(

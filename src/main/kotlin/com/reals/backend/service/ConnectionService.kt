@@ -17,13 +17,13 @@ class ConnectionService(
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
 
-    @param:Value("\${engagement.max-active-connections:2}")
+    @param:Value($$"${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
 
-    @param:Value("\${scheduling.negotiation-duration-minutes:2880}")
+    @param:Value($$"${scheduling.negotiation-duration-minutes:2880}")
     private val negotiationDurationMinutes: Long,
 
-    @param:Value("\${scheduling.activation-delay-minutes:5}")
+    @param:Value($$"${scheduling.activation-delay-minutes:5}")
     private val schedulingActivationDelayMinutes: Long
 
 ) {
@@ -53,11 +53,15 @@ class ConnectionService(
 
     /**
      * Creates an internal pending Connection after MatchState = VISUAL_APPROVED.
-     * The actionable scheduling phase and connection locks are activated later.
+     * The pending connection counts as active immediately by creating CONNECTION
+     * locks, while the actionable scheduling phase is activated later.
      */
     fun createFromMatch(match: Match): Connection {
 
-        connectionRepository.findByMatchId(match.id)?.let { return it }
+        connectionRepository.findByMatchId(match.id)?.let { existing ->
+            ensureConnectionLocks(existing)
+            return existing
+        }
         val now = OffsetDateTime.now()
         val schedulingAvailableAt = now.plusMinutes(schedulingActivationDelayMinutes)
 
@@ -71,6 +75,8 @@ class ConnectionService(
                 schedulingExpiresAt = schedulingAvailableAt.plusMinutes(negotiationDurationMinutes)
             )
         )
+
+        ensureConnectionLocks(connection)
 
         return connection
     }

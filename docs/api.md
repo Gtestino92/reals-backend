@@ -11,7 +11,7 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
-- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, queue state, active matches with first-chat ids and partner summaries while still in `CHAT_ACTIVE`, and active connections with second-chat ids and partner summaries when available.
+- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, engagement summary, queue state, active matches with first-chat ids and partner summaries while still in `CHAT_ACTIVE`, and actionable active connections with second-chat ids and partner summaries when available.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
@@ -20,6 +20,17 @@ only while the match remains in `CHAT_ACTIVE`. Once both users approve and the
 match moves to `VISUAL_PHASE`, the match remains in `activeMatches[]` with
 `matchState = VISUAL_PHASE` and `firstChat = null`. Expired visual-phase
 matches are not returned by home.
+
+Home also returns `engagementSummary`:
+
+- `activeMatchCount`: matches currently visible/actionable in Home.
+- `activeConnectionCount`: active connections that occupy connection capacity, including `SCHEDULING_PENDING`.
+- `pendingSchedulingConnectionCount`: connections created after mutual visual approval whose scheduling phase is not actionable yet.
+- `actionableConnectionCount`: connections returned in `activeConnections[]`.
+
+`activeConnections[]` intentionally excludes `SCHEDULING_PENDING`. Pending
+scheduling is surfaced only through `engagementSummary` until the activation job
+moves the connection to `SCHEDULING_PHASE`.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -61,7 +72,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision` and `expiresAt`.
 - `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy.
-- `POST /api/matches/{matchId}/visual-decision`: submit visual decision.
+- `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending.
 - `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message.
 - `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before visual approval.
 
@@ -87,6 +98,12 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects the current scheduling round after reviewing partner proposals. This opens the next round, or fails/closes if max rounds are exceeded.
 
+After mutual visual approval the backend creates a connection in
+`SCHEDULING_PENDING`. This connection already counts against each participant's
+active connection limit, but scheduling endpoints are not actionable until
+`SchedulingActivationJob` moves it to `SCHEDULING_PHASE` and initializes the
+negotiation.
+
 ## Local Dev Tooling Endpoints
 
 These endpoints are profile-gated for local manual testing:
@@ -99,6 +116,11 @@ The scheduled second-chat availability job is available at:
 
 - `POST /api/local-dev/jobs/scheduled-second-chat-start/run`
 - `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-start-now`
+
+Deferred scheduling activation can be tested locally with:
+
+- `POST /api/local-dev/jobs/scheduling-activation/run`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/scheduling-available-now`
 
 ## Error Shape
 

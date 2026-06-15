@@ -76,8 +76,8 @@ class HappyPathIntegrationTest : BaseIT() {
             ?: error("Connection was not created")
         assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
         assertNoMatchLocks(userA, userB)
-        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
-        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
 
         connectionRepository.updateSchedulingAvailableAt(
             connectionId = connection.id,
