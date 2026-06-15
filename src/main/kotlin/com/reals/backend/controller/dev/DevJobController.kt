@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres")
+@Profile("local", "local-nodb", "local-postgres", "local-firebase")
 @RequestMapping("/api/local-dev/jobs")
 class DevJobController(
     private val accountDeletionFinalizationJob: ObjectProvider<AccountDeletionFinalizationJob>,
