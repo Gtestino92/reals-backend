@@ -3,15 +3,18 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.MatchmakingJob
 import com.reals.backend.scheduler.MatchExpirationJob
 import com.reals.backend.scheduler.ScheduledSecondChatStartJob
+import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -165,6 +168,40 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
         assertNoConnectionLocks(setup.userAId, setup.userBId)
+    }
+
+    @Test
+    fun `scheduling activation job enables due pending connection`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        assertNull(schedulingService.findNegotiationOrNull(connection.id))
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        SchedulingActivationJob(
+            connectionRepository = connectionRepository,
+            connectionService = connectionService,
+            schedulingService = schedulingService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
     }
 
     @Test

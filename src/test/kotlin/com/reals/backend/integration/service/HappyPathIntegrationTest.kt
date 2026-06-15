@@ -74,8 +74,19 @@ class HappyPathIntegrationTest : BaseIT() {
 
         val connection = connectionRepository.findByMatchId(match.id)
             ?: error("Connection was not created")
-        assertEquals(ConnectionState.SCHEDULING_PHASE, connection.state)
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
         assertNoMatchLocks(userA, userB)
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
+        assertEquals(0, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+        schedulingService.initializeNegotiation(connection.id)
+
+        assertEquals(ConnectionState.SCHEDULING_PHASE, connectionService.findByIdOrThrow(connection.id).state)
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
 
