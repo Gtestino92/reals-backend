@@ -4,9 +4,12 @@ import com.reals.backend.controller.dto.HomeConnectionResponse
 import com.reals.backend.controller.dto.HomeMatchResponse
 import com.reals.backend.controller.dto.HomeQueueResponse
 import com.reals.backend.controller.dto.HomeResponse
+import com.reals.backend.domain.ChatDecision
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
+import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
@@ -26,6 +29,7 @@ class MeHomeService(
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
     private val visualReviewRepository: VisualReviewRepository,
+    private val chatDecisionRepository: ChatDecisionRepository
 ) {
 
     @Transactional(readOnly = true)
@@ -76,6 +80,13 @@ class MeHomeService(
                 .associateBy { it.matchId }
         }
 
+        val chatDecisionsByMatchId: Map<UUID, ChatDecision?> =
+            activeMatches
+                .filter { it.state == MatchState.CHAT_ACTIVE }
+                .associate { match ->
+                    match.id to chatDecisionRepository.findByMatchId(match.id)
+                }
+
         val activeConnections = connectionRepository
             .findByParticipantIdAndStateIn(
                 userId = userId,
@@ -121,10 +132,19 @@ class MeHomeService(
                 inQueue = inQueue
             ),
             activeMatches = activeMatches.map { match ->
+                val firstChat = firstChatsByMatchId[match.id]
+                    ?.takeIf {
+                        match.state == MatchState.CHAT_ACTIVE &&
+                                hasPendingFirstChatDecisionForCurrentUser(
+                                    match = match,
+                                    currentUserId = userId,
+                                    decision = chatDecisionsByMatchId[match.id],
+                                )
+                    }
+
                 HomeMatchResponse.from(
                     match = match,
-                    firstChat = firstChatsByMatchId[match.id]
-                        ?.takeIf { match.state == MatchState.CHAT_ACTIVE },
+                    firstChat = firstChat,
                     partner = partnerProfilesByUserId[
                         partnerUserId(match.userAId, match.userBId, userId)
                     ]
@@ -152,4 +172,19 @@ class MeHomeService(
             userBId -> userAId
             else -> error("Current user is not a participant")
         }
+
+    private fun hasPendingFirstChatDecisionForCurrentUser(
+        match: Match,
+        currentUserId: UUID,
+        decision: ChatDecision?,
+    ): Boolean {
+        val myDecision = when (currentUserId) {
+            match.userAId -> decision?.userADecision
+            match.userBId -> decision?.userBDecision
+            else -> error("Current user is not a participant")
+        }
+
+        return myDecision == null
+    }
 }
+
