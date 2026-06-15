@@ -2,6 +2,7 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
@@ -206,6 +207,49 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home hides visual review after current user decides but keeps it for partner`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(
+            matchId = setup.matchId,
+            userId = setup.userAId,
+            decision = VisualDecision.REJECTED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
+            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("VISUAL_PHASE")))
+    }
+
+    @Test
+    fun `home hides pending scheduling connection until activated`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
     }
 
     @Test

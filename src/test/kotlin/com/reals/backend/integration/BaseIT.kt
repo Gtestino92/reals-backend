@@ -217,6 +217,13 @@ abstract class BaseIT {
         val connection = connectionRepository.findByMatchId(setup.matchId)
             ?: error("Connection was not created")
 
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+        schedulingService.initializeNegotiation(connection.id)
+
         return ConnectionFixture(
             userAId = setup.userAId,
             userBId = setup.userBId,

@@ -2,6 +2,7 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.UserService
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
@@ -31,6 +33,9 @@ class EngagementConcurrencyIntegrationTest {
 
     @Autowired
     private lateinit var lockRepository: ActiveEngagementLockRepository
+
+    @Autowired
+    private lateinit var connectionRepository: ConnectionRepository
 
     @Test
     fun `concurrent match creation cannot exceed active match limit`() {
@@ -74,7 +79,9 @@ class EngagementConcurrencyIntegrationTest {
             userAId = sharedUserId,
             userBId = createUser("existing-connection")
         )
-        connectionService.createFromMatch(existingMatch)
+        val existingConnection = connectionService.createFromMatch(existingMatch)
+        makeSchedulingDue(existingConnection.id)
+        connectionService.activateScheduling(existingConnection.id)
 
         val candidateMatchA = matchService.createMatch(
             userAId = sharedUserId,
@@ -86,8 +93,16 @@ class EngagementConcurrencyIntegrationTest {
         )
 
         val results = runConcurrently(
-            { connectionService.createFromMatch(candidateMatchA) },
-            { connectionService.createFromMatch(candidateMatchB) }
+            {
+                val connection = connectionService.createFromMatch(candidateMatchA)
+                makeSchedulingDue(connection.id)
+                connectionService.activateScheduling(connection.id)
+            },
+            {
+                val connection = connectionService.createFromMatch(candidateMatchB)
+                makeSchedulingDue(connection.id)
+                connectionService.activateScheduling(connection.id)
+            }
         )
 
         assertEquals(1, results.count { it })
@@ -100,6 +115,12 @@ class EngagementConcurrencyIntegrationTest {
 
     private fun createUser(prefix: String): UUID =
         userService.createUser("$prefix-${UUID.randomUUID()}@example.com").id
+
+    private fun makeSchedulingDue(connectionId: UUID) {
+        val connection = connectionRepository.findById(connectionId).orElseThrow()
+        connection.schedulingAvailableAt = OffsetDateTime.now().minusSeconds(1)
+        connectionRepository.saveAndFlush(connection)
+    }
 
     private fun runConcurrently(vararg actions: () -> Unit): List<Boolean> {
         val start = CountDownLatch(1)
