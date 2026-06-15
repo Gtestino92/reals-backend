@@ -43,7 +43,10 @@ Schedulers should also call services rather than mutating repositories directly.
 - `Match`: temporary system-generated pairing for first chat and visual review.
 - `Connection`: confirmed interaction after mutual visual approval.
 
-A match can produce one connection. Connection creation upgrades engagement locks from `MATCH` to `CONNECTION`.
+A match can produce one connection. Mutual visual approval creates a
+`SCHEDULING_PENDING` connection and creates `CONNECTION` locks immediately so it
+counts against connection capacity; scheduling becomes actionable later when the
+activation job transitions it to `SCHEDULING_PHASE`.
 
 Chat responsibilities are split conservatively:
 

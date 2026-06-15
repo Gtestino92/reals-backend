@@ -1,6 +1,7 @@
 package com.reals.backend.service
 
 import com.reals.backend.controller.dto.HomeConnectionResponse
+import com.reals.backend.controller.dto.HomeEngagementSummaryResponse
 import com.reals.backend.controller.dto.HomeMatchResponse
 import com.reals.backend.controller.dto.HomeQueueResponse
 import com.reals.backend.controller.dto.HomeResponse
@@ -104,6 +105,23 @@ class MeHomeService(
             )
             .sortedByDescending { it.updatedAt }
 
+        val activeConnectionsForSummary = connectionRepository
+            .findByParticipantIdAndStateIn(
+                userId = userId,
+                states = listOf(
+                    ConnectionState.SCHEDULING_PENDING,
+                    ConnectionState.SCHEDULING_PHASE,
+                    ConnectionState.SECOND_CHAT_SCHEDULED,
+                    ConnectionState.SECOND_CHAT_AVAILABLE,
+                    ConnectionState.SECOND_CHAT
+                )
+            )
+
+        val pendingSchedulingConnectionCount =
+            activeConnectionsForSummary.count {
+                it.state == ConnectionState.SCHEDULING_PENDING
+            }
+
         val secondChatsByConnectionId = if (activeConnections.isEmpty()) {
             emptyMap()
         } else {
@@ -133,6 +151,12 @@ class MeHomeService(
 
         return HomeResponse(
             profileStatus = profileStatus,
+            engagementSummary = HomeEngagementSummaryResponse(
+                activeMatchCount = activeMatches.size,
+                activeConnectionCount = activeConnectionsForSummary.size,
+                pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
+                actionableConnectionCount = activeConnections.size
+            ),
             queue = HomeQueueResponse(
                 inQueue = inQueue
             ),

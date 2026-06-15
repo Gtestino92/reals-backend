@@ -37,6 +37,7 @@ Non-sensitive runtime configuration:
 | `S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. |
 | `S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to a short-lived local/dev value. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
+| `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `IDENTITY_VERIFICATION_PROVIDER` | no | Defaults to `none`. |
 
 Sensitive runtime secrets:

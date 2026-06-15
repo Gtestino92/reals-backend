@@ -181,7 +181,8 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             ?: error("Connection was not created")
 
         assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
-        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
         assertNull(schedulingService.findNegotiationOrNull(connection.id))
 
         connectionRepository.updateSchedulingAvailableAt(
