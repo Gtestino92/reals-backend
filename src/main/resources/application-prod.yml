@@ -63,6 +63,8 @@ scheduler:
     fixed-delay: 900000
   scheduled-second-chat-start-job:
     fixed-delay: 60000
+  scheduling-activation-job:
+    fixed-delay: 60000
   account-deletion-finalization-job:
     fixed-delay: 3600000
 
@@ -87,6 +89,7 @@ chat:
     min-messages-before-free-cancel: 0
 
 scheduling:
+  activation-delay-minutes: ${SCHEDULING_ACTIVATION_DELAY_MINUTES:5}
   negotiation-duration-minutes: 2880
   max-rounds: 3
   max-proposals-per-round: 3

@@ -4,7 +4,6 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.repository.UserRepository
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -103,6 +102,16 @@ class MatchService(
         if (userId != match.userAId && userId != match.userBId) {
             throw AccessDeniedException("User $userId does not belong to match ${match.id}")
         }
+    }
+
+    fun releaseMatchLockForUser(
+        matchId: UUID,
+        userId: UUID
+    ) {
+        lockRepository.deleteByUserIdAndEngagementId(
+            userId = userId,
+            engagementId = matchId
+        )
     }
 
     /**
