@@ -18,7 +18,8 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 For first-chat navigation, `GET /api/me/home` exposes `activeMatches[].firstChat`
 only while the match remains in `CHAT_ACTIVE`. Once both users approve and the
 match moves to `VISUAL_PHASE`, the match remains in `activeMatches[]` with
-`matchState = VISUAL_PHASE` and `firstChat = null`.
+`matchState = VISUAL_PHASE` and `firstChat = null`. Expired visual-phase
+matches are not returned by home.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 

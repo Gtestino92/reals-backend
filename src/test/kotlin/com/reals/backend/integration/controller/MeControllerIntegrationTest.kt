@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class MeControllerIntegrationTest : ControllerIT() {
@@ -189,6 +190,22 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
             .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("VISUAL_PHASE")))
             .andExpect(jsonPath("$.activeMatches[0].firstChat").doesNotExist())
+    }
+
+    @Test
+    fun `home hides expired visual phase match`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(
+            matchId = setup.matchId,
+            expiresAt = OffsetDateTime.now().minusMinutes(1)
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
     }
 
     @Test

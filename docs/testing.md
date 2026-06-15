@@ -101,7 +101,7 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
 - `04 Timeout Outcomes`: local-only manual checks for deadline-driven jobs. These use `/api/local-dev/timeouts/...` to move deadlines into the past and `/api/local-dev/jobs/.../run` to trigger the real jobs deterministically.
 
-The `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. They must not be enabled in cloud dev or production.
+Most `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. The matchmaking processor endpoint is also exposed for `local-firebase` so Android/Firebase manual flows can process queued pairs locally. Local-dev endpoints must not be enabled in cloud dev or production.
 
 ## Running Tests
 

@@ -62,6 +62,65 @@ class ChatControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `list messages afterMessageId alias returns only newer messages`() {
+        val setup = createMatchWithFirstChat()
+
+        val firstMessageBody = mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Primer mensaje"}""")
+        )
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .contentAsString
+        val firstMessageId = objectMapper.readTree(firstMessageBody).get("id").asString()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Segundo mensaje"}""")
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?afterMessageId=$firstMessageId")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(1)))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("Segundo mensaje")))
+            .andExpect(jsonPath("$.hasMore", equalTo(false)))
+    }
+
+    @Test
+    fun `list messages rejects after anchor from another chat`() {
+        val setup = createMatchWithFirstChat("anchor-target")
+        val otherSetup = createMatchWithFirstChat("anchor-other")
+
+        val otherMessageBody = mockMvc.perform(
+            post("/api/chats/${otherSetup.firstChatId}/messages")
+                .with(authenticatedAs(otherSetup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Mensaje de otro chat"}""")
+        )
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .contentAsString
+        val otherMessageId = objectMapper.readTree(otherMessageBody).get("id").asString()
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=$otherMessageId")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+    }
+
+    @Test
     fun `non participant cannot list chat messages`() {
         val setup = createMatchWithFirstChat()
         val stranger = userService.createUser("http-stranger-${java.util.UUID.randomUUID()}@example.com")
