@@ -64,7 +64,12 @@ class MeHomeService(
                     true
                 } else {
                     val review = visualReviewByMatchId[match.id]
-                    review?.expiresAt?.isAfter(now) == true
+                    review?.expiresAt?.isAfter(now) == true &&
+                        review.hasPendingDecisionFor(
+                            userId = userId,
+                            userAId = match.userAId,
+                            userBId = match.userBId
+                        )
                 }
             }
             .sortedByDescending { it.updatedAt }

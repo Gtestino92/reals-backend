@@ -149,9 +149,10 @@ class MatchController(
 
     /**
      * Records a visual decision for a user (APPROVED or REJECTED)
-     * When both users have decided, the match transitions automatically
-     *  - mutual APPROVED -> VISUAL_APPROVED, Connection created
-     *  - any REJECTED -> VISUAL_REJECTED, locks released
+     * The user's match lock is released immediately.
+     * When both users have decided, the match transitions automatically:
+     *  - mutual APPROVED -> VISUAL_APPROVED, pending Connection created
+     *  - any REJECTED -> VISUAL_REJECTED, remaining locks released
      */
     @PostMapping("/{matchId}/visual-decision")
     fun recordVisualDecision(

@@ -39,6 +39,7 @@ class AccountDeletionService(
         val connections = connectionRepository.findByParticipantIdAndStateIn(
             userId = userId,
             states = listOf(
+                ConnectionState.SCHEDULING_PENDING,
                 ConnectionState.SCHEDULING_PHASE,
                 ConnectionState.SECOND_CHAT_SCHEDULED,
                 ConnectionState.SECOND_CHAT_AVAILABLE,

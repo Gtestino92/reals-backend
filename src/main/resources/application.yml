@@ -76,6 +76,10 @@ scheduler:
   scheduled-second-chat-start-job:
     fixed-delay: 60000
 
+  # Enables scheduling after visual approval once its deferred availability time arrives
+  scheduling-activation-job:
+    fixed-delay: 60000
+
   # Finalizes recoverable account deletions after the recovery window expires.
   # Runs every hour because finalization is not user-facing urgent.
   account-deletion-finalization-job:
@@ -109,6 +113,9 @@ chat:
     min-messages-before-free-cancel: 0
 
 scheduling:
+  # MVP delay between mutual visual approval and making scheduling actionable
+  activation-delay-minutes: 5
+
   # Total time window (in minutes) for both users to agree on a meeting time
   # If not confirmed within this period, the negotiation is marked FAILED
   negotiation-duration-minutes: 2880 # 48 hours
