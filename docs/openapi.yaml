@@ -485,6 +485,8 @@ paths:
                   - $ref: '#/components/schemas/ChatMessagesResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/chats/{chatId}/exit-requests:
     post:
       tags: [Chats]
@@ -931,7 +933,7 @@ components:
       properties:
         code: { type: string, example: PROFILE_NOT_ACTIVE }
         error: { type: string, example: Conflict }
-        message: { type: string }
+        message: { type: string, nullable: true }
     UserResponse:
       type: object
       required: [id, status, createdAt]
@@ -974,6 +976,10 @@ components:
         firstChat:
           allOf:
             - $ref: '#/components/schemas/HomeChatResponse'
+          nullable: true
+        partner:
+          allOf:
+            - $ref: '#/components/schemas/PartnerSummaryResponse'
           nullable: true
     HomeConnectionResponse:
       type: object
@@ -1243,7 +1249,10 @@ components:
         responderUserId: { type: string, format: uuid }
         type: { $ref: '#/components/schemas/ChatExitRequestType' }
         status: { $ref: '#/components/schemas/ChatExitRequestStatus' }
-        reason: { $ref: '#/components/schemas/ChatExitReason' }
+        reason:
+          allOf:
+            - $ref: '#/components/schemas/ChatExitReason'
+          nullable: true
         details: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         resolvedAt: { type: string, format: date-time, nullable: true }

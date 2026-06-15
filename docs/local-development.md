@@ -270,7 +270,8 @@ Local profiles disable automatic scheduled execution:
 scheduler.enabled: false
 ```
 
-Use the dev endpoints for deterministic manual testing:
+Use the local auto-auth dev endpoints (`local`, `local-nodb`, `local-postgres`)
+for deterministic manual testing:
 
 ```http
 POST /api/local-dev/jobs/{job}/run
@@ -283,6 +284,13 @@ POST /api/local-dev/users
 ```
 
 This endpoint exists only on local dev-auto-auth profiles and is not part of the production API contract.
+
+The local matchmaking processor endpoint is also exposed in `local-firebase`
+for Firebase/Android manual flows:
+
+```http
+POST /api/local-dev/matchmaking/process?maxPairsPerRun=10
+```
 
 For example:
 
