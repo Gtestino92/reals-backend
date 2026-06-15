@@ -47,7 +47,8 @@ data class HomeConnectionResponse(
     val connectionId: UUID,
     val matchId: UUID,
     val connectionState: ConnectionState,
-    val secondChat: HomeChatResponse?
+    val secondChat: HomeChatResponse?,
+    val partner: PartnerSummaryResponse?
 ) {
     companion object {
         fun from(
@@ -58,7 +59,8 @@ data class HomeConnectionResponse(
             connectionId = connection.id,
             matchId = connection.matchId,
             connectionState = connection.state,
-            secondChat = secondChat?.let { HomeChatResponse.from(it, partner) }
+            secondChat = secondChat?.let { HomeChatResponse.from(it, partner) },
+            partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }
 }
