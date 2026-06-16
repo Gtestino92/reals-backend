@@ -1,0 +1,15 @@
+meta {
+  name: 20 Visual Expiration Job
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/visual-phase-expiration/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
