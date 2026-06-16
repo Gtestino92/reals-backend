@@ -1,7 +1,7 @@
 meta {
-  name: 01 Provision Firebase User
+  name: 11 Provision New Firebase User
   type: http
-  seq: 2
+  seq: 12
 }
 
 post {
@@ -11,7 +11,7 @@ post {
 }
 
 headers {
-  Authorization: Bearer {{firebase_id_token}}
+  Authorization: Bearer {{firebase_new_id_token}}
 }
 
 script:post-response {
@@ -24,9 +24,11 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error("Expected provisioned backend user response with id.");
   }
-  if (body.email !== "test@example.com") {
-    throw new Error(`Expected Firebase user email test@test.com, got ${body.email}`);
+  
+  const expectedEmail = bru.getEnvVar("firebase_new_email");
+  if (body.email !== expectedEmail) {
+    throw new Error(`Expected backend user email ${expectedEmail}, got ${body.email}`);
   }
   
-  bru.setEnvVar("firebaseUserId", body.id);
+  bru.setEnvVar("firebase_new_backend_user_id", body.id);
 }
