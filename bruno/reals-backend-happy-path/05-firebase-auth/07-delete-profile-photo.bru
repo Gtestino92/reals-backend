@@ -1,0 +1,15 @@
+meta {
+  name: 07 Delete Profile Photo
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/api/me/profile/photos/{{photoId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}

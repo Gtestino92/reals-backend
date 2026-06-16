@@ -223,6 +223,7 @@ data class ConnectionResponse(
     val userAId: UUID,
     val userBId: UUID,
     val state: ConnectionState,
+    val schedulingAvailableAt: OffsetDateTime?,
     val schedulingExpiresAt: OffsetDateTime,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
@@ -234,6 +235,7 @@ data class ConnectionResponse(
             userAId = c.userAId,
             userBId = c.userBId,
             state = c.state,
+            schedulingAvailableAt = c.schedulingAvailableAt,
             schedulingExpiresAt = c.schedulingExpiresAt,
             createdAt = c.createdAt,
             updatedAt = c.updatedAt

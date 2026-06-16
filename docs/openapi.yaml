@@ -946,12 +946,14 @@ components:
         createdAt: { type: string, format: date-time }
     HomeResponse:
       type: object
-      required: [queue, activeMatches, activeConnections]
+      required: [engagementSummary, queue, activeMatches, activeConnections]
       properties:
         profileStatus:
           allOf:
             - $ref: '#/components/schemas/ProfileStatus'
           nullable: true
+        engagementSummary:
+          $ref: '#/components/schemas/HomeEngagementSummaryResponse'
         queue:
           $ref: '#/components/schemas/HomeQueueResponse'
         activeMatches:
@@ -962,6 +964,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/HomeConnectionResponse'
+    HomeEngagementSummaryResponse:
+      type: object
+      required: [activeMatchCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
+      properties:
+        activeMatchCount: { type: integer, format: int32, minimum: 0 }
+        activeConnectionCount: { type: integer, format: int32, minimum: 0 }
+        pendingSchedulingConnectionCount: { type: integer, format: int32, minimum: 0 }
+        actionableConnectionCount: { type: integer, format: int32, minimum: 0 }
     HomeQueueResponse:
       type: object
       required: [inQueue]
@@ -1360,7 +1370,7 @@ components:
       enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
     ConnectionState:
       type: string
-      enum: [SCHEDULING_PHASE, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT, CLOSED]
+      enum: [SCHEDULING_PENDING, SCHEDULING_PHASE, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT, CLOSED]
     NegotiationStatus:
       type: string
       enum: [PENDING, CONFIRMED, FAILED]

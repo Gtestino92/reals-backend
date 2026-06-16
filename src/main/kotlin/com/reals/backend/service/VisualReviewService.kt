@@ -1,7 +1,6 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
-import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
@@ -18,7 +17,6 @@ class VisualReviewService(
     private val visualReviewRepository: VisualReviewRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
-    private val schedulingService: SchedulingService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
@@ -55,9 +53,32 @@ class VisualReviewService(
         decision: VisualDecision
     ) {
 
-        val match = matchService.findByIdOrThrow(matchId)
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
         val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
             ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
+
+        val existingDecision =
+            review.decisionFor(
+                userId = userId,
+                userAId = match.userAId,
+                userBId = match.userBId
+            )
+
+        if (existingDecision != null) {
+            check(existingDecision == decision) {
+                "Cannot change visual decision once it has been recorded"
+            }
+
+            matchService.releaseMatchLockForUser(
+                matchId = matchId,
+                userId = userId
+            )
+            resolveVisualPhaseIfReady(match = match, review = review)
+            return
+        }
 
         review.expiresAt?.let {
             check(OffsetDateTime.now().isBefore(it)) {
@@ -77,40 +98,21 @@ class VisualReviewService(
             )
         }
 
-        when (userId) {
-            match.userAId -> review.userAVisualDecision = decision
-            match.userBId -> review.userBVisualDecision = decision
-            else -> throw AccessDeniedException(
-                "User $userId does not belong to match $matchId"
-            )
-        }
+        review.recordDecisionFor(
+            userId = userId,
+            userAId = match.userAId,
+            userBId = match.userBId,
+            decision = decision
+        )
 
         review.updatedAt = OffsetDateTime.now()
         visualReviewRepository.save(review)
 
-        val aDecision = review.userAVisualDecision
-        val bDecision = review.userBVisualDecision
-
-        if (aDecision == null || bDecision == null) {
-            return
-        }
-
-        if (
-            aDecision == VisualDecision.APPROVED &&
-            bDecision == VisualDecision.APPROVED
-        ) {
-            review.messagesVisible = true
-            visualReviewRepository.save(review)
-
-            val approvedMatch = matchService.approveVisualPhase(matchId)
-            val connection = connectionService.createFromMatch(approvedMatch)
-
-            if (schedulingService.findNegotiationOrNull(connection.id) == null) {
-                schedulingService.initializeNegotiation(connection.id)
-            }
-        } else {
-            matchService.rejectVisualPhase(matchId)
-        }
+        matchService.releaseMatchLockForUser(
+            matchId = matchId,
+            userId = userId
+        )
+        resolveVisualPhaseIfReady(match = match, review = review)
     }
 
     fun recordPersonalMessage(
@@ -209,6 +211,35 @@ class VisualReviewService(
             else -> throw AccessDeniedException(
                 "User $userId does not belong to match ${match.id}"
             )
+        }
+    }
+
+    private fun resolveVisualPhaseIfReady(
+        match: Match,
+        review: VisualReview
+    ) {
+        if (!review.bothDecided()) {
+            return
+        }
+
+        if (review.bothApproved()) {
+            review.messagesVisible = true
+            review.updatedAt = OffsetDateTime.now()
+            visualReviewRepository.save(review)
+
+            val approvedMatch =
+                when (match.state) {
+                    MatchState.VISUAL_PHASE -> matchService.approveVisualPhase(match.id)
+                    MatchState.VISUAL_APPROVED -> match
+                    else -> return
+                }
+
+            connectionService.createFromMatch(approvedMatch)
+            return
+        }
+
+        if (review.anyRejected() && match.state == MatchState.VISUAL_PHASE) {
+            matchService.rejectVisualPhase(match.id)
         }
     }
 

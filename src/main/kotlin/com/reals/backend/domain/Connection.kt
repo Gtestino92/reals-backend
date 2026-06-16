@@ -5,6 +5,7 @@ import java.time.OffsetDateTime
 import java.util.*
 
 enum class ConnectionState {
+    SCHEDULING_PENDING,
     SCHEDULING_PHASE,
     SECOND_CHAT_SCHEDULED,
     SECOND_CHAT_AVAILABLE,
@@ -34,7 +35,10 @@ data class Connection(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "state", nullable = false)
-    var state: ConnectionState = ConnectionState.SCHEDULING_PHASE,
+    var state: ConnectionState = ConnectionState.SCHEDULING_PENDING,
+
+    @Column(name = "scheduling_available_at")
+    var schedulingAvailableAt: OffsetDateTime? = null,
 
     @Column(name = "scheduling_expires_at", nullable = false)
     var schedulingExpiresAt: OffsetDateTime,

@@ -19,6 +19,26 @@ interface ActiveEngagementLockRepository :
         engagementId: UUID
     )
 
+    fun existsByUserIdAndEngagementIdAndEngagementType(
+        userId: UUID,
+        engagementId: UUID,
+        engagementType: EngagementType
+    ): Boolean
+
+    @Modifying
+    @Query(
+        value = """
+        DELETE FROM active_engagement_locks
+        WHERE user_id = :userId
+          AND engagement_id = :engagementId
+    """,
+        nativeQuery = true
+    )
+    fun deleteByUserIdAndEngagementId(
+        @Param("userId") userId: UUID,
+        @Param("engagementId") engagementId: UUID
+    ): Int
+
     @Modifying
     @Query(
         value = """

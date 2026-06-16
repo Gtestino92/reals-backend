@@ -98,6 +98,17 @@ class MatchExpirationJob(
             expiredReviews.forEach { review ->
                 processed += 1
                 try {
+                    val match = matchService.findByIdOrThrow(review.matchId)
+                    if (match.state != MatchState.VISUAL_PHASE) {
+                        skipped += 1
+                        log.debug(
+                            "MatchExpirationJob (fallback) - skipped match={} because state={}",
+                            review.matchId,
+                            match.state
+                        )
+                        return@forEach
+                    }
+
                     val changed = matchService.expireMatch(review.matchId)
                     if (changed) {
                         succeeded += 1

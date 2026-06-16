@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.ScheduleNegotiation
@@ -48,6 +49,11 @@ class SchedulingService(
 
         negotiationRepository.findByConnectionId(connectionId)?.let { return it }
 
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        check(connection.state == ConnectionState.SCHEDULING_PHASE) {
+            "Cannot initialize scheduling negotiation: connection is in state ${connection.state}"
+        }
+
         return negotiationRepository.save(
             ScheduleNegotiation(
                 connectionId = connectionId
@@ -77,6 +83,7 @@ class SchedulingService(
         }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
@@ -208,6 +215,7 @@ class SchedulingService(
         }
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
             throw AccessDeniedException(
@@ -265,6 +273,7 @@ class SchedulingService(
         }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
@@ -367,6 +376,12 @@ class SchedulingService(
         negotiationRepository.save(negotiation)
 
         connectionService.transitionToSecondChatScheduled(connectionId)
+    }
+
+    private fun requireSchedulingPhase(state: ConnectionState) {
+        check(state == ConnectionState.SCHEDULING_PHASE) {
+            "Scheduling is not available while connection is in state $state"
+        }
     }
 
     private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {

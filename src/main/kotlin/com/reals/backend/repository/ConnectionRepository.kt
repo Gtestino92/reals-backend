@@ -24,6 +24,19 @@ interface ConnectionRepository :
     @Query(
         """
         select c from Connection c
+        where c.state = :state
+          and c.schedulingAvailableAt is not null
+          and c.schedulingAvailableAt <= :now
+        """
+    )
+    fun findSchedulingActivationDue(
+        @Param("state") state: ConnectionState = ConnectionState.SCHEDULING_PENDING,
+        @Param("now") now: OffsetDateTime
+    ): List<Connection>
+
+    @Query(
+        """
+        select c from Connection c
         where (c.userAId = :userId or c.userBId = :userId)
           and c.state in :states
         """
@@ -38,5 +51,12 @@ interface ConnectionRepository :
     fun updateSchedulingExpiresAt(
         @Param("connectionId") connectionId: UUID,
         @Param("expiresAt") expiresAt: OffsetDateTime
+    ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Connection c set c.schedulingAvailableAt = :availableAt where c.id = :connectionId")
+    fun updateSchedulingAvailableAt(
+        @Param("connectionId") connectionId: UUID,
+        @Param("availableAt") availableAt: OffsetDateTime
     ): Int
 }
