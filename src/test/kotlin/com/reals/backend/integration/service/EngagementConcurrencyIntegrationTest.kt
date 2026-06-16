@@ -1,11 +1,18 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.EngagementType
+import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -30,7 +37,16 @@ class EngagementConcurrencyIntegrationTest {
     private lateinit var connectionService: ConnectionService
 
     @Autowired
+    private lateinit var chatService: ChatService
+
+    @Autowired
+    private lateinit var visualReviewService: VisualReviewService
+
+    @Autowired
     private lateinit var lockRepository: ActiveEngagementLockRepository
+
+    @Autowired
+    private lateinit var connectionRepository: ConnectionRepository
 
     @Test
     fun `concurrent match creation cannot exceed active match limit`() {
@@ -92,6 +108,40 @@ class EngagementConcurrencyIntegrationTest {
 
         assertEquals(1, results.count { it })
         assertEquals(1, results.count { !it })
+        assertEquals(
+            2,
+            lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
+        )
+    }
+
+    @Test
+    fun `mutual visual approval rolls back when pending connection would exceed active connection limit`() {
+        val sharedUserId = createUser("shared-visual-limit")
+
+        repeat(2) {
+            val existingMatch = matchService.createMatch(
+                userAId = sharedUserId,
+                userBId = createUser("existing-visual-limit-$it")
+            )
+            connectionService.createFromMatch(existingMatch)
+        }
+
+        val candidateMatch = matchService.createMatch(
+            userAId = sharedUserId,
+            userBId = createUser("candidate-visual-limit")
+        )
+        chatService.startFirstChat(candidateMatch.id)
+        chatService.recordChatDecision(candidateMatch.id, candidateMatch.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(candidateMatch.id, candidateMatch.userBId, ChatContinueDecision.APPROVED)
+
+        visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userAId, VisualDecision.APPROVED)
+
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userBId, VisualDecision.APPROVED)
+        }
+
+        assertEquals(MatchState.VISUAL_PHASE, matchService.findByIdOrThrow(candidateMatch.id).state)
+        assertNull(connectionRepository.findByMatchId(candidateMatch.id))
         assertEquals(
             2,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)

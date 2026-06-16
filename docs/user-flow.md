@@ -37,6 +37,10 @@ Messages can be sent only when the chat is active, not timed out and the sender 
 
 Clients discover active first chats through `GET /api/me/home`. While a match is in `CHAT_ACTIVE`, `activeMatches[].firstChat` includes the first-chat id, `expiresAt` and a partner summary (`userId`, `profileId`, `displayName`). When the match moves to `VISUAL_PHASE`, Home keeps the match visible with `matchState = VISUAL_PHASE` but no longer exposes it as an active `firstChat`. Expired visual-phase matches are not returned by Home.
 
+Home also returns `engagementSummary`, which counts visible active matches,
+active connections that occupy capacity, pending scheduling connections and
+actionable connections returned in `activeConnections`.
+
 `GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`, `myDecision`, `partnerDecision` and `expiresAt`. The decision fields are API-facing statuses from the current user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
 
 Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
@@ -56,8 +60,11 @@ Approval still requires both users. Cancellation can end the chat earlier throug
 
 Each user submits one `VisualDecision`.
 
-- Mutual `APPROVED`: match moves to `VISUAL_APPROVED`, connection is created and scheduling is initialized.
-- Any `REJECTED`: match moves to `VISUAL_REJECTED`, locks are released.
+- The deciding user's visual review disappears from Home and that user's match lock is released immediately.
+- Repeating the same decision is idempotent. Trying to change a recorded decision is rejected.
+- If one user rejects while the other has not decided, the match remains in `VISUAL_PHASE` for the pending participant. This avoids an immediate rejection signal through Home.
+- When both users have decided, mutual `APPROVED` moves the match to `VISUAL_APPROVED` and creates a pending connection.
+- When both users have decided and at least one rejected, the match moves to `VISUAL_REJECTED` and remaining match locks are released.
 
 Personal messages are stored on `VisualReview`. Current behavior allows reading
 the partner message during visual review once it exists, and requires reading it
@@ -67,11 +74,17 @@ before approving if the partner already submitted one.
 
 `ConnectionService.createFromMatch(match)` creates a connection after visual approval.
 
-It validates active connection limits and upgrades engagement locks from `MATCH` to `CONNECTION`. A connection starts in `SCHEDULING_PHASE`.
+It validates active connection limits and creates `CONNECTION` locks immediately. A connection starts in `SCHEDULING_PENDING` with `schedulingAvailableAt`; it occupies connection capacity but is not yet actionable in Home.
 
 ## 7. Scheduling
 
-Scheduling is initialized once per connection. Users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
+Scheduling is activated later by `SchedulingActivationJob` when
+`schedulingAvailableAt <= now`. The job moves the connection to
+`SCHEDULING_PHASE` and initializes negotiation idempotently. Until then, Home
+does not include the connection in `activeConnections`; clients can only see it
+through `engagementSummary.pendingSchedulingConnectionCount`.
+
+Once active, users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 
 Rules:
 

@@ -1,0 +1,15 @@
+meta {
+  name: 05 Get Profile Photos
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}

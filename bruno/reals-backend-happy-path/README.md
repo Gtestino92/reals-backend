@@ -35,7 +35,8 @@ The first request generates unique test emails and a future half-hour second-cha
 - process matchmaking
 - start and approve first chat
 - approve visual review
-- create connection
+- create pending connection
+- force scheduling availability and run the local scheduling activation job
 - confirm the second-chat slot with matching ordered proposal lists
 - force the confirmed start time and trigger the scheduled second-chat availability job locally
 - enter the available second chat, which activates it and starts its timeout window

@@ -54,4 +54,61 @@ data class VisualReview(
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()
-)
+) {
+    fun decisionFor(
+        userId: UUID,
+        userAId: UUID,
+        userBId: UUID
+    ): VisualDecision? =
+        when (userId) {
+            userAId -> userAVisualDecision
+            userBId -> userBVisualDecision
+            else -> throw IllegalArgumentException("User $userId does not belong to visual review $id")
+        }
+
+    fun partnerDecisionFor(
+        userId: UUID,
+        userAId: UUID,
+        userBId: UUID
+    ): VisualDecision? =
+        when (userId) {
+            userAId -> userBVisualDecision
+            userBId -> userAVisualDecision
+            else -> throw IllegalArgumentException("User $userId does not belong to visual review $id")
+        }
+
+    fun hasPendingDecisionFor(
+        userId: UUID,
+        userAId: UUID,
+        userBId: UUID
+    ): Boolean =
+        decisionFor(
+            userId = userId,
+            userAId = userAId,
+            userBId = userBId
+        ) == null
+
+    fun recordDecisionFor(
+        userId: UUID,
+        userAId: UUID,
+        userBId: UUID,
+        decision: VisualDecision
+    ) {
+        when (userId) {
+            userAId -> userAVisualDecision = decision
+            userBId -> userBVisualDecision = decision
+            else -> throw IllegalArgumentException("User $userId does not belong to visual review $id")
+        }
+    }
+
+    fun bothDecided(): Boolean =
+        userAVisualDecision != null && userBVisualDecision != null
+
+    fun bothApproved(): Boolean =
+        userAVisualDecision == VisualDecision.APPROVED &&
+            userBVisualDecision == VisualDecision.APPROVED
+
+    fun anyRejected(): Boolean =
+        userAVisualDecision == VisualDecision.REJECTED ||
+            userBVisualDecision == VisualDecision.REJECTED
+}

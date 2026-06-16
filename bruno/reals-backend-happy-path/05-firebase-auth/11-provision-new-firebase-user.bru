@@ -1,0 +1,34 @@
+meta {
+  name: 11 Provision New Firebase User
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_new_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK or 201 Created, got ${status}`);
+  }
+  
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected provisioned backend user response with id.");
+  }
+  
+  const expectedEmail = bru.getEnvVar("firebase_new_email");
+  if (body.email !== expectedEmail) {
+    throw new Error(`Expected backend user email ${expectedEmail}, got ${body.email}`);
+  }
+  
+  bru.setEnvVar("firebase_new_backend_user_id", body.id);
+}

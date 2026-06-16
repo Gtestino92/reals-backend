@@ -16,7 +16,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres")
+@Profile("local", "local-nodb", "local-postgres", "local-firebase")
 @RequestMapping("/api/local-dev/timeouts")
 class DevTimeoutController(
     private val chatRepository: ChatRepository,
@@ -79,6 +79,25 @@ class DevTimeoutController(
                 target = "connection",
                 id = connectionId,
                 expiresAt = expiresAt
+            )
+        )
+    }
+
+    @PostMapping("/connections/{connectionId}/scheduling-available-now")
+    @Transactional
+    fun makeSchedulingAvailableNow(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val availableAt = OffsetDateTime.now().minusSeconds(1)
+        requireUpdated(
+            updated = connectionRepository.updateSchedulingAvailableAt(connectionId, availableAt),
+            message = "Connection not found: $connectionId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "connection-scheduling-availability",
+                id = connectionId,
+                expiresAt = availableAt
             )
         )
     }
