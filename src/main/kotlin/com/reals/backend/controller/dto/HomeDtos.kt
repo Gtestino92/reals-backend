@@ -17,7 +17,11 @@ data class HomeResponse(
     val engagementSummary: HomeEngagementSummaryResponse,
     val queue: HomeQueueResponse,
     val activeMatches: List<HomeMatchResponse>,
-    val activeConnections: List<HomeConnectionResponse>
+    val activeConnections: List<HomeConnectionResponse>,
+    val matchmaking: HomeMatchmakingResponse,
+    val pendingActions: List<HomePendingActionResponse>,
+    val nextSteps: List<HomeNextStepResponse>,
+    val passiveNotices: List<HomePassiveNoticeResponse>
 )
 
 data class HomeEngagementSummaryResponse(
@@ -29,6 +33,52 @@ data class HomeEngagementSummaryResponse(
 
 data class HomeQueueResponse(
     val inQueue: Boolean
+)
+
+data class HomeMatchmakingResponse(
+    val inQueue: Boolean,
+    val canSearch: Boolean,
+    val blockedReason: HomeMatchmakingBlockedReasonResponse?
+)
+
+data class HomeMatchmakingBlockedReasonResponse(
+    val code: String,
+    val message: String
+)
+
+enum class HomePendingActionType {
+    FIRST_CHAT,
+    VISUAL_REVIEW
+}
+
+data class HomePendingActionResponse(
+    val type: HomePendingActionType,
+    val matchId: UUID,
+    val chatId: UUID?,
+    val partner: PartnerSummaryResponse?
+)
+
+enum class HomeNextStepType {
+    SCHEDULING,
+    SECOND_CHAT_SCHEDULED,
+    SECOND_CHAT_AVAILABLE
+}
+
+data class HomeNextStepResponse(
+    val type: HomeNextStepType,
+    val connectionId: UUID,
+    val matchId: UUID,
+    val partner: PartnerSummaryResponse?,
+    val secondChat: HomeChatResponse? = null
+)
+
+enum class HomePassiveNoticeType {
+    SCHEDULING_PREPARING
+}
+
+data class HomePassiveNoticeResponse(
+    val type: HomePassiveNoticeType,
+    val count: Int
 )
 
 data class HomeMatchResponse(
