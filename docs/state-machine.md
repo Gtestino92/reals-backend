@@ -81,12 +81,31 @@ Terminal states:
 - `ACCEPTED`
 - `REJECTED`
 
+## ChatExitRequestStatus
+
+Allowed transitions:
+
+- `PENDING -> ACCEPTED`
+- `PENDING -> REJECTED`
+- `PENDING -> TIMED_OUT`
+
+Terminal states:
+
+- `ACCEPTED`
+- `REJECTED`
+- `TIMED_OUT`
+
+All terminal mutual-cancellation resolutions close the chat as `CANCELLED`.
+`TIMED_OUT` is client-triggered after the configured mutual cancellation
+timeout; it is not a unilateral cancellation and must not penalize the
+requester under future scoring semantics.
+
 ## Lock Behavior
 
 - Match creation creates `MATCH` locks for both users.
 - Chat rejection or match expiration deletes `MATCH` locks for both users.
 - A visual decision deletes the deciding user's `MATCH` lock immediately.
-- Mutual visual approval creates a `SCHEDULING_PENDING` connection and `CONNECTION` locks immediately. This pending connection counts against connection capacity even though it is not returned in Home `activeConnections`.
+- Mutual visual approval creates a `SCHEDULING_PENDING` connection and `CONNECTION` locks immediately. This pending connection counts against connection capacity even though it is not actionable in Home `nextSteps`.
 - Visual rejection closes the match and releases any remaining `MATCH` locks after both users decide or visual phase expiration handles the match.
 - Connection closure deletes `CONNECTION` locks.
 - Account deletion closes active visible chats, rejects in-progress match phases, closes active connections, fails pending scheduling negotiations, deletes the deleted user's locks and moves the profile back to `DRAFT` while preserving historical rows. Reactivation restores the user account only; it does not reopen prior engagements.

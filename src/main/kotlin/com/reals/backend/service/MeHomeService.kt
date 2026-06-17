@@ -1,15 +1,27 @@
 package com.reals.backend.service
 
-import com.reals.backend.controller.dto.HomeConnectionResponse
-import com.reals.backend.controller.dto.HomeEngagementSummaryResponse
-import com.reals.backend.controller.dto.HomeMatchResponse
-import com.reals.backend.controller.dto.HomeQueueResponse
+import com.reals.backend.controller.dto.HomeActiveInteractionsSummaryResponse
+import com.reals.backend.controller.dto.HomeChatResponse
+import com.reals.backend.controller.dto.HomeMatchmakingBlockedReasonResponse
+import com.reals.backend.controller.dto.HomeMatchmakingResponse
+import com.reals.backend.controller.dto.HomeNextStepResponse
+import com.reals.backend.controller.dto.HomeNextStepType
+import com.reals.backend.controller.dto.HomePassiveNoticeResponse
+import com.reals.backend.controller.dto.HomePassiveNoticeType
+import com.reals.backend.controller.dto.HomePendingActionResponse
+import com.reals.backend.controller.dto.HomePendingActionType
 import com.reals.backend.controller.dto.HomeResponse
+import com.reals.backend.controller.dto.PartnerSummaryResponse
+import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatDecision
+import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.Profile
+import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
@@ -30,7 +42,8 @@ class MeHomeService(
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
     private val visualReviewRepository: VisualReviewRepository,
-    private val chatDecisionRepository: ChatDecisionRepository
+    private val chatDecisionRepository: ChatDecisionRepository,
+    private val matchmakingAvailabilityService: MatchmakingAvailabilityService
 ) {
 
     @Transactional(readOnly = true)
@@ -149,45 +162,54 @@ class MeHomeService(
                     .associateBy { it.userId }
             }
 
+        val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
+            activeInitialCount = activeMatches.size,
+            activeConnectionCount = activeConnectionsForSummary.size,
+            pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
+            actionableConnectionCount = activeConnections.size
+        )
+
+        val matchmakingAvailability = matchmakingAvailabilityService.availabilityFor(
+            userId = userId,
+            inQueue = inQueue
+        )
+
         return HomeResponse(
             profileStatus = profileStatus,
-            engagementSummary = HomeEngagementSummaryResponse(
-                activeMatchCount = activeMatches.size,
-                activeConnectionCount = activeConnectionsForSummary.size,
-                pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
-                actionableConnectionCount = activeConnections.size
+            matchmaking = HomeMatchmakingResponse(
+                inQueue = inQueue,
+                canSearch = matchmakingAvailability.canSearch,
+                blockedReason = matchmakingAvailability.blockedReason?.let {
+                    HomeMatchmakingBlockedReasonResponse(
+                        code = it.code,
+                        message = it.message
+                    )
+                }
             ),
-            queue = HomeQueueResponse(
-                inQueue = inQueue
-            ),
-            activeMatches = activeMatches.map { match ->
-                val firstChat = firstChatsByMatchId[match.id]
-                    ?.takeIf {
-                        match.state == MatchState.CHAT_ACTIVE &&
-                                hasPendingFirstChatDecisionForCurrentUser(
-                                    match = match,
-                                    currentUserId = userId,
-                                    decision = chatDecisionsByMatchId[match.id],
-                                )
-                    }
-
-                HomeMatchResponse.from(
+            activeInteractionsSummary = activeInteractionsSummary,
+            pendingActions = activeMatches.mapNotNull { match ->
+                toPendingAction(
                     match = match,
-                    firstChat = firstChat,
+                    currentUserId = userId,
+                    firstChat = firstChatsByMatchId[match.id],
+                    decision = chatDecisionsByMatchId[match.id],
+                    visualReview = visualReviewByMatchId[match.id],
                     partner = partnerProfilesByUserId[
                         partnerUserId(match.userAId, match.userBId, userId)
-                    ]
+                    ],
+                    now = now
                 )
             },
-            activeConnections = activeConnections.map { connection ->
-                HomeConnectionResponse.from(
+            nextSteps = activeConnections.mapNotNull { connection ->
+                toNextStep(
                     connection = connection,
                     secondChat = secondChatsByConnectionId[connection.id],
                     partner = partnerProfilesByUserId[
                         partnerUserId(connection.userAId, connection.userBId, userId)
                     ]
                 )
-            }
+            },
+            passiveNotices = passiveNoticesFor(activeInteractionsSummary)
         )
     }
 
@@ -215,5 +237,124 @@ class MeHomeService(
 
         return myDecision == null
     }
+
+    private fun firstChatForCurrentUserIfActionable(
+        match: Match,
+        currentUserId: UUID,
+        firstChat: Chat?,
+        decision: ChatDecision?,
+        now: OffsetDateTime
+    ): Chat? =
+        firstChat?.takeIf {
+            match.state == MatchState.CHAT_ACTIVE &&
+                it.status == ChatStatus.ACTIVE &&
+                it.timeoutAt.isAfter(now) &&
+                hasPendingFirstChatDecisionForCurrentUser(
+                    match = match,
+                    currentUserId = currentUserId,
+                    decision = decision,
+                )
+        }
+
+    private fun isVisualReviewActionableForCurrentUser(
+        match: Match,
+        currentUserId: UUID,
+        visualReview: VisualReview?,
+        now: OffsetDateTime
+    ): Boolean =
+        match.state == MatchState.VISUAL_PHASE &&
+            visualReview?.expiresAt?.isAfter(now) == true &&
+            visualReview.hasPendingDecisionFor(
+                userId = currentUserId,
+                userAId = match.userAId,
+                userBId = match.userBId
+            )
+
+    private fun toPendingAction(
+        match: Match,
+        currentUserId: UUID,
+        firstChat: Chat?,
+        decision: ChatDecision?,
+        visualReview: VisualReview?,
+        partner: Profile?,
+        now: OffsetDateTime
+    ): HomePendingActionResponse? {
+        val partnerSummary = partner?.let { PartnerSummaryResponse.from(it) }
+
+        firstChatForCurrentUserIfActionable(
+            match = match,
+            currentUserId = currentUserId,
+            firstChat = firstChat,
+            decision = decision,
+            now = now
+        )?.let { actionableFirstChat ->
+            return HomePendingActionResponse(
+                type = HomePendingActionType.FIRST_CHAT,
+                matchId = match.id,
+                chatId = actionableFirstChat.id,
+                partner = partnerSummary
+            )
+        }
+
+        if (
+            isVisualReviewActionableForCurrentUser(
+                match = match,
+                currentUserId = currentUserId,
+                visualReview = visualReview,
+                now = now
+            )
+        ) {
+            return HomePendingActionResponse(
+                type = HomePendingActionType.VISUAL_REVIEW,
+                matchId = match.id,
+                chatId = null,
+                partner = partnerSummary
+            )
+        }
+
+        return null
+    }
+
+    private fun toNextStep(
+        connection: Connection,
+        secondChat: Chat?,
+        partner: Profile?
+    ): HomeNextStepResponse? {
+        val type = when (connection.state) {
+            ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
+            ConnectionState.SECOND_CHAT_SCHEDULED -> HomeNextStepType.SECOND_CHAT_SCHEDULED
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            ConnectionState.SECOND_CHAT -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+            ConnectionState.SCHEDULING_PENDING,
+            ConnectionState.CLOSED -> return null
+        }
+
+        return HomeNextStepResponse(
+            type = type,
+            connectionId = connection.id,
+            matchId = connection.matchId,
+            partner = partner?.let { PartnerSummaryResponse.from(it) },
+            secondChat = secondChat?.let {
+                HomeChatResponse.from(
+                    chat = it,
+                    partner = partner
+                )
+            }
+        )
+    }
+
+    private fun passiveNoticesFor(
+        summary: HomeActiveInteractionsSummaryResponse
+    ): List<HomePassiveNoticeResponse> =
+        if (summary.pendingSchedulingConnectionCount > 0) {
+            listOf(
+                HomePassiveNoticeResponse(
+                    type = HomePassiveNoticeType.SCHEDULING_PREPARING,
+                    count = summary.pendingSchedulingConnectionCount
+                )
+            )
+        } else {
+            emptyList()
+        }
 }
 

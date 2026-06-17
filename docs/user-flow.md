@@ -22,6 +22,7 @@ Eligibility checks include:
 - existing active profile
 - not already queued
 - below active match limit
+- below active connection limit
 
 Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention and mutual preferred age range. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, and `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
 
@@ -35,11 +36,17 @@ ChatService.startFirstChat(matchId)
 
 Messages can be sent only when the chat is active, not timed out and the sender belongs to the match. Sending a message updates `Chat.lastMessageAt`.
 
-Clients discover active first chats through `GET /api/me/home`. While a match is in `CHAT_ACTIVE`, `activeMatches[].firstChat` includes the first-chat id, `expiresAt` and a partner summary (`userId`, `profileId`, `displayName`). When the match moves to `VISUAL_PHASE`, Home keeps the match visible with `matchState = VISUAL_PHASE` but no longer exposes it as an active `firstChat`. Expired visual-phase matches are not returned by Home.
+Clients discover active first chats through `GET /api/me/home`. While a match is
+in `CHAT_ACTIVE`, Home includes a `pendingActions[]` item with
+`type = FIRST_CHAT`, the first-chat id and a partner summary (`userId`,
+`profileId`, `displayName`) only if the chat is active, not expired and the
+current user has not decided. When the match moves to `VISUAL_PHASE`, the first
+chat action disappears. Expired or already-decided actions are not returned by
+Home.
 
-Home also returns `engagementSummary`, which counts visible active matches,
-active connections that occupy capacity, pending scheduling connections and
-actionable connections returned in `activeConnections`.
+Home also returns `matchmaking`, `activeInteractionsSummary`, `nextSteps` and
+`passiveNotices` so clients can render navigation without deriving actions from
+raw `MatchState`, `ConnectionState` or expiration timestamps.
 
 `GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`, `myDecision`, `partnerDecision` and `expiresAt`. The decision fields are API-facing statuses from the current user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
 
@@ -52,9 +59,11 @@ Each user can approve continuation, request mutual cancellation or cancel explic
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
 - `REJECTED` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
+- Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
+- Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
 - Safety cancellation cancels the chat, exempts the reporter and applies a penalty to the reported participant.
 
-Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, unilateral cancellation or safety cancellation.
+Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
 
 ## 5. Visual Review
 
@@ -81,8 +90,9 @@ It validates active connection limits and creates `CONNECTION` locks immediately
 Scheduling is activated later by `SchedulingActivationJob` when
 `schedulingAvailableAt <= now`. The job moves the connection to
 `SCHEDULING_PHASE` and initializes negotiation idempotently. Until then, Home
-does not include the connection in `activeConnections`; clients can only see it
-through `engagementSummary.pendingSchedulingConnectionCount`.
+does not include the connection in `nextSteps`; clients can see it only through
+`activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
+notice `SCHEDULING_PREPARING`.
 
 Once active, users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 
@@ -112,7 +122,7 @@ ChatService.startSecondChat(matchId, connectionId)
 
 The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
 
-Explicit second-chat cancellation closes the connection and releases locks. It can be mutual without penalty, unilateral with penalty policy evaluation or safety-based with a penalty for the reported participant. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
+Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation applies a penalty for the reported participant. Chat timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
 
 ## 9. Completion
 
