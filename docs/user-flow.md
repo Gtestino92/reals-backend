@@ -59,9 +59,11 @@ Each user can approve continuation, request mutual cancellation or cancel explic
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
 - `REJECTED` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
+- Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
+- Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
 - Safety cancellation cancels the chat, exempts the reporter and applies a penalty to the reported participant.
 
-Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, unilateral cancellation or safety cancellation.
+Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
 
 ## 5. Visual Review
 
@@ -120,7 +122,7 @@ ChatService.startSecondChat(matchId, connectionId)
 
 The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
 
-Explicit second-chat cancellation closes the connection and releases locks. It can be mutual without penalty, unilateral with penalty policy evaluation or safety-based with a penalty for the reported participant. Timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
+Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation applies a penalty for the reported participant. Chat timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
 
 ## 9. Completion
 

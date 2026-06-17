@@ -60,6 +60,7 @@ For those cases, service-level integration tests catch more realistic regression
 `ChatExitIntegrationTest` covers:
 
 - mutual first-chat cancellation without penalties
+- mutual cancellation rejection and timeout closing the chat without penalties
 - safety cancellation and reported-user penalty
 - unilateral second-chat cancellation penalty behavior
 

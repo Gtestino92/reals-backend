@@ -133,13 +133,29 @@ class ChatController(
         @PathVariable chatId: UUID,
         @PathVariable exitRequestId: UUID,
         @CurrentUserId userId: UUID
-    ): ResponseEntity<ChatExitRequestResponse> =
+    ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.ok(
-            ChatExitRequestResponse.from(
+            ChatExitOutcomeResponse.from(
                 chatExitService.rejectMutualCancellation(
                     chatId = chatId,
                     requestId = exitRequestId,
                     responderUserId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{chatId}/exit-requests/{exitRequestId}/timeout")
+    fun timeoutMutualCancellation(
+        @PathVariable chatId: UUID,
+        @PathVariable exitRequestId: UUID,
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ChatExitOutcomeResponse> =
+        ResponseEntity.ok(
+            ChatExitOutcomeResponse.from(
+                chatExitService.timeoutMutualCancellation(
+                    chatId = chatId,
+                    requestId = exitRequestId,
+                    userId = userId
                 )
             )
         )

@@ -19,7 +19,8 @@ enum class ChatExitRequestType {
 enum class ChatExitRequestStatus {
     PENDING,
     ACCEPTED,
-    REJECTED
+    REJECTED,
+    TIMED_OUT
 }
 
 enum class ChatExitReason {

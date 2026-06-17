@@ -528,6 +528,7 @@ paths:
     post:
       tags: [Chats]
       summary: Accept mutual cancellation request
+      description: Accepts a pending mutual cancellation request and closes the chat without penalty.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
@@ -542,16 +543,28 @@ paths:
     post:
       tags: [Chats]
       summary: Reject mutual cancellation request
+      description: Rejects a pending mutual cancellation request and closes the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
       responses:
         '200':
-          description: Rejected exit request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatExitRequestResponse'
+          $ref: '#/components/responses/ChatExitOutcome'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout:
+    post:
+      tags: [Chats]
+      summary: Timeout mutual cancellation request
+      description: Resolves an unanswered mutual cancellation request after the configured timeout and closes the chat without penalty. This is not treated as a unilateral cancellation; if the requester calls it because the responder did not answer in time, the requester must not be penalized.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/ExitRequestId'
+      responses:
+        '200':
+          $ref: '#/components/responses/ChatExitOutcome'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1397,7 +1410,7 @@ components:
       enum: [MUTUAL_CANCEL, UNILATERAL_CANCEL, SAFETY_REPORT]
     ChatExitRequestStatus:
       type: string
-      enum: [PENDING, ACCEPTED, REJECTED]
+      enum: [PENDING, ACCEPTED, REJECTED, TIMED_OUT]
     ChatExitReason:
       type: string
       enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
