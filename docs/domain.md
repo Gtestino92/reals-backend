@@ -50,7 +50,9 @@ Connection and scheduling:
 `SCHEDULING_PENDING` is created after mutual visual approval. It counts as an
 active connection and has `schedulingAvailableAt`, but it is not actionable in
 Home until a scheduling activation job moves it to `SCHEDULING_PHASE` and
-initializes negotiation.
+initializes negotiation. Home surfaces this state through
+`activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
+notice `SCHEDULING_PREPARING`, not through `nextSteps`.
 
 Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is reached the chat becomes visible as `AVAILABLE`, and the timeout window starts only when a participant enters or sends the first message.
 

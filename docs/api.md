@@ -11,26 +11,43 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
-- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, engagement summary, queue state, active matches with first-chat ids and partner summaries while still in `CHAT_ACTIVE`, and actionable active connections with second-chat ids and partner summaries when available.
+- `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
-For first-chat navigation, `GET /api/me/home` exposes `activeMatches[].firstChat`
-only while the match remains in `CHAT_ACTIVE`. Once both users approve and the
-match moves to `VISUAL_PHASE`, the match remains in `activeMatches[]` with
-`matchState = VISUAL_PHASE` and `firstChat = null`. Expired visual-phase
-matches are not returned by home.
+For first-chat navigation, `GET /api/me/home` exposes a
+`pendingActions[]` item with `type = FIRST_CHAT` only while the match remains in
+`CHAT_ACTIVE`, the first chat exists, the chat is active, the chat has not
+expired and the current user has not decided. Once the current user decides, the
+action disappears from Home.
 
-Home also returns `engagementSummary`:
+For visual review navigation, Home exposes a `pendingActions[]` item with
+`type = VISUAL_REVIEW` only while the match remains in `VISUAL_PHASE`, the
+visual review exists, the visual phase has not expired and the current user has
+not decided. Expired or already-decided visual reviews are not returned as
+actions.
 
-- `activeMatchCount`: matches currently visible/actionable in Home.
+Home returns `matchmaking` for search UX:
+
+- `inQueue`: current user is already in matchmaking queue.
+- `canSearch`: current user may attempt to enter matchmaking now. This is
+  informative for UX; `POST /api/matchmaking/queue` remains the transactional
+  authority.
+- `blockedReason`: stable code/message when search is blocked by profile,
+  penalty or active engagement limits.
+
+Home also returns `activeInteractionsSummary`:
+
+- `activeInitialCount`: active initial interactions currently visible/actionable in Home.
 - `activeConnectionCount`: active connections that occupy connection capacity, including `SCHEDULING_PENDING`.
 - `pendingSchedulingConnectionCount`: connections created after mutual visual approval whose scheduling phase is not actionable yet.
-- `actionableConnectionCount`: connections returned in `activeConnections[]`.
+- `actionableConnectionCount`: connections returned in `nextSteps[]`.
 
-`activeConnections[]` intentionally excludes `SCHEDULING_PENDING`. Pending
-scheduling is surfaced only through `engagementSummary` until the activation job
-moves the connection to `SCHEDULING_PHASE`.
+`nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED` and
+`SECOND_CHAT_AVAILABLE` items. `SCHEDULING_PENDING` is not actionable and is
+surfaced through `activeInteractionsSummary.pendingSchedulingConnectionCount`
+plus a `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the
+activation job moves the connection to `SCHEDULING_PHASE`.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -149,6 +166,7 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_NOT_ACTIVE`: profile must be activated before matchmaking.
 - `ACTIVE_PENALTY`: user cannot enter matchmaking while an active penalty exists.
 - `ACTIVE_MATCH_LIMIT_REACHED`: user has reached the active match limit.
+- `ACTIVE_CONNECTION_LIMIT_REACHED`: user has reached the active connection limit.
 - `INVALID_SEARCH_LOCATION`: provided matchmaking search location is invalid.
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
 - `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
