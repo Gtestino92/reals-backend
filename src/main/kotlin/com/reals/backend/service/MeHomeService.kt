@@ -1,18 +1,15 @@
 package com.reals.backend.service
 
-import com.reals.backend.controller.dto.HomeConnectionResponse
-import com.reals.backend.controller.dto.HomeEngagementSummaryResponse
+import com.reals.backend.controller.dto.HomeActiveInteractionsSummaryResponse
 import com.reals.backend.controller.dto.HomeChatResponse
 import com.reals.backend.controller.dto.HomeMatchmakingBlockedReasonResponse
 import com.reals.backend.controller.dto.HomeMatchmakingResponse
-import com.reals.backend.controller.dto.HomeMatchResponse
 import com.reals.backend.controller.dto.HomeNextStepResponse
 import com.reals.backend.controller.dto.HomeNextStepType
 import com.reals.backend.controller.dto.HomePassiveNoticeResponse
 import com.reals.backend.controller.dto.HomePassiveNoticeType
 import com.reals.backend.controller.dto.HomePendingActionResponse
 import com.reals.backend.controller.dto.HomePendingActionType
-import com.reals.backend.controller.dto.HomeQueueResponse
 import com.reals.backend.controller.dto.HomeResponse
 import com.reals.backend.controller.dto.PartnerSummaryResponse
 import com.reals.backend.domain.Chat
@@ -165,8 +162,8 @@ class MeHomeService(
                     .associateBy { it.userId }
             }
 
-        val engagementSummary = HomeEngagementSummaryResponse(
-            activeMatchCount = activeMatches.size,
+        val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
+            activeInitialCount = activeMatches.size,
             activeConnectionCount = activeConnectionsForSummary.size,
             pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
             actionableConnectionCount = activeConnections.size
@@ -177,42 +174,8 @@ class MeHomeService(
             inQueue = inQueue
         )
 
-        val homeMatches = activeMatches.map { match ->
-            val firstChat = firstChatForCurrentUserIfActionable(
-                match = match,
-                currentUserId = userId,
-                firstChat = firstChatsByMatchId[match.id],
-                decision = chatDecisionsByMatchId[match.id],
-                now = now
-            )
-
-            HomeMatchResponse.from(
-                match = match,
-                firstChat = firstChat,
-                partner = partnerProfilesByUserId[
-                    partnerUserId(match.userAId, match.userBId, userId)
-                ]
-            )
-        }
-
-        val homeConnections = activeConnections.map { connection ->
-            HomeConnectionResponse.from(
-                connection = connection,
-                secondChat = secondChatsByConnectionId[connection.id],
-                partner = partnerProfilesByUserId[
-                    partnerUserId(connection.userAId, connection.userBId, userId)
-                ]
-            )
-        }
-
         return HomeResponse(
             profileStatus = profileStatus,
-            engagementSummary = engagementSummary,
-            queue = HomeQueueResponse(
-                inQueue = inQueue
-            ),
-            activeMatches = homeMatches,
-            activeConnections = homeConnections,
             matchmaking = HomeMatchmakingResponse(
                 inQueue = inQueue,
                 canSearch = matchmakingAvailability.canSearch,
@@ -223,6 +186,7 @@ class MeHomeService(
                     )
                 }
             ),
+            activeInteractionsSummary = activeInteractionsSummary,
             pendingActions = activeMatches.mapNotNull { match ->
                 toPendingAction(
                     match = match,
@@ -245,7 +209,7 @@ class MeHomeService(
                     ]
                 )
             },
-            passiveNotices = passiveNoticesFor(engagementSummary)
+            passiveNotices = passiveNoticesFor(activeInteractionsSummary)
         )
     }
 
@@ -380,13 +344,13 @@ class MeHomeService(
     }
 
     private fun passiveNoticesFor(
-        engagementSummary: HomeEngagementSummaryResponse
+        summary: HomeActiveInteractionsSummaryResponse
     ): List<HomePassiveNoticeResponse> =
-        if (engagementSummary.pendingSchedulingConnectionCount > 0) {
+        if (summary.pendingSchedulingConnectionCount > 0) {
             listOf(
                 HomePassiveNoticeResponse(
                     type = HomePassiveNoticeType.SCHEDULING_PREPARING,
-                    count = engagementSummary.pendingSchedulingConnectionCount
+                    count = summary.pendingSchedulingConnectionCount
                 )
             )
         } else {
