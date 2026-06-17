@@ -81,6 +81,25 @@ Terminal states:
 - `ACCEPTED`
 - `REJECTED`
 
+## ChatExitRequestStatus
+
+Allowed transitions:
+
+- `PENDING -> ACCEPTED`
+- `PENDING -> REJECTED`
+- `PENDING -> TIMED_OUT`
+
+Terminal states:
+
+- `ACCEPTED`
+- `REJECTED`
+- `TIMED_OUT`
+
+All terminal mutual-cancellation resolutions close the chat as `CANCELLED`.
+`TIMED_OUT` is client-triggered after the configured mutual cancellation
+timeout; it is not a unilateral cancellation and must not penalize the
+requester under future scoring semantics.
+
 ## Lock Behavior
 
 - Match creation creates `MATCH` locks for both users.

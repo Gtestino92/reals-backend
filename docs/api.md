@@ -100,8 +100,9 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant. With no cursor, returns the legacy array. With `after={messageId}` or `afterMessageId={messageId}`, returns `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
 - `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
-- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close without penalty.
-- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation; chat remains active.
+- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close the chat without penalty.
+- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation and close the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
+- `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout`: resolve an unanswered mutual cancellation after the configured timeout and close the chat. If the requester calls this because the responder did not answer in time, the requester must not be penalized; future scoring is pending.
 - `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
 - `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Exempts reporter, penalizes reported participant and closes the chat.
 

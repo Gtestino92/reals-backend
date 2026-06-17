@@ -37,7 +37,7 @@ Matching and chat:
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
-- `ChatExitRequestStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
+- `ChatExitRequestStatus`: `PENDING`, `ACCEPTED`, `REJECTED`, `TIMED_OUT`
 - `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
@@ -100,7 +100,10 @@ Do not infer active engagement counts from match or connection state alone.
 
 Chats can end through approval/normal completion, timeout, inactivity abandonment or explicit cancellation.
 
-- Mutual cancellation creates a pending `ChatExitRequest`; if the other participant accepts, the chat becomes `CANCELLED` with no penalty.
+- Mutual cancellation creates a pending `ChatExitRequest`. Acceptance, rejection and client-triggered timeout all close the chat as `CANCELLED`.
+- Accepted mutual cancellation has no penalty.
+- Rejected mutual cancellation currently has no penalty. Future scoring may apply a lower penalty to the requester.
+- Timed-out mutual cancellation currently has no penalty. It is not a unilateral cancellation; if the requester resolves the timeout because the responder did not answer in time, the requester must not be penalized.
 - Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
 - Safety cancellation closes the chat as `CANCELLED`, exempts the reporting user and applies a penalty to the reported participant. It records a `SAFETY_REPORT` exit request as a moderation/reporting skeleton.
 
