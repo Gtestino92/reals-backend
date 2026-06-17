@@ -104,7 +104,7 @@ paths:
     get:
       tags: [Me]
       summary: Get authenticated user's current home state
-      description: Returns profile status, queue state and active engagement discovery data. Clients should poll this after enqueueing to discover active match/chat ids.
+      description: #Returns the explicit Home navigation contract: profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Clients should not infer actions from raw match or connection states.
       responses:
         '200':
           description: Current home state
@@ -528,6 +528,7 @@ paths:
     post:
       tags: [Chats]
       summary: Accept mutual cancellation request
+      description: Accepts a pending mutual cancellation request and closes the chat without penalty.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
@@ -542,16 +543,28 @@ paths:
     post:
       tags: [Chats]
       summary: Reject mutual cancellation request
+      description: Rejects a pending mutual cancellation request and closes the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
       responses:
         '200':
-          description: Rejected exit request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatExitRequestResponse'
+          $ref: '#/components/responses/ChatExitOutcome'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout:
+    post:
+      tags: [Chats]
+      summary: Timeout mutual cancellation request
+      description: Resolves an unanswered mutual cancellation request after the configured timeout and closes the chat without penalty. This is not treated as a unilateral cancellation; if the requester calls it because the responder did not answer in time, the requester must not be penalized.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/ExitRequestId'
+      responses:
+        '200':
+          $ref: '#/components/responses/ChatExitOutcome'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -946,62 +959,86 @@ components:
         createdAt: { type: string, format: date-time }
     HomeResponse:
       type: object
-      required: [engagementSummary, queue, activeMatches, activeConnections]
+      required: [matchmaking, activeInteractionsSummary, pendingActions, nextSteps, passiveNotices]
       properties:
         profileStatus:
           allOf:
             - $ref: '#/components/schemas/ProfileStatus'
           nullable: true
-        engagementSummary:
-          $ref: '#/components/schemas/HomeEngagementSummaryResponse'
-        queue:
-          $ref: '#/components/schemas/HomeQueueResponse'
-        activeMatches:
+        matchmaking:
+          $ref: '#/components/schemas/HomeMatchmakingResponse'
+        activeInteractionsSummary:
+          $ref: '#/components/schemas/HomeActiveInteractionsSummaryResponse'
+        pendingActions:
           type: array
           items:
-            $ref: '#/components/schemas/HomeMatchResponse'
-        activeConnections:
+            $ref: '#/components/schemas/HomePendingActionResponse'
+        nextSteps:
           type: array
           items:
-            $ref: '#/components/schemas/HomeConnectionResponse'
-    HomeEngagementSummaryResponse:
+            $ref: '#/components/schemas/HomeNextStepResponse'
+        passiveNotices:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomePassiveNoticeResponse'
+    HomeActiveInteractionsSummaryResponse:
       type: object
-      required: [activeMatchCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
+      required: [activeInitialCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
       properties:
-        activeMatchCount: { type: integer, format: int32, minimum: 0 }
+        activeInitialCount: { type: integer, format: int32, minimum: 0 }
         activeConnectionCount: { type: integer, format: int32, minimum: 0 }
         pendingSchedulingConnectionCount: { type: integer, format: int32, minimum: 0 }
         actionableConnectionCount: { type: integer, format: int32, minimum: 0 }
-    HomeQueueResponse:
+    HomeMatchmakingResponse:
       type: object
-      required: [inQueue]
+      required: [inQueue, canSearch]
       properties:
         inQueue: { type: boolean }
-    HomeMatchResponse:
-      type: object
-      required: [matchId, matchState]
-      properties:
-        matchId: { type: string, format: uuid }
-        matchState: { $ref: '#/components/schemas/MatchState' }
-        firstChat:
+        canSearch: { type: boolean }
+        blockedReason:
           allOf:
-            - $ref: '#/components/schemas/HomeChatResponse'
+            - $ref: '#/components/schemas/HomeMatchmakingBlockedReasonResponse'
           nullable: true
+    HomeMatchmakingBlockedReasonResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [PROFILE_REQUIRED, PROFILE_NOT_ACTIVE, ACTIVE_MATCH_LIMIT_REACHED, ACTIVE_CONNECTION_LIMIT_REACHED, ACTIVE_PENALTY]
+        message: { type: string }
+    HomePendingActionResponse:
+      type: object
+      required: [type, matchId]
+      properties:
+        type: { $ref: '#/components/schemas/HomePendingActionType' }
+        matchId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
         partner:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
           nullable: true
-    HomeConnectionResponse:
+    HomeNextStepResponse:
       type: object
-      required: [connectionId, matchId, connectionState]
+      required: [type, connectionId, matchId]
       properties:
+        type: { $ref: '#/components/schemas/HomeNextStepType' }
         connectionId: { type: string, format: uuid }
         matchId: { type: string, format: uuid }
-        connectionState: { $ref: '#/components/schemas/ConnectionState' }
+        partner:
+          allOf:
+            - $ref: '#/components/schemas/PartnerSummaryResponse'
+          nullable: true
         secondChat:
           allOf:
             - $ref: '#/components/schemas/HomeChatResponse'
           nullable: true
+    HomePassiveNoticeResponse:
+      type: object
+      required: [type, count]
+      properties:
+        type: { $ref: '#/components/schemas/HomePassiveNoticeType' }
+        count: { type: integer, format: int32, minimum: 1 }
     HomeChatResponse:
       type: object
       required: [chatId, chatType, chatStatus, expiresAt]
@@ -1359,12 +1396,21 @@ components:
     ChatStatus:
       type: string
       enum: [AVAILABLE, ACTIVE, CANCELLED, EXPIRED, ABANDONED, CLOSED, FINISHED]
+    HomePendingActionType:
+      type: string
+      enum: [FIRST_CHAT, VISUAL_REVIEW]
+    HomeNextStepType:
+      type: string
+      enum: [SCHEDULING, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE]
+    HomePassiveNoticeType:
+      type: string
+      enum: [SCHEDULING_PREPARING]
     ChatExitRequestType:
       type: string
       enum: [MUTUAL_CANCEL, UNILATERAL_CANCEL, SAFETY_REPORT]
     ChatExitRequestStatus:
       type: string
-      enum: [PENDING, ACCEPTED, REJECTED]
+      enum: [PENDING, ACCEPTED, REJECTED, TIMED_OUT]
     ChatExitReason:
       type: string
       enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]

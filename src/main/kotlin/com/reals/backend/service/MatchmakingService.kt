@@ -1,9 +1,7 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
-import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -20,15 +18,11 @@ import java.util.*
 class MatchmakingService(
 
     private val queueRepository: MatchmakingQueueRepository,
-    private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
-    private val penaltyService: PenaltyService,
     private val profileService: ProfileService,
+    private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
     private val compatibilityScorer: CompatibilityScorer,
     private val searchLocationMatchFilter: SearchLocationMatchFilter,
-
-    @param:Value("\${engagement.max-active-matches:5}")
-    private val maxActiveMatches: Int,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -44,6 +38,7 @@ class MatchmakingService(
      * Adds a user to the matchmaking queue.
      * Preconditions:
      *  - active match count < maxActiveMatches (configurable, default 5)
+     *  - active connection count < maxActiveConnections (configurable, default 2)
      *  - no active penalty
      *  - profile is ACTIVE (photo validation already happened at profile activation)
      *  - current search location is present and valid
@@ -63,35 +58,11 @@ class MatchmakingService(
             accuracyMeters = accuracyMeters
         )
 
-        val activeMatches = lockRepository.countByUserIdAndEngagementType(
-            userId,
-            EngagementType.MATCH
-        )
-
-        if (activeMatches >= maxActiveMatches) {
+        val availability = matchmakingAvailabilityService.availabilityForUserNotInQueue(userId)
+        availability.blockedReason?.let { blockedReason ->
             throw DomainConflictException(
-                code = DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED,
-                message = "User has reached the maximum number of active matches ($maxActiveMatches)"
-            )
-        }
-
-        if (penaltyService.hasActivePenalty(userId)) {
-            throw DomainConflictException(
-                code = DomainErrorCode.ACTIVE_PENALTY,
-                message = "User has an active penalty"
-            )
-        }
-
-        val profile = profileService.findByUserId(userId)
-            ?: throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_REQUIRED,
-                message = "User must create a profile before entering matchmaking"
-            )
-
-        if (!profileService.isEligibleForMatchmaking(profile.id)) {
-            throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_NOT_ACTIVE,
-                message = "Profile must be active before entering matchmaking"
+                code = DomainErrorCode.valueOf(blockedReason.code),
+                message = blockedReason.message
             )
         }
 

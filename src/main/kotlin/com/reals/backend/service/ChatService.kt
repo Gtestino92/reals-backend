@@ -12,6 +12,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.ChatDecisionRepository
+import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.validation.PlainText
@@ -28,6 +29,7 @@ import java.util.UUID
 class ChatService(
     private val chatRepository: ChatRepository,
     private val chatMessageRepository: ChatMessageRepository,
+    private val chatExitRequestRepository: ChatExitRequestRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
     private val matchService: MatchService,
     private val visualReviewService: VisualReviewService,
@@ -166,6 +168,16 @@ class ChatService(
         }
 
         val chat = findActiveFirstChatOrThrow(matchId)
+
+        check(
+            chatExitRequestRepository.findByChatIdAndStatusAndType(
+                chatId = chat.id,
+                status = ChatExitRequestStatus.PENDING,
+                type = ChatExitRequestType.MUTUAL_CANCEL
+            ) == null
+        ) {
+            "Cannot submit chat decision while a mutual cancellation request is pending"
+        }
 
         if (decision == ChatContinueDecision.REJECTED) {
             chatExitService.cancelChatUnilaterally(
