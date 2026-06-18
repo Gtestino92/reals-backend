@@ -12,6 +12,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
+import java.util.UUID
 
 class ChatControllerIntegrationTest : ControllerIT() {
 
@@ -213,6 +215,83 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
             .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.ACCEPTED.name)))
             .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+    }
+
+    @Test
+    fun `mutual cancellation rejection returns outcome over http`() {
+        val setup = createMatchWithFirstChat()
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/${exitRequest.id}/rejection")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
+            .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.REJECTED.name)))
+            .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+    }
+
+    @Test
+    fun `mutual cancellation timeout returns outcome over http`() {
+        val setup = createMatchWithFirstChat()
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+        exitRequest.createdAt = OffsetDateTime.now().minusSeconds(30)
+        chatExitRequestRepository.save(exitRequest)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/${exitRequest.id}/timeout")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
+            .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.TIMED_OUT.name)))
+            .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+    }
+
+    @Test
+    fun `mutual cancellation timeout before timeout returns conflict over http`() {
+        val setup = createMatchWithFirstChat()
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/${exitRequest.id}/timeout")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+    }
+
+    @Test
+    fun `mutual cancellation timeout as non participant returns forbidden over http`() {
+        val setup = createMatchWithFirstChat()
+        val stranger = userService.createUser("http-timeout-stranger-${UUID.randomUUID()}@example.com")
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+        exitRequest.createdAt = OffsetDateTime.now().minusSeconds(30)
+        chatExitRequestRepository.save(exitRequest)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/${exitRequest.id}/timeout")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
     }
 
     @Test
