@@ -291,6 +291,7 @@ paths:
     post:
       tags: [Matchmaking]
       summary: Enter matchmaking queue with current search location
+      description: Idempotent upsert. Creates a queue entry when absent; if the authenticated user is already queued, keeps the single entry and refreshes latitude, longitude and accuracyMeters.
       requestBody:
         $ref: '#/components/requestBodies/EnqueueMatchmaking'
       responses:
@@ -789,6 +790,7 @@ components:
             $ref: '#/components/schemas/ReplacePhotoFileRequest'
     EnqueueMatchmaking:
       required: true
+      description: Current search location. Re-sending this body while already queued refreshes the stored location instead of creating a duplicate queue entry.
       content:
         application/json:
           schema:

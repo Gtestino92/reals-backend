@@ -76,7 +76,7 @@ display and refetch them when needed instead of persisting them permanently.
 
 ## Matchmaking
 
-- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`.
+- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`.
 - `DELETE /api/matchmaking/queue`: remove authenticated user from queue.
 - `GET /api/matchmaking/queue`: check queue status for authenticated user.
 
