@@ -98,7 +98,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `GET /api/chats/{chatId}`: fetch chat.
 - `POST /api/chats/{chatId}/messages`: send message as authenticated user.
 - `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant. With no cursor, returns the legacy array. With `after={messageId}` or `afterMessageId={messageId}`, returns `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
-- `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation.
+- `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation. Returns `201 Created` when a new pending request is created. If the same requester repeats the call while their pending mutual request still exists, returns `200 OK` with the existing request and does not overwrite `reason` or `details`. If the partner already has a pending mutual request for the chat, returns `409 Conflict`.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close the chat without penalty.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation and close the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
