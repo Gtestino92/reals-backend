@@ -345,6 +345,7 @@ paths:
     get:
       tags: [Matches]
       summary: Get partner profile visible during visual phase or later
+      description: Returns the partner profile and visual-review metadata from the authenticated user's perspective, including whether the current user already submitted their visual personal message.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       responses:
@@ -396,6 +397,7 @@ paths:
     put:
       tags: [Matches]
       summary: Store authenticated user's personal visual-review message
+      description: Stores the authenticated user's visual personal message once. A second submission returns 409 Conflict and does not overwrite the original message.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -1169,7 +1171,7 @@ components:
         validationStatus: { $ref: '#/components/schemas/PhotoValidationStatus' }
     VisualProfileResponse:
       type: object
-      required: [profileId, displayName, age, photos]
+      required: [profileId, displayName, age, photos, myPersonalMessageSubmitted]
       properties:
         profileId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1178,6 +1180,9 @@ components:
         photos:
           type: array
           items: { $ref: '#/components/schemas/PhotoResponse' }
+        myPersonalMessageSubmitted:
+          type: boolean
+          description: True when the authenticated user has already submitted their visual personal message for this match.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]

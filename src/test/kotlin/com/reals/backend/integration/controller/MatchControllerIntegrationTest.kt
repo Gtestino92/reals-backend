@@ -5,6 +5,7 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -107,6 +108,73 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `visual profile returns myPersonalMessageSubmitted false before message`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
+    }
+
+    @Test
+    fun `visual profile returns myPersonalMessageSubmitted true after current user message`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Me caiste bien"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
+    }
+
+    @Test
+    fun `myPersonalMessageSubmitted is scoped to current user`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de A"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
+    }
+
+    @Test
     fun `record personal message returns no content`() {
         val setup = createMatchInVisualPhase()
 
@@ -117,6 +185,32 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .content("""{"message":"Me caiste bien"}""")
         )
             .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `second personal message returns conflict and does not overwrite first message`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Primer mensaje"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Segundo mensaje"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertEquals("Primer mensaje", review.personalMessageA)
     }
 
     @Test

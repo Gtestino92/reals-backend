@@ -192,6 +192,22 @@ class VisualReviewService(
         return message
     }
 
+    fun hasPersonalMessageSubmitted(
+        matchId: UUID,
+        userId: UUID
+    ): Boolean {
+        val match = matchService.findByIdOrThrow(matchId)
+        val review = findByMatchIdOrThrow(matchId)
+
+        return when (userId) {
+            match.userAId -> review.personalMessageA != null
+            match.userBId -> review.personalMessageB != null
+            else -> throw AccessDeniedException(
+                "User $userId does not belong to match $matchId"
+            )
+        }
+    }
+
     private fun requirePartnerMessageReadIfPresent(
         match: Match,
         review: VisualReview,
