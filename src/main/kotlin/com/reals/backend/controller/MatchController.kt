@@ -110,7 +110,12 @@ class MatchController(
         return ResponseEntity.ok(
             VisualProfileResponse.from(
                 profile = partnerProfile,
-                photos = photos
+                photos = photos,
+                myPersonalMessageSubmitted =
+                    visualReviewService.hasPersonalMessageSubmitted(
+                        matchId = matchId,
+                        userId = userId
+                    )
             )
         )
     }
