@@ -1,0 +1,35 @@
+meta {
+  name: 21a Counterpart Get Android Exit Request
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body)) {
+    throw new Error("Expected exit requests list.");
+  }
+  
+  const counterpartUserId = bru.getEnvVar("counterpartUserId");
+  const request = body.find((item) =>
+    item.type === "MUTUAL_CANCEL" &&
+    item.status === "PENDING" &&
+    item.requesterUserId !== counterpartUserId &&
+    item.responderUserId === counterpartUserId
+  );
+  if (!request) {
+    throw new Error("Expected pending Android-created mutual cancellation request for counterpart.");
+  }
+  
+  bru.setEnvVar("androidExitRequestId", request.id);
+}

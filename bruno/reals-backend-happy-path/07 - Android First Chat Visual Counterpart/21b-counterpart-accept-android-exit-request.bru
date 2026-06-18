@@ -1,17 +1,17 @@
 meta {
-  name: 21a Android Accept Counterpart Exit Request
+  name: 21b Counterpart Accept Android Exit Request
   type: http
-  seq: 23
+  seq: 24
 }
 
 post {
-  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests/{{counterpartExitRequestId}}/acceptance
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests/{{androidExitRequestId}}/acceptance
   body: none
   auth: none
 }
 
 headers {
-  Authorization: Bearer {{firebase_id_token}}
+  Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
 script:post-response {
