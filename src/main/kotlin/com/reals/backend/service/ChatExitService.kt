@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
+import com.reals.backend.domain.ChatExitRequestCreationResult
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatExitOutcome
@@ -51,7 +52,20 @@ class ChatExitService(
         requesterUserId: UUID,
         reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
         details: String? = null
-    ): ChatExitRequest {
+    ): ChatExitRequest =
+        requestMutualCancellationWithResult(
+            chatId = chatId,
+            requesterUserId = requesterUserId,
+            reason = reason,
+            details = details
+        ).exitRequest
+
+    fun requestMutualCancellationWithResult(
+        chatId: UUID,
+        requesterUserId: UUID,
+        reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+        details: String? = null
+    ): ChatExitRequestCreationResult {
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, requesterUserId)
@@ -66,18 +80,24 @@ class ChatExitService(
             check(it.requesterUserId == requesterUserId) {
                 "A mutual cancellation request is already pending for chat $chatId"
             }
-            return it
+            return ChatExitRequestCreationResult(
+                exitRequest = it,
+                created = false
+            )
         }
 
-        return chatExitRequestRepository.save(
-            ChatExitRequest(
-                chatId = chatId,
-                requesterUserId = requesterUserId,
-                responderUserId = responderUserId,
-                type = ChatExitRequestType.MUTUAL_CANCEL,
-                reason = reason,
-                details = normalizedDetails
-            )
+        return ChatExitRequestCreationResult(
+            exitRequest = chatExitRequestRepository.save(
+                ChatExitRequest(
+                    chatId = chatId,
+                    requesterUserId = requesterUserId,
+                    responderUserId = responderUserId,
+                    type = ChatExitRequestType.MUTUAL_CANCEL,
+                    reason = reason,
+                    details = normalizedDetails
+                )
+            ),
+            created = true
         )
     }
 

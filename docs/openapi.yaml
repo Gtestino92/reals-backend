@@ -492,11 +492,18 @@ paths:
     post:
       tags: [Chats]
       summary: Request mutual chat cancellation
+      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
         $ref: '#/components/requestBodies/ChatExitRequestCreate'
       responses:
+        '200':
+          description: Existing pending exit request for the same requester
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatExitRequestResponse'
         '201':
           description: Created exit request
           content:

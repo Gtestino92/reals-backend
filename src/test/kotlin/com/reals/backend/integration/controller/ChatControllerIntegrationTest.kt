@@ -1,12 +1,14 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -218,6 +220,73 @@ class ChatControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `mutual cancellation request first post creates and duplicate same requester returns existing over http`() {
+        val setup = createMatchWithFirstChat()
+
+        val firstResponse =
+            mockMvc.perform(
+                post("/api/chats/${setup.firstChatId}/exit-requests")
+                    .with(authenticatedAs(setup.userAId))
+                    .contentType(jsonContentType)
+                    .content("""{"reason":"OTHER","details":"Original reason"}""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.type", equalTo(ChatExitRequestType.MUTUAL_CANCEL.name)))
+                .andExpect(jsonPath("$.status", equalTo(ChatExitRequestStatus.PENDING.name)))
+                .andExpect(jsonPath("$.reason", equalTo(ChatExitReason.OTHER.name)))
+                .andExpect(jsonPath("$.details", equalTo("Original reason")))
+                .andReturn()
+                .response
+                .contentAsString
+
+        val firstRequestId = objectMapper.readTree(firstResponse).get("id").asString()
+        assertEquals(1, pendingMutualRequests(setup.firstChatId).size)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"reason":"HARASSMENT","details":"Replacement attempt"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(firstRequestId)))
+            .andExpect(jsonPath("$.type", equalTo(ChatExitRequestType.MUTUAL_CANCEL.name)))
+            .andExpect(jsonPath("$.status", equalTo(ChatExitRequestStatus.PENDING.name)))
+            .andExpect(jsonPath("$.reason", equalTo(ChatExitReason.OTHER.name)))
+            .andExpect(jsonPath("$.details", equalTo("Original reason")))
+
+        val pending = pendingMutualRequests(setup.firstChatId)
+        assertEquals(1, pending.size)
+        assertEquals(firstRequestId, pending.single().id.toString())
+        assertEquals(ChatExitReason.OTHER, pending.single().reason)
+        assertEquals("Original reason", pending.single().details)
+    }
+
+    @Test
+    fun `mutual cancellation request from partner while pending returns conflict over http`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"reason":"NO_LONGER_INTERESTED","details":"Initial request"}""")
+        )
+            .andExpect(status().isCreated)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"reason":"OTHER","details":"Partner request"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+
+        assertEquals(1, pendingMutualRequests(setup.firstChatId).size)
+    }
+
+    @Test
     fun `mutual cancellation rejection returns outcome over http`() {
         val setup = createMatchWithFirstChat()
         val exitRequest =
@@ -307,4 +376,11 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
     }
+
+    private fun pendingMutualRequests(chatId: UUID) =
+        chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(chatId)
+            .filter {
+                it.type == ChatExitRequestType.MUTUAL_CANCEL &&
+                    it.status == ChatExitRequestStatus.PENDING
+            }
 }
