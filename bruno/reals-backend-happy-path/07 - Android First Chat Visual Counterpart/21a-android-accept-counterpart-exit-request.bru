@@ -1,0 +1,31 @@
+meta {
+  name: 21a Android Accept Counterpart Exit Request
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests/{{counterpartExitRequestId}}/acceptance
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.chat.status !== "CANCELLED") {
+    throw new Error(`Expected first chat CANCELLED, got ${body.chat.status}`);
+  }
+  if (body.exitRequest.type !== "MUTUAL_CANCEL") {
+    throw new Error(`Expected MUTUAL_CANCEL, got ${body.exitRequest.type}`);
+  }
+  if (body.exitRequest.status !== "ACCEPTED") {
+    throw new Error(`Expected cancellation request ACCEPTED, got ${body.exitRequest.status}`);
+  }
+  if (body.penaltyApplied !== false) {
+    throw new Error("Mutual cancellation should not apply a penalty.");
+  }
+}
