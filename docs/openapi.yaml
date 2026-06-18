@@ -291,6 +291,7 @@ paths:
     post:
       tags: [Matchmaking]
       summary: Enter matchmaking queue with current search location
+      description: Idempotent upsert. Creates a queue entry when absent; if the authenticated user is already queued, keeps the single entry and refreshes latitude, longitude and accuracyMeters.
       requestBody:
         $ref: '#/components/requestBodies/EnqueueMatchmaking'
       responses:
@@ -344,6 +345,7 @@ paths:
     get:
       tags: [Matches]
       summary: Get partner profile visible during visual phase or later
+      description: Returns the partner profile and visual-review metadata from the authenticated user's perspective, including whether the current user already submitted their visual personal message.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       responses:
@@ -395,6 +397,7 @@ paths:
     put:
       tags: [Matches]
       summary: Store authenticated user's personal visual-review message
+      description: Stores the authenticated user's visual personal message once. A second submission returns 409 Conflict and does not overwrite the original message.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -491,11 +494,18 @@ paths:
     post:
       tags: [Chats]
       summary: Request mutual chat cancellation
+      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
         $ref: '#/components/requestBodies/ChatExitRequestCreate'
       responses:
+        '200':
+          description: Existing pending exit request for the same requester
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatExitRequestResponse'
         '201':
           description: Created exit request
           content:
@@ -789,6 +799,7 @@ components:
             $ref: '#/components/schemas/ReplacePhotoFileRequest'
     EnqueueMatchmaking:
       required: true
+      description: Current search location. Re-sending this body while already queued refreshes the stored location instead of creating a duplicate queue entry.
       content:
         application/json:
           schema:
@@ -1160,7 +1171,7 @@ components:
         validationStatus: { $ref: '#/components/schemas/PhotoValidationStatus' }
     VisualProfileResponse:
       type: object
-      required: [profileId, displayName, age, photos]
+      required: [profileId, displayName, age, photos, myPersonalMessageSubmitted]
       properties:
         profileId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1169,6 +1180,9 @@ components:
         photos:
           type: array
           items: { $ref: '#/components/schemas/PhotoResponse' }
+        myPersonalMessageSubmitted:
+          type: boolean
+          description: True when the authenticated user has already submitted their visual personal message for this match.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]

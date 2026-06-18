@@ -90,16 +90,21 @@ class ChatController(
         @Valid
         @RequestBody request: ChatExitRequestCreateRequest
     ): ResponseEntity<ChatExitRequestResponse> {
-        val exitRequest =
-            chatExitService.requestMutualCancellation(
+        val result =
+            chatExitService.requestMutualCancellationWithResult(
                 chatId = chatId,
                 requesterUserId = userId,
                 reason = request.reason,
                 details = request.details
             )
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ChatExitRequestResponse.from(exitRequest))
+        val body = ChatExitRequestResponse.from(result.exitRequest)
+
+        return if (result.created) {
+            ResponseEntity.status(HttpStatus.CREATED).body(body)
+        } else {
+            ResponseEntity.ok(body)
+        }
     }
 
     @GetMapping("/{chatId}/exit-requests")
