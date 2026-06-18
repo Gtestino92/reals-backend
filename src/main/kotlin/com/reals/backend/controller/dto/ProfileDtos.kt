@@ -214,12 +214,14 @@ data class VisualProfileResponse(
     val displayName: String,
     val age: Int,
     val bio: String?,
-    val photos: List<PhotoResponse>
+    val photos: List<PhotoResponse>,
+    val myPersonalMessageSubmitted: Boolean
 ) {
     companion object {
         fun from(
             profile: Profile,
-            photos: List<ProfilePhoto>
+            photos: List<ProfilePhoto>,
+            myPersonalMessageSubmitted: Boolean
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
@@ -227,7 +229,8 @@ data class VisualProfileResponse(
             bio = profile.bio,
             photos = photos
                 .sortedBy { it.position }
-                .map { PhotoResponse.from(it) }
+                .map { PhotoResponse.from(it) },
+            myPersonalMessageSubmitted = myPersonalMessageSubmitted
         )
     }
 }

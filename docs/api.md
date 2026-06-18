@@ -76,7 +76,7 @@ display and refetch them when needed instead of persisting them permanently.
 
 ## Matchmaking
 
-- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`.
+- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`.
 - `DELETE /api/matchmaking/queue`: remove authenticated user from queue.
 - `GET /api/matchmaking/queue`: check queue status for authenticated user.
 
@@ -87,10 +87,10 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 - `GET /api/matches/{matchId}`: fetch match details and linked connection id if present.
 - `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision` and `expiresAt`.
-- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later.
+- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later. Includes `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending.
-- `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message.
+- `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
 - `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before visual approval.
 
 ## Chats
@@ -98,7 +98,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `GET /api/chats/{chatId}`: fetch chat.
 - `POST /api/chats/{chatId}/messages`: send message as authenticated user.
 - `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant. With no cursor, returns the legacy array. With `after={messageId}` or `afterMessageId={messageId}`, returns `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
-- `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation.
+- `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation. Returns `201 Created` when a new pending request is created. If the same requester repeats the call while their pending mutual request still exists, returns `200 OK` with the existing request and does not overwrite `reason` or `details`. If the partner already has a pending mutual request for the chat, returns `409 Conflict`.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close the chat without penalty.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation and close the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
