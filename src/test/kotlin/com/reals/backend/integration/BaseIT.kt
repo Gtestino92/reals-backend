@@ -11,6 +11,7 @@ import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
+import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
@@ -86,6 +87,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var chatDecisionRepository: ChatDecisionRepository
+
+    @Autowired
+    protected lateinit var chatExitRequestRepository: ChatExitRequestRepository
 
     @Autowired
     protected lateinit var chatRepository: ChatRepository

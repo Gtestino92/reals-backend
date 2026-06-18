@@ -135,7 +135,7 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `home returns profile and queue state`() {
+    fun `home returns profile and matchmaking state`() {
         val userId = createActiveProfile(
             email = "home-queue-${UUID.randomUUID()}@example.com",
             displayName = "Home Queue",
@@ -150,17 +150,19 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(true)))
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+            .andExpect(jsonPath("$.matchmaking.inQueue", equalTo(true)))
+            .andExpect(jsonPath("$.matchmaking.canSearch", equalTo(false)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
     }
 
     @Test
-    fun `home returns active first chat discovery data`() {
+    fun `home returns pending FIRST_CHAT action`() {
         val setup = createMatchWithFirstChat()
 
         mockMvc.perform(
@@ -169,25 +171,20 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("CHAT_ACTIVE")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatId", equalTo(setup.firstChatId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatType", equalTo("FIRST_CHAT")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.expiresAt").exists())
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.partner.userId", equalTo(setup.userBId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.partner.displayName", equalTo("Match B")))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+            .andExpect(jsonPath("$.matchmaking.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner.displayName", equalTo("Match B")))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
     }
 
     @Test
-    fun `home keeps visual phase match without active first chat`() {
+    fun `home returns pending VISUAL_REVIEW action`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -195,14 +192,14 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("VISUAL_PHASE")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat").doesNotExist())
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
     }
 
     @Test
@@ -218,11 +215,9 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
     }
 
     @Test
@@ -240,28 +235,24 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
 
         mockMvc.perform(
             get("/api/me/home")
                 .with(authenticatedAs(setup.userBId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("VISUAL_PHASE")))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
     }
 
     @Test
-    fun `home hides pending scheduling connection until activated`() {
+    fun `home returns SCHEDULING_PREPARING passive notice for scheduling pending`() {
         val setup = createMatchInVisualPhase()
 
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
@@ -272,38 +263,117 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(1)))
     }
 
     @Test
-    fun `home returns active connection discovery data`() {
-        val setup = createAvailableSecondChat()
+    fun `home returns SCHEDULING next step only in scheduling phase`() {
+        val setup = createConnectionInSchedulingPhase()
 
         mockMvc.perform(
             get("/api/me/home")
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
-            .andExpect(jsonPath("$.engagementSummary.activeMatchCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.activeConnectionCount", equalTo(1)))
-            .andExpect(jsonPath("$.engagementSummary.pendingSchedulingConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.engagementSummary.actionableConnectionCount", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeConnections[0].connectionId", equalTo(setup.connectionId.toString())))
-            .andExpect(jsonPath("$.activeConnections[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeConnections[0].connectionState", equalTo("SECOND_CHAT_AVAILABLE")))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatType", equalTo("SECOND_CHAT")))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatStatus", equalTo("AVAILABLE")))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.expiresAt").exists())
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.partner.displayName", equalTo("Match B")))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SCHEDULING")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat").doesNotExist())
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns SECOND_CHAT_SCHEDULED and SECOND_CHAT_AVAILABLE next steps`() {
+        val scheduledSetup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userAId, scheduledSlot)
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userBId, scheduledSlot)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(scheduledSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_SCHEDULED")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(scheduledSetup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(scheduledSetup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat").doesNotExist())
+
+        val availableSetup = createAvailableSecondChat()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(availableSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_AVAILABLE")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(availableSetup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(availableSetup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("AVAILABLE")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(availableSetup.userBId.toString())))
+    }
+
+    @Test
+    fun `home excludes closed matches and connections`() {
+        val matchSetup = createMatchWithFirstChat()
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = matchSetup.firstChatId,
+                requesterUserId = matchSetup.userAId
+            )
+        chatExitService.acceptMutualCancellation(
+            chatId = matchSetup.firstChatId,
+            requestId = exitRequest.id,
+            responderUserId = matchSetup.userBId
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(matchSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+
+        val connectionSetup = createActiveSecondChat()
+        val secondChatExitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = connectionSetup.secondChatId,
+                requesterUserId = connectionSetup.userAId
+            )
+        chatExitService.acceptMutualCancellation(
+            chatId = connectionSetup.secondChatId,
+            requestId = secondChatExitRequest.id,
+            responderUserId = connectionSetup.userBId
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(connectionSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
     }
 }
