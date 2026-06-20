@@ -73,6 +73,7 @@ class SecurityConfig(
                     .requestMatchers("/h2-console/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
+                    .requestMatchers("/api/admin/**").hasRole(SecurityRoles.ADMIN)
                     .requestMatchers("/api/**").hasRole(SecurityRoles.USER)
                     .anyRequest().denyAll()
             }

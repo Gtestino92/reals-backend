@@ -13,7 +13,15 @@ interface PenaltyRepository :
         userId: UUID
     ): Boolean
 
-    @Query("SELECT p from Penalty p where p.active=true and p.expiresAt <= :now")
+    @Query(
+        """
+        SELECT p from Penalty p
+        where p.active=true
+            and p.type = com.reals.backend.domain.PenaltyType.TEMPORARY_BAN
+            and p.expiresAt is not null
+            and p.expiresAt <= :now
+        """
+    )
     fun findExpiredActivePenalties(
         @Param("now")
         now: OffsetDateTime
