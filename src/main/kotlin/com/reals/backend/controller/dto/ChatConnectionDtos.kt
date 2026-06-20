@@ -249,6 +249,10 @@ data class ConnectionResponse(
 
 // — VisualReview personal messages
 
+data class ConnectionDismissalResponse(
+    val dismissed: Boolean
+)
+
 /**
  * The personal message the partner left for the requesting user.
  * null if the partner hasn't submitted one yet.

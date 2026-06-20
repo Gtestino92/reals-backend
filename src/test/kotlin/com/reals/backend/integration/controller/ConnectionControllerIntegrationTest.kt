@@ -8,6 +8,7 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -143,6 +144,113 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `user can dismiss read only second chat from home`() {
+        val setup = createReadOnlySecondChat()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.dismissed", equalTo(true)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+
+        assertEquals(
+            1,
+            connectionHomeDismissalRepository.findAll().count {
+                it.userId == setup.userAId && it.connectionId == setup.connectionId
+            }
+        )
+        assertEquals(ChatStatus.EXPIRED, chatRepository.findById(setup.secondChatId).orElseThrow().status)
+    }
+
+    @Test
+    fun `second chat dismissal is user specific`() {
+        val setup = createReadOnlySecondChat()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_READ_ONLY")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+    }
+
+    @Test
+    fun `second chat dismissal endpoint is idempotent`() {
+        val setup = createReadOnlySecondChat()
+
+        repeat(2) {
+            mockMvc.perform(
+                post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                    .with(authenticatedAs(setup.userAId))
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.dismissed", equalTo(true)))
+        }
+
+        assertEquals(
+            1,
+            connectionHomeDismissalRepository.findAll().count {
+                it.userId == setup.userAId && it.connectionId == setup.connectionId
+            }
+        )
+    }
+
+    @Test
+    fun `second chat dismissal rejects actionable available second chat`() {
+        val setup = createAvailableSecondChat()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+
+        assertFalse(
+            connectionHomeDismissalRepository.existsByUserIdAndConnectionId(
+                userId = setup.userAId,
+                connectionId = setup.connectionId
+            )
+        )
+    }
+
+    @Test
+    fun `second chat dismissal rejects non participant`() {
+        val setup = createReadOnlySecondChat()
+        val stranger = userService.createUser("dismiss-stranger-${java.util.UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(stranger.id))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
     fun `proposal validation conflict is returned as error json`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
@@ -165,4 +273,14 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.error", equalTo("Conflict")))
             .andExpect(jsonPath("$.message", equalTo("Proposal list must contain between 1 and 3 date/times")))
     }
+
+    private fun createReadOnlySecondChat() =
+        createActiveSecondChat()
+            .also {
+                chatRepository.updateTimeoutAt(
+                    chatId = it.secondChatId,
+                    timeoutAt = OffsetDateTime.now().minusSeconds(1)
+                )
+                chatService.expireSecondChatToReadOnly(it.secondChatId)
+            }
 }

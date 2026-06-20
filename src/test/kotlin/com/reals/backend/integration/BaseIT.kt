@@ -13,6 +13,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
@@ -96,6 +97,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var connectionRepository: ConnectionRepository
+
+    @Autowired
+    protected lateinit var connectionHomeDismissalRepository: ConnectionHomeDismissalRepository
 
     @Autowired
     protected lateinit var matchRepository: MatchRepository
