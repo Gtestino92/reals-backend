@@ -43,15 +43,16 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     ): List<Chat>
 
     @Query(
-        "select c from Chat c where c.status = 'ACTIVE' and c.timeoutAt <= :now"
+        "select c from Chat c where c.status = 'ACTIVE' and c.chatType = 'FIRST_CHAT' and c.timeoutAt <= :now"
     )
-    fun findExpiredActiveChats(
+    fun findExpiredActiveFirstChats(
         @Param("now") now: OffsetDateTime
     ): List<Chat>
 
     @Query(
         """ select c from Chat c
         where c.status = 'ACTIVE'
+          and c.chatType = 'FIRST_CHAT'
           and (
               (c.lastMessageAt is null and c.startedAt <= :threshold)
               or c.lastMessageAt <= :threshold
@@ -62,10 +63,35 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         @Param("threshold") threshold: OffsetDateTime
     ): List<Chat>
 
+    @Query(
+        "select c from Chat c where c.status = 'ACTIVE' and c.chatType = 'SECOND_CHAT' and c.timeoutAt <= :now"
+    )
+    fun findTimedOutActiveSecondChats(
+        @Param("now") now: OffsetDateTime
+    ): List<Chat>
+
+    @Query(
+        """select c from Chat c
+           where c.status = 'EXPIRED'
+             and c.chatType = 'SECOND_CHAT'
+             and c.readOnlyUntil is not null
+             and c.readOnlyUntil <= :now"""
+    )
+    fun findExpiredReadOnlySecondChats(
+        @Param("now") now: OffsetDateTime
+    ): List<Chat>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Chat c set c.timeoutAt = :timeoutAt where c.id = :chatId")
     fun updateTimeoutAt(
         @Param("chatId") chatId: UUID,
         @Param("timeoutAt") timeoutAt: OffsetDateTime
+    ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Chat c set c.readOnlyUntil = :readOnlyUntil where c.id = :chatId")
+    fun updateReadOnlyUntil(
+        @Param("chatId") chatId: UUID,
+        @Param("readOnlyUntil") readOnlyUntil: OffsetDateTime
     ): Int
 }

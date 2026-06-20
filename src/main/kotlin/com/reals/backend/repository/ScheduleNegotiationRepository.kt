@@ -17,6 +17,10 @@ interface ScheduleNegotiationRepository :
         connectionId: UUID
     ): ScheduleNegotiation?
 
+    fun findByConnectionIdIn(
+        connectionIds: Collection<UUID>
+    ): List<ScheduleNegotiation>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """

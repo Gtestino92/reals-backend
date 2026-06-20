@@ -1,5 +1,6 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.VisualDecision
@@ -313,9 +314,23 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_SCHEDULED")))
             .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(scheduledSetup.connectionId.toString())))
             .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(scheduledSetup.matchId.toString())))
-            .andExpect(jsonPath("$.nextSteps[0].secondChat").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt", equalTo(scheduledSlot.toString())))
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.expiresAt",
+                    equalTo(scheduledSlot.plusMinutes(120).toString())
+                )
+            )
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
 
         val availableSetup = createAvailableSecondChat()
+        val availableSecondChat = chatRepository.findByConnectionIdAndChatType(
+            availableSetup.connectionId,
+            ChatType.SECOND_CHAT
+        ) ?: error("Second chat was not created")
 
         mockMvc.perform(
             get("/api/me/home")
@@ -329,7 +344,49 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("AVAILABLE")))
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.availableAt",
+                    equalTo(availableSecondChat.availableAt.toString())
+                )
+            )
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.expiresAt",
+                    equalTo(availableSecondChat.timeoutAt.toString())
+                )
+            )
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(availableSetup.userBId.toString())))
+    }
+
+    @Test
+    fun `home returns SECOND_CHAT_READ_ONLY after second chat writable window expires`() {
+        val setup = createActiveSecondChat()
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        chatService.expireSecondChatToReadOnly(setup.secondChatId)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_READ_ONLY")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId", equalTo(setup.secondChatId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("EXPIRED")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.expiresAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.readOnlyUntil").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
     }
 
     @Test

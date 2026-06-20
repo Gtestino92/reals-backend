@@ -43,6 +43,9 @@ class ChatService(
     @param:Value("\${chat.second-chat.duration-minutes:2880}")
     private val secondChatDurationMinutes: Long,
 
+    @param:Value("\${chat.second-chat.read-only-retention-minutes:1440}")
+    private val secondChatReadOnlyRetentionMinutes: Long,
+
     @param:Value("\${chat.first-chat.min-messages-per-user:0}")
     private val minMessagesPerUser: Int
 ) {
@@ -285,6 +288,7 @@ class ChatService(
     ): List<ChatMessage> {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)
+        validateChatReadable(chat)
         return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
     }
 
@@ -295,6 +299,7 @@ class ChatService(
     ): List<ChatMessage> {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)
+        validateChatReadable(chat)
 
         val afterMessage =
             chatMessageRepository.findById(afterMessageId)
@@ -353,9 +358,61 @@ class ChatService(
     }
 
     fun findTimedOutChats(): List<Chat> {
-        return chatRepository.findExpiredActiveChats(
+        return chatRepository.findExpiredActiveFirstChats(
             now = OffsetDateTime.now()
         )
+    }
+
+    fun findTimedOutActiveSecondChats(): List<Chat> {
+        return chatRepository.findTimedOutActiveSecondChats(
+            now = OffsetDateTime.now()
+        )
+    }
+
+    fun findExpiredReadOnlySecondChats(): List<Chat> {
+        return chatRepository.findExpiredReadOnlySecondChats(
+            now = OffsetDateTime.now()
+        )
+    }
+
+    fun expireSecondChatToReadOnly(chatId: UUID): Boolean {
+        val chat = findByIdOrThrow(chatId)
+
+        if (chat.chatType != ChatType.SECOND_CHAT || chat.status != ChatStatus.ACTIVE) {
+            return false
+        }
+
+        val now = OffsetDateTime.now()
+        if (chat.timeoutAt.isAfter(now)) {
+            return false
+        }
+
+        chat.status = ChatStatus.EXPIRED
+        chat.endedAt = now
+        chat.readOnlyUntil = now.plusMinutes(secondChatReadOnlyRetentionMinutes)
+        chatRepository.save(chat)
+
+        return true
+    }
+
+    fun closeExpiredReadOnlySecondChat(chatId: UUID): Boolean {
+        val chat = findByIdOrThrow(chatId)
+
+        if (chat.chatType != ChatType.SECOND_CHAT || chat.status != ChatStatus.EXPIRED) {
+            return false
+        }
+
+        val readOnlyUntil = chat.readOnlyUntil ?: return false
+        if (readOnlyUntil.isAfter(OffsetDateTime.now())) {
+            return false
+        }
+
+        chat.status = ChatStatus.CLOSED
+        chatRepository.save(chat)
+
+        chat.connectionId?.let { connectionService.closeConnection(it) }
+
+        return true
     }
 
     fun findActiveFirstChatOrThrow(matchId: UUID): Chat {
@@ -447,6 +504,12 @@ class ChatService(
 
         check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
             "Chat ${chat.id} has timed out"
+        }
+    }
+
+    private fun validateChatReadable(chat: Chat) {
+        check(chat.status != ChatStatus.CLOSED) {
+            "Chat ${chat.id} is no longer available"
         }
     }
 
