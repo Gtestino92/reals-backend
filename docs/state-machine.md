@@ -31,13 +31,15 @@ Allowed transitions:
 - `ACTIVE -> CANCELLED`
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
+- `EXPIRED -> CLOSED` only for second-chat read-only retention cleanup
 
 Terminal states:
 
 - `FINISHED`
 - `CANCELLED`
-- `EXPIRED`
+- `EXPIRED` for first chats; for second chats this is read-only until cleanup
 - `ABANDONED`
+- `CLOSED`
 
 ## ConnectionState
 

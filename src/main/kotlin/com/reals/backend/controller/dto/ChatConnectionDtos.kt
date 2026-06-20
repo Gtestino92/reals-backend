@@ -23,6 +23,7 @@ data class ChatResponse(
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
+    val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?
 ) {
     companion object {
@@ -38,6 +39,7 @@ data class ChatResponse(
             timeoutAt = c.timeoutAt,
             expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
+            readOnlyUntil = c.readOnlyUntil,
             lastMessageAt = c.lastMessageAt
         )
     }
@@ -69,6 +71,7 @@ data class FirstChatResponse(
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
+    val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?,
     val partner: PartnerSummaryResponse,
     val myDecision: ChatParticipantDecisionStatus,
@@ -92,6 +95,7 @@ data class FirstChatResponse(
             timeoutAt = chat.timeoutAt,
             expiresAt = chat.timeoutAt,
             endedAt = chat.endedAt,
+            readOnlyUntil = chat.readOnlyUntil,
             lastMessageAt = chat.lastMessageAt,
             partner = PartnerSummaryResponse.from(partner),
             myDecision = myDecision,
