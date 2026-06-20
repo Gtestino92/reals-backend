@@ -134,8 +134,14 @@ duration (`chat.second-chat.duration-minutes`, currently 120 minutes).
 
 The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
 
-`SecondChatLifecycleJob` owns the lifecycle after activation. When an active
-second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
+If the agreed second-chat window expires before a chat is created, the backend
+closes the scheduled connection instead of creating a stale chat. If an
+`AVAILABLE` chat exists but nobody enters before its `timeoutAt`, the lifecycle
+job closes the chat and connection directly. These cases had no messages, so
+there is no read-only period.
+
+`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. When
+an active second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
 `readOnlyUntil` using `chat.second-chat.read-only-retention-minutes` (currently
 24 hours), and leaves the connection visible in Home as `SECOND_CHAT_READ_ONLY`.
 Messages remain readable, but new messages are rejected because the chat is no

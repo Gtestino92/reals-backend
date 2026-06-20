@@ -397,6 +397,26 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `home excludes expired scheduled second chat without chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot)
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
     fun `home excludes closed matches and connections`() {
         val matchSetup = createMatchWithFirstChat()
         val exitRequest =

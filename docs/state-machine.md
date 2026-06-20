@@ -27,6 +27,7 @@ Allowed transitions:
 
 - `AVAILABLE -> ACTIVE`
 - `AVAILABLE -> CANCELLED` only for explicit account-deletion closure
+- `AVAILABLE -> CLOSED` only for expired unactivated second-chat cleanup
 - `ACTIVE -> FINISHED`
 - `ACTIVE -> CANCELLED`
 - `ACTIVE -> EXPIRED`
