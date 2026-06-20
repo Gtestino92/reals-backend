@@ -45,6 +45,25 @@ class DevTimeoutController(
         )
     }
 
+    @PostMapping("/chats/{chatId}/read-only-expire-now")
+    @Transactional
+    fun expireChatReadOnlyNow(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val expiresAt = OffsetDateTime.now().minusSeconds(1)
+        requireUpdated(
+            updated = chatRepository.updateReadOnlyUntil(chatId, expiresAt),
+            message = "Chat not found: $chatId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "chat-read-only",
+                id = chatId,
+                expiresAt = expiresAt
+            )
+        )
+    }
+
     @PostMapping("/matches/{matchId}/visual-expire-now")
     @Transactional
     fun expireVisualPhaseNow(

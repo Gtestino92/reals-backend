@@ -50,7 +50,8 @@ data class HomePendingActionResponse(
 enum class HomeNextStepType {
     SCHEDULING,
     SECOND_CHAT_SCHEDULED,
-    SECOND_CHAT_AVAILABLE
+    SECOND_CHAT_AVAILABLE,
+    SECOND_CHAT_READ_ONLY
 }
 
 data class HomeNextStepResponse(
@@ -71,21 +72,31 @@ data class HomePassiveNoticeResponse(
 )
 
 data class HomeChatResponse(
-    val chatId: UUID,
-    val chatType: ChatType,
-    val chatStatus: ChatStatus,
+    val chatId: UUID?,
+    val chatType: ChatType?,
+    val chatStatus: ChatStatus?,
+    val availableAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
+    val readOnlyUntil: OffsetDateTime?,
+    val durationMinutes: Long,
     val partner: PartnerSummaryResponse?
 ) {
     companion object {
         fun from(
-            chat: Chat,
+            chat: Chat?,
+            availableAt: OffsetDateTime,
+            expiresAt: OffsetDateTime,
+            readOnlyUntil: OffsetDateTime?,
+            durationMinutes: Long,
             partner: Profile?
         ) = HomeChatResponse(
-            chatId = chat.id,
-            chatType = chat.chatType,
-            chatStatus = chat.status,
-            expiresAt = chat.timeoutAt,
+            chatId = chat?.id,
+            chatType = chat?.chatType,
+            chatStatus = chat?.status,
+            availableAt = availableAt,
+            expiresAt = expiresAt,
+            readOnlyUntil = readOnlyUntil,
+            durationMinutes = durationMinutes,
             partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }

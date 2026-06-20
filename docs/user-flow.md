@@ -114,15 +114,36 @@ If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILE
 
 ## 8. Second Chat
 
-Second chat becomes visible when the agreed `confirmedDateTime` arrives. `ScheduledSecondChatStartJob` finds confirmed negotiations whose start time is due, creates an `AVAILABLE` second chat and moves the connection to `SECOND_CHAT_AVAILABLE`:
+Second chat becomes visible shortly before the agreed `confirmedDateTime`.
+`ScheduledSecondChatStartJob` finds confirmed negotiations whose start time is
+inside the configured early-entry tolerance window
+(`chat.second-chat.early-entry-tolerance-minutes`, currently 10 minutes),
+creates an `AVAILABLE` second chat and moves the connection to
+`SECOND_CHAT_AVAILABLE`:
 
 ```text
 ChatService.startSecondChat(matchId, connectionId)
 ```
 
+Home exposes the agreed start time as `nextSteps[].secondChat.availableAt` for
+both `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE`. Clients may enable
+entry from `availableAt - 10 minutes` and should show the agreed time before
+that window. `secondChat.expiresAt` is the end of the writable second-chat
+window, and `secondChat.durationMinutes` exposes the configured writable
+duration (`chat.second-chat.duration-minutes`, currently 120 minutes).
+
 The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
 
-Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation applies a penalty for the reported participant. Chat timeout closes the connection. Abandonment may create penalties for abandoned users before closure.
+`SecondChatLifecycleJob` owns the lifecycle after activation. When an active
+second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
+`readOnlyUntil` using `chat.second-chat.read-only-retention-minutes` (currently
+24 hours), and leaves the connection visible in Home as `SECOND_CHAT_READ_ONLY`.
+Messages remain readable, but new messages are rejected because the chat is no
+longer `ACTIVE`. When `readOnlyUntil` is reached, the same job marks the chat
+`CLOSED`, closes the connection and releases locks; the interaction then
+disappears from Home.
+
+Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation applies a penalty for the reported participant. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
 
 ## 9. Completion
 

@@ -28,7 +28,9 @@ import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -41,9 +43,13 @@ class MeHomeService(
     private val matchRepository: MatchRepository,
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
+    private val negotiationRepository: ScheduleNegotiationRepository,
     private val visualReviewRepository: VisualReviewRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
-    private val matchmakingAvailabilityService: MatchmakingAvailabilityService
+    private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
+
+    @param:Value("\${chat.second-chat.duration-minutes:120}")
+    private val secondChatDurationMinutes: Long
 ) {
 
     @Transactional(readOnly = true)
@@ -149,6 +155,15 @@ class MeHomeService(
                 .toMap()
         }
 
+        val confirmedNegotiationsByConnectionId = if (activeConnections.isEmpty()) {
+            emptyMap()
+        } else {
+            negotiationRepository
+                .findByConnectionIdIn(activeConnections.map { it.id })
+                .filter { it.confirmedDateTime != null }
+                .associateBy { it.connectionId }
+        }
+
         val partnerUserIds =
             activeMatches.map { partnerUserId(it.userAId, it.userBId, userId) } +
                 activeConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
@@ -204,9 +219,13 @@ class MeHomeService(
                 toNextStep(
                     connection = connection,
                     secondChat = secondChatsByConnectionId[connection.id],
+                    secondChatAvailableAt = confirmedNegotiationsByConnectionId[
+                        connection.id
+                    ]?.confirmedDateTime,
                     partner = partnerProfilesByUserId[
                         partnerUserId(connection.userAId, connection.userBId, userId)
-                    ]
+                    ],
+                    now = now
                 )
             },
             passiveNotices = passiveNoticesFor(activeInteractionsSummary)
@@ -318,13 +337,18 @@ class MeHomeService(
     private fun toNextStep(
         connection: Connection,
         secondChat: Chat?,
-        partner: Profile?
+        secondChatAvailableAt: OffsetDateTime?,
+        partner: Profile?,
+        now: OffsetDateTime
     ): HomeNextStepResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
             ConnectionState.SECOND_CHAT_SCHEDULED -> HomeNextStepType.SECOND_CHAT_SCHEDULED
-            ConnectionState.SECOND_CHAT_AVAILABLE,
-            ConnectionState.SECOND_CHAT -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+            ConnectionState.SECOND_CHAT_AVAILABLE -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+            ConnectionState.SECOND_CHAT -> secondChatNextStepType(
+                secondChat = secondChat,
+                now = now
+            ) ?: return null
             ConnectionState.SCHEDULING_PENDING,
             ConnectionState.CLOSED -> return null
         }
@@ -334,13 +358,47 @@ class MeHomeService(
             connectionId = connection.id,
             matchId = connection.matchId,
             partner = partner?.let { PartnerSummaryResponse.from(it) },
-            secondChat = secondChat?.let {
-                HomeChatResponse.from(
-                    chat = it,
-                    partner = partner
-                )
-            }
+            secondChat = secondChatResponse(
+                chat = secondChat,
+                availableAt = secondChatAvailableAt,
+                partner = partner
+            )
         )
+    }
+
+    private fun secondChatResponse(
+        chat: Chat?,
+        availableAt: OffsetDateTime?,
+        partner: Profile?
+    ): HomeChatResponse? {
+        val resolvedAvailableAt = availableAt ?: chat?.availableAt ?: return null
+        val expiresAt = chat?.timeoutAt ?: resolvedAvailableAt.plusMinutes(secondChatDurationMinutes)
+
+        return HomeChatResponse.from(
+            chat = chat,
+            availableAt = resolvedAvailableAt,
+            expiresAt = expiresAt,
+            readOnlyUntil = chat?.readOnlyUntil,
+            durationMinutes = secondChatDurationMinutes,
+            partner = partner
+        )
+    }
+
+    private fun secondChatNextStepType(
+        secondChat: Chat?,
+        now: OffsetDateTime
+    ): HomeNextStepType? {
+        return when (secondChat?.status) {
+            ChatStatus.EXPIRED ->
+                if (secondChat.readOnlyUntil?.isAfter(now) == true) {
+                    HomeNextStepType.SECOND_CHAT_READ_ONLY
+                } else {
+                    null
+                }
+
+            ChatStatus.CLOSED -> null
+            else -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+        }
     }
 
     private fun passiveNoticesFor(
