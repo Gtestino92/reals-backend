@@ -1,0 +1,40 @@
+meta {
+  name: 26b Submit Counterpart Proposals With Overlap
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "proposedDateTimes": [
+      "{{secondChatDateTime}}",
+      "{{counterpartSecondChatDateTimeLater}}"
+    ]
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body) || !body[0] || !body[0].id) {
+    throw new Error("Expected created counterpart scheduling proposals list.");
+  }
+  bru.setEnvVar("proposalBId", body[0].id);
+  if (!body.some((proposal) => proposal.status === "ACCEPTED")) {
+    throw new Error("Expected overlapping proposal to auto-confirm scheduling.");
+  }
+}
+
+docs {
+  Use this after Android has already proposed secondChatDateTime from the app. Matching that instant should auto-confirm the negotiation. Update values if they are in the past.
+}
