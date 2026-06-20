@@ -31,6 +31,7 @@ class ChatExitService(
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val matchService: MatchService,
     private val penaltyService: PenaltyService,
+    private val safetyReportService: SafetyReportService,
     private val connectionService: ConnectionService,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
@@ -284,8 +285,6 @@ class ChatExitService(
             "Safety cancellation details are required"
         }
 
-        penaltyService.createSafetyReportPenalty(userId = reportedUserId)
-
         val exitRequest = chatExitRequestRepository.save(
             ChatExitRequest(
                 chatId = chatId,
@@ -299,13 +298,21 @@ class ChatExitService(
             )
         )
 
+        safetyReportService.createPendingReport(
+            chat = chat,
+            reporterUserId = reporterUserId,
+            reportedUserId = reportedUserId,
+            reason = reason,
+            details = normalizedDetails
+        )
+
         finishCancelledChat(chat)
 
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
-            penaltyApplied = true,
-            penalizedUserId = reportedUserId
+            penaltyApplied = false,
+            penalizedUserId = null
         )
     }
 

@@ -42,6 +42,9 @@ management:
       exposure:
         include: health,info
 
+backoffice:
+  admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
+
 scheduler:
   enabled: true
   matchmaking-job:
