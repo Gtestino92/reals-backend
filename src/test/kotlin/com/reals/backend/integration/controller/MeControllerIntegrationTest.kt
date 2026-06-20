@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class MeControllerIntegrationTest : ControllerIT() {
@@ -317,11 +318,16 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").doesNotExist())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType").doesNotExist())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus").doesNotExist())
-            .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt", equalTo(scheduledSlot.toString())))
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.availableAt",
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot))
+                )
+            )
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(scheduledSlot.plusMinutes(120).toString())
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot.plusMinutes(120)))
                 )
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
@@ -331,6 +337,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             availableSetup.connectionId,
             ChatType.SECOND_CHAT
         ) ?: error("Second chat was not created")
+        val availableAt = availableSecondChat.availableAt ?: error("Second chat availableAt was not set")
 
         mockMvc.perform(
             get("/api/me/home")
@@ -347,13 +354,13 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.availableAt",
-                    equalTo(availableSecondChat.availableAt.toString())
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(availableAt))
                 )
             )
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(availableSecondChat.timeoutAt.toString())
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(availableSecondChat.timeoutAt))
                 )
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
