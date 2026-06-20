@@ -71,6 +71,9 @@ data class Chat(
     @Column(name = "ended_at")
     var endedAt: OffsetDateTime? = null,
 
+    @Column(name = "read_only_until")
+    var readOnlyUntil: OffsetDateTime? = null,
+
     @Column(name = "last_message_at")
     var lastMessageAt: OffsetDateTime? = null
 )

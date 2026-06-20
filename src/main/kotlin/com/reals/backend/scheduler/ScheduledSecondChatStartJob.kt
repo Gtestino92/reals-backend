@@ -7,6 +7,7 @@ import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -16,14 +17,17 @@ import java.time.OffsetDateTime
  *
  * Scheduling confirmation only reserves the second-chat slot and moves the
  * connection to SECOND_CHAT_SCHEDULED. This job creates a visible AVAILABLE
- * chat at confirmedDateTime; the chat becomes ACTIVE when a participant enters
- * it or sends the first message.
+ * chat inside the early-entry tolerance window; the chat becomes ACTIVE when a
+ * participant enters it or sends the first message.
  */
 @Component
 class ScheduledSecondChatStartJob(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val connectionService: ConnectionService,
-    private val chatService: ChatService
+    private val chatService: ChatService,
+
+    @param:Value("\${chat.second-chat.early-entry-tolerance-minutes:10}")
+    private val earlyEntryToleranceMinutes: Long = 10
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -36,10 +40,11 @@ class ScheduledSecondChatStartJob(
     )
     fun run() {
         val startedAt = System.nanoTime()
+        val availabilityCutoff = OffsetDateTime.now().plusMinutes(earlyEntryToleranceMinutes)
         val due =
             negotiationRepository.findDueConfirmedNegotiations(
                 status = NegotiationStatus.CONFIRMED,
-                now = OffsetDateTime.now()
+                now = availabilityCutoff
             )
 
         var succeeded = 0

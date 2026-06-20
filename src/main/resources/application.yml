@@ -40,8 +40,12 @@ scheduler:
   enabled: true
 
   # Detects chat sessions exceeding max duration or inactivity timeout
-  # Runs every 2 minutes — fast response needed so users don't remain stuck
+  # Runs every 2 minutes — fast response needed so first-chat users don't remain stuck
   chat-timeout-job:
+    fixed-delay: 120000
+
+  # Expires active second chats into read-only mode, then closes them after retention.
+  second-chat-lifecycle-job:
     fixed-delay: 120000
 
   # Expires matches that have not progressed past CHAT_ACTIVE
@@ -71,8 +75,8 @@ scheduler:
   scheduling-timeout-job:
     fixed-delay: 900000
 
-  # Makes second chats available when their negotiated confirmedDateTime has arrived
-  # Runs every minute so users can enter the chat close to the agreed slot
+  # Makes second chats available near their negotiated confirmedDateTime.
+  # Runs every minute so users can enter the chat close to the agreed slot.
   scheduled-second-chat-start-job:
     fixed-delay: 60000
 
@@ -106,10 +110,11 @@ chat:
   visual-phase:
     duration-minutes: 1440 # 24 hours
 
-  # Maximum duration for the second chat after visual approval
-  # Longer because users are already acquainted
+  # Maximum duration for the second chat after the agreed start time.
   second-chat:
-    duration-minutes: 2880 # 48 hours
+    duration-minutes: 120 # 2 hours
+    early-entry-tolerance-minutes: 10
+    read-only-retention-minutes: 1440 # 24 hours
     min-messages-before-free-cancel: 0
 
 scheduling:

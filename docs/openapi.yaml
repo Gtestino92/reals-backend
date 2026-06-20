@@ -628,7 +628,7 @@ paths:
     get:
       tags: [Connections]
       summary: Get visible second chat for connection
-      description: If the second chat is AVAILABLE, this call activates it for the authenticated participant.
+      description: If the second chat is AVAILABLE, this call activates it for the authenticated participant. Home exposes secondChat.availableAt as the agreed start time; the backend may make the chat AVAILABLE up to 10 minutes before that time.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
@@ -1052,12 +1052,36 @@ components:
         count: { type: integer, format: int32, minimum: 1 }
     HomeChatResponse:
       type: object
-      required: [chatId, chatType, chatStatus, expiresAt]
+      description: Second-chat navigation metadata. For SECOND_CHAT_SCHEDULED, chatId/chatType/chatStatus may be null because the chat row is created when the entry window opens. availableAt is the agreed second-chat start time; clients may enable entry 10 minutes before it. For SECOND_CHAT_READ_ONLY, chatStatus is EXPIRED and readOnlyUntil defines the end of read-only visibility.
+      required: [availableAt, expiresAt, durationMinutes]
       properties:
-        chatId: { type: string, format: uuid }
-        chatType: { $ref: '#/components/schemas/ChatType' }
-        chatStatus: { $ref: '#/components/schemas/ChatStatus' }
-        expiresAt: { type: string, format: date-time }
+        chatId: { type: string, format: uuid, nullable: true }
+        chatType:
+          allOf:
+            - $ref: '#/components/schemas/ChatType'
+          nullable: true
+        chatStatus:
+          allOf:
+            - $ref: '#/components/schemas/ChatStatus'
+          nullable: true
+        availableAt:
+          type: string
+          format: date-time
+          description: Agreed second-chat start time in ISO-8601 format. The backend makes the second chat available up to 10 minutes before this time.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Maximum second-chat expiration time for the current state.
+        readOnlyUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: End of read-only visibility after the writable second-chat window expires.
+        durationMinutes:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Configured maximum second-chat duration in minutes.
         partner:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
@@ -1242,6 +1266,7 @@ components:
         timeoutAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time, nullable: true }
+        readOnlyUntil: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
     FirstChatResponse:
       allOf:
@@ -1415,7 +1440,7 @@ components:
       enum: [FIRST_CHAT, VISUAL_REVIEW]
     HomeNextStepType:
       type: string
-      enum: [SCHEDULING, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE]
+      enum: [SCHEDULING, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT_READ_ONLY]
     HomePassiveNoticeType:
       type: string
       enum: [SCHEDULING_PREPARING]

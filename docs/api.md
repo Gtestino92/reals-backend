@@ -43,11 +43,26 @@ Home also returns `activeInteractionsSummary`:
 - `pendingSchedulingConnectionCount`: connections created after mutual visual approval whose scheduling phase is not actionable yet.
 - `actionableConnectionCount`: connections returned in `nextSteps[]`.
 
-`nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED` and
-`SECOND_CHAT_AVAILABLE` items. `SCHEDULING_PENDING` is not actionable and is
-surfaced through `activeInteractionsSummary.pendingSchedulingConnectionCount`
-plus a `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the
-activation job moves the connection to `SCHEDULING_PHASE`.
+`nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED`,
+`SECOND_CHAT_AVAILABLE` and `SECOND_CHAT_READ_ONLY` items. `SCHEDULING_PENDING`
+is not actionable and is surfaced through
+`activeInteractionsSummary.pendingSchedulingConnectionCount` plus a
+`passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the activation
+job moves the connection to `SCHEDULING_PHASE`.
+
+Second-chat next steps include `secondChat.availableAt` for both
+`SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` when a confirmed
+negotiation exists. This value is the agreed second-chat start time in ISO-8601
+format with offset, for example `2026-06-19T21:00:00Z`. Clients may enable
+entry 10 minutes before `availableAt`; before that window, render the agreed
+time. `secondChat.expiresAt` is the end of the writable second-chat window, and
+`secondChat.durationMinutes` exposes the configured maximum writable duration so
+clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` may
+be absent until the backend creates the visible second chat row. After
+expiration, Home may return `SECOND_CHAT_READ_ONLY` with
+`secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
+show prior messages but must not allow sending new messages. Once
+`SecondChatLifecycleJob` closes the read-only chat, it disappears from Home.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -134,6 +149,12 @@ The scheduled second-chat availability job is available at:
 
 - `POST /api/local-dev/jobs/scheduled-second-chat-start/run`
 - `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-start-now`
+
+Second-chat read-only lifecycle can be tested locally with:
+
+- `POST /api/local-dev/jobs/second-chat-lifecycle/run`
+- `POST /api/local-dev/timeouts/chats/{chatId}/expire-now` to end the writable window.
+- `POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now` to end read-only retention.
 
 Deferred scheduling activation can be tested locally with:
 

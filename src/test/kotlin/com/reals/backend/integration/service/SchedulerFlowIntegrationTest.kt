@@ -14,6 +14,7 @@ import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.MatchmakingJob
 import com.reals.backend.scheduler.MatchExpirationJob
 import com.reals.backend.scheduler.ScheduledSecondChatStartJob
+import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -274,6 +276,48 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `scheduled second chat job makes second chat available within early entry tolerance`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot
+        )
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTime = slot
+        )
+
+        val confirmedDateTime = OffsetDateTime.now().plusMinutes(9)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime
+        )
+
+        ScheduledSecondChatStartJob(
+            negotiationRepository = negotiationRepository,
+            connectionService = connectionService,
+            chatService = chatService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+
+        val secondChat = chatRepository.findByConnectionIdAndChatType(
+            setup.connectionId,
+            ChatType.SECOND_CHAT
+        ) ?: error("Second chat was not made available")
+
+        assertEquals(ChatStatus.AVAILABLE, secondChat.status)
+        assertEquals(confirmedDateTime.toInstant(), secondChat.availableAt?.toInstant())
+    }
+
+    @Test
     fun `sending first message activates available second chat`() {
         val setup = createAvailableSecondChat()
         val availableChat = chatRepository.findByConnectionIdAndChatType(
@@ -303,7 +347,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `expired second chat is not visible by connection`() {
+    fun `chat timeout job ignores active second chat`() {
         val setup = createActiveSecondChat()
 
         chatRepository.updateTimeoutAt(
@@ -313,17 +357,64 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         ChatTimeoutJob(chatService).runNowForDev()
 
-        assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.secondChatId).orElseThrow().status)
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+    }
+
+    @Test
+    fun `second chat lifecycle job expires active second chat to read only without closing connection`() {
+        val setup = createActiveSecondChat()
+        chatService.sendMessage(setup.secondChatId, setup.userAId, "Mensaje para conservar")
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        SecondChatLifecycleJob(chatService).runNowForDev()
+
+        val secondChat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        assertEquals(ChatStatus.EXPIRED, secondChat.status)
+        assertNotNull(secondChat.endedAt)
+        assertNotNull(secondChat.readOnlyUntil)
+        assertTrue(secondChat.readOnlyUntil!!.isAfter(OffsetDateTime.now()))
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+        assertEquals(1, chatService.getMessages(setup.secondChatId, setup.userAId).size)
+        assertThrows(IllegalStateException::class.java) {
+            chatService.sendMessage(setup.secondChatId, setup.userAId, "No deberia enviarse")
+        }
+    }
+
+    @Test
+    fun `second chat lifecycle job closes read only second chat after retention`() {
+        val setup = createActiveSecondChat()
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        SecondChatLifecycleJob(chatService).runNowForDev()
+
+        chatRepository.updateReadOnlyUntil(
+            chatId = setup.secondChatId,
+            readOnlyUntil = OffsetDateTime.now().minusSeconds(1)
+        )
+        SecondChatLifecycleJob(chatService).runNowForDev()
+
+        assertEquals(ChatStatus.CLOSED, chatRepository.findById(setup.secondChatId).orElseThrow().status)
         assertEquals(
             ConnectionState.CLOSED,
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
-
-        kotlin.test.assertFailsWith<IllegalStateException> {
-            chatService.findVisibleSecondChatOrThrow(
-                connectionId = setup.connectionId,
-                userId = setup.userAId
-            )
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        assertThrows(IllegalStateException::class.java) {
+            chatService.getMessages(setup.secondChatId, setup.userAId)
         }
     }
 }

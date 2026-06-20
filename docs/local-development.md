@@ -298,6 +298,14 @@ For example:
 POST /api/local-dev/jobs/scheduled-second-chat-start/run
 ```
 
+Second-chat read-only lifecycle can be tested manually with:
+
+```http
+POST /api/local-dev/jobs/second-chat-lifecycle/run
+POST /api/local-dev/timeouts/chats/{chatId}/expire-now
+POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now
+```
+
 Recoverable account deletion finalization can be triggered manually with:
 
 ```http
