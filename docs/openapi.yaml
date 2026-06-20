@@ -638,6 +638,26 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat-dismissal:
+    post:
+      tags: [Connections]
+      summary: Hide second-chat next step from current user's Home
+      description: Persists a user-specific dismissal for a finished or non-actionable second chat. The chat and messages are not deleted, and the other participant's Home is unaffected. Repeating the request is idempotent. Returns conflict while the second chat is still actionable.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Dismissal persisted or already present
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionDismissalResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/connections/{connectionId}/negotiation:
     get:
       tags: [Connections]
@@ -1362,6 +1382,13 @@ components:
         schedulingExpiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ConnectionDismissalResponse:
+      type: object
+      required: [dismissed]
+      properties:
+        dismissed:
+          type: boolean
+          description: True when the current user's Home should hide this connection's second-chat next step.
     AddProposalRequest:
       type: object
       required: [proposedDateTimes]

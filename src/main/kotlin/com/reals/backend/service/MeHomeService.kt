@@ -24,6 +24,7 @@ import com.reals.backend.domain.Profile
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
@@ -43,6 +44,7 @@ class MeHomeService(
     private val matchRepository: MatchRepository,
     private val chatRepository: ChatRepository,
     private val connectionRepository: ConnectionRepository,
+    private val dismissalRepository: ConnectionHomeDismissalRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val visualReviewRepository: VisualReviewRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
@@ -124,6 +126,21 @@ class MeHomeService(
             )
             .sortedByDescending { it.updatedAt }
 
+        val dismissedConnectionIds =
+            if (activeConnections.isEmpty()) {
+                emptySet()
+            } else {
+                dismissalRepository
+                    .findDismissedConnectionIds(
+                        userId = userId,
+                        connectionIds = activeConnections.map { it.id }
+                    )
+                    .toSet()
+            }
+
+        val visibleConnections =
+            activeConnections.filter { it.id !in dismissedConnectionIds }
+
         val activeConnectionsForSummary = connectionRepository
             .findByParticipantIdAndStateIn(
                 userId = userId,
@@ -141,12 +158,12 @@ class MeHomeService(
                 it.state == ConnectionState.SCHEDULING_PENDING
             }
 
-        val secondChatsByConnectionId = if (activeConnections.isEmpty()) {
+        val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
         } else {
             chatRepository
                 .findByConnectionIdInAndChatType(
-                    connectionIds = activeConnections.map { it.id },
+                    connectionIds = visibleConnections.map { it.id },
                     chatType = ChatType.SECOND_CHAT
                 )
                 .mapNotNull { chat ->
@@ -155,18 +172,18 @@ class MeHomeService(
                 .toMap()
         }
 
-        val confirmedNegotiationsByConnectionId = if (activeConnections.isEmpty()) {
+        val confirmedNegotiationsByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
         } else {
             negotiationRepository
-                .findByConnectionIdIn(activeConnections.map { it.id })
+                .findByConnectionIdIn(visibleConnections.map { it.id })
                 .filter { it.confirmedDateTime != null }
                 .associateBy { it.connectionId }
         }
 
         val partnerUserIds =
             activeMatches.map { partnerUserId(it.userAId, it.userBId, userId) } +
-                activeConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
+                visibleConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
 
         val partnerProfilesByUserId =
             if (partnerUserIds.isEmpty()) {
@@ -181,7 +198,7 @@ class MeHomeService(
             activeInitialCount = activeMatches.size,
             activeConnectionCount = activeConnectionsForSummary.size,
             pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
-            actionableConnectionCount = activeConnections.size
+            actionableConnectionCount = visibleConnections.size
         )
 
         val matchmakingAvailability = matchmakingAvailabilityService.availabilityFor(
@@ -215,7 +232,7 @@ class MeHomeService(
                     now = now
                 )
             },
-            nextSteps = activeConnections.mapNotNull { connection ->
+            nextSteps = visibleConnections.mapNotNull { connection ->
                 toNextStep(
                     connection = connection,
                     secondChat = secondChatsByConnectionId[connection.id],

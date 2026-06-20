@@ -67,6 +67,11 @@ entry 10 minutes before `availableAt`; before that window, render the agreed
   `secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
   show prior messages but must not allow sending new messages. Once
 `SecondChatLifecycleJob` closes the read-only chat, it disappears from Home.
+Users may also hide a finished or otherwise non-actionable second chat from
+their own Home with
+`POST /api/connections/{connectionId}/second-chat-dismissal`. This dismissal is
+persisted per authenticated user and connection. It does not delete messages,
+close the chat globally or affect the other participant's Home.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -129,6 +134,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 - `GET /api/connections/{connectionId}`: fetch connection.
 - `GET /api/connections/{connectionId}/chat`: fetch visible second chat for connection. If the chat is `AVAILABLE`, this activates it for the authenticated participant and starts its timeout window.
+- `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
 - `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
