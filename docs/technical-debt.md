@@ -59,6 +59,7 @@ This file lists known pending or intentionally unimplemented behavior. Do not im
 - CSRF protection is intentionally disabled while Reals remains a stateless API authenticated with explicit `Authorization: Bearer ...` tokens and no cookie-based browser session. Re-enable and test CSRF protection before introducing cookie authentication, form login, browser-managed sessions or any credential automatically attached by the browser.
 - Never commit real Firebase Web API keys, Firebase test user passwords, ID tokens or service-account credentials. Bruno tracked environments must keep placeholders; real values belong only in local uncommitted environment state or deployment secrets.
 - Local Bruno environment files with real credentials must use ignored local files, not the tracked `local.template.bru`.
+- For MVP, chat and visual personal message contents remain stored as plain application text in the database. Before production, revisit message data protection for private/sensitive user-generated content: define retention/deletion rules, keep request/response bodies out of logs, restrict/audit internal access, and evaluate application-level field encryption with keys stored outside the database.
 
 ## Multi-Instance Deployment Risks
 
