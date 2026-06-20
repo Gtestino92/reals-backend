@@ -1,0 +1,23 @@
+meta {
+  name: 24 Get Counterpart Scheduling Negotiation
+  type: http
+  seq: 29
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/negotiation
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected scheduling negotiation response with id.");
+  }
+  bru.setEnvVar("negotiationId", body.id);
+}

@@ -1,0 +1,41 @@
+meta {
+  name: 26 Submit Counterpart Scheduling Proposals
+  type: http
+  seq: 31
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "proposedDateTimes": [
+      "{{counterpartSecondChatDateTime}}",
+      "{{counterpartSecondChatDateTimeLater}}"
+    ]
+  }
+}
+
+vars:pre-request {
+  counterpartSecondChatDateTime: 2026-06-20T20:00:00-03:00
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body) || !body[0] || !body[0].id) {
+    throw new Error("Expected created counterpart scheduling proposals list.");
+  }
+  bru.setEnvVar("proposalBId", body[0].id);
+}
+
+docs {
+  Set counterpartSecondChatDateTime and counterpartSecondChatDateTimeLater to future half-hour aligned instants before running. Update the values if they are in the past.
+}
