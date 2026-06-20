@@ -291,7 +291,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             proposedDateTime = slot
         )
 
-        val confirmedDateTime = OffsetDateTime.now().plusMinutes(9)
+        val confirmedDateTime = OffsetDateTime.now().plusMinutes(9).withNano(0)
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,
             confirmedDateTime = confirmedDateTime
