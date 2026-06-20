@@ -343,7 +343,12 @@ class MeHomeService(
     ): HomeNextStepResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
-            ConnectionState.SECOND_CHAT_SCHEDULED -> HomeNextStepType.SECOND_CHAT_SCHEDULED
+            ConnectionState.SECOND_CHAT_SCHEDULED -> {
+                if (isScheduledSecondChatWindowExpired(secondChatAvailableAt, now)) {
+                    return null
+                }
+                HomeNextStepType.SECOND_CHAT_SCHEDULED
+            }
             ConnectionState.SECOND_CHAT_AVAILABLE -> HomeNextStepType.SECOND_CHAT_AVAILABLE
             ConnectionState.SECOND_CHAT -> secondChatNextStepType(
                 secondChat = secondChat,
@@ -364,6 +369,16 @@ class MeHomeService(
                 partner = partner
             )
         )
+    }
+
+    private fun isScheduledSecondChatWindowExpired(
+        availableAt: OffsetDateTime?,
+        now: OffsetDateTime
+    ): Boolean {
+        val expiresAt = availableAt?.plusMinutes(secondChatDurationMinutes)
+            ?: return false
+
+        return !expiresAt.isAfter(now)
     }
 
     private fun secondChatResponse(

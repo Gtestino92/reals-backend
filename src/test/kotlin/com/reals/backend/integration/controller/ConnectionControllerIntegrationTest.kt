@@ -1,14 +1,19 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
 
 class ConnectionControllerIntegrationTest : ControllerIT() {
 
@@ -107,6 +112,34 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
+    fun `get second chat fails when available chat already timed out`() {
+        val setup = createAvailableSecondChat()
+        val secondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                setup.connectionId,
+                ChatType.SECOND_CHAT
+            ) ?: error("Second chat was not made available")
+
+        chatRepository.updateTimeoutAt(
+            chatId = secondChat.id,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/chat")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+
+        assertEquals(ChatStatus.AVAILABLE, chatRepository.findById(secondChat.id).orElseThrow().status)
+        assertEquals(
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
     }
 
     @Test

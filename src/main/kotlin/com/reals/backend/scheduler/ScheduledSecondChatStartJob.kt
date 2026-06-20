@@ -40,7 +40,8 @@ class ScheduledSecondChatStartJob(
     )
     fun run() {
         val startedAt = System.nanoTime()
-        val availabilityCutoff = OffsetDateTime.now().plusMinutes(earlyEntryToleranceMinutes)
+        val now = OffsetDateTime.now()
+        val availabilityCutoff = now.plusMinutes(earlyEntryToleranceMinutes)
         val due =
             negotiationRepository.findDueConfirmedNegotiations(
                 status = NegotiationStatus.CONFIRMED,
@@ -66,12 +67,32 @@ class ScheduledSecondChatStartJob(
                     return@forEach
                 }
 
+                val availableAt = checkNotNull(negotiation.confirmedDateTime) {
+                    "Confirmed negotiation ${negotiation.id} has no confirmedDateTime"
+                }
+
+                if (chatService.isSecondChatWindowExpired(availableAt, now)) {
+                    if (
+                        chatService.closeExpiredScheduledSecondChatWindow(
+                            connectionId = connection.id,
+                            confirmedDateTime = availableAt
+                        )
+                    ) {
+                        log.info(
+                            "ScheduledSecondChatStartJob - closed expired scheduled second-chat window for connection={}",
+                            connection.id
+                        )
+                        succeeded += 1
+                    } else {
+                        skipped += 1
+                    }
+                    return@forEach
+                }
+
                 chatService.makeSecondChatAvailable(
                     matchId = connection.matchId,
                     connectionId = connection.id,
-                    availableAt = checkNotNull(negotiation.confirmedDateTime) {
-                        "Confirmed negotiation ${negotiation.id} has no confirmedDateTime"
-                    }
+                    availableAt = availableAt
                 )
 
                 log.info(

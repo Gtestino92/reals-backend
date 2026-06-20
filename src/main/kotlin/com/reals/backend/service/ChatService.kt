@@ -10,6 +10,7 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
@@ -369,10 +370,64 @@ class ChatService(
         )
     }
 
+    fun findTimedOutAvailableSecondChats(): List<Chat> {
+        return chatRepository.findTimedOutAvailableSecondChats(
+            now = OffsetDateTime.now()
+        )
+    }
+
     fun findExpiredReadOnlySecondChats(): List<Chat> {
         return chatRepository.findExpiredReadOnlySecondChats(
             now = OffsetDateTime.now()
         )
+    }
+
+    fun closeExpiredScheduledSecondChatWindow(
+        connectionId: UUID,
+        confirmedDateTime: OffsetDateTime
+    ): Boolean {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+
+        if (connection.state != ConnectionState.SECOND_CHAT_SCHEDULED) {
+            return false
+        }
+
+        if (!isSecondChatWindowExpired(confirmedDateTime, OffsetDateTime.now())) {
+            return false
+        }
+
+        val existingSecondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId = connectionId,
+                chatType = ChatType.SECOND_CHAT
+            )
+
+        if (existingSecondChat != null) {
+            return false
+        }
+
+        connectionService.closeConnection(connectionId)
+        return true
+    }
+
+    fun closeExpiredUnactivatedSecondChat(chatId: UUID): Boolean {
+        val chat = findByIdOrThrow(chatId)
+
+        if (chat.chatType != ChatType.SECOND_CHAT || chat.status != ChatStatus.AVAILABLE) {
+            return false
+        }
+
+        if (chat.timeoutAt.isAfter(OffsetDateTime.now())) {
+            return false
+        }
+
+        chat.status = ChatStatus.CLOSED
+        chat.endedAt = OffsetDateTime.now()
+        chatRepository.save(chat)
+
+        chat.connectionId?.let { connectionService.closeConnection(it) }
+
+        return true
     }
 
     fun expireSecondChatToReadOnly(chatId: UUID): Boolean {
@@ -487,6 +542,10 @@ class ChatService(
         }
 
         val now = OffsetDateTime.now()
+        check(chat.timeoutAt.isAfter(now)) {
+            "Second chat for connection $connectionId has timed out"
+        }
+
         chat.status = ChatStatus.ACTIVE
         chat.startedAt = now
         chat.activatedAt = now
@@ -496,6 +555,12 @@ class ChatService(
 
         return chatRepository.save(chat)
     }
+
+    fun isSecondChatWindowExpired(
+        availableAt: OffsetDateTime,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        !availableAt.plusMinutes(secondChatDurationMinutes).isAfter(now)
 
     private fun validateActiveChatWindow(chat: Chat) {
         check(chat.status == ChatStatus.ACTIVE) {

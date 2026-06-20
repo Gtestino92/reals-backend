@@ -55,13 +55,17 @@ Second-chat next steps include `secondChat.availableAt` for both
 negotiation exists. This value is the agreed second-chat start time in ISO-8601
 format with offset, for example `2026-06-19T21:00:00Z`. Clients may enable
 entry 10 minutes before `availableAt`; before that window, render the agreed
-time. `secondChat.expiresAt` is the end of the writable second-chat window, and
-`secondChat.durationMinutes` exposes the configured maximum writable duration so
-clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` may
-be absent until the backend creates the visible second chat row. After
-expiration, Home may return `SECOND_CHAT_READ_ONLY` with
-`secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
-show prior messages but must not allow sending new messages. Once
+  time. `secondChat.expiresAt` is the end of the writable second-chat window, and
+  `secondChat.durationMinutes` exposes the configured maximum writable duration so
+  clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` may
+  be absent until the backend creates the visible second chat row. After
+  `expiresAt`, scheduled second-chat windows without a chat are omitted from Home
+  and cleaned up by `SecondChatLifecycleJob`.
+  If an `AVAILABLE` chat is not entered before its `expiresAt`, the lifecycle job
+  closes it and the connection instead of leaving it visible indefinitely. After
+  expiration, Home may return `SECOND_CHAT_READ_ONLY` with
+  `secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
+  show prior messages but must not allow sending new messages. Once
 `SecondChatLifecycleJob` closes the read-only chat, it disappears from Home.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
