@@ -1,0 +1,34 @@
+meta {
+  name: 28 Counterpart Accept Partner Proposal
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/proposals/{{proposalAId}}/acceptance
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "CONFIRMED") {
+    throw new Error(`Expected CONFIRMED negotiation, got ${body.status}`);
+  }
+  if (body.chatId) {
+    throw new Error("Second chat should not start immediately after scheduling confirmation.");
+  }
+}
+
+docs {
+  proposalAId must be a proposal created by the Android user, not by the counterpart. Run 25 Get Counterpart Scheduling Proposals first to capture proposalAId safely.
+}

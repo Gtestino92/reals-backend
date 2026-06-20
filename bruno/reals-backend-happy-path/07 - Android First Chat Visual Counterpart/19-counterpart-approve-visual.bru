@@ -1,7 +1,7 @@
 meta {
   name: 19 Counterpart Approve Visual
   type: http
-  seq: 21
+  seq: 20
 }
 
 post {
@@ -28,5 +28,6 @@ script:post-response {
   }
   if (body.connectionId) {
     bru.setEnvVar("counterpartConnectionId", body.connectionId);
+    bru.setEnvVar("connectionId", body.connectionId);
   }
 }
