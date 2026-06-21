@@ -70,16 +70,15 @@ Known scheduler jobs:
 - `MatchExpirationJob`
 - `PenaltyExpirationJob`
 - `SchedulingNegotiationTimeoutJob`
-- `ScheduledSecondChatStartJob`
 - `SecondChatLifecycleJob`
 - `VisualPhaseExpirationJob`
 - `AccountDeletionFinalizationJob`
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
 
-`ScheduledSecondChatStartJob` makes the second chat visible as `AVAILABLE` when the agreed start time is inside the early-entry tolerance window. It must not create a stale chat after the writable window has already expired.
+`GET /api/connections/{connectionId}/chat` owns second-chat materialization for user entry. It creates the `SECOND_CHAT` idempotently when the confirmed window is open, then activates it for the conversation.
 
-`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, closes expired `AVAILABLE` chats that nobody entered, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
+`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
 
 Local auto-auth profiles expose `/api/local-dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/local-dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. The local matchmaking processor endpoint is also available in `local-firebase` for Android/Firebase manual flows. These endpoints are profile-gated and are not part of the cloud dev or production API.
 

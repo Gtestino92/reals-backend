@@ -54,7 +54,7 @@ initializes negotiation. Home surfaces this state through
 `activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
 notice `SCHEDULING_PREPARING`, not through `nextSteps`.
 
-Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. A confirmed negotiation schedules the second chat for `confirmedDateTime`; when that time is within the early-entry tolerance window the chat becomes visible as `AVAILABLE`. Home exposes that agreed time as `secondChat.availableAt`, and the writable timeout window starts only when a participant enters or sends the first message. After `timeoutAt`, second chats become `EXPIRED` and read-only until `readOnlyUntil`; cleanup then marks them `CLOSED` and closes the connection.
+Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. A confirmed negotiation schedules the second chat for `confirmedDateTime`; `GET /api/connections/{connectionId}/chat` materializes and activates the `SECOND_CHAT` idempotently when `now >= confirmedDateTime` and before the configured writable window expires. Home exposes that agreed time as `secondChat.availableAt`. After `timeoutAt`, second chats become `EXPIRED` and read-only until `readOnlyUntil`; cleanup then marks them `CLOSED` and closes the connection.
 
 Engagement:
 

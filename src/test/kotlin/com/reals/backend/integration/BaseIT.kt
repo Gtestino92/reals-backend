@@ -23,7 +23,6 @@ import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.VisualReviewRepository
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
@@ -240,7 +239,7 @@ abstract class BaseIT {
         )
     }
 
-    protected fun createAvailableSecondChat(): ConnectionFixture {
+    protected fun createScheduledSecondChatReadyToEnter(): ConnectionFixture {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
 
@@ -259,29 +258,17 @@ abstract class BaseIT {
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
 
-        ScheduledSecondChatStartJob(
-            negotiationRepository = negotiationRepository,
-            connectionService = connectionService,
-            chatService = chatService
-        ).run()
-
         return setup
     }
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
-        val setup = createAvailableSecondChat()
-        val secondChat =
-            chatRepository.findByConnectionIdAndChatType(
-                setup.connectionId,
-                ChatType.SECOND_CHAT
-            ) ?: error("Second chat was not made available")
-
-        chatService.findVisibleSecondChatOrThrow(
+        val setup = createScheduledSecondChatReadyToEnter()
+        val secondChat = chatService.findVisibleSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
 
-        Assertions.assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(secondChat.id).status)
+        Assertions.assertEquals(ChatStatus.ACTIVE, secondChat.status)
         Assertions.assertEquals(
             ConnectionState.SECOND_CHAT,
             connectionService.findByIdOrThrow(setup.connectionId).state
