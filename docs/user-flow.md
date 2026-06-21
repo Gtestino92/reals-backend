@@ -114,28 +114,31 @@ If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILE
 
 ## 8. Second Chat
 
-Second chat becomes visible shortly before the agreed `confirmedDateTime`.
-`ScheduledSecondChatStartJob` finds confirmed negotiations whose start time is
-inside the configured early-entry tolerance window
-(`chat.second-chat.early-entry-tolerance-minutes`, currently 10 minutes),
-creates an `AVAILABLE` second chat and moves the connection to
-`SECOND_CHAT_AVAILABLE`:
+Second chat is materialized on demand when a participant enters at or after the
+agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat` validates
+that the connection belongs to the authenticated user, checks that the confirmed
+window is open, creates the `SECOND_CHAT` if needed, and moves the connection to
+`SECOND_CHAT`:
 
 ```text
-ChatService.startSecondChat(matchId, connectionId)
+ChatService.findVisibleSecondChatOrThrow(connectionId, userId)
 ```
 
 Home exposes the agreed start time as `nextSteps[].secondChat.availableAt` for
-both `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE`. Clients may enable
-entry from `availableAt - 10 minutes` and should show the agreed time before
+`SECOND_CHAT_SCHEDULED`. Clients may enable
+entry from `availableAt` and should show the agreed time before
 that window. `secondChat.expiresAt` is the end of the writable second-chat
 window, and `secondChat.durationMinutes` exposes the configured writable
 duration (`chat.second-chat.duration-minutes`, currently 120 minutes).
 
-The chat becomes `ACTIVE` only when a participant enters it through `GET /api/connections/{connectionId}/chat` or sends the first message. At that moment the backend sets `activatedAt`, recalculates `timeoutAt` from the activation time and moves the connection to `SECOND_CHAT`.
+The chat is created as `ACTIVE` when a participant enters it through `GET /api/connections/{connectionId}/chat`. At that moment the backend sets `activatedAt`; `timeoutAt` remains the configured end of the agreed writable window (`availableAt + durationMinutes`).
 
-`SecondChatLifecycleJob` owns the lifecycle after activation. When an active
-second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
+If the agreed second-chat window expires before a chat is created, the backend
+does not create a stale chat and the lifecycle job closes the scheduled
+connection. This case had no messages, so there is no read-only period.
+
+`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. When
+an active second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
 `readOnlyUntil` using `chat.second-chat.read-only-retention-minutes` (currently
 24 hours), and leaves the connection visible in Home as `SECOND_CHAT_READ_ONLY`.
 Messages remain readable, but new messages are rejected because the chat is no

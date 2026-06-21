@@ -76,10 +76,6 @@ scheduler:
     fixed-delay: 900000
 
   # Makes second chats available near their negotiated confirmedDateTime.
-  # Runs every minute so users can enter the chat close to the agreed slot.
-  scheduled-second-chat-start-job:
-    fixed-delay: 60000
-
   # Enables scheduling after visual approval once its deferred availability time arrives
   scheduling-activation-job:
     fixed-delay: 60000
@@ -113,7 +109,6 @@ chat:
   # Maximum duration for the second chat after the agreed start time.
   second-chat:
     duration-minutes: 120 # 2 hours
-    early-entry-tolerance-minutes: 10
     read-only-retention-minutes: 1440 # 24 hours
     min-messages-before-free-cancel: 0
 

@@ -300,7 +300,7 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `home returns SECOND_CHAT_SCHEDULED and SECOND_CHAT_AVAILABLE next steps`() {
+    fun `home returns SECOND_CHAT_SCHEDULED and materialized second chat next steps`() {
         val scheduledSetup = createConnectionInSchedulingPhase()
         val scheduledSlot = futureHalfHourSlot()
         schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userAId, scheduledSlot)
@@ -332,12 +332,12 @@ class MeControllerIntegrationTest : ControllerIT() {
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
 
-        val availableSetup = createAvailableSecondChat()
-        val availableSecondChat = chatRepository.findByConnectionIdAndChatType(
+        val availableSetup = createActiveSecondChat()
+        val activeSecondChat = chatRepository.findByConnectionIdAndChatType(
             availableSetup.connectionId,
             ChatType.SECOND_CHAT
         ) ?: error("Second chat was not created")
-        val availableAt = availableSecondChat.availableAt ?: error("Second chat availableAt was not set")
+        val availableAt = activeSecondChat.availableAt ?: error("Second chat availableAt was not set")
 
         mockMvc.perform(
             get("/api/me/home")
@@ -350,7 +350,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(availableSetup.matchId.toString())))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
-            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("AVAILABLE")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("ACTIVE")))
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.availableAt",
@@ -360,7 +360,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(availableSecondChat.timeoutAt))
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(activeSecondChat.timeoutAt))
                 )
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
@@ -394,6 +394,26 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.readOnlyUntil").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
+    }
+
+    @Test
+    fun `home excludes expired scheduled second chat without chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot)
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
     }
 
     @Test

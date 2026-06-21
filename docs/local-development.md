@@ -292,11 +292,14 @@ for Firebase/Android manual flows:
 POST /api/local-dev/matchmaking/process?maxPairsPerRun=10
 ```
 
-For example:
+To move a confirmed second-chat time into the past for manual entry testing:
 
 ```http
-POST /api/local-dev/jobs/scheduled-second-chat-start/run
+POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now
 ```
+
+Then call `GET /api/connections/{connectionId}/chat` as either participant to
+materialize and activate the second chat.
 
 Second-chat read-only lifecycle can be tested manually with:
 
