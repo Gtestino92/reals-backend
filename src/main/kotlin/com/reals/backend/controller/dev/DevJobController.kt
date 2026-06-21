@@ -7,7 +7,6 @@ import com.reals.backend.scheduler.MatchExpirationJob
 import com.reals.backend.scheduler.PenaltyExpirationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import org.springframework.beans.factory.ObjectProvider
@@ -29,7 +28,6 @@ class DevJobController(
     private val penaltyExpirationJob: ObjectProvider<PenaltyExpirationJob>,
     private val schedulingActivationJob: ObjectProvider<SchedulingActivationJob>,
     private val schedulingNegotiationTimeoutJob: ObjectProvider<SchedulingNegotiationTimeoutJob>,
-    private val scheduledSecondChatStartJob: ObjectProvider<ScheduledSecondChatStartJob>,
     private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
     private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>
 ) {
@@ -74,12 +72,6 @@ class DevJobController(
     fun runSchedulingActivation(): ResponseEntity<DevJobRunResponse> =
         runJob("SchedulingActivationJob") {
             requireJob(schedulingActivationJob, "SchedulingActivationJob").run()
-        }
-
-    @PostMapping("/scheduled-second-chat-start/run")
-    fun runScheduledSecondChatStart(): ResponseEntity<DevJobRunResponse> =
-        runJob("ScheduledSecondChatStartJob") {
-            requireJob(scheduledSecondChatStartJob, "ScheduledSecondChatStartJob").run()
         }
 
     @PostMapping("/second-chat-lifecycle/run")

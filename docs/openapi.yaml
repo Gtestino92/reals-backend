@@ -628,12 +628,32 @@ paths:
     get:
       tags: [Connections]
       summary: Get visible second chat for connection
-      description: If the second chat is AVAILABLE, this call activates it for the authenticated participant. Home exposes secondChat.availableAt as the agreed start time; the backend may make the chat AVAILABLE up to 10 minutes before that time.
+      description: Returns the connection second chat. If no SECOND_CHAT exists and the confirmed second-chat window is open, this call idempotently creates and activates it. Before availableAt it returns conflict with SECOND_CHAT_NOT_AVAILABLE_YET. After expiresAt with no chat it returns conflict with SECOND_CHAT_EXPIRED.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
         '200':
           $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat-dismissal:
+    post:
+      tags: [Connections]
+      summary: Hide second-chat next step from current user's Home
+      description: Persists a user-specific dismissal for a finished or non-actionable second chat. The chat and messages are not deleted, and the other participant's Home is unaffected. Repeating the request is idempotent. Returns conflict while the second chat is still actionable.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Dismissal persisted or already present
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionDismissalResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1067,7 +1087,7 @@ components:
         availableAt:
           type: string
           format: date-time
-          description: Agreed second-chat start time in ISO-8601 format. The backend makes the second chat available up to 10 minutes before this time.
+          description: Agreed second-chat start time in ISO-8601 format. GET /api/connections/{connectionId}/chat can materialize the chat at or after this time.
         expiresAt:
           type: string
           format: date-time
@@ -1362,6 +1382,13 @@ components:
         schedulingExpiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ConnectionDismissalResponse:
+      type: object
+      required: [dismissed]
+      properties:
+        dismissed:
+          type: boolean
+          description: True when the current user's Home should hide this connection's second-chat next step.
     AddProposalRequest:
       type: object
       required: [proposedDateTimes]

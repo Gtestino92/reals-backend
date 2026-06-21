@@ -78,8 +78,8 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `delete user cancels available second chat and keeps historical chat visible`() {
-        val setup = createAvailableSecondChat()
+    fun `delete user cancels second chat and keeps historical chat visible`() {
+        val setup = createActiveSecondChat()
         val secondChat = chatRepository.findByConnectionIdAndChatType(
             connectionId = setup.connectionId,
             chatType = ChatType.SECOND_CHAT

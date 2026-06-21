@@ -10,14 +10,21 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.Connection
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -31,6 +38,7 @@ class ChatService(
     private val chatMessageRepository: ChatMessageRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
+    private val negotiationRepository: ScheduleNegotiationRepository,
     private val matchService: MatchService,
     private val visualReviewService: VisualReviewService,
     private val penaltyService: PenaltyService,
@@ -91,40 +99,25 @@ class ChatService(
     fun startSecondChat(
         matchId: UUID,
         connectionId: UUID,
-        availableAt: OffsetDateTime = OffsetDateTime.now()
+        availableAt: OffsetDateTime,
+        activatedAt: OffsetDateTime = OffsetDateTime.now()
     ): Chat {
         chatRepository
             .findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
             ?.let { return it }
 
-        return chatRepository.save(
+        return chatRepository.saveAndFlush(
             Chat(
                 matchId = matchId,
                 connectionId = connectionId,
                 chatType = ChatType.SECOND_CHAT,
-                status = ChatStatus.AVAILABLE,
-                startedAt = availableAt,
+                status = ChatStatus.ACTIVE,
+                startedAt = activatedAt,
                 availableAt = availableAt,
+                activatedAt = activatedAt,
                 timeoutAt = availableAt.plusMinutes(secondChatDurationMinutes)
             )
         )
-    }
-
-    fun makeSecondChatAvailable(
-        matchId: UUID,
-        connectionId: UUID,
-        availableAt: OffsetDateTime
-    ): Chat {
-        val chat =
-            startSecondChat(
-                matchId = matchId,
-                connectionId = connectionId,
-                availableAt = availableAt
-            )
-
-        connectionService.transitionToSecondChatAvailable(connectionId)
-
-        return chat
     }
 
     fun sendMessage(
@@ -369,10 +362,64 @@ class ChatService(
         )
     }
 
+    fun findTimedOutAvailableSecondChats(): List<Chat> {
+        return chatRepository.findTimedOutAvailableSecondChats(
+            now = OffsetDateTime.now()
+        )
+    }
+
     fun findExpiredReadOnlySecondChats(): List<Chat> {
         return chatRepository.findExpiredReadOnlySecondChats(
             now = OffsetDateTime.now()
         )
+    }
+
+    fun closeExpiredScheduledSecondChatWindow(
+        connectionId: UUID,
+        confirmedDateTime: OffsetDateTime
+    ): Boolean {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+
+        if (connection.state != ConnectionState.SECOND_CHAT_SCHEDULED) {
+            return false
+        }
+
+        if (!isSecondChatWindowExpired(confirmedDateTime, OffsetDateTime.now())) {
+            return false
+        }
+
+        val existingSecondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId = connectionId,
+                chatType = ChatType.SECOND_CHAT
+            )
+
+        if (existingSecondChat != null) {
+            return false
+        }
+
+        connectionService.closeConnection(connectionId)
+        return true
+    }
+
+    fun closeExpiredUnactivatedSecondChat(chatId: UUID): Boolean {
+        val chat = findByIdOrThrow(chatId)
+
+        if (chat.chatType != ChatType.SECOND_CHAT || chat.status != ChatStatus.AVAILABLE) {
+            return false
+        }
+
+        if (chat.timeoutAt.isAfter(OffsetDateTime.now())) {
+            return false
+        }
+
+        chat.status = ChatStatus.CLOSED
+        chat.endedAt = OffsetDateTime.now()
+        chatRepository.save(chat)
+
+        chat.connectionId?.let { connectionService.closeConnection(it) }
+
+        return true
     }
 
     fun expireSecondChatToReadOnly(chatId: UUID): Boolean {
@@ -440,29 +487,88 @@ class ChatService(
         connectionId: UUID,
         userId: UUID
     ): Chat {
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
+
         val chat =
             chatRepository.findByConnectionIdAndChatType(
                 connectionId,
                 ChatType.SECOND_CHAT
             )
-                ?: throw NoSuchElementException("No SECOND_CHAT found for connection: $connectionId")
-
-        val connection = connectionService.findByIdForUserOrThrow(
-            connectionId = connectionId,
-            userId = userId
-        )
+                ?: materializeSecondChatForEntry(connection, connectionId)
 
         val visibleChat = activateAvailableSecondChatIfNeeded(
             chat = chat,
             userId = userId
         )
 
-        check(visibleChat.status == ChatStatus.ACTIVE) {
-            "Second chat for connection $connectionId is not active " +
-                "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
+        if (visibleChat.status == ChatStatus.ACTIVE || visibleChat.status == ChatStatus.EXPIRED) {
+            return visibleChat
         }
 
-        return visibleChat
+        throw secondChatNotAvailable(
+            connectionId = connectionId,
+            message = "Second chat for connection $connectionId is not available " +
+                "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
+        )
+    }
+
+    private fun materializeSecondChatForEntry(
+        connection: Connection,
+        connectionId: UUID
+    ): Chat {
+        if (
+            connection.state != ConnectionState.SECOND_CHAT_SCHEDULED &&
+            connection.state != ConnectionState.SECOND_CHAT_AVAILABLE
+        ) {
+            throw secondChatNotAvailable(
+                connectionId = connectionId,
+                message = "Second chat is not available while connection $connectionId is in state ${connection.state}"
+            )
+        }
+
+        val negotiation =
+            negotiationRepository.findByConnectionId(connectionId)
+                ?: throw secondChatNotAvailable(
+                    connectionId = connectionId,
+                    message = "Second chat is not scheduled for connection $connectionId"
+                )
+
+        if (negotiation.status != NegotiationStatus.CONFIRMED || negotiation.confirmedDateTime == null) {
+            throw secondChatNotAvailable(
+                connectionId = connectionId,
+                message = "Second chat is not confirmed for connection $connectionId"
+            )
+        }
+
+        val availableAt = negotiation.confirmedDateTime ?: error("checked above")
+        val now = OffsetDateTime.now()
+        validateSecondChatEntryWindow(
+            connectionId = connectionId,
+            availableAt = availableAt,
+            expiresAt = availableAt.plusMinutes(secondChatDurationMinutes),
+            now = now
+        )
+
+        val chat =
+            try {
+                startSecondChat(
+                    matchId = connection.matchId,
+                    connectionId = connectionId,
+                    availableAt = availableAt,
+                    activatedAt = now
+                )
+            } catch (ex: DataIntegrityViolationException) {
+                chatRepository.findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
+                    ?: throw ex
+            }
+
+        transitionConnectionToSecondChat(connectionId)
+
+        return chatRepository.findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
+            ?: chat
     }
 
     private fun activateAvailableSecondChatIfNeeded(
@@ -487,15 +593,77 @@ class ChatService(
         }
 
         val now = OffsetDateTime.now()
+        val availableAt = chat.availableAt ?: chat.startedAt
+        validateSecondChatEntryWindow(
+            connectionId = connectionId,
+            availableAt = availableAt,
+            expiresAt = chat.timeoutAt,
+            now = now
+        )
+
         chat.status = ChatStatus.ACTIVE
         chat.startedAt = now
         chat.activatedAt = now
-        chat.timeoutAt = now.plusMinutes(secondChatDurationMinutes)
 
-        connectionService.transitionToSecondChat(connectionId)
+        transitionConnectionToSecondChat(connectionId)
 
         return chatRepository.save(chat)
     }
+
+    private fun transitionConnectionToSecondChat(connectionId: UUID) {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+
+        when (connection.state) {
+            ConnectionState.SECOND_CHAT_SCHEDULED -> {
+                connectionService.transitionToSecondChatAvailable(connectionId)
+                connectionService.transitionToSecondChat(connectionId)
+            }
+
+            ConnectionState.SECOND_CHAT_AVAILABLE -> connectionService.transitionToSecondChat(connectionId)
+            ConnectionState.SECOND_CHAT -> return
+
+            else -> throw secondChatNotAvailable(
+                connectionId = connectionId,
+                message = "Second chat is not available while connection $connectionId is in state ${connection.state}"
+            )
+        }
+    }
+
+    fun isSecondChatWindowExpired(
+        availableAt: OffsetDateTime,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        !availableAt.plusMinutes(secondChatDurationMinutes).isAfter(now)
+
+    private fun validateSecondChatEntryWindow(
+        connectionId: UUID,
+        availableAt: OffsetDateTime,
+        expiresAt: OffsetDateTime,
+        now: OffsetDateTime
+    ) {
+        if (now.isBefore(availableAt)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_NOT_AVAILABLE_YET,
+                message = "Second chat for connection $connectionId is available at $availableAt"
+            )
+        }
+
+        if (!expiresAt.isAfter(now)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_EXPIRED,
+                message = "Second chat for connection $connectionId expired at $expiresAt"
+            )
+        }
+    }
+
+    private fun secondChatNotAvailable(
+        connectionId: UUID,
+        message: String
+    ): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SECOND_CHAT_NOT_AVAILABLE,
+            message = message
+        )
 
     private fun validateActiveChatWindow(chat: Chat) {
         check(chat.status == ChatStatus.ACTIVE) {

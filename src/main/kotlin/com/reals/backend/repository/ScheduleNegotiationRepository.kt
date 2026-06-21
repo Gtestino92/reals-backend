@@ -44,12 +44,18 @@ interface ScheduleNegotiationRepository :
            where c.id = n.connectionId
              and c.state = :connectionState
              and n.status = :status
-             and n.confirmedDateTime <= :now"""
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime <= :expiresBefore
+             and not exists (
+                 select chat.id from Chat chat
+                 where chat.connectionId = c.id
+                   and chat.chatType = 'SECOND_CHAT'
+             )"""
     )
-    fun findDueConfirmedNegotiations(
+    fun findExpiredConfirmedScheduledNegotiationsWithoutSecondChat(
         @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
         @Param("connectionState") connectionState: ConnectionState = ConnectionState.SECOND_CHAT_SCHEDULED,
-        @Param("now") now: OffsetDateTime
+        @Param("expiresBefore") expiresBefore: OffsetDateTime
     ): List<ScheduleNegotiation>
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

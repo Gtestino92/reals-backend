@@ -50,19 +50,28 @@ is not actionable and is surfaced through
 `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the activation
 job moves the connection to `SCHEDULING_PHASE`.
 
-Second-chat next steps include `secondChat.availableAt` for both
-`SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` when a confirmed
+Second-chat next steps include `secondChat.availableAt` when a confirmed
 negotiation exists. This value is the agreed second-chat start time in ISO-8601
 format with offset, for example `2026-06-19T21:00:00Z`. Clients may enable
-entry 10 minutes before `availableAt`; before that window, render the agreed
-time. `secondChat.expiresAt` is the end of the writable second-chat window, and
-`secondChat.durationMinutes` exposes the configured maximum writable duration so
-clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` may
-be absent until the backend creates the visible second chat row. After
-expiration, Home may return `SECOND_CHAT_READ_ONLY` with
-`secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
-show prior messages but must not allow sending new messages. Once
+entry at `availableAt`; before that time, render the agreed
+  time. `secondChat.expiresAt` is the end of the writable second-chat window, and
+  `secondChat.durationMinutes` exposes the configured maximum writable duration so
+  clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` is
+  absent until `GET /api/connections/{connectionId}/chat` materializes the second
+  chat row. If that GET is called before `availableAt`, it returns conflict with
+  `SECOND_CHAT_NOT_AVAILABLE_YET`. If it is called after `expiresAt` and no chat
+  exists, it returns conflict with `SECOND_CHAT_EXPIRED` and does not create a
+  chat. Expired scheduled second-chat windows without a chat are omitted from Home
+  and cleaned up by `SecondChatLifecycleJob`. After
+  expiration, Home may return `SECOND_CHAT_READ_ONLY` with
+  `secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
+  show prior messages but must not allow sending new messages. Once
 `SecondChatLifecycleJob` closes the read-only chat, it disappears from Home.
+Users may also hide a finished or otherwise non-actionable second chat from
+their own Home with
+`POST /api/connections/{connectionId}/second-chat-dismissal`. This dismissal is
+persisted per authenticated user and connection. It does not delete messages,
+close the chat globally or affect the other participant's Home.
 
 Most current-user flows should prefer `@CurrentUserId` instead of accepting arbitrary user ids.
 
@@ -124,7 +133,8 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 ## Connections And Scheduling
 
 - `GET /api/connections/{connectionId}`: fetch connection.
-- `GET /api/connections/{connectionId}/chat`: fetch visible second chat for connection. If the chat is `AVAILABLE`, this activates it for the authenticated participant and starts its timeout window.
+- `GET /api/connections/{connectionId}/chat`: fetch the second chat for a connection. If no chat exists and the confirmed second-chat window is open (`now >= availableAt && now < expiresAt`), this idempotently creates and activates the `SECOND_CHAT`. If called before `availableAt`, returns conflict with `SECOND_CHAT_NOT_AVAILABLE_YET`; if called after `expiresAt` with no chat, returns conflict with `SECOND_CHAT_EXPIRED`.
+- `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
 - `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
@@ -145,10 +155,9 @@ These endpoints are profile-gated for local manual testing:
 - `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
 
-The scheduled second-chat availability job is available at:
+The second-chat confirmed time can be moved into the past for local testing with:
 
-- `POST /api/local-dev/jobs/scheduled-second-chat-start/run`
-- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-start-now`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now`
 
 Second-chat read-only lifecycle can be tested locally with:
 
