@@ -9,6 +9,7 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -20,10 +21,18 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 @Profile("local-firebase", "dev", "prod")
 class FirebaseTokenFilter(
-    private val userService: UserService
+    private val userService: UserService,
+    @param:Value("\${backoffice.admin-emails:}")
+    private val adminEmailsProperty: String = ""
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(javaClass)
+    private val adminEmails: Set<String> =
+        adminEmailsProperty
+            .split(",")
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .toSet()
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.servletPath.ifBlank {
@@ -106,7 +115,10 @@ class FirebaseTokenFilter(
                     UsernamePasswordAuthenticationToken(
                         user.id.toString(),
                         null,
-                        listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                        authoritiesForActiveUser(
+                            localEmail = user.email,
+                            firebaseEmail = decoded.email
+                        )
                     )
                 }
         } catch (ex: FirebaseAuthException) {
@@ -133,8 +145,26 @@ class FirebaseTokenFilter(
                 path == "/api/me"
         ) || (
             request.method.equals("POST", ignoreCase = true) &&
-                path == "/api/me/reactivation"
+            path == "/api/me/reactivation"
         )
+    }
+
+    private fun authoritiesForActiveUser(
+        localEmail: String?,
+        firebaseEmail: String?
+    ): List<SimpleGrantedAuthority> {
+        val authorities =
+            mutableListOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+
+        val candidateEmails =
+            listOfNotNull(firebaseEmail, localEmail)
+                .map { it.trim().lowercase() }
+
+        if (candidateEmails.any { it in adminEmails }) {
+            authorities += SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
+        }
+
+        return authorities
     }
 
     private fun writeUnauthorized(

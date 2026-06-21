@@ -20,6 +20,7 @@ import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.VisualReviewRepository
@@ -29,8 +30,10 @@ import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.MatchmakingProcessorService
 import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.SafetyReportService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions
@@ -83,6 +86,12 @@ abstract class BaseIT {
     protected lateinit var schedulingService: SchedulingService
 
     @Autowired
+    protected lateinit var safetyReportService: SafetyReportService
+
+    @Autowired
+    protected lateinit var penaltyService: PenaltyService
+
+    @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
 
     @Autowired
@@ -114,6 +123,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var penaltyRepository: PenaltyRepository
+
+    @Autowired
+    protected lateinit var safetyReportRepository: SafetyReportRepository
 
     @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository

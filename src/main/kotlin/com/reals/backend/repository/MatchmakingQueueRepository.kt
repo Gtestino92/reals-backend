@@ -44,6 +44,18 @@ interface MatchmakingQueueRepository :
         WHERE qa.status = 'WAITING'
             AND ua.status = 'ACTIVE'
             AND ub.status = 'ACTIVE'
+            AND NOT EXISTS (
+                SELECT 1
+                FROM penalties p
+                WHERE p.user_id = qa.user_id
+                    AND p.active = true
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM penalties p
+                WHERE p.user_id = qb.user_id
+                    AND p.active = true
+            )
             AND pa.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
             AND pa.intention = pb.intention

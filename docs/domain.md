@@ -13,6 +13,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `ChatMessage`
 - `ChatDecision`
 - `ChatExitRequest`
+- `SafetyReport`
 - `VisualReview`
 - `Connection`
 - `ScheduleNegotiation`
@@ -39,6 +40,9 @@ Matching and chat:
 - `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
 - `ChatExitRequestStatus`: `PENDING`, `ACCEPTED`, `REJECTED`, `TIMED_OUT`
 - `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
+- `SafetyReportStatus`: `PENDING`, `DISMISSED`, `CONFIRMED`
+- `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
+- `PenaltyType`: `TEMPORARY_BAN`, `PERMANENT_BAN`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
 Connection and scheduling:
@@ -71,7 +75,8 @@ User:
 - A `Match` has `userAId` and `userBId`.
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
 - `ChatDecision` belongs to a chat and match.
-- `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report cancellations.
+- `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report chat closures.
+- `SafetyReport` is the moderation source of truth for reported safety incidents.
 - `VisualReview` belongs to a match.
 - `Connection` belongs to a match.
 - `ScheduleNegotiation` belongs to a connection.
@@ -105,7 +110,10 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Rejected mutual cancellation currently has no penalty. Future scoring may apply a lower penalty to the requester.
 - Timed-out mutual cancellation currently has no penalty. It is not a unilateral cancellation; if the requester resolves the timeout because the responder did not answer in time, the requester must not be penalized.
 - Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
-- Safety cancellation closes the chat as `CANCELLED`, exempts the reporting user and applies a penalty to the reported participant. It records a `SAFETY_REPORT` exit request as a moderation/reporting skeleton.
+- Safety cancellation closes the chat as `CANCELLED`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
+- Temporary penalties have `PenaltyType.TEMPORARY_BAN` and a non-null `expiresAt`; the penalty expiration job deactivates them after expiry.
+- Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are never expired by the job.
+- Active penalties block matchmaking. Creating a penalty removes the penalized user from the matchmaking queue if present.
 
 ## Profile Rules
 
@@ -135,6 +143,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 
 Hard filtering is first applied in the matchmaking queue query. The query filters:
 
+- active penalties for both queued users
 - mutual gender preference
 - same intention
 - mutual dynamic preferred age range
