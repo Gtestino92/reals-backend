@@ -44,20 +44,6 @@ interface ScheduleNegotiationRepository :
            where c.id = n.connectionId
              and c.state = :connectionState
              and n.status = :status
-             and n.confirmedDateTime <= :now"""
-    )
-    fun findDueConfirmedNegotiations(
-        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
-        @Param("connectionState") connectionState: ConnectionState = ConnectionState.SECOND_CHAT_SCHEDULED,
-        @Param("now") now: OffsetDateTime
-    ): List<ScheduleNegotiation>
-
-    @Query(
-        """select n from ScheduleNegotiation n
-           , Connection c
-           where c.id = n.connectionId
-             and c.state = :connectionState
-             and n.status = :status
              and n.confirmedDateTime is not null
              and n.confirmedDateTime <= :expiresBefore
              and not exists (

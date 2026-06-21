@@ -116,17 +116,41 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `get second chat fails when available chat already timed out`() {
-        val setup = createAvailableSecondChat()
-        val secondChat =
-            chatRepository.findByConnectionIdAndChatType(
-                setup.connectionId,
-                ChatType.SECOND_CHAT
-            ) ?: error("Second chat was not made available")
+    fun `get second chat materializes active second chat over http`() {
+        val setup = createScheduledSecondChatReadyToEnter()
 
-        chatRepository.updateTimeoutAt(
-            chatId = secondChat.id,
-            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/chat")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
+            .andExpect(jsonPath("$.availableAt").exists())
+            .andExpect(jsonPath("$.activatedAt").exists())
+
+        assertEquals(
+            1,
+            chatRepository.findAll().count {
+                it.connectionId == setup.connectionId && it.chatType == ChatType.SECOND_CHAT
+            }
+        )
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+    }
+
+    @Test
+    fun `get second chat before available time returns conflict`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, slot)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, slot)
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().plusMinutes(1)
         )
 
         mockMvc.perform(
@@ -134,12 +158,36 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_NOT_AVAILABLE_YET")))
 
-        assertEquals(ChatStatus.AVAILABLE, chatRepository.findById(secondChat.id).orElseThrow().status)
         assertEquals(
-            ConnectionState.SECOND_CHAT_AVAILABLE,
-            connectionRepository.findById(setup.connectionId).orElseThrow().state
+            null,
+            chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)
+        )
+    }
+
+    @Test
+    fun `get second chat after expired scheduled window returns conflict`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, slot)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, slot)
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        )
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/chat")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_EXPIRED")))
+
+        assertEquals(
+            null,
+            chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)
         )
     }
 
@@ -219,8 +267,8 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `second chat dismissal rejects actionable available second chat`() {
-        val setup = createAvailableSecondChat()
+    fun `second chat dismissal rejects actionable second chat`() {
+        val setup = createActiveSecondChat()
 
         mockMvc.perform(
             post("/api/connections/${setup.connectionId}/second-chat-dismissal")
