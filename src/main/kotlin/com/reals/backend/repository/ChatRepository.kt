@@ -71,6 +71,13 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     ): List<Chat>
 
     @Query(
+        "select c from Chat c where c.status = 'AVAILABLE' and c.chatType = 'SECOND_CHAT' and c.timeoutAt <= :now"
+    )
+    fun findTimedOutAvailableSecondChats(
+        @Param("now") now: OffsetDateTime
+    ): List<Chat>
+
+    @Query(
         """select c from Chat c
            where c.status = 'EXPIRED'
              and c.chatType = 'SECOND_CHAT'

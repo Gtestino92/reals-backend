@@ -454,22 +454,15 @@ class ChatExitIntegrationTest : BaseIT() {
 
     @Test
     fun `second chat exit fails when connection is not in second chat phase`() {
-        val setup = createAvailableSecondChat()
-        val secondChat =
-            chatRepository.findByConnectionIdAndChatType(
-                setup.connectionId,
-                ChatType.SECOND_CHAT
-            ) ?: error("Second chat was not made available")
+        val setup = createActiveSecondChat()
         val connection = connectionService.findByIdOrThrow(setup.connectionId)
 
-        secondChat.status = ChatStatus.ACTIVE
-        chatRepository.save(secondChat)
         connection.state = ConnectionState.SECOND_CHAT_SCHEDULED
         connectionRepository.save(connection)
 
         assertThrows<IllegalStateException> {
             chatExitService.requestMutualCancellation(
-                chatId = secondChat.id,
+                chatId = setup.secondChatId,
                 requesterUserId = setup.userAId
             )
         }

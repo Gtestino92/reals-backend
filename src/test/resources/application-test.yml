@@ -67,7 +67,6 @@ chat:
     duration-minutes: 1440
   second-chat:
     duration-minutes: 120
-    early-entry-tolerance-minutes: 10
     read-only-retention-minutes: 1440
     min-messages-before-free-cancel: 1
 

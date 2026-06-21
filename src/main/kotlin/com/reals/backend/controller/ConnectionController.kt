@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.AddProposalRequest
 import com.reals.backend.controller.dto.ChatResponse
+import com.reals.backend.controller.dto.ConnectionDismissalResponse
 import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.ScheduleProposalResponse
@@ -51,6 +52,19 @@ class ConnectionController(
                 )
             )
         )
+
+    @PostMapping("/{connectionId}/second-chat-dismissal")
+    fun dismissSecondChatFromHome(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<ConnectionDismissalResponse> {
+        connectionService.dismissSecondChatFromHome(
+            connectionId = connectionId,
+            userId = userId
+        )
+
+        return ResponseEntity.ok(ConnectionDismissalResponse(dismissed = true))
+    }
 
     @GetMapping("/{connectionId}/negotiation")
     fun getNegotiation(
