@@ -1,8 +1,11 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
+import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -14,6 +17,9 @@ import java.util.*
 @Transactional
 class ConnectionService(
     private val connectionRepository: ConnectionRepository,
+    private val chatRepository: ChatRepository,
+    private val dismissalRepository: ConnectionHomeDismissalRepository,
+    private val negotiationRepository: ScheduleNegotiationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
 
@@ -24,7 +30,10 @@ class ConnectionService(
     private val negotiationDurationMinutes: Long,
 
     @param:Value($$"${scheduling.activation-delay-minutes:5}")
-    private val schedulingActivationDelayMinutes: Long
+    private val schedulingActivationDelayMinutes: Long,
+
+    @param:Value($$"${chat.second-chat.duration-minutes:120}")
+    private val secondChatDurationMinutes: Long
 
 ) {
 
@@ -271,5 +280,77 @@ class ConnectionService(
         connectionRepository.save(connection)
 
         lockRepository.deleteByEngagementId(connection.id)
+    }
+
+    fun dismissSecondChatFromHome(
+        connectionId: UUID,
+        userId: UUID
+    ): ConnectionHomeDismissal {
+        val connection =
+            findByIdForUserOrThrow(
+                connectionId = connectionId,
+                userId = userId
+            )
+
+        val existing =
+            dismissalRepository.findByUserIdAndConnectionId(
+                userId = userId,
+                connectionId = connectionId
+            )
+
+        if (existing != null) {
+            return existing
+        }
+
+        check(isSecondChatDismissible(connection)) {
+            "Second chat for connection $connectionId is still actionable"
+        }
+
+        return dismissalRepository.save(
+            ConnectionHomeDismissal(
+                userId = userId,
+                connectionId = connectionId
+            )
+        )
+    }
+
+    private fun isSecondChatDismissible(connection: Connection): Boolean {
+        if (connection.state == ConnectionState.CLOSED) {
+            return true
+        }
+
+        val now = OffsetDateTime.now()
+        val secondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId = connection.id,
+                chatType = ChatType.SECOND_CHAT
+            )
+
+        return when (connection.state) {
+            ConnectionState.SECOND_CHAT_SCHEDULED ->
+                secondChat == null &&
+                    negotiationRepository.findByConnectionId(connection.id)
+                        ?.confirmedDateTime
+                        ?.plusMinutes(secondChatDurationMinutes)
+                        ?.let { !it.isAfter(now) } == true
+
+            ConnectionState.SECOND_CHAT_AVAILABLE ->
+                secondChat != null &&
+                    secondChat.status == ChatStatus.AVAILABLE &&
+                    !secondChat.timeoutAt.isAfter(now)
+
+            ConnectionState.SECOND_CHAT ->
+                when (secondChat?.status) {
+                    ChatStatus.EXPIRED,
+                    ChatStatus.CLOSED -> true
+                    ChatStatus.AVAILABLE,
+                    ChatStatus.ACTIVE -> !secondChat.timeoutAt.isAfter(now)
+                    else -> false
+                }
+
+            ConnectionState.SCHEDULING_PENDING,
+            ConnectionState.SCHEDULING_PHASE,
+            ConnectionState.CLOSED -> false
+        }
     }
 }

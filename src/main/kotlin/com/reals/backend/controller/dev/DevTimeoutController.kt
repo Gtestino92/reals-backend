@@ -121,9 +121,9 @@ class DevTimeoutController(
         )
     }
 
-    @PostMapping("/connections/{connectionId}/second-chat-start-now")
+    @PostMapping("/connections/{connectionId}/second-chat-available-now")
     @Transactional
-    fun startSecondChatNow(
+    fun makeSecondChatAvailableNow(
         @PathVariable connectionId: UUID
     ): ResponseEntity<DevTimeoutMutationResponse> {
         val startsAt = OffsetDateTime.now().minusSeconds(1)
