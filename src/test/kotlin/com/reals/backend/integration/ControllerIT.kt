@@ -33,6 +33,18 @@ abstract class ControllerIT : BaseIT() {
             )
         )
 
+    protected fun authenticatedAsAdmin(userId: UUID): RequestPostProcessor =
+        SecurityMockMvcRequestPostProcessors.authentication(
+            UsernamePasswordAuthenticationToken(
+                userId.toString(),
+                null,
+                listOf(
+                    SimpleGrantedAuthority(SecurityRoles.ROLE_USER),
+                    SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
+                )
+            )
+        )
+
     protected fun authenticatedWithFirebase(
         firebaseUid: String,
         email: String?

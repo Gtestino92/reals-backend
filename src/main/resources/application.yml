@@ -36,6 +36,10 @@ management:
       exposure:
         include: health,info
 
+backoffice:
+  # Comma-separated email allowlist. Matching active local users receive ROLE_ADMIN.
+  admin-emails: ""
+
 scheduler:
   enabled: true
 

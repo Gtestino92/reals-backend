@@ -18,6 +18,7 @@ tags:
   - name: Matches
   - name: Chats
   - name: Connections
+  - name: Admin
 paths:
   /api/ping:
     get:
@@ -600,6 +601,7 @@ paths:
     post:
       tags: [Chats]
       summary: Safety/report chat cancellation
+      description: Closes the chat and creates a pending internal safety report. Reporting does not automatically penalize the reported participant; the response keeps penaltyApplied=false until an admin confirms the report separately.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -609,6 +611,95 @@ paths:
           $ref: '#/components/responses/ChatExitOutcome'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/safety-reports:
+    get:
+      tags: [Admin]
+      summary: List safety reports for backoffice review
+      description: Requires ROLE_ADMIN. status defaults to PENDING.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SafetyReportStatus'
+          example: PENDING
+      responses:
+        '200':
+          description: Safety reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminSafetyReportResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/safety-reports/{reportId}:
+    get:
+      tags: [Admin]
+      summary: Get safety report detail
+      description: Requires ROLE_ADMIN. Includes report data, user summaries, chat messages and associated penalty if present.
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Safety report detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSafetyReportDetailResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/admin/safety-reports/{reportId}/dismissal:
+    post:
+      tags: [Admin]
+      summary: Dismiss pending safety report
+      description: Requires ROLE_ADMIN. Does not create a penalty.
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      requestBody:
+        $ref: '#/components/requestBodies/SafetyReportDismissal'
+      responses:
+        '200':
+          description: Dismissed report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSafetyReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/safety-reports/{reportId}/penalty:
+    post:
+      tags: [Admin]
+      summary: Confirm safety report and apply penalty
+      description: Requires ROLE_ADMIN. Temporary penalties require positive durationHours; permanent penalties must omit durationHours.
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      requestBody:
+        $ref: '#/components/requestBodies/SafetyReportPenalty'
+      responses:
+        '200':
+          description: Confirmed report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSafetyReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -767,6 +858,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    ReportId:
+      name: reportId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     PhotoId:
       name: photoId
       in: path
@@ -866,6 +962,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ChatSafetyCancellationRequest'
+    SafetyReportDismissal:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SafetyReportDismissRequest'
+    SafetyReportPenalty:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SafetyReportPenaltyRequest'
     AddProposal:
       required: true
       content:
@@ -1370,6 +1478,90 @@ components:
         exitRequest: { $ref: '#/components/schemas/ChatExitRequestResponse' }
         penaltyApplied: { type: boolean }
         penalizedUserId: { type: string, format: uuid, nullable: true }
+    AdminSafetyReportResponse:
+      type: object
+      required: [id, reporterUserId, reportedUserId, chatId, matchId, reason, details, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        reporterUserId: { type: string, format: uuid }
+        reportedUserId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid, nullable: true }
+        reason: { $ref: '#/components/schemas/SafetyReportReason' }
+        details: { type: string }
+        status: { $ref: '#/components/schemas/SafetyReportStatus' }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        reviewedByUserId: { type: string, format: uuid, nullable: true }
+        verdictNotes: { type: string, nullable: true, maxLength: 1000 }
+        penaltyId: { type: string, format: uuid, nullable: true }
+    AdminSafetyReportDetailResponse:
+      type: object
+      required: [report, messages]
+      properties:
+        report: { $ref: '#/components/schemas/AdminSafetyReportResponse' }
+        reporter:
+          allOf:
+            - $ref: '#/components/schemas/AdminUserSummaryResponse'
+          nullable: true
+        reported:
+          allOf:
+            - $ref: '#/components/schemas/AdminUserSummaryResponse'
+          nullable: true
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/AdminChatMessageResponse' }
+        penalty:
+          allOf:
+            - $ref: '#/components/schemas/AdminPenaltyResponse'
+          nullable: true
+    AdminUserSummaryResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/UserStatus' }
+    AdminChatMessageResponse:
+      type: object
+      required: [id, chatSessionId, senderId, content, sentAt]
+      properties:
+        id: { type: string, format: uuid }
+        chatSessionId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        content: { type: string }
+        sentAt: { type: string, format: date-time }
+    AdminPenaltyResponse:
+      type: object
+      required: [id, userId, reason, type, createdAt, active]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        reason: { type: string }
+        type: { $ref: '#/components/schemas/PenaltyType' }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        sourceReportId: { type: string, format: uuid, nullable: true }
+        appliedByUserId: { type: string, format: uuid, nullable: true }
+        active: { type: boolean }
+    SafetyReportDismissRequest:
+      type: object
+      properties:
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+    SafetyReportPenaltyRequest:
+      type: object
+      required: [type, reason]
+      properties:
+        type: { $ref: '#/components/schemas/PenaltyType' }
+        durationHours:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: Required for TEMPORARY_BAN and rejected for PERMANENT_BAN.
+        reason: { type: string, minLength: 1, maxLength: 255, pattern: '^[^\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
     ConnectionResponse:
       type: object
       required: [id, matchId, userAId, userBId, state, schedulingExpiresAt, createdAt, updatedAt]
@@ -1480,6 +1672,15 @@ components:
     ChatExitReason:
       type: string
       enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+    SafetyReportStatus:
+      type: string
+      enum: [PENDING, DISMISSED, CONFIRMED]
+    SafetyReportReason:
+      type: string
+      enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+    PenaltyType:
+      type: string
+      enum: [TEMPORARY_BAN, PERMANENT_BAN]
     ConnectionState:
       type: string
       enum: [SCHEDULING_PENDING, SCHEDULING_PHASE, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT, CLOSED]

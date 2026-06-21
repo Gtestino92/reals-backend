@@ -61,7 +61,7 @@ Each user can approve continuation, request mutual cancellation or cancel explic
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
 - Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
 - Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
-- Safety cancellation cancels the chat, exempts the reporter and applies a penalty to the reported participant.
+- Safety cancellation cancels the chat, exempts the reporter and creates a pending `SafetyReport`. It does not penalize the reported participant until admin/backoffice review confirms the report.
 
 Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
 
@@ -146,8 +146,17 @@ longer `ACTIVE`. When `readOnlyUntil` is reached, the same job marks the chat
 `CLOSED`, closes the connection and releases locks; the interaction then
 disappears from Home.
 
-Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation applies a penalty for the reported participant. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
+Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation creates a pending report for backoffice review without immediate penalty. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
 
-## 9. Completion
+## 9. Safety Report Review
+
+Safety-report chat closure creates:
+
+- an accepted `ChatExitRequest` with `type = SAFETY_REPORT`, used as operational chat-closure history;
+- a `SafetyReport` with `status = PENDING`, used as the moderation source of truth.
+
+Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Dismissing a pending report stores review metadata and creates no penalty. Confirming a pending report creates either a temporary or permanent penalty for the reported user, links it through `sourceReportId`/`penaltyId`, removes the reported user from the matchmaking queue if present and blocks future enqueue while the penalty remains active.
+
+## 10. Completion
 
 A connection eventually reaches `CLOSED`. Closure releases active connection locks, so users are no longer counted against the connection limit for that interaction.

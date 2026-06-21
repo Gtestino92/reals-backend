@@ -128,7 +128,18 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation and close the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout`: resolve an unanswered mutual cancellation after the configured timeout and close the chat. If the requester calls this because the responder did not answer in time, the requester must not be penalized; future scoring is pending.
 - `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
-- `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Exempts reporter, penalizes reported participant and closes the chat.
+- `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Requires non-blank `details`, closes the chat, creates an internal `SafetyReport` in `PENDING` status and returns `penaltyApplied=false`. Reporting does not automatically penalize the reported participant; penalties are applied only after admin/backoffice review.
+
+## Admin Safety Reports
+
+All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated users receive this role only when they exist locally as active users and their email is listed in `backoffice.admin-emails`.
+
+- `GET /api/admin/safety-reports?status=PENDING`: list safety reports. `status` defaults to `PENDING`.
+- `GET /api/admin/safety-reports/{reportId}`: fetch report detail, reporter/reported user summaries, chat messages and associated penalty if one exists.
+- `POST /api/admin/safety-reports/{reportId}/dismissal`: dismiss a pending report. Body: `{ "notes": "optional notes" }`. Does not create a penalty.
+- `POST /api/admin/safety-reports/{reportId}/penalty`: confirm a pending report and apply a penalty to the reported user. Temporary body: `{ "type": "TEMPORARY_BAN", "durationHours": 24, "reason": "Harassment confirmed", "notes": "optional notes" }`. Permanent body: `{ "type": "PERMANENT_BAN", "reason": "Severe safety violation", "notes": "optional notes" }`.
+
+Temporary penalties require positive `durationHours`; permanent penalties reject `durationHours` and have `expiresAt = null`. Active penalties block matchmaking and remove the user from the queue if already queued. The penalty expiration job deactivates only expired temporary penalties.
 
 ## Connections And Scheduling
 

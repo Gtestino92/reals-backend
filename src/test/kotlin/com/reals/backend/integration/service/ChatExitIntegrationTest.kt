@@ -8,6 +8,8 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.BaseIT
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -327,7 +329,7 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `safety cancellation closes first chat and penalizes reported user`() {
+    fun `safety cancellation closes first chat and creates pending report without penalty`() {
         val setup = createMatchWithFirstChat()
 
         val outcome =
@@ -341,10 +343,21 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
         assertEquals(ChatExitRequestType.SAFETY_REPORT, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
-        assertTrue(outcome.penaltyApplied)
-        assertEquals(setup.userBId, outcome.penalizedUserId)
+        assertFalse(outcome.penaltyApplied)
+        assertNull(outcome.penalizedUserId)
         assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
-        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+
+        val report = safetyReportRepository.findAll().single()
+        assertEquals(SafetyReportStatus.PENDING, report.status)
+        assertEquals(SafetyReportReason.INAPPROPRIATE_BEHAVIOR, report.reason)
+        assertEquals("Reported inappropriate behavior", report.details)
+        assertEquals(setup.userAId, report.reporterUserId)
+        assertEquals(setup.userBId, report.reportedUserId)
+        assertEquals(setup.firstChatId, report.chatId)
+        assertEquals(setup.matchId, report.matchId)
+        assertNull(report.connectionId)
+        assertNull(report.penaltyId)
     }
 
     @Test
