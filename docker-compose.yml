@@ -28,6 +28,7 @@ services:
       S3_SECRET_ACCESS_KEY: reals-password
       S3_READ_URL_MODE: PRESIGNED
       S3_PATH_STYLE_ACCESS_ENABLED: "true"
+      BACKOFFICE_ADMIN_EMAILS: "gtestino1992@gmail.com"
 
     volumes:
       - ./secrets/reals-backend-firebase-credentials-dev.json:/app/secrets/reals-backend-firebase-credentials-dev.json:ro

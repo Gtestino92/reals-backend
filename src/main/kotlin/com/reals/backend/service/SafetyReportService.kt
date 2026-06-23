@@ -63,12 +63,8 @@ class SafetyReportService(
         )
 
     @Transactional(readOnly = true)
-    fun listReports(status: SafetyReportStatus?): List<SafetyReport> =
-        if (status == null) {
-            safetyReportRepository.findAllByOrderByCreatedAtDesc()
-        } else {
-            safetyReportRepository.findByStatusOrderByCreatedAtDesc(status)
-        }
+    fun listReports(status: SafetyReportStatus): List<SafetyReport> =
+        safetyReportRepository.findByStatusOrderByCreatedAtDesc(status)
 
     @Transactional(readOnly = true)
     fun getReport(reportId: UUID): SafetyReport =
