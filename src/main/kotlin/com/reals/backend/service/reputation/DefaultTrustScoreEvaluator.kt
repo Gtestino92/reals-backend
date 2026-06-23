@@ -6,7 +6,7 @@ import java.util.UUID
 /**
  * Neutral stub: always returns TrustScore.NEUTRAL (1.0).
  * Behaviour is identical to the pre-reputation system: no penalty scaling applied.
- * See docs/technical-debt.md for pending production reputation decisions.
+ * See docs/technical-debt-mvp.md and docs/technical-debt-prod.md for pending production reputation decisions.
  */
 @Component
 class DefaultTrustScoreEvaluator : TrustScoreEvaluator {
