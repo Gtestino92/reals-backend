@@ -1,0 +1,32 @@
+meta {
+  name: 03 Get Safety Report Detail
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/admin/safety-reports/{{safetyReportId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!body || !body.report || !body.report.id) {
+    throw new Error("Expected safety report detail response.");
+  }
+  
+  bru.setEnvVar("safetyReportId", body.report.id);
+  bru.setEnvVar("reportedUserId", body.report.reportedUserId);
+  bru.setEnvVar("reporterUserId", body.report.reporterUserId);
+  bru.setEnvVar("safetyReportStatus", body.report.status);
+  
+  if (body.report.penaltyId) {
+    bru.setEnvVar("penaltyId", body.report.penaltyId);
+  }
+}

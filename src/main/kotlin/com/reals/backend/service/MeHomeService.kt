@@ -151,7 +151,7 @@ class MeHomeService(
                     ConnectionState.SECOND_CHAT_AVAILABLE,
                     ConnectionState.SECOND_CHAT
                 )
-            )
+            ).filter { it.id !in dismissedConnectionIds }
 
         val pendingSchedulingConnectionCount =
             activeConnectionsForSummary.count {
