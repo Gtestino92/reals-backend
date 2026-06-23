@@ -1,0 +1,32 @@
+meta {
+  name: 04 Dismiss Safety Report
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/admin/safety-reports/{{safetyReportId}}/dismissal
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+body:json {
+  {
+    "notes": "{{safety_report_dismiss_notes}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!body || body.status !== "DISMISSED") {
+    throw new Error(`Expected DISMISSED safety report, got ${body && body.status}.`);
+  }
+  
+  bru.setEnvVar("safetyReportStatus", body.status);
+}

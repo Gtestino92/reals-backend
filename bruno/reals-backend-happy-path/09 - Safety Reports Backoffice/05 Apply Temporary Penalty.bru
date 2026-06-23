@@ -1,0 +1,40 @@
+meta {
+  name: 05 Apply Temporary Penalty
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/admin/safety-reports/{{safetyReportId}}/penalty
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+body:json {
+  {
+    "type": "TEMPORARY_BAN",
+    "durationHours": {{temporary_penalty_hours}},
+    "reason": "{{penalty_reason}}",
+    "notes": "{{safety_report_penalty_notes}}"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!body || body.status !== "CONFIRMED") {
+    throw new Error(`Expected CONFIRMED safety report, got ${body && body.status}.`);
+  }
+  
+  if (!body.penaltyId) {
+    throw new Error("Expected penaltyId after confirming safety report.");
+  }
+  
+  bru.setEnvVar("safetyReportStatus", body.status);
+  bru.setEnvVar("penaltyId", body.penaltyId);
+}
