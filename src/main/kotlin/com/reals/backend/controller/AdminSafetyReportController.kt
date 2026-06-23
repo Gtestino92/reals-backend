@@ -24,10 +24,16 @@ class AdminSafetyReportController(
     private val safetyReportService: SafetyReportService
 ) {
 
+    @GetMapping("/pending")
+    fun listPendingReports(): ResponseEntity<List<AdminSafetyReportResponse>> =
+        ResponseEntity.ok(
+            safetyReportService.listReports(SafetyReportStatus.PENDING)
+                .map { AdminSafetyReportResponse.from(it) }
+        )
+
     @GetMapping
     fun listReports(
-        @RequestParam(required = false, defaultValue = "PENDING")
-        status: SafetyReportStatus?
+        @RequestParam status: SafetyReportStatus
     ): ResponseEntity<List<AdminSafetyReportResponse>> =
         ResponseEntity.ok(
             safetyReportService.listReports(status)

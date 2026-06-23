@@ -10,6 +10,10 @@ get {
   auth: none
 }
 
+vars:pre-request {
+  baseUrl: http://localhost:8080
+}
+
 script:pre-request {
   const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
   clearEnvVars([
@@ -29,7 +33,9 @@ script:pre-request {
   const runId = Date.now().toString();
   bru.setEnvVar("counterpartRunId", runId);
   bru.setEnvVar("firebase_counterpart_email", `android.counterpart@example.com`);
+  //bru.setEnvVar("firebase_counterpart_email", `roger@test.com`);
   bru.setEnvVar("firebase_counterpart_password", bru.getEnvVar("firebase_counterpart_password") || "Password123!");
+  //bru.setEnvVar("firebase_counterpart_password", "federer92");
 }
 
 script:post-response {
