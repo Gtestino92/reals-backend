@@ -14,7 +14,8 @@ This directory is the canonical documentation set for the project.
 - `testing.md`: automated test strategy and commands.
 - `api.md`: current HTTP endpoints exposed by controllers.
 - `openapi.yaml`: formal OpenAPI contract for API clients and tooling.
-- `technical-debt.md`: known pending decisions and intentionally unimplemented behavior.
+- `technical-debt-mvp.md`: known pending decisions and intentionally unimplemented behavior for mvp.
+- `technical-debt-prod.md`: known pending decisions and intentionally unimplemented behavior for prod.
 - `local-h2-fixes.md`: local H2 repair snippets for old development schemas.
 
 `AGENTS.md` at the repository root is the primary instruction file for AI coding agents. `.aiassistant/rules/` contains JetBrains AI Assistant rules derived from the same source of truth.
