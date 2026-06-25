@@ -105,7 +105,7 @@ paths:
     get:
       tags: [Me]
       summary: Get authenticated user's current home state
-      description: #Returns the explicit Home navigation contract: profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Clients should not infer actions from raw match or connection states.
+      description: "Returns the explicit Home navigation contract: profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Clients should not infer actions from raw match or connection states."
       responses:
         '200':
           description: Current home state
@@ -119,6 +119,28 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/me/push-tokens:
+    put:
+      tags: [Me]
+      summary: Register or refresh authenticated user's push token
+      description: Registers an Android FCM token for external push notifications. This does not create an internal notification inbox, notification bell or unread count.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPushTokenRequest'
+      responses:
+        '200':
+          description: Push token registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterPushTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/me/reactivation:
     post:
       tags: [Me]
@@ -1096,6 +1118,22 @@ components:
         deletedAt: { type: string, format: date-time, nullable: true }
         deletionFinalizesAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+    RegisterPushTokenRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          example: fcm-token
+        platform:
+          type: string
+          enum: [ANDROID]
+    RegisterPushTokenResponse:
+      type: object
+      required: [registered]
+      properties:
+        registered: { type: boolean, example: true }
     HomeResponse:
       type: object
       required: [matchmaking, activeInteractionsSummary, pendingActions, nextSteps, passiveNotices]

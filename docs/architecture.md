@@ -6,7 +6,7 @@
 
 - `controller`: HTTP endpoints. Controllers parse request DTOs, call services and map responses.
 - `controller.dto`: API request/response DTOs.
-- `service`: business rules, validations and state transitions.
+- `service`: business rules, validations, state transitions and external push notification orchestration.
 - `service.matching`: hard matching filters, compatibility evaluation and scoring.
 - `service.identity`: identity-verification provider abstraction.
 - `service.reputation`: trust score / reputation evaluation.
@@ -35,6 +35,7 @@ Schedulers should also call services rather than mutating repositories directly.
 - Caffeine cache.
 - ShedLock for scheduler locking.
 - Firebase Admin SDK dependency with Firebase auth configuration classes.
+- Firebase Cloud Messaging is used for external push notifications when a Firebase messaging bean is configured.
 
 ## Core Modules
 
@@ -90,7 +91,7 @@ These are not current backend behavior:
 - popularity ranking, ELO or attractiveness scoring
 - reveal quotas
 - WebSocket/SSE real-time chat
-- notification delivery
+- internal notification inbox, notification bell or unread count
 - ML-based compatibility
 - gamified reputation badges
 
