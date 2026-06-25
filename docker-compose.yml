@@ -21,7 +21,7 @@ services:
       #RATE_LIMIT_PROVISION_REFILL_TOKENS: "1"
       #RATE_LIMIT_PROVISION_REFILL_PERIOD_SECONDS: "60"
       S3_ENDPOINT: http://minio:9000
-      S3_PRESIGNED_URL_ENDPOINT: http://10.0.2.2:9000
+      S3_PRESIGNED_URL_ENDPOINT: http://192.168.0.5:9000
       S3_REGION: us-east-1
       S3_PROFILE_PHOTOS_BUCKET: reals-profile-photos
       S3_ACCESS_KEY_ID: reals

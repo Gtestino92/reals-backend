@@ -157,7 +157,8 @@ From local H2 profiles:
 - `docs/local-development.md` explains local setup.
 - `docs/api.md` summarizes current controllers and endpoints.
 - `docs/testing.md` explains the test strategy and how to run tests.
-- `docs/technical-debt.md` lists known non-implemented or undecided behavior.
+- `docs/technical-debt-mvp.md` lists known non-implemented or undecided behavior for mvp.
+- `docs/technical-debt-prod.md` lists known non-implemented or undecided behavior for prod.
 
 ## When Unsure
 
