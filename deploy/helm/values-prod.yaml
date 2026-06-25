@@ -1,7 +1,7 @@
 # Helm values reference for the prod environment.
 #
 # This documents the app-specific values a future chart or deploy pipeline
-# would consume. The final deploy convention is tracked in docs/technical-debt.md.
+# would consume. The final deploy convention is tracked in docs/technical-debt-mvp and docs/technical-debt-prod.md.
 # Do not put real secret values here.
 
 environment: prod
