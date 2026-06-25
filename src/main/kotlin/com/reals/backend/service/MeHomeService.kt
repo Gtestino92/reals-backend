@@ -158,6 +158,11 @@ class MeHomeService(
                 it.state == ConnectionState.SCHEDULING_PENDING
             }
 
+        val revealedConnectionCount =
+            activeConnectionsForSummary.count {
+                it.state != ConnectionState.SCHEDULING_PENDING
+            }
+
         val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
         } else {
@@ -196,7 +201,7 @@ class MeHomeService(
 
         val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
             activeInitialCount = activeMatches.size,
-            activeConnectionCount = activeConnectionsForSummary.size,
+            activeConnectionCount = revealedConnectionCount,
             pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
             actionableConnectionCount = visibleConnections.size
         )
