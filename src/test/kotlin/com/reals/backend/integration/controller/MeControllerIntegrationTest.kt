@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.OffsetDateTime
@@ -134,6 +135,32 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.status", equalTo("DELETED")))
             .andExpect(jsonPath("$.deletedAt", notNullValue()))
             .andExpect(jsonPath("$.deletionFinalizesAt", notNullValue()))
+    }
+
+    @Test
+    fun `register push token stores token for authenticated user`() {
+        val user = userService.createUser("push-token-controller-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            put("/api/me/push-tokens")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "token": "controller-fcm-token",
+                      "platform": "ANDROID"
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.registered", equalTo(true)))
+
+        val token = pushDeviceTokenRepository.findByToken("controller-fcm-token")
+            ?: error("Push token was not stored")
+        kotlin.test.assertEquals(user.id, token.userId)
+        kotlin.test.assertTrue(token.enabled)
     }
 
     @Test

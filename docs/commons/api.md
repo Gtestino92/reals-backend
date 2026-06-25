@@ -12,6 +12,7 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
+- `PUT /api/me/push-tokens`: register or refresh the authenticated user's Android FCM device token. Body: `{ "token": "...", "platform": "ANDROID" }`. Returns `{ "registered": true }`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 
@@ -26,6 +27,12 @@ For visual review navigation, Home exposes a `pendingActions[]` item with
 visual review exists, the visual phase has not expired and the current user has
 not decided. Expired or already-decided visual reviews are not returned as
 actions.
+
+When a visual review first becomes available, the backend also attempts a
+privacy-safe external push notification with type `VISUAL_REVIEW_AVAILABLE`.
+The push payload includes only `type` and `matchId`; tap behavior remains a
+client concern and Home remains the source of actionable state. There is no
+internal notification inbox, notification bell or unread count.
 
 Home returns `matchmaking` for search UX:
 

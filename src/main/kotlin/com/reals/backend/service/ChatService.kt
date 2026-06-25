@@ -41,6 +41,7 @@ class ChatService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val matchService: MatchService,
     private val visualReviewService: VisualReviewService,
+    private val visualReviewNotificationService: VisualReviewNotificationService,
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
@@ -236,6 +237,7 @@ class ChatService(
 
             matchService.transitionToVisualPhase(matchId)
             visualReviewService.initializeForMatch(matchId)
+            visualReviewNotificationService.notifyVisualReviewAvailable(matchId)
         }
     }
 
@@ -509,7 +511,6 @@ class ChatService(
         }
 
         throw secondChatNotAvailable(
-            connectionId = connectionId,
             message = "Second chat for connection $connectionId is not available " +
                 "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
         )
@@ -524,7 +525,6 @@ class ChatService(
             connection.state != ConnectionState.SECOND_CHAT_AVAILABLE
         ) {
             throw secondChatNotAvailable(
-                connectionId = connectionId,
                 message = "Second chat is not available while connection $connectionId is in state ${connection.state}"
             )
         }
@@ -532,13 +532,11 @@ class ChatService(
         val negotiation =
             negotiationRepository.findByConnectionId(connectionId)
                 ?: throw secondChatNotAvailable(
-                    connectionId = connectionId,
                     message = "Second chat is not scheduled for connection $connectionId"
                 )
 
         if (negotiation.status != NegotiationStatus.CONFIRMED || negotiation.confirmedDateTime == null) {
             throw secondChatNotAvailable(
-                connectionId = connectionId,
                 message = "Second chat is not confirmed for connection $connectionId"
             )
         }
@@ -623,7 +621,6 @@ class ChatService(
             ConnectionState.SECOND_CHAT -> return
 
             else -> throw secondChatNotAvailable(
-                connectionId = connectionId,
                 message = "Second chat is not available while connection $connectionId is in state ${connection.state}"
             )
         }
@@ -657,7 +654,6 @@ class ChatService(
     }
 
     private fun secondChatNotAvailable(
-        connectionId: UUID,
         message: String
     ): DomainConflictException =
         DomainConflictException(
