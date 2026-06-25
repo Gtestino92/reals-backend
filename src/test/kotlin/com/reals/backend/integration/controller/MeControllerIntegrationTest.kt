@@ -1,6 +1,8 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.VisualDecision
@@ -293,7 +295,7 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(1)))
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
@@ -301,6 +303,67 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
             .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
             .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(1)))
+
+        kotlin.test.assertEquals(
+            1,
+            lockRepository.countByUserIdAndEngagementType(
+                setup.userAId,
+                EngagementType.CONNECTION
+            )
+        )
+    }
+
+    @Test
+    fun `home keeps scheduling pending in matchmaking connection capacity`() {
+        val userAId = createActiveProfile(
+            email = "home-capacity-a-${UUID.randomUUID()}@example.com",
+            displayName = "Home Capacity A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+
+        repeat(2) { index ->
+            val userBId = createActiveProfile(
+                email = "home-capacity-b-$index-${UUID.randomUUID()}@example.com",
+                displayName = "Home Capacity B $index",
+                gender = Gender.MALE,
+                lookingForGender = LookingForGender.WOMEN
+            )
+            val match = matchService.createMatch(userAId, userBId)
+            chatService.startFirstChat(match.id)
+            chatService.recordChatDecision(match.id, userAId, ChatContinueDecision.APPROVED)
+            chatService.recordChatDecision(match.id, userBId, ChatContinueDecision.APPROVED)
+            visualReviewService.recordDecision(match.id, userAId, VisualDecision.APPROVED)
+            visualReviewService.recordDecision(match.id, userBId, VisualDecision.APPROVED)
+        }
+
+        kotlin.test.assertEquals(
+            2,
+            lockRepository.countByUserIdAndEngagementType(
+                userAId,
+                EngagementType.CONNECTION
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.matchmaking.canSearch", equalTo(false)))
+            .andExpect(
+                jsonPath(
+                    "$.matchmaking.blockedReason.code",
+                    equalTo("ACTIVE_CONNECTION_LIMIT_REACHED")
+                )
+            )
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(2)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(2)))
     }
 
     @Test

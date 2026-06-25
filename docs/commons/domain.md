@@ -54,9 +54,10 @@ Connection and scheduling:
 - `ProposalStatus`: `PENDING`, `ACCEPTED`, `REJECTED`
 
 `SCHEDULING_PENDING` is created after mutual visual approval. It counts as an
-active connection and has `schedulingAvailableAt`, but it is not actionable in
-Home until a scheduling activation job moves it to `SCHEDULING_PHASE` and
-initializes negotiation. Home surfaces this state through
+internal active connection for capacity/locks and has `schedulingAvailableAt`,
+but it is not visible as a revealed Home connection or actionable until a
+scheduling activation job moves it to `SCHEDULING_PHASE` and initializes
+negotiation. Home surfaces this state through
 `activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
 notice `SCHEDULING_PREPARING`, not through `nextSteps`.
 
