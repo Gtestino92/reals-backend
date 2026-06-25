@@ -46,8 +46,8 @@ Home returns `matchmaking` for search UX:
 Home also returns `activeInteractionsSummary`:
 
 - `activeInitialCount`: active initial interactions currently visible/actionable in Home.
-- `activeConnectionCount`: active connections that occupy connection capacity, including `SCHEDULING_PENDING`.
-- `pendingSchedulingConnectionCount`: connections created after mutual visual approval whose scheduling phase is not actionable yet.
+- `activeConnectionCount`: visible/revealed active connections, excluding `SCHEDULING_PENDING`.
+- `pendingSchedulingConnectionCount`: unrevealed pending scheduling coordinations created after mutual visual approval.
 - `actionableConnectionCount`: connections returned in `nextSteps[]`.
 
 `nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED`,
@@ -55,7 +55,9 @@ Home also returns `activeInteractionsSummary`:
 is not actionable and is surfaced through
 `activeInteractionsSummary.pendingSchedulingConnectionCount` plus a
 `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the activation
-job moves the connection to `SCHEDULING_PHASE`.
+job moves the connection to `SCHEDULING_PHASE`. It still occupies internal
+capacity through connection locks, but it is surfaced only as this passive
+preparation notice until scheduling is activated.
 
 Second-chat next steps include `secondChat.availableAt` when a confirmed
 negotiation exists. This value is the agreed second-chat start time in ISO-8601

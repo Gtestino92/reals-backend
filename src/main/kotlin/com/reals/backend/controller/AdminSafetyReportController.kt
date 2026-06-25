@@ -33,7 +33,7 @@ class AdminSafetyReportController(
 
     @GetMapping
     fun listReports(
-        @RequestParam status: SafetyReportStatus
+        @RequestParam(defaultValue = "PENDING") status: SafetyReportStatus
     ): ResponseEntity<List<AdminSafetyReportResponse>> =
         ResponseEntity.ok(
             safetyReportService.listReports(status)

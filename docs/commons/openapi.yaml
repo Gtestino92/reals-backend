@@ -1163,8 +1163,16 @@ components:
       required: [activeInitialCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
       properties:
         activeInitialCount: { type: integer, format: int32, minimum: 0 }
-        activeConnectionCount: { type: integer, format: int32, minimum: 0 }
-        pendingSchedulingConnectionCount: { type: integer, format: int32, minimum: 0 }
+        activeConnectionCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Visible/revealed active connections, excluding SCHEDULING_PENDING.
+        pendingSchedulingConnectionCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Unrevealed pending scheduling coordinations created after mutual visual approval. These still occupy internal capacity/locks and are surfaced only as SCHEDULING_PREPARING passive notices until scheduling is activated.
         actionableConnectionCount: { type: integer, format: int32, minimum: 0 }
     HomeMatchmakingResponse:
       type: object
