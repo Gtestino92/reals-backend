@@ -371,7 +371,7 @@ Acceptance criteria:
 The following are intentionally not MVP blockers:
 
 - Real-time chat via WebSocket or SSE.
-- Push notification delivery.
+- Additional push notification event coverage beyond `VISUAL_REVIEW_AVAILABLE`.
 - Google Sign-In / social auth providers.
 - Reveal quotas.
 - Advanced compatibility scoring.

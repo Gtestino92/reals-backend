@@ -20,6 +20,8 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `ScheduleProposal`
 - `Penalty`
 - `ActiveEngagementLock`
+- `PushDeviceToken`
+- `PushNotificationDelivery`
 
 ## Main Enums
 
@@ -68,6 +70,12 @@ User:
 
 - `UserStatus`: `ACTIVE`, `DELETED`
 
+Push notifications:
+
+- `PushPlatform`: `ANDROID`
+- `PushNotificationType`: `VISUAL_REVIEW_AVAILABLE`
+- `PushDeliveryStatus`: `SENT`, `SKIPPED_NO_ACTIVE_TOKEN`, `FAILED`
+
 ## Relationships
 
 - A `User` may have one `Profile`.
@@ -82,6 +90,8 @@ User:
 - `ScheduleNegotiation` belongs to a connection.
 - `ScheduleProposal` belongs to a connection and user.
 - `ActiveEngagementLock` logically belongs to a user and either a match or connection.
+- `PushDeviceToken` belongs to a user and stores an enabled FCM device token.
+- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id.
 
 ## Active Engagement Locks
 

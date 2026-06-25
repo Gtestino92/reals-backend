@@ -2,7 +2,6 @@ package com.reals.backend.integration
 
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatStatus
-import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
@@ -22,6 +21,8 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.PushDeviceTokenRepository
+import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
@@ -32,6 +33,7 @@ import com.reals.backend.service.MatchmakingProcessorService
 import com.reals.backend.service.MatchmakingService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.SafetyReportService
 import com.reals.backend.service.UserService
@@ -92,6 +94,9 @@ abstract class BaseIT {
     protected lateinit var penaltyService: PenaltyService
 
     @Autowired
+    protected lateinit var pushDeviceTokenService: PushDeviceTokenService
+
+    @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
 
     @Autowired
@@ -135,6 +140,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var profileRepository: ProfileRepository
+
+    @Autowired
+    protected lateinit var pushDeviceTokenRepository: PushDeviceTokenRepository
+
+    @Autowired
+    protected lateinit var pushNotificationDeliveryRepository: PushNotificationDeliveryRepository
 
     protected fun createActiveProfile(
         email: String,
