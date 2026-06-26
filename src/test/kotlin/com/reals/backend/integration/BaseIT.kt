@@ -7,6 +7,9 @@ import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ChatDecisionRepository
@@ -17,6 +20,7 @@ import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
+import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportRepository
@@ -142,6 +146,9 @@ abstract class BaseIT {
     protected lateinit var profileRepository: ProfileRepository
 
     @Autowired
+    protected lateinit var profilePhotoRepository: ProfilePhotoRepository
+
+    @Autowired
     protected lateinit var pushDeviceTokenRepository: PushDeviceTokenRepository
 
     @Autowired
@@ -175,12 +182,18 @@ abstract class BaseIT {
         )
 
         repeat(4) { index ->
-            profileService.addPhoto(
+            profilePhotoRepository.save(
+                ProfilePhoto(
                 profileId = profile.id,
-                url = "https://example.com/${profile.id}-${index + 1}.jpg",
+                url = "http://localhost:9000/reals-profile-photos/users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "reals-profile-photos-test",
+                storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                 position = index + 1,
                 isPersonPhoto = index == 0,
-                isFullBody = index == 0
+                isFullBody = index == 0,
+                validationStatus = PhotoValidationStatus.VALIDATED
+                )
             )
         }
 

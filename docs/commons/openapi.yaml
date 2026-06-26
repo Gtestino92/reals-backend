@@ -234,7 +234,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Add a profile photo at a position
-      description: Supports legacy JSON external URL uploads and multipart file uploads.
+      description: Multipart file upload is the only supported profile photo creation flow.
       requestBody:
         $ref: '#/components/requestBodies/AddPhoto'
       responses:
@@ -269,24 +269,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Profile'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/me/profile/photos/position/{position}:
-    parameters:
-      - $ref: '#/components/parameters/PhotoPosition'
-    put:
-      tags: [Profiles]
-      summary: Replace a profile photo URL by position
-      description: Legacy JSON external URL flow.
-      requestBody:
-        $ref: '#/components/requestBodies/ReplacePhoto'
-      responses:
-        '200':
-          $ref: '#/components/responses/Photo'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -917,18 +899,9 @@ components:
     AddPhoto:
       required: true
       content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/AddPhotoRequest'
         multipart/form-data:
           schema:
             $ref: '#/components/schemas/UploadPhotoFileRequest'
-    ReplacePhoto:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ReplacePhotoRequest'
     ReplacePhotoFile:
       required: true
       content:
@@ -1525,21 +1498,6 @@ components:
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
-    AddPhotoRequest:
-      type: object
-      required: [url, position]
-      properties:
-        url: { type: string, pattern: '^https://[^\s<>]+$', maxLength: 512 }
-        position: { type: integer, minimum: 1, maximum: 9 }
-        isPersonPhoto: { type: boolean, nullable: true }
-        isFullBody: { type: boolean, nullable: true }
-    ReplacePhotoRequest:
-      type: object
-      required: [url]
-      properties:
-        url: { type: string, pattern: '^https://[^\s<>]+$', maxLength: 512 }
-        isPersonPhoto: { type: boolean, nullable: true }
-        isFullBody: { type: boolean, nullable: true }
     UploadPhotoFileRequest:
       type: object
       required: [file, position]
@@ -1920,7 +1878,7 @@ components:
       enum: [ACTIVE, DELETED]
     PhotoStorageProvider:
       type: string
-      enum: [EXTERNAL_URL, S3]
+      enum: [S3]
     PhotoValidationStatus:
       type: string
       enum: [PENDING, VALIDATED, FAILED]
