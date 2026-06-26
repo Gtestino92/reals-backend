@@ -361,9 +361,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/FirstChatResponse'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatAvailabilityConflict'
   /api/matches/{matchId}/visual-profile:
     get:
       tags: [Matches]
@@ -396,9 +396,9 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatDecisionConflict'
   /api/matches/{matchId}/visual-decision:
     post:
       tags: [Matches]
@@ -461,7 +461,7 @@ paths:
         '200':
           $ref: '#/components/responses/Chat'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
   /api/chats/{chatId}/messages:
     post:
       tags: [Chats]
@@ -478,11 +478,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChatMessageResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/ChatMessageInvalid'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatAvailabilityConflict'
     get:
       tags: [Chats]
       summary: List chat messages
@@ -510,9 +510,9 @@ paths:
                       $ref: '#/components/schemas/ChatMessageResponse'
                   - $ref: '#/components/schemas/ChatMessagesResponse'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatAvailabilityConflict'
   /api/chats/{chatId}/exit-requests:
     post:
       tags: [Chats]
@@ -536,11 +536,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChatExitRequestResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/ChatMessageInvalid'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatExitRequestCreateConflict'
     get:
       tags: [Chats]
       summary: List visible exit requests for chat participant
@@ -556,7 +556,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/ChatExitRequestResponse'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
   /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance:
     post:
       tags: [Chats]
@@ -569,9 +569,9 @@ paths:
         '200':
           $ref: '#/components/responses/ChatExitOutcome'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatExitRequestNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatExitRequestActionConflict'
   /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection:
     post:
       tags: [Chats]
@@ -584,9 +584,9 @@ paths:
         '200':
           $ref: '#/components/responses/ChatExitOutcome'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatExitRequestNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatExitRequestActionConflict'
   /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout:
     post:
       tags: [Chats]
@@ -599,9 +599,9 @@ paths:
         '200':
           $ref: '#/components/responses/ChatExitOutcome'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatExitRequestNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatExitRequestActionConflict'
   /api/chats/{chatId}/cancellations:
     post:
       tags: [Chats]
@@ -614,11 +614,11 @@ paths:
         '201':
           $ref: '#/components/responses/ChatExitOutcome'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/ChatMessageInvalid'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatAvailabilityConflict'
   /api/chats/{chatId}/safety-cancellations:
     post:
       tags: [Chats]
@@ -632,11 +632,11 @@ paths:
         '201':
           $ref: '#/components/responses/ChatExitOutcome'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/ChatMessageInvalid'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ChatNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/ChatAvailabilityConflict'
   /api/admin/safety-reports:
     get:
       tags: [Admin]
@@ -781,7 +781,7 @@ paths:
         '200':
           $ref: '#/components/responses/Negotiation'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/SchedulingNegotiationNotFound'
   /api/connections/{connectionId}/proposals:
     post:
       tags: [Connections]
@@ -800,11 +800,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/ScheduleProposalResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/SchedulingInvalidProposals'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/SchedulingNegotiationNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/SchedulingProposalSubmissionConflict'
     get:
       tags: [Connections]
       summary: List scheduling proposals
@@ -832,9 +832,9 @@ paths:
         '200':
           $ref: '#/components/responses/Negotiation'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/SchedulingProposalNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/SchedulingProposalAcceptanceConflict'
   /api/connections/{connectionId}/negotiation/rejections:
     post:
       tags: [Connections]
@@ -845,9 +845,9 @@ paths:
         '200':
           $ref: '#/components/responses/Negotiation'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/SchedulingNegotiationNotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/SchedulingRoundRejectionConflict'
 components:
   securitySchemes:
     bearerAuth:
@@ -1081,6 +1081,229 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    ChatMessageInvalid:
+      description: Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CHAT_MESSAGE_INVALID
+            error: Bad Request
+            message: Chat message is invalid
+    ChatNotFound:
+      description: Chat not found. Stable code: `CHAT_NOT_FOUND`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CHAT_NOT_FOUND
+            error: Not Found
+            message: Chat was not found
+    ChatAvailabilityConflict:
+      description: Chat is not currently readable or writable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            chatNotAvailable:
+              value:
+                code: CHAT_NOT_AVAILABLE
+                error: Conflict
+                message: Chat is not available
+            chatExpired:
+              value:
+                code: CHAT_EXPIRED
+                error: Conflict
+                message: Chat has expired
+    ChatDecisionConflict:
+      description: First-chat continuation decision is not currently available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            decisionNotAvailable:
+              value:
+                code: CHAT_DECISION_NOT_AVAILABLE
+                error: Conflict
+                message: Chat decision is not available
+            decisionAlreadySubmitted:
+              value:
+                code: CHAT_DECISION_ALREADY_SUBMITTED
+                error: Conflict
+                message: Chat decision was already submitted
+            minimumMessagesRequired:
+              value:
+                code: CHAT_MIN_MESSAGES_REQUIRED
+                error: Conflict
+                message: Minimum chat messages are required before approval
+            mutualCancellationPending:
+              value:
+                code: CHAT_MUTUAL_CANCELLATION_PENDING
+                error: Conflict
+                message: A mutual cancellation request is pending
+    ChatExitRequestNotFound:
+      description: Chat or exit request not found. Missing exit requests use stable code `CHAT_EXIT_REQUEST_NOT_FOUND`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            chatNotFound:
+              value:
+                code: CHAT_NOT_FOUND
+                error: Not Found
+                message: Chat was not found
+            exitRequestNotFound:
+              value:
+                code: CHAT_EXIT_REQUEST_NOT_FOUND
+                error: Not Found
+                message: Chat exit request was not found
+    ChatExitRequestCreateConflict:
+      description: Mutual chat cancellation request cannot be created in the current chat state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            chatNotAvailable:
+              value:
+                code: CHAT_NOT_AVAILABLE
+                error: Conflict
+                message: Chat is not available
+            chatExpired:
+              value:
+                code: CHAT_EXPIRED
+                error: Conflict
+                message: Chat has expired
+            exitRequestAlreadyPending:
+              value:
+                code: CHAT_EXIT_REQUEST_ALREADY_PENDING
+                error: Conflict
+                message: A chat exit request is already pending
+    ChatExitRequestActionConflict:
+      description: Chat exit request cannot be accepted, rejected, or timed out in the current state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            chatNotAvailable:
+              value:
+                code: CHAT_NOT_AVAILABLE
+                error: Conflict
+                message: Chat is not available
+            chatExpired:
+              value:
+                code: CHAT_EXPIRED
+                error: Conflict
+                message: Chat has expired
+            exitRequestNotAvailable:
+              value:
+                code: CHAT_EXIT_REQUEST_NOT_AVAILABLE
+                error: Conflict
+                message: Chat exit request is not available
+    SchedulingInvalidProposals:
+      description: Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SCHEDULING_INVALID_PROPOSALS
+            error: Bad Request
+            message: Scheduling proposals are invalid
+    SchedulingNegotiationNotFound:
+      description: Connection or scheduling negotiation not found. Missing negotiations use stable code `SCHEDULING_NEGOTIATION_NOT_FOUND`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            schedulingNegotiationNotFound:
+              value:
+                code: SCHEDULING_NEGOTIATION_NOT_FOUND
+                error: Not Found
+                message: Scheduling negotiation was not found
+    SchedulingProposalNotFound:
+      description: Scheduling proposal not found. Stable code: `SCHEDULING_PROPOSAL_NOT_AVAILABLE`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SCHEDULING_PROPOSAL_NOT_AVAILABLE
+            error: Not Found
+            message: Scheduling proposal was not found
+    SchedulingProposalSubmissionConflict:
+      description: Scheduling proposal submission is not currently available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            schedulingNotAvailable:
+              value:
+                code: SCHEDULING_NOT_AVAILABLE
+                error: Conflict
+                message: Scheduling is not available
+            schedulingExpired:
+              value:
+                code: SCHEDULING_EXPIRED
+                error: Conflict
+                message: Scheduling has expired
+            proposalsAlreadySubmitted:
+              value:
+                code: SCHEDULING_PROPOSALS_ALREADY_SUBMITTED
+                error: Conflict
+                message: Scheduling proposals were already submitted for this round
+    SchedulingProposalAcceptanceConflict:
+      description: Scheduling proposal cannot be accepted in the current flow state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            schedulingNotAvailable:
+              value:
+                code: SCHEDULING_NOT_AVAILABLE
+                error: Conflict
+                message: Scheduling is not available
+            schedulingExpired:
+              value:
+                code: SCHEDULING_EXPIRED
+                error: Conflict
+                message: Scheduling has expired
+            proposalNotAvailable:
+              value:
+                code: SCHEDULING_PROPOSAL_NOT_AVAILABLE
+                error: Conflict
+                message: Scheduling proposal is not available
+            cannotAcceptOwnProposal:
+              value:
+                code: SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL
+                error: Conflict
+                message: Users cannot accept their own scheduling proposal
+    SchedulingRoundRejectionConflict:
+      description: Scheduling round cannot be rejected in the current flow state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            schedulingNotAvailable:
+              value:
+                code: SCHEDULING_NOT_AVAILABLE
+                error: Conflict
+                message: Scheduling is not available
+            roundNotRejectable:
+              value:
+                code: SCHEDULING_ROUND_NOT_REJECTABLE
+                error: Conflict
+                message: Scheduling round is not rejectable
   schemas:
     PingResponse:
       type: object

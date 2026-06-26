@@ -417,9 +417,10 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
         assertEquals(1, chatService.getMessages(setup.secondChatId, setup.userAId).size)
-        assertThrows(IllegalStateException::class.java) {
+        val sendError = assertThrows(DomainConflictException::class.java) {
             chatService.sendMessage(setup.secondChatId, setup.userAId, "No deberia enviarse")
         }
+        assertEquals(DomainErrorCode.CHAT_EXPIRED, sendError.code)
     }
 
     @Test
@@ -444,9 +445,10 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
         assertNoConnectionLocks(setup.userAId, setup.userBId)
-        assertThrows(IllegalStateException::class.java) {
+        val readError = assertThrows(DomainConflictException::class.java) {
             chatService.getMessages(setup.secondChatId, setup.userAId)
         }
+        assertEquals(DomainErrorCode.CHAT_NOT_AVAILABLE, readError.code)
     }
 
     @Test
