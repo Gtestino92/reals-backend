@@ -31,6 +31,8 @@ Acceptance criteria:
 
 ### 2.2 Profile photo validation MVP shortcut
 
+Status: implemented for multipart upload and replace-file flows.
+
 For MVP, image validation is intentionally permissive.
 
 MVP upload behavior:
@@ -59,6 +61,34 @@ Acceptance criteria:
 - Android multipart upload does not need to send temporary semantic flags.
 - Profile activation can be tested end-to-end.
 - The shortcut remains documented and easy to remove later.
+
+### 2.2.1 Future profile photo ordering endpoint
+
+MVP decision:
+- Multipart profile photo upload remains slot-based and requires `position`.
+- Do not implement drag-and-drop reordering as part of the MVP validation shortcut.
+
+Future cleanup:
+- Add a dedicated reorder endpoint, for example `PUT /api/me/profile/photos/order`, when the product needs real drag-and-drop ordering.
+- The endpoint should accept ordered `photoIds`, validate that every photo belongs to the current user's profile, reject duplicate or missing photos, and reassign positions atomically.
+
+Acceptance criteria:
+- Upload and replace-file flows remain unchanged for Android.
+- Reordering is handled by the dedicated endpoint rather than overloading upload semantics.
+
+### 2.2.2 Post-MVP media pipeline options
+
+MVP decision:
+- Keep profile photo uploads backend-mediated.
+- Keep original images only; no generated thumbnails or previews.
+
+Post-MVP options:
+- Consider direct-to-storage upload using presigned write URLs if backend bandwidth becomes a concern.
+- Add generated thumbnails/previews when profile photo load performance needs it.
+
+Acceptance criteria:
+- These options remain separate from the MVP R2 setup.
+- Endpoint contracts stay stable until Android and backend agree on a new media flow.
 
 ### 2.3 Multipart photo upload is the official MVP flow
 

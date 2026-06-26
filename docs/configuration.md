@@ -28,14 +28,14 @@ Non-sensitive runtime configuration:
 | `DATABASE_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/reals`. |
 | `DATABASE_USERNAME` | yes | PostgreSQL user. |
 | `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
-| `S3_ENDPOINT` | when media upload is enabled | S3-compatible API endpoint used by the backend for object operations. For AWS S3 this can be omitted. |
-| `S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Endpoint used only when generating presigned read URLs, for example Android Emulator local MinIO. |
-| `S3_REGION` | when media upload is enabled | Defaults per profile; use the real bucket region in shared environments. |
-| `S3_PROFILE_PHOTOS_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. |
-| `S3_PUBLIC_BASE_URL` | only with `S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. |
-| `S3_PATH_STYLE_ACCESS_ENABLED` | no | Use `true` for MinIO and many S3-compatible providers; AWS S3 usually supports virtual-hosted style. |
-| `S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. |
-| `S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to a short-lived local/dev value. |
+| `STORAGE_S3_ENDPOINT` | when media upload is enabled | S3-compatible API endpoint used by the backend for object operations. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |
+| `STORAGE_S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Endpoint used only when generating presigned read URLs. For R2 this usually matches `STORAGE_S3_ENDPOINT`; for Android Emulator local MinIO it may be `http://10.0.2.2:9000`. Legacy fallback: `S3_PRESIGNED_URL_ENDPOINT`. |
+| `STORAGE_S3_REGION` | when media upload is enabled | Use `auto` for R2. Legacy fallback: `S3_REGION`. |
+| `STORAGE_S3_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. Legacy fallback: `S3_PROFILE_PHOTOS_BUCKET`. |
+| `STORAGE_S3_PUBLIC_BASE_URL` | only with `STORAGE_S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. Not required for private R2 buckets in `PRESIGNED` mode. Legacy fallback: `S3_PUBLIC_BASE_URL`. |
+| `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
+| `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
+| `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
 | `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `IDENTITY_VERIFICATION_PROVIDER` | no | Defaults to `none`. |
@@ -48,14 +48,18 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
-| `S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Prefer runtime IAM roles for AWS. |
-| `S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. |
+| `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `IDENTITY_VERIFICATION_API_KEY` | when a non-`none` provider exists | Keep empty while identity verification is disabled. |
 
-S3-compatible storage has two endpoint concerns. `S3_ENDPOINT` is where the
-backend writes and deletes objects. `S3_PRESIGNED_URL_ENDPOINT` is the host
+S3-compatible storage has two endpoint concerns. `STORAGE_S3_ENDPOINT` is where the
+backend writes and deletes objects. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
 embedded in returned presigned URLs and must be reachable by the client that
 renders the image.
+
+For Cloudflare R2 shared/dev/prod-like environments, see
+`docs/storage-r2-configuration.md`. R2 should use private buckets and
+`STORAGE_S3_READ_URL_MODE=PRESIGNED` for MVP.
 
 For AWS deployments, prefer IAM roles for S3 access instead of long-lived access keys. In that setup the application usually only needs the bucket setting; AWS credentials come from the runtime role.
 
@@ -96,7 +100,7 @@ empty until that provider is implemented.
 
 ## How Injection Works
 
-The application only sees environment variables such as `DATABASE_PASSWORD` or `S3_PROFILE_PHOTOS_BUCKET`. The CI/CD or runtime platform is responsible for resolving those values from its own config store or secret manager before starting the process.
+The application only sees environment variables such as `DATABASE_PASSWORD` or `STORAGE_S3_BUCKET`. The CI/CD or runtime platform is responsible for resolving those values from its own config store or secret manager before starting the process.
 
 Example flow:
 

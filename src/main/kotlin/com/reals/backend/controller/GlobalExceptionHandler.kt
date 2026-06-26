@@ -5,6 +5,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.exception.ObjectStorageException
 import jakarta.validation.ConstraintViolationException
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
@@ -20,10 +21,12 @@ import org.springframework.jdbc.CannotGetJdbcConnectionException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.validation.FieldError
 import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.multipart.support.MissingServletRequestPartException
 import java.sql.SQLException
 import java.sql.SQLTransientConnectionException
 
@@ -63,7 +66,11 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
-                    code = "VALIDATION_ERROR",
+                    code = if (ex.message.contains("position")) {
+                        DomainErrorCode.PHOTO_POSITION_INVALID.name
+                    } else {
+                        "VALIDATION_ERROR"
+                    },
                     error = "Bad Request",
                     message = "Request validation failed"
                 )
@@ -76,7 +83,11 @@ class GlobalExceptionHandler {
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
-                    code = "VALIDATION_ERROR",
+                    code = if (ex.constraintViolations.any { it.propertyPath.toString().contains("position") }) {
+                        DomainErrorCode.PHOTO_POSITION_INVALID.name
+                    } else {
+                        "VALIDATION_ERROR"
+                    },
                     error = "Bad Request",
                     message = ex.constraintViolations
                         .joinToString("; ") { "${it.propertyPath}: ${it.message}" }
@@ -107,6 +118,40 @@ class GlobalExceptionHandler {
                     code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = "Invalid value for ${ex.name}"
+                )
+            )
+
+    @ExceptionHandler(MissingServletRequestPartException::class)
+    fun handleMissingServletRequestPart(
+        ex: MissingServletRequestPartException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest()
+            .body(
+                ErrorResponse(
+                    code = if (ex.requestPartName == "file") {
+                        DomainErrorCode.INVALID_PROFILE_PHOTO.name
+                    } else {
+                        "VALIDATION_ERROR"
+                    },
+                    error = "Bad Request",
+                    message = "Required multipart part is missing"
+                )
+            )
+
+    @ExceptionHandler(MissingServletRequestParameterException::class)
+    fun handleMissingServletRequestParameter(
+        ex: MissingServletRequestParameterException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest()
+            .body(
+                ErrorResponse(
+                    code = if (ex.parameterName == "position") {
+                        DomainErrorCode.PHOTO_POSITION_INVALID.name
+                    } else {
+                        "VALIDATION_ERROR"
+                    },
+                    error = "Bad Request",
+                    message = "Required request parameter is missing"
                 )
             )
 
@@ -204,6 +249,22 @@ class GlobalExceptionHandler {
                     message = ex.message
                 )
             )
+
+    @ExceptionHandler(ObjectStorageException::class)
+    fun handleObjectStorageException(
+        ex: ObjectStorageException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Object storage failure while processing request: {}", ex.message)
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_FAILED.name,
+                    error = "Bad Gateway",
+                    message = "Profile photo upload failed. Please retry."
+                )
+            )
+    }
 
     @ExceptionHandler(NoSuchElementException::class)
     fun handleNotFound(

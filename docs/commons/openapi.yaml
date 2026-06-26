@@ -1589,7 +1589,9 @@ components:
         position: { type: integer }
         isPersonPhoto: { type: boolean }
         isFullBody: { type: boolean }
-        validationStatus: { $ref: '#/components/schemas/PhotoValidationStatus' }
+        validationStatus:
+          allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
+          description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
     VisualProfileResponse:
       type: object
       required:
