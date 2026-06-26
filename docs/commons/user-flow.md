@@ -77,7 +77,7 @@ Each user submits one `VisualDecision`.
 
 Personal messages are stored on `VisualReview`. Current behavior allows reading
 the partner message during visual review once it exists, and requires reading it
-before approving if the partner already submitted one.
+before deciding if the partner already submitted one.
 
 ## 6. Connection Creation
 

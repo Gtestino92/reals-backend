@@ -106,6 +106,10 @@ class MatchController(
         val photos = profileService.getPhotos(
             profileId = partnerProfile.id
         )
+        val personalMessageStatus = visualReviewService.getPersonalMessageStatusForUser(
+            matchId = matchId,
+            userId = userId
+        )
 
         return ResponseEntity.ok(
             VisualProfileResponse.from(
@@ -115,7 +119,13 @@ class MatchController(
                     visualReviewService.hasPersonalMessageSubmitted(
                         matchId = matchId,
                         userId = userId
-                    )
+                    ),
+                partnerPersonalMessageSubmitted =
+                    personalMessageStatus.partnerPersonalMessageSubmitted,
+                partnerPersonalMessageRead =
+                    personalMessageStatus.partnerPersonalMessageRead,
+                decisionRequiresPartnerPersonalMessageRead =
+                    personalMessageStatus.decisionRequiresPartnerPersonalMessageRead
             )
         )
     }
