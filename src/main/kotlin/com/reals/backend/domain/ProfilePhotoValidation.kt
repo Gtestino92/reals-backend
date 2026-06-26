@@ -11,8 +11,3 @@ class ProfilePhotoUploadValidationRequest(
     val contentType: String,
     val bytes: ByteArray
 )
-
-data class ProfilePhotoExternalValidationRequest(
-    val url: String
-)
-

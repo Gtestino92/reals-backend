@@ -3,7 +3,6 @@ package com.reals.backend.controller.dto
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
-import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
@@ -39,15 +38,6 @@ data class UpdateProfileRequest(
 
     val intention: Intention? = null,
     val lookingForGender: LookingForGender? = null
-)
-
-data class ReplacePhotoRequest(
-    @field:NotBlank
-    @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://[^\\s<>]+$")
-    val url: String,
-    val isPersonPhoto: Boolean? = null,
-    val isFullBody: Boolean? = null
 )
 
 data class UpdateMatchFiltersRequest(
@@ -102,19 +92,6 @@ data class CreateProfileRequest(
     @field:Min(1)
     @field:Max(1000)
     val maxDistanceKm: Int
-)
-
-data class AddPhotoRequest(
-    @field:NotBlank
-    @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://[^\\s<>]+$")
-    val url: String,
-
-    @field:Min(1)
-    val position: Int,
-
-    val isPersonPhoto: Boolean? = null,
-    val isFullBody: Boolean? = null
 )
 
 data class ProfileResponse(
