@@ -5,7 +5,10 @@ import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -94,19 +97,123 @@ class VisualReviewIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `approve visual review requires reading partner message when present`() {
+    fun `personal message status reports no partner message as read and not required`() {
+        val setup = createMatchInVisualPhase()
+
+        val status = visualReviewService.getPersonalMessageStatusForUser(
+            matchId = setup.matchId,
+            userId = setup.userAId
+        )
+
+        assertFalse(status.partnerPersonalMessageSubmitted)
+        assertTrue(status.partnerPersonalMessageRead)
+        assertFalse(status.decisionRequiresPartnerPersonalMessageRead)
+    }
+
+    @Test
+    fun `personal message status reports unread partner message as decision requirement`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+
+        val status = visualReviewService.getPersonalMessageStatusForUser(
+            matchId = setup.matchId,
+            userId = setup.userAId
+        )
+
+        assertTrue(status.partnerPersonalMessageSubmitted)
+        assertFalse(status.partnerPersonalMessageRead)
+        assertTrue(status.decisionRequiresPartnerPersonalMessageRead)
+    }
+
+    @Test
+    fun `personal message status reports read partner message as not required`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+
+        visualReviewService.getPartnerMessage(setup.matchId, setup.userAId)
+
+        val status = visualReviewService.getPersonalMessageStatusForUser(
+            matchId = setup.matchId,
+            userId = setup.userAId
+        )
+
+        assertTrue(status.partnerPersonalMessageSubmitted)
+        assertTrue(status.partnerPersonalMessageRead)
+        assertFalse(status.decisionRequiresPartnerPersonalMessageRead)
+    }
+
+    @Test
+    fun `personal message status lookup does not mark partner message as read`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+
+        visualReviewService.getPersonalMessageStatusForUser(
+            matchId = setup.matchId,
+            userId = setup.userAId
+        )
+
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        assertNull(review.personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `visual approval returns stable conflict when partner message is unread`() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me gustaria seguir")
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
         }
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
 
         assertEquals("Me gustaria seguir", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
 
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
         assertEquals(
             VisualDecision.APPROVED,
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+        )
+    }
+
+    @Test
+    fun `visual rejection returns stable conflict when partner message is unread`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me gustaria seguir")
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+        }
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
+
+        assertEquals("Me gustaria seguir", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+        assertEquals(
+            VisualDecision.REJECTED,
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+        )
+    }
+
+    @Test
+    fun `visual approval succeeds when no partner message exists`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+
+        assertEquals(
+            VisualDecision.APPROVED,
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+        )
+    }
+
+    @Test
+    fun `visual rejection succeeds when no partner message exists`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+
+        assertEquals(
+            VisualDecision.REJECTED,
             visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
         )
     }

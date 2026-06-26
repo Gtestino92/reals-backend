@@ -28,20 +28,18 @@ Acceptance criteria:
 
 ### 1.2 Visual-review personal message visibility
 
-Decision pending:
-- Exact UX rule for when the partner's visual-review personal message is visible and when it must be read.
+Status: closed for backend MVP contract.
 
-Current intended behavior:
-- Partner message can be shown during visual review.
-- If the partner already submitted one, reading it may be required before approving.
+MVP rule:
+- A user may submit one optional personal message during visual review.
+- The partner message can be fetched during visual review through `GET /api/matches/{matchId}/personal-messages/partner`.
+- Fetching the partner message marks it as read when a partner message exists.
+- If the partner submitted a personal message, the authenticated user must fetch/read it before either approving or rejecting.
+- `GET /api/matches/{matchId}/visual-profile` exposes `partnerPersonalMessageSubmitted`, `partnerPersonalMessageRead`, and `decisionRequiresPartnerPersonalMessageRead` so Android can disable or explain visual decisions deterministically.
+- Any visual decision before reading an existing partner message returns HTTP 409 with code `VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ`.
 
-MVP requirement:
-- Keep the rule explicit in code and UI.
-- Avoid hidden requirements that make the Approve action look broken.
-
-Acceptance criteria:
-- User understands why approval is disabled, if disabled.
-- Visual approval behavior is deterministic and backed by stable backend state.
+Remaining frontend requirement:
+- Android should use the metadata to explain why approval is disabled or blocked.
 
 ### 1.3 Geolocation entry point
 
