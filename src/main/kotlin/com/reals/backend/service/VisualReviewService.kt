@@ -2,6 +2,8 @@ package com.reals.backend.service
 
 import com.reals.backend.domain.*
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -9,6 +11,12 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
+
+data class VisualReviewPersonalMessageStatus(
+    val partnerPersonalMessageSubmitted: Boolean,
+    val partnerPersonalMessageRead: Boolean,
+    val decisionRequiresPartnerPersonalMessageRead: Boolean
+)
 
 @Service
 @Transactional
@@ -90,13 +98,11 @@ class VisualReviewService(
             "Match is not in visual phase"
         }
 
-        if (decision == VisualDecision.APPROVED) {
-            requirePartnerMessageReadIfPresent(
-                match = match,
-                review = review,
-                userId = userId
-            )
-        }
+        requirePartnerMessageReadBeforeDecisionIfPresent(
+            match = match,
+            review = review,
+            userId = userId
+        )
 
         review.recordDecisionFor(
             userId = userId,
@@ -208,26 +214,71 @@ class VisualReviewService(
         }
     }
 
-    private fun requirePartnerMessageReadIfPresent(
+    fun getPersonalMessageStatusForUser(
+        matchId: UUID,
+        userId: UUID
+    ): VisualReviewPersonalMessageStatus {
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
+        val review = findByMatchIdOrThrow(matchId)
+
+        return personalMessageStatusFor(
+            match = match,
+            review = review,
+            userId = userId
+        )
+    }
+
+    private fun requirePartnerMessageReadBeforeDecisionIfPresent(
         match: Match,
         review: VisualReview,
         userId: UUID
     ) {
-        when (userId) {
-            match.userAId ->
-                check(review.personalMessageB == null || review.personalMessageBReadByAAt != null) {
-                    "Cannot approve visual review before reading partner personal message"
-                }
+        val status = personalMessageStatusFor(
+            match = match,
+            review = review,
+            userId = userId
+        )
 
-            match.userBId ->
-                check(review.personalMessageA == null || review.personalMessageAReadByBAt != null) {
-                    "Cannot approve visual review before reading partner personal message"
-                }
-
-            else -> throw AccessDeniedException(
-                "User $userId does not belong to match ${match.id}"
+        if (status.decisionRequiresPartnerPersonalMessageRead) {
+            throw DomainConflictException(
+                code = DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ,
+                message = "Read the partner personal message before making a visual decision."
             )
         }
+    }
+
+    private fun personalMessageStatusFor(
+        match: Match,
+        review: VisualReview,
+        userId: UUID
+    ): VisualReviewPersonalMessageStatus {
+        val partnerMessageReadAt =
+            when (userId) {
+                match.userAId -> review.personalMessageBReadByAAt
+                match.userBId -> review.personalMessageAReadByBAt
+                else -> throw AccessDeniedException(
+                    "User $userId does not belong to match ${match.id}"
+                )
+            }
+        val partnerMessageSubmitted =
+            when (userId) {
+                match.userAId -> review.personalMessageB != null
+                match.userBId -> review.personalMessageA != null
+                else -> throw AccessDeniedException(
+                    "User $userId does not belong to match ${match.id}"
+                )
+            }
+        val partnerMessageRead = !partnerMessageSubmitted || partnerMessageReadAt != null
+
+        return VisualReviewPersonalMessageStatus(
+            partnerPersonalMessageSubmitted = partnerMessageSubmitted,
+            partnerPersonalMessageRead = partnerMessageRead,
+            decisionRequiresPartnerPersonalMessageRead =
+                partnerMessageSubmitted && !partnerMessageRead
+        )
     }
 
     private fun resolveVisualPhaseIfReady(

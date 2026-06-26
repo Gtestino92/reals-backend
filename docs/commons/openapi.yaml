@@ -1369,7 +1369,15 @@ components:
         validationStatus: { $ref: '#/components/schemas/PhotoValidationStatus' }
     VisualProfileResponse:
       type: object
-      required: [profileId, displayName, age, photos, myPersonalMessageSubmitted]
+      required:
+        - profileId
+        - displayName
+        - age
+        - photos
+        - myPersonalMessageSubmitted
+        - partnerPersonalMessageSubmitted
+        - partnerPersonalMessageRead
+        - decisionRequiresPartnerPersonalMessageRead
       properties:
         profileId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1381,6 +1389,15 @@ components:
         myPersonalMessageSubmitted:
           type: boolean
           description: True when the authenticated user has already submitted their visual personal message for this match.
+        partnerPersonalMessageSubmitted:
+          type: boolean
+          description: True when the partner has submitted a visual personal message for this match.
+        partnerPersonalMessageRead:
+          type: boolean
+          description: True when no partner personal message exists, or when the partner message exists and the authenticated user has fetched/read it.
+        decisionRequiresPartnerPersonalMessageRead:
+          type: boolean
+          description: True when the partner has submitted a personal message and the authenticated user must fetch/read it before making a visual decision.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]
