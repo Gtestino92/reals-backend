@@ -74,7 +74,7 @@ CREATE TABLE profile_photos (
     version         BIGINT       NOT NULL DEFAULT 0,
     profile_id      UUID         NOT NULL,
     url             VARCHAR(512) NOT NULL,
-    storage_provider VARCHAR(32)  NOT NULL DEFAULT 'EXTERNAL_URL',
+    storage_provider VARCHAR(32)  NOT NULL DEFAULT 'S3',
     storage_bucket   VARCHAR(255),
     storage_key      VARCHAR(1024),
     position        INT          NOT NULL,

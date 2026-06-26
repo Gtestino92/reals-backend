@@ -12,7 +12,6 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 enum class PhotoStorageProvider {
-    EXTERNAL_URL,
     S3
 }
 
@@ -43,7 +42,7 @@ data class ProfilePhoto(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "storage_provider", nullable = false)
-    var storageProvider: PhotoStorageProvider = PhotoStorageProvider.EXTERNAL_URL,
+    var storageProvider: PhotoStorageProvider = PhotoStorageProvider.S3,
 
     @Column(name = "storage_bucket")
     var storageBucket: String? = null,

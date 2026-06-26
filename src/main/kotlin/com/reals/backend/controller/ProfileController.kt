@@ -1,11 +1,9 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
-import com.reals.backend.controller.dto.AddPhotoRequest
 import com.reals.backend.controller.dto.CreateProfileRequest
 import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.controller.dto.ProfileResponse
-import com.reals.backend.controller.dto.ReplacePhotoRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
 import com.reals.backend.service.ProfileService
@@ -180,39 +178,6 @@ class ProfileController(
     }
 
     /**
-     * Legacy endpoint.
-     *
-     * Adds a profile photo using an external URL.
-     * New production flow should use multipart upload instead.
-     */
-    @PostMapping(
-        "/photos",
-        consumes = [MediaType.APPLICATION_JSON_VALUE]
-    )
-    fun addPhoto(
-        @CurrentUserId userId: UUID,
-        @Valid
-        @RequestBody request: AddPhotoRequest
-    ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
-
-        val photo = profileService.addPhoto(
-            profileId = profile.id,
-            url = request.url,
-            position = request.position,
-            isPersonPhoto = request.isPersonPhoto,
-            isFullBody = request.isFullBody
-        )
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-            PhotoResponse.from(
-                photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
-            )
-        )
-    }
-
-    /**
      * Uploads a new profile photo file to object storage.
      *
      * Used when adding a new photo to an empty position.
@@ -290,43 +255,6 @@ class ProfileController(
             ProfileResponse.from(
                 profile = updated,
                 photoCount = photos.size
-            )
-        )
-    }
-
-    /**
-     * Legacy endpoint.
-     *
-     * Replaces a photo URL by position.
-     * Kept temporarily for the old frontend flow.
-     */
-    @PutMapping(
-        "/photos/position/{position}",
-        consumes = [MediaType.APPLICATION_JSON_VALUE]
-    )
-    fun replacePhotoByPosition(
-        @CurrentUserId userId: UUID,
-
-        @Min(1)
-        @PathVariable position: Int,
-
-        @Valid
-        @RequestBody request: ReplacePhotoRequest
-    ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
-
-        val photo = profileService.replacePhoto(
-            profileId = profile.id,
-            position = position,
-            url = request.url,
-            isPersonPhoto = request.isPersonPhoto,
-            isFullBody = request.isFullBody
-        )
-
-        return ResponseEntity.ok(
-            PhotoResponse.from(
-                photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
             )
         )
     }

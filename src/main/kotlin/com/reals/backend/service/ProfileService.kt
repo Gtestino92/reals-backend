@@ -15,7 +15,6 @@ import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import java.net.URI
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
@@ -49,7 +48,6 @@ class ProfileService(
         const val DISPLAY_NAME_MAX_LENGTH = 100
         const val LOCATION_MAX_LENGTH = 100
         const val BIO_MAX_LENGTH = 1000
-        const val PHOTO_URL_MAX_LENGTH = 512
         const val MIN_PROFILE_AGE = 18
         const val MAX_PROFILE_AGE = 99
     }
@@ -162,54 +160,6 @@ class ProfileService(
         profile.updatedAt = OffsetDateTime.now()
 
         return profileRepository.save(profile)
-    }
-
-    @Transactional
-    fun addPhoto(
-        profileId: UUID,
-        url: String,
-        position: Int,
-        isPersonPhoto: Boolean? = null,
-        isFullBody: Boolean? = null
-    ): ProfilePhoto {
-
-        val profile = findByIdOrThrow(profileId)
-
-        validatePhotoPosition(position)
-
-        validatePhotoCount(profileId, position)
-
-        val trimmedUrl = url.trim()
-        validatePhotoUrl(trimmedUrl)
-
-        val validation = validatePhotoSemanticsWhenNeeded(
-            profileId = profileId,
-            url = trimmedUrl,
-            replacingPhoto = null,
-            isPersonPhoto = isPersonPhoto,
-            isFullBody = isFullBody
-        )
-
-        val photo = profilePhotoRepository.save(
-            ProfilePhoto(
-                profileId = profileId,
-                url = trimmedUrl,
-                storageProvider = PhotoStorageProvider.EXTERNAL_URL,
-                storageBucket = null,
-                storageKey = null,
-                position = position,
-                isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
-                isFullBody = isFullBody ?: validation.isFullBody,
-                validationStatus = when {
-                    isPersonPhoto != null || isFullBody != null -> PhotoValidationStatus.VALIDATED
-                    else -> validation.status
-                }
-            )
-        )
-
-        moveActiveProfileToDraftAfterPhotoMutation(profile)
-
-        return photo
     }
 
     private fun validatePhotoCount(profileId: UUID, position: Int) {
@@ -348,60 +298,6 @@ class ProfileService(
         profile.updatedAt = OffsetDateTime.now()
 
         return profileRepository.save(profile)
-    }
-
-    @Transactional
-    fun replacePhoto(
-        profileId: UUID,
-        position: Int,
-        url: String,
-        isPersonPhoto: Boolean? = null,
-        isFullBody: Boolean? = null
-    ): ProfilePhoto {
-
-        val profile = findByIdOrThrow(profileId)
-
-        validatePhotoPosition(position)
-
-        val existingPhoto = profilePhotoRepository.findByProfileIdAndPosition(
-            profileId = profileId,
-            position = position
-        ) ?: throw NoSuchElementException(
-            "Photo not found at position $position for profile $profileId"
-        )
-
-        val trimmedUrl = url.trim()
-        validatePhotoUrl(trimmedUrl)
-
-        val validation = validatePhotoSemanticsWhenNeeded(
-            profileId = profileId,
-            url = trimmedUrl,
-            replacingPhoto = existingPhoto,
-            isPersonPhoto = isPersonPhoto,
-            isFullBody = isFullBody
-        )
-
-        val oldStorageKey = existingPhoto.storageKey
-
-        existingPhoto.url = trimmedUrl
-        existingPhoto.storageProvider = PhotoStorageProvider.EXTERNAL_URL
-        existingPhoto.storageBucket = null
-        existingPhoto.storageKey = null
-        existingPhoto.isPersonPhoto = validation.isPersonPhoto
-        existingPhoto.isFullBody = validation.isFullBody
-        existingPhoto.validationStatus = validation.status
-
-        val saved = profilePhotoRepository.save(existingPhoto)
-
-        oldStorageKey?.let { key ->
-            runCatching {
-                storageService.delete(key)
-            }
-        }
-
-        moveActiveProfileToDraftAfterPhotoMutation(profile)
-
-        return saved
     }
 
     @Transactional
@@ -560,67 +456,11 @@ class ProfileService(
         }
     }
 
-    private fun validatePhotoSemanticsWhenNeeded(
-        profileId: UUID,
-        url: String,
-        replacingPhoto: ProfilePhoto?,
-        isPersonPhoto: Boolean?,
-        isFullBody: Boolean?
-    ): ProfilePhotoValidationResult {
-        if (isPersonPhoto != null && isFullBody != null) {
-            return ProfilePhotoValidationResult(
-                isPersonPhoto = isPersonPhoto,
-                isFullBody = isFullBody,
-                status = PhotoValidationStatus.VALIDATED
-            )
-        }
-
-        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
-            return ProfilePhotoValidationResult(
-                isPersonPhoto = isPersonPhoto ?: false,
-                isFullBody = isFullBody ?: false,
-                status = PhotoValidationStatus.PENDING
-            )
-        }
-
-        val validation = profilePhotoValidationService.validateExternalUrl(
-            url = url,
-            replacingPhoto = replacingPhoto
-        )
-
-        return ProfilePhotoValidationResult(
-            isPersonPhoto = isPersonPhoto ?: validation.isPersonPhoto,
-            isFullBody = isFullBody ?: validation.isFullBody,
-            status = validation.status
-        )
-    }
-
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
-        return when (photo.storageProvider) {
-            PhotoStorageProvider.EXTERNAL_URL -> photo.url
+        val key = photo.storageKey
+            ?: throw IllegalStateException("Profile photo without storage key: ${photo.id}")
 
-            PhotoStorageProvider.S3 -> {
-                val key = photo.storageKey
-                    ?: throw IllegalStateException("S3 photo without storage key: ${photo.id}")
-
-                storageService.getReadUrl(key)
-            }
-        }
-    }
-
-    private fun needsPhotoSemanticValidation(
-        profileId: UUID,
-        replacingPhoto: ProfilePhoto?
-    ): Boolean {
-        val personCount =
-            profilePhotoRepository.countByProfileIdAndIsPersonPhotoTrue(profileId) -
-                    if (replacingPhoto?.isPersonPhoto == true) 1 else 0
-
-        val fullBodyCount =
-            profilePhotoRepository.countByProfileIdAndIsFullBodyTrue(profileId) -
-                    if (replacingPhoto?.isFullBody == true) 1 else 0
-
-        return personCount < minPersonPhotos || fullBodyCount < minFullBodyPhotos
+        return storageService.getReadUrl(key)
     }
 
     private fun validateDisplayName(displayName: String) {
@@ -717,31 +557,6 @@ class ProfileService(
         PlainText.requireValid(fieldName, value)
     }
 
-    private fun validatePhotoUrl(url: String) {
-        require(url.length <= PHOTO_URL_MAX_LENGTH) {
-            "Photo URL must be at most $PHOTO_URL_MAX_LENGTH characters"
-        }
-
-        PlainText.requireValid("Photo URL", url)
-
-        val uri =
-            try {
-                URI(url)
-            } catch (_: IllegalArgumentException) {
-                throw DomainBadRequestException(
-                    code = DomainErrorCode.PHOTO_URL_INVALID,
-                    message = "Photo URL must be a valid HTTPS URL"
-                )
-            }
-
-        if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
-            throw DomainBadRequestException(
-                code = DomainErrorCode.PHOTO_URL_INVALID,
-                message = "Photo URL must be a valid HTTPS URL"
-            )
-        }
-    }
-
     private fun validatePhotoUpload(
         contentType: String?,
         sizeBytes: Long
@@ -809,41 +624,6 @@ class ProfileService(
 
     private fun normalizeOptionalText(value: String?): String? =
         value?.trim()?.takeIf { it.isNotBlank() }
-
-    private fun validateUploadedPhotoOrPending(
-        contentType: String,
-        bytes: ByteArray,
-        replacingPhoto: ProfilePhoto?
-    ): ProfilePhotoValidationResult {
-        return profilePhotoValidationService.validateUploadedPhoto(
-            contentType = contentType,
-            bytes = bytes,
-            replacingPhoto = replacingPhoto
-        )
-    }
-
-    /*
-     * Este método puede quedar solo para el endpoint legacy addPhoto(url).
-     * Para el flujo nuevo multipart, no se usa.
-     */
-    private fun validateExternalPhotoSemanticsWhenNeeded(
-        profileId: UUID,
-        url: String,
-        replacingPhoto: ProfilePhoto?
-    ): ProfilePhotoValidationResult {
-        if (!needsPhotoSemanticValidation(profileId, replacingPhoto)) {
-            return ProfilePhotoValidationResult(
-                isPersonPhoto = false,
-                isFullBody = false,
-                status = PhotoValidationStatus.PENDING
-            )
-        }
-
-        return profilePhotoValidationService.validateExternalUrl(
-            url = url,
-            replacingPhoto = replacingPhoto
-        )
-    }
 
     private fun profilePhotoNotFound(photoId: UUID): DomainNotFoundException =
         DomainNotFoundException(

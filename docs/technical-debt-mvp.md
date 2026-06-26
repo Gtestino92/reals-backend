@@ -42,7 +42,8 @@ MVP upload behavior:
    - file size is within configured limits;
    - content type is allowed;
    - storage succeeds;
-   - ideally, file can be decoded as an image and has acceptable dimensions.
+   - file can be decoded as an image when JVM runtime support is available for that format;
+   - dimensions are within configured technical bounds.
 2. If technical validation fails:
    - reject the upload;
    - do not create a usable profile photo.
@@ -90,16 +91,21 @@ Acceptance criteria:
 - These options remain separate from the MVP R2 setup.
 - Endpoint contracts stay stable until Android and backend agree on a new media flow.
 
-### 2.3 Multipart photo upload is the official MVP flow
+### 2.3 Multipart photo upload is the only MVP flow
 
-Current decision:
-- Multipart upload is the official app flow.
-- Legacy URL-based photo endpoints may remain temporarily for local/dev tests, but should not be used by production Android UI.
+Status: resolved.
+
+Decision:
+- Multipart file upload is the only supported MVP profile photo mutation flow.
+- Legacy URL-based profile photo create/replace endpoints were removed.
+- Android/frontend must use real file upload for profile photos.
+- Pre-MVP local/dev databases containing old `EXTERNAL_URL` profile photo rows should be reset or migrated manually; external URL photos are no longer supported.
 
 Acceptance criteria:
-- Android production UI only exposes real file upload.
-- Mock/URL photo actions are hidden or restricted to local/dev builds.
-- Legacy endpoints are documented as transitional.
+- `POST /api/me/profile/photos` accepts multipart `file` and `position`.
+- `PUT /api/me/profile/photos/{photoId}/file` accepts multipart `file`.
+- URL/mock/non-file profile photo creation and replacement are not supported by the backend.
+- Profile activation can be tested end-to-end with uploaded files.
 
 ### 2.4 Matchmaking job configuration clarity
 

@@ -16,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.jdbc.CannotGetJdbcConnectionException
 import org.springframework.security.access.AccessDeniedException
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.multipart.support.MissingServletRequestPartException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.sql.SQLException
 import java.sql.SQLTransientConnectionException
 
@@ -118,6 +120,19 @@ class GlobalExceptionHandler {
                     code = "INVALID_ARGUMENT",
                     error = "Bad Request",
                     message = "Invalid value for ${ex.name}"
+                )
+            )
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException::class)
+    fun handleUnsupportedMediaType(
+        ex: HttpMediaTypeNotSupportedException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+            .body(
+                ErrorResponse(
+                    code = "UNSUPPORTED_MEDIA_TYPE",
+                    error = "Unsupported Media Type",
+                    message = "Content type is not supported for this endpoint"
                 )
             )
 
@@ -276,6 +291,19 @@ class GlobalExceptionHandler {
                     code = "RESOURCE_NOT_FOUND",
                     error = "Not Found",
                     message = ex.message
+                )
+            )
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFound(
+        ex: NoResourceFoundException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    code = "RESOURCE_NOT_FOUND",
+                    error = "Not Found",
+                    message = "Resource not found"
                 )
             )
 
