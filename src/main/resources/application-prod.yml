@@ -116,16 +116,16 @@ firebase:
 
 storage:
   s3:
-    endpoint: ${S3_ENDPOINT}
-    presigned-url-endpoint: ${S3_PRESIGNED_URL_ENDPOINT:}
-    region: ${S3_REGION:sa-east-1}
-    bucket: ${S3_PROFILE_PHOTOS_BUCKET}
-    access-key-id: ${S3_ACCESS_KEY_ID}
-    secret-access-key: ${S3_SECRET_ACCESS_KEY}
-    public-base-url: ${S3_PUBLIC_BASE_URL:}
-    path-style-access-enabled: ${S3_PATH_STYLE_ACCESS_ENABLED:true}
-    signed-url-duration-minutes: ${S3_SIGNED_URL_DURATION_MINUTES:15}
-    read-url-mode: ${S3_READ_URL_MODE:PRESIGNED}
+    endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT}}
+    presigned-url-endpoint: ${STORAGE_S3_PRESIGNED_URL_ENDPOINT:${S3_PRESIGNED_URL_ENDPOINT:}}
+    region: ${STORAGE_S3_REGION:${S3_REGION:auto}}
+    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET}}
+    access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID}}
+    secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY}}
+    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:}}
+    path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
+    signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
+    read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
   profile-photos:
     max-size-bytes: ${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}
     allowed-content-types:

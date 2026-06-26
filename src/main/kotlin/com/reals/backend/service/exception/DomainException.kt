@@ -48,6 +48,7 @@ enum class DomainErrorCode {
     USER_NOT_ACTIVE,
     INVALID_PROFILE_PHOTO,
     PROFILE_PHOTO_NOT_FOUND,
+    PROFILE_PHOTO_UPLOAD_FAILED,
 }
 
 sealed class DomainException(

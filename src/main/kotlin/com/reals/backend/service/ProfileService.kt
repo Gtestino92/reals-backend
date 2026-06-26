@@ -430,6 +430,11 @@ class ProfileService(
 
         val normalizedContentType = contentType!!.lowercase()
         val newObjectPhotoId = UUID.randomUUID()
+        val validation = profilePhotoValidationService.validateUploadedPhoto(
+            contentType = normalizedContentType,
+            bytes = bytes,
+            replacingPhoto = existingPhoto
+        )
 
         var newUploadedKey: String? = null
         val oldStorageKey = existingPhoto.storageKey
@@ -443,12 +448,6 @@ class ProfileService(
             )
 
             newUploadedKey = storedObject.key
-
-            val validation = profilePhotoValidationService.validateUploadedPhoto(
-                contentType = normalizedContentType,
-                bytes = bytes,
-                replacingPhoto = existingPhoto
-            )
 
             existingPhoto.url = storedObject.url
             existingPhoto.storageProvider = PhotoStorageProvider.S3
@@ -502,6 +501,11 @@ class ProfileService(
 
         val normalizedContentType = contentType!!.lowercase()
         val photoId = UUID.randomUUID()
+        val validation = profilePhotoValidationService.validateUploadedPhoto(
+            contentType = normalizedContentType,
+            bytes = bytes,
+            replacingPhoto = null
+        )
 
         var uploadedKey: String? = null
 
@@ -514,12 +518,6 @@ class ProfileService(
             )
 
             uploadedKey = storedObject.key
-
-            val validation = profilePhotoValidationService.validateUploadedPhoto(
-                contentType = normalizedContentType,
-                bytes = bytes,
-                replacingPhoto = null
-            )
 
             val photo = profilePhotoRepository.save(
                 ProfilePhoto(
@@ -749,7 +747,7 @@ class ProfileService(
         sizeBytes: Long
     ) {
         if (contentType.isNullOrBlank()) {
-            throw DomainConflictException(
+            throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Photo content type is required"
             )
@@ -758,21 +756,21 @@ class ProfileService(
         val normalizedContentType = contentType.lowercase()
 
         if (!profilePhotoStorageProperties.allowedContentTypes.contains(normalizedContentType)) {
-            throw DomainConflictException(
+            throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Unsupported photo content type: $contentType"
             )
         }
 
         if (sizeBytes <= 0) {
-            throw DomainConflictException(
+            throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Photo file is empty"
             )
         }
 
         if (sizeBytes > profilePhotoStorageProperties.maxSizeBytes) {
-            throw DomainConflictException(
+            throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Photo exceeds maximum size"
             )

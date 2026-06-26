@@ -87,6 +87,30 @@ class S3StorageServiceTest {
         }
     }
 
+    @Test
+    fun `presigned read url does not require public base url`() {
+        val properties = storageProperties(
+            publicBaseUrl = null,
+            readUrlMode = S3ReadUrlMode.PRESIGNED
+        )
+        val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
+
+        try {
+            val service = S3StorageService(
+                s3Client = Mockito.mock(S3Client::class.java),
+                s3Presigner = presigner,
+                properties = properties
+            )
+
+            val url = service.getReadUrl("users/user-id/profile-photos/photo.png")
+
+            assertTrue(url.startsWith("http://localhost:9000/reals-profile-photos/"))
+            assertTrue(url.contains("X-Amz-Signature="))
+        } finally {
+            presigner.close()
+        }
+    }
+
     private fun storageProperties(
         endpoint: String = "http://localhost:9000",
         presignedUrlEndpoint: String? = "http://localhost:9000",
