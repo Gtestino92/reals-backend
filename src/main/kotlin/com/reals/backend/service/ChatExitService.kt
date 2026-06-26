@@ -14,13 +14,15 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
-import com.reals.backend.validation.PlainText
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
-import java.util.NoSuchElementException
 import java.util.UUID
 
 @Service
@@ -78,8 +80,11 @@ class ChatExitService(
             status = ChatExitRequestStatus.PENDING,
             type = ChatExitRequestType.MUTUAL_CANCEL
         )?.let {
-            check(it.requesterUserId == requesterUserId) {
-                "A mutual cancellation request is already pending for chat $chatId"
+            if (it.requesterUserId != requesterUserId) {
+                throw DomainConflictException(
+                    code = DomainErrorCode.CHAT_EXIT_REQUEST_ALREADY_PENDING,
+                    message = "A chat exit request is already pending"
+                )
             }
             return ChatExitRequestCreationResult(
                 exitRequest = it,
@@ -121,18 +126,11 @@ class ChatExitService(
         validateExitActionAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
-        check(exitRequest.chatId == chatId) {
-            "Exit request $requestId does not belong to chat $chatId"
-        }
-        check(exitRequest.type == ChatExitRequestType.MUTUAL_CANCEL) {
-            "Exit request $requestId is not a mutual cancellation request"
-        }
-        check(exitRequest.status == ChatExitRequestStatus.PENDING) {
-            "Exit request $requestId is not pending"
-        }
-        check(exitRequest.responderUserId == responderUserId) {
-            "Only the requested participant can accept this cancellation"
-        }
+        validateActionableMutualCancellationRequest(
+            exitRequest = exitRequest,
+            chatId = chatId,
+            responderUserId = responderUserId
+        )
 
         exitRequest.status = ChatExitRequestStatus.ACCEPTED
         exitRequest.resolvedAt = OffsetDateTime.now()
@@ -158,18 +156,11 @@ class ChatExitService(
         validateExitActionAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
-        check(exitRequest.chatId == chatId) {
-            "Exit request $requestId does not belong to chat $chatId"
-        }
-        check(exitRequest.type == ChatExitRequestType.MUTUAL_CANCEL) {
-            "Exit request $requestId is not a mutual cancellation request"
-        }
-        check(exitRequest.status == ChatExitRequestStatus.PENDING) {
-            "Exit request $requestId is not pending"
-        }
-        check(exitRequest.responderUserId == responderUserId) {
-            "Only the requested participant can reject this cancellation"
-        }
+        validateActionableMutualCancellationRequest(
+            exitRequest = exitRequest,
+            chatId = chatId,
+            responderUserId = responderUserId
+        )
 
         exitRequest.status = ChatExitRequestStatus.REJECTED
         exitRequest.resolvedAt = OffsetDateTime.now()
@@ -195,21 +186,19 @@ class ChatExitService(
         validateExitActionAllowed(chat, userId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
-        check(exitRequest.chatId == chatId) {
-            "Exit request $requestId does not belong to chat $chatId"
-        }
-        check(exitRequest.type == ChatExitRequestType.MUTUAL_CANCEL) {
-            "Exit request $requestId is not a mutual cancellation request"
-        }
-        check(exitRequest.status == ChatExitRequestStatus.PENDING) {
-            "Exit request $requestId is not pending"
+        if (
+            exitRequest.chatId != chatId ||
+            exitRequest.type != ChatExitRequestType.MUTUAL_CANCEL ||
+            exitRequest.status != ChatExitRequestStatus.PENDING
+        ) {
+            throw exitRequestNotAvailable()
         }
 
         val now = OffsetDateTime.now()
         val timeoutAt = exitRequest.createdAt.plusSeconds(mutualCancellationTimeoutSeconds)
 
-        check(!now.isBefore(timeoutAt)) {
-            "Mutual cancellation request $requestId has not timed out"
+        if (now.isBefore(timeoutAt)) {
+            throw exitRequestNotAvailable()
         }
 
         exitRequest.status = ChatExitRequestStatus.TIMED_OUT
@@ -281,8 +270,8 @@ class ChatExitService(
         val reportedUserId = resolvePartnerUserId(chat, reporterUserId)
         val normalizedDetails = normalizeDetails(details)
 
-        require(!normalizedDetails.isNullOrBlank()) {
-            "Safety cancellation details are required"
+        if (normalizedDetails.isNullOrBlank()) {
+            throw invalidChatMessage()
         }
 
         val exitRequest = chatExitRequestRepository.save(
@@ -319,15 +308,36 @@ class ChatExitService(
     private fun findChatOrThrow(chatId: UUID): Chat {
         return chatRepository.findById(chatId)
             .orElseThrow {
-                NoSuchElementException("Chat not found: $chatId")
+                DomainNotFoundException(
+                    code = DomainErrorCode.CHAT_NOT_FOUND,
+                    message = "Chat was not found"
+                )
             }
     }
 
     private fun findExitRequestOrThrow(requestId: UUID): ChatExitRequest =
         chatExitRequestRepository.findById(requestId)
             .orElseThrow {
-                NoSuchElementException("Chat exit request not found: $requestId")
+                DomainNotFoundException(
+                    code = DomainErrorCode.CHAT_EXIT_REQUEST_NOT_FOUND,
+                    message = "Chat exit request was not found"
+                )
             }
+
+    private fun validateActionableMutualCancellationRequest(
+        exitRequest: ChatExitRequest,
+        chatId: UUID,
+        responderUserId: UUID
+    ) {
+        if (
+            exitRequest.chatId != chatId ||
+            exitRequest.type != ChatExitRequestType.MUTUAL_CANCEL ||
+            exitRequest.status != ChatExitRequestStatus.PENDING ||
+            exitRequest.responderUserId != responderUserId
+        ) {
+            throw exitRequestNotAvailable()
+        }
+    }
 
     private fun resolvePartnerUserId(
         chat: Chat,
@@ -346,9 +356,7 @@ class ChatExitService(
             }
 
             ChatType.SECOND_CHAT -> {
-                val connectionId = checkNotNull(chat.connectionId) {
-                    "SECOND_CHAT ${chat.id} has no connectionId"
-                }
+                val connectionId = chat.connectionId ?: throw chatNotAvailable()
                 val connection = connectionService.findByIdOrThrow(connectionId)
                 when (userId) {
                     connection.userAId -> connection.userBId
@@ -390,21 +398,23 @@ class ChatExitService(
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> matchService.rejectChatPhase(chat.matchId)
             ChatType.SECOND_CHAT -> {
-                val connectionId = checkNotNull(chat.connectionId) {
-                    "SECOND_CHAT has no connectionId"
-                }
+                val connectionId = chat.connectionId ?: throw chatNotAvailable()
                 connectionService.closeConnection(connectionId)
             }
         }
     }
 
     private fun validateActiveChatWindow(chat: Chat) {
-        check(chat.status == ChatStatus.ACTIVE) {
-            "Chat ${chat.id} is not active (status: ${chat.status})"
+        if (chat.status == ChatStatus.EXPIRED || chat.status == ChatStatus.ABANDONED) {
+            throw chatExpired()
         }
 
-        check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
-            "Chat ${chat.id} has timed out"
+        if (chat.status != ChatStatus.ACTIVE) {
+            throw chatNotAvailable()
+        }
+
+        if (!OffsetDateTime.now().isBefore(chat.timeoutAt)) {
+            throw chatExpired()
         }
     }
 
@@ -424,8 +434,8 @@ class ChatExitService(
     ) {
         val match = matchService.findByIdOrThrow(chat.matchId)
 
-        check(match.state == MatchState.CHAT_ACTIVE) {
-            "Cannot act on chat ${chat.id}: match ${match.id} is not in CHAT_ACTIVE"
+        if (match.state != MatchState.CHAT_ACTIVE) {
+            throw chatNotAvailable()
         }
 
         if (actingUserId != match.userAId && actingUserId != match.userBId) {
@@ -438,8 +448,8 @@ class ChatExitService(
                 chatType = ChatType.FIRST_CHAT
             )
 
-        check(firstChat?.id == chat.id) {
-            "Cannot act on chat ${chat.id}: it is not the FIRST_CHAT for match ${match.id}"
+        if (firstChat?.id != chat.id) {
+            throw chatNotAvailable()
         }
     }
 
@@ -447,22 +457,20 @@ class ChatExitService(
         chat: Chat,
         actingUserId: UUID
     ) {
-        val connectionId = checkNotNull(chat.connectionId) {
-            "SECOND_CHAT ${chat.id} has no connectionId"
-        }
+        val connectionId = chat.connectionId ?: throw chatNotAvailable()
         val connection = connectionService.findByIdOrThrow(connectionId)
 
         if (actingUserId != connection.userAId && actingUserId != connection.userBId) {
             throw AccessDeniedException("User $actingUserId does not belong to connection $connectionId")
         }
 
-        check(
-            connection.state in setOf(
+        if (
+            connection.state !in setOf(
                 ConnectionState.SECOND_CHAT_AVAILABLE,
                 ConnectionState.SECOND_CHAT
             )
         ) {
-            "Cannot act on chat ${chat.id}: connection $connectionId is not in second-chat phase"
+            throw chatNotAvailable()
         }
 
         val secondChat =
@@ -471,8 +479,8 @@ class ChatExitService(
                 chatType = ChatType.SECOND_CHAT
             )
 
-        check(secondChat?.id == chat.id) {
-            "Cannot act on chat ${chat.id}: it is not the SECOND_CHAT for connection $connectionId"
+        if (secondChat?.id != chat.id) {
+            throw chatNotAvailable()
         }
     }
 
@@ -480,13 +488,39 @@ class ChatExitService(
         val normalized = details?.trim()?.takeIf { it.isNotBlank() }
 
         if (normalized != null) {
-            require(normalized.length <= DETAILS_MAX_LENGTH) {
-                "Details must be at most $DETAILS_MAX_LENGTH characters"
+            if (normalized.length > DETAILS_MAX_LENGTH) {
+                throw invalidChatMessage()
             }
 
-            PlainText.requireValid("Details", normalized)
+            if (normalized.any { it.isISOControl() || it == '<' || it == '>' }) {
+                throw invalidChatMessage()
+            }
         }
 
         return normalized
     }
+
+    private fun chatNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_NOT_AVAILABLE,
+            message = "Chat is not available"
+        )
+
+    private fun chatExpired(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_EXPIRED,
+            message = "Chat has expired"
+        )
+
+    private fun exitRequestNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE,
+            message = "Chat exit request is not available"
+        )
+
+    private fun invalidChatMessage(): DomainBadRequestException =
+        DomainBadRequestException(
+            code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+            message = "Chat message is invalid"
+        )
 }
