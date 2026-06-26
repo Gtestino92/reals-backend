@@ -6,6 +6,8 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -117,6 +119,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
+            .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(false)))
+            .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
     }
 
     @Test
@@ -137,6 +142,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
+            .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(false)))
+            .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
     }
 
     @Test
@@ -157,6 +165,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
+            .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
+            .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
 
         mockMvc.perform(
             put("/api/matches/${setup.matchId}/personal-messages/me")
@@ -172,6 +183,199 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
+            .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
+            .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+    }
+
+    @Test
+    fun `visual profile partner personal message metadata does not mark message as read`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
+            .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNull(review.personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `partner personal message endpoint marks message as read`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/personal-messages/partner")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message", equalTo("Mensaje de B")))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNotNull(review.personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `visual decision approval before reading partner message returns stable conflict code`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
+            .andExpect(
+                jsonPath(
+                    "$.message",
+                    equalTo("Read the partner personal message before making a visual decision.")
+                )
+            )
+    }
+
+    @Test
+    fun `visual decision rejection before reading partner message returns stable conflict code`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"REJECTED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
+            .andExpect(
+                jsonPath(
+                    "$.message",
+                    equalTo("Read the partner personal message before making a visual decision.")
+                )
+            )
+    }
+
+    @Test
+    fun `visual decision approval succeeds after reading partner message`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/personal-messages/partner")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+    }
+
+    @Test
+    fun `visual decision rejection succeeds after reading partner message`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content("""{"message":"Mensaje de B"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/personal-messages/partner")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"REJECTED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+    }
+
+    @Test
+    fun `visual decision approval succeeds when partner message does not exist`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+    }
+
+    @Test
+    fun `visual decision rejection succeeds when partner message does not exist`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"REJECTED"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
     }
 
     @Test

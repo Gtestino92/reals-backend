@@ -215,13 +215,19 @@ data class VisualProfileResponse(
     val age: Int,
     val bio: String?,
     val photos: List<PhotoResponse>,
-    val myPersonalMessageSubmitted: Boolean
+    val myPersonalMessageSubmitted: Boolean,
+    val partnerPersonalMessageSubmitted: Boolean,
+    val partnerPersonalMessageRead: Boolean,
+    val decisionRequiresPartnerPersonalMessageRead: Boolean
 ) {
     companion object {
         fun from(
             profile: Profile,
             photos: List<ProfilePhoto>,
-            myPersonalMessageSubmitted: Boolean
+            myPersonalMessageSubmitted: Boolean,
+            partnerPersonalMessageSubmitted: Boolean,
+            partnerPersonalMessageRead: Boolean,
+            decisionRequiresPartnerPersonalMessageRead: Boolean
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
@@ -230,7 +236,10 @@ data class VisualProfileResponse(
             photos = photos
                 .sortedBy { it.position }
                 .map { PhotoResponse.from(it) },
-            myPersonalMessageSubmitted = myPersonalMessageSubmitted
+            myPersonalMessageSubmitted = myPersonalMessageSubmitted,
+            partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
+            partnerPersonalMessageRead = partnerPersonalMessageRead,
+            decisionRequiresPartnerPersonalMessageRead = decisionRequiresPartnerPersonalMessageRead
         )
     }
 }
