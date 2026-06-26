@@ -26,58 +26,8 @@ Acceptance criteria:
 - Users can continue chatting without being blocked by the question mechanic.
 - The decision is documented so future chats do not fork behavior across app versions.
 
-### 1.2 Visual-review personal message visibility
-
-Status: closed for backend MVP contract.
-
-MVP rule:
-- A user may submit one optional personal message during visual review.
-- The partner message can be fetched during visual review through `GET /api/matches/{matchId}/personal-messages/partner`.
-- Fetching the partner message marks it as read when a partner message exists.
-- If the partner submitted a personal message, the authenticated user must fetch/read it before either approving or rejecting.
-- `GET /api/matches/{matchId}/visual-profile` exposes `partnerPersonalMessageSubmitted`, `partnerPersonalMessageRead`, and `decisionRequiresPartnerPersonalMessageRead` so Android can disable or explain visual decisions deterministically.
-- Any visual decision before reading an existing partner message returns HTTP 409 with code `VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ`.
-
-Remaining frontend requirement:
-- Android should use the metadata to explain why approval is disabled or blocked.
-
-### 1.3 Geolocation entry point
-
-Decision pending:
-- Final UX point where geolocation enters the user flow.
-
-MVP recommendation:
-- Use current search location when entering matchmaking/search.
-- Keep profile `city`/`country` as user-facing profile fields.
-- Do not require canonical city/country validation before MVP.
-- Keep `accuracyMeters` captured and validated, but do not make imprecise accuracy a blocker unless a clear product rule is added.
-
-Acceptance criteria:
-- User can enter matchmaking with a valid location.
-- Backend receives latitude, longitude and accuracy where required.
-- Manual/dev location fallback is not exposed in production UI.
-
----
 
 ## 2. Backend MVP cleanup
-
-### 2.1 Stable frontend-facing error codes
-
-Continue converting high-frequency generic failures into stable domain error codes where they affect Android flow.
-
-Prioritize:
-- profile activation failures;
-- photo upload failures;
-- active penalty / blocked matchmaking;
-- active match limit;
-- active connection limit;
-- unavailable/expired chat;
-- scheduling invalid states;
-- account deletion/reactivation states.
-
-Acceptance criteria:
-- Android can map expected failures to user-facing copy.
-- Avoid exposing raw `IllegalArgumentException`, `IllegalStateException` or internal exception messages where the frontend needs deterministic behavior.
 
 ### 2.2 Profile photo validation MVP shortcut
 

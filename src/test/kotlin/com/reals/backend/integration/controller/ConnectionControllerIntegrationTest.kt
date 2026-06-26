@@ -299,7 +299,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `proposal validation conflict is returned as error json`() {
+    fun `proposal validation bad request is returned with stable error code`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
         val body = mapOf(
@@ -317,9 +317,9 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content(jsonBody(body))
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.error", equalTo("Conflict")))
-            .andExpect(jsonPath("$.message", equalTo("Proposal list must contain between 1 and 3 date/times")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_INVALID_PROPOSALS")))
+            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
     }
 
     private fun createReadOnlySecondChat() =
