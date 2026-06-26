@@ -19,16 +19,16 @@ import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
-import com.reals.backend.validation.PlainText
+import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
-import java.util.NoSuchElementException
 import java.util.UUID
 
 @Service
@@ -71,7 +71,7 @@ class ChatService(
     fun findByIdOrThrow(chatId: UUID): Chat {
         return chatRepository.findById(chatId)
             .orElseThrow {
-                NoSuchElementException("Chat not found: $chatId")
+                chatNotFound()
             }
     }
 
@@ -160,20 +160,26 @@ class ChatService(
     ) {
         val match = matchService.findByIdOrThrow(matchId)
 
-        check(match.state == MatchState.CHAT_ACTIVE) {
-            "Match $matchId is not in CHAT_ACTIVE state (current: ${match.state})"
+        if (match.state != MatchState.CHAT_ACTIVE) {
+            throw chatDecisionNotAvailable()
         }
 
-        val chat = findActiveFirstChatOrThrow(matchId)
+        val chat = findActiveFirstChatOrThrow(
+            matchId = matchId,
+            unavailableCode = DomainErrorCode.CHAT_DECISION_NOT_AVAILABLE
+        )
 
-        check(
+        if (
             chatExitRequestRepository.findByChatIdAndStatusAndType(
                 chatId = chat.id,
                 status = ChatExitRequestStatus.PENDING,
                 type = ChatExitRequestType.MUTUAL_CANCEL
-            ) == null
+            ) != null
         ) {
-            "Cannot submit chat decision while a mutual cancellation request is pending"
+            throw DomainConflictException(
+                code = DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING,
+                message = "A mutual cancellation request is pending"
+            )
         }
 
         if (decision == ChatContinueDecision.REJECTED) {
@@ -201,22 +207,25 @@ class ChatService(
                     senderId = userId
                 )
 
-            check(sent >= minMessagesPerUser) {
-                "Cannot approve: user has sent $sent message(s), minimum required is $minMessagesPerUser"
+            if (sent < minMessagesPerUser) {
+                throw DomainConflictException(
+                    code = DomainErrorCode.CHAT_MIN_MESSAGES_REQUIRED,
+                    message = "Minimum chat messages are required before approval"
+                )
             }
         }
 
         when (userId) {
             match.userAId -> {
-                check(chatDecision.userADecision == null) {
-                    "User A already submitted a chat decision for match $matchId"
+                if (chatDecision.userADecision != null) {
+                    throw chatDecisionAlreadySubmitted()
                 }
                 chatDecision.userADecision = decision
             }
 
             match.userBId -> {
-                check(chatDecision.userBDecision == null) {
-                    "User B already submitted a chat decision for match $matchId"
+                if (chatDecision.userBDecision != null) {
+                    throw chatDecisionAlreadySubmitted()
                 }
                 chatDecision.userBDecision = decision
             }
@@ -299,11 +308,11 @@ class ChatService(
         val afterMessage =
             chatMessageRepository.findById(afterMessageId)
                 .orElseThrow {
-                    NoSuchElementException("Chat message not found: $afterMessageId")
+                    chatNotAvailable()
                 }
 
-        check(afterMessage.chatSessionId == chatId) {
-            "Message $afterMessageId does not belong to chat $chatId"
+        if (afterMessage.chatSessionId != chatId) {
+            throw chatNotAvailable()
         }
 
         return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
@@ -465,12 +474,25 @@ class ChatService(
     }
 
     fun findActiveFirstChatOrThrow(matchId: UUID): Chat {
+        return findActiveFirstChatOrThrow(
+            matchId = matchId,
+            unavailableCode = DomainErrorCode.CHAT_NOT_AVAILABLE
+        )
+    }
+
+    private fun findActiveFirstChatOrThrow(
+        matchId: UUID,
+        unavailableCode: DomainErrorCode
+    ): Chat {
         val chat =
             chatRepository.findByMatchIdAndChatType(matchId, ChatType.FIRST_CHAT)
-                ?: throw NoSuchElementException("No FIRST_CHAT found for match: $matchId")
+                ?: throw chatNotFound()
 
-        check(chat.status == ChatStatus.ACTIVE) {
-            "Chat for match $matchId is not active (status: ${chat.status})"
+        if (chat.status != ChatStatus.ACTIVE) {
+            throw DomainConflictException(
+                code = unavailableCode,
+                message = "Chat is not available"
+            )
         }
 
         return chat
@@ -577,13 +599,11 @@ class ChatService(
             return chat
         }
 
-        check(chat.chatType == ChatType.SECOND_CHAT) {
-            "Only SECOND_CHAT can be activated from AVAILABLE"
+        if (chat.chatType != ChatType.SECOND_CHAT) {
+            throw chatNotAvailable()
         }
 
-        val connectionId = checkNotNull(chat.connectionId) {
-            "SECOND_CHAT has no connectionId"
-        }
+        val connectionId = chat.connectionId ?: throw chatNotAvailable()
         val connection = connectionService.findByIdOrThrow(connectionId)
 
         if (userId != connection.userAId && userId != connection.userBId) {
@@ -662,18 +682,22 @@ class ChatService(
         )
 
     private fun validateActiveChatWindow(chat: Chat) {
-        check(chat.status == ChatStatus.ACTIVE) {
-            "Chat ${chat.id} is not active (status: ${chat.status})"
+        if (chat.status == ChatStatus.EXPIRED || chat.status == ChatStatus.ABANDONED) {
+            throw chatExpired()
         }
 
-        check(OffsetDateTime.now().isBefore(chat.timeoutAt)) {
-            "Chat ${chat.id} has timed out"
+        if (chat.status != ChatStatus.ACTIVE) {
+            throw chatNotAvailable()
+        }
+
+        if (!OffsetDateTime.now().isBefore(chat.timeoutAt)) {
+            throw chatExpired()
         }
     }
 
     private fun validateChatReadable(chat: Chat) {
-        check(chat.status != ChatStatus.CLOSED) {
-            "Chat ${chat.id} is no longer available"
+        if (chat.status == ChatStatus.CLOSED) {
+            throw chatNotAvailable()
         }
     }
 
@@ -691,18 +715,56 @@ class ChatService(
     private fun normalizeMessageContent(content: String): String {
         val normalized = content.trim()
 
-        require(normalized.isNotBlank()) {
-            "Message content is required"
+        if (normalized.isBlank()) {
+            throw invalidChatMessage()
         }
 
-        require(normalized.length <= MESSAGE_MAX_LENGTH) {
-            "Message content must be at most $MESSAGE_MAX_LENGTH characters"
+        if (normalized.length > MESSAGE_MAX_LENGTH) {
+            throw invalidChatMessage()
         }
 
-        PlainText.requireValid("Message content", normalized)
+        if (normalized.any { it.isISOControl() || it == '<' || it == '>' }) {
+            throw invalidChatMessage()
+        }
 
         return normalized
     }
+
+    private fun chatNotFound(): DomainNotFoundException =
+        DomainNotFoundException(
+            code = DomainErrorCode.CHAT_NOT_FOUND,
+            message = "Chat was not found"
+        )
+
+    private fun chatNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_NOT_AVAILABLE,
+            message = "Chat is not available"
+        )
+
+    private fun chatExpired(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_EXPIRED,
+            message = "Chat has expired"
+        )
+
+    private fun invalidChatMessage(): DomainBadRequestException =
+        DomainBadRequestException(
+            code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+            message = "Chat message is invalid"
+        )
+
+    private fun chatDecisionNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_DECISION_NOT_AVAILABLE,
+            message = "Chat decision is not available"
+        )
+
+    private fun chatDecisionAlreadySubmitted(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_DECISION_ALREADY_SUBMITTED,
+            message = "Chat decision was already submitted"
+        )
 
     private fun resolveParticipantDecisionStatus(
         chat: Chat,

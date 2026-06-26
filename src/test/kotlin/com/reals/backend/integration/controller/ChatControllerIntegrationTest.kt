@@ -121,7 +121,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_NOT_AVAILABLE")))
     }
 
     @Test
@@ -161,7 +161,23 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .content("""{"content":"   "}""")
         )
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_MESSAGE_INVALID")))
             .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+    }
+
+    @Test
+    fun `too long chat message returns stable bad request code`() {
+        val setup = createMatchWithFirstChat()
+        val body = mapOf("content" to "x".repeat(1001))
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_MESSAGE_INVALID")))
     }
 
     @Test
@@ -175,7 +191,39 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .content("""{"content":"<img src=x onerror=alert(1)>"}""")
         )
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_MESSAGE_INVALID")))
+    }
+
+    @Test
+    fun `missing chat returns stable not found code`() {
+        val missingChatId = UUID.randomUUID()
+
+        mockMvc.perform(
+            post("/api/chats/$missingChatId/messages")
+                .with(authenticatedAs(UUID.randomUUID()))
+                .contentType(jsonContentType)
+                .content("""{"content":"Hola"}""")
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_NOT_FOUND")))
+    }
+
+    @Test
+    fun `send message after chat timeout returns stable expired code`() {
+        val setup = createMatchWithFirstChat()
+        chatRepository.updateTimeoutAt(
+            chatId = setup.firstChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Tarde"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_EXPIRED")))
     }
 
     @Test
@@ -281,7 +329,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .content("""{"reason":"OTHER","details":"Partner request"}""")
         )
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_EXIT_REQUEST_ALREADY_PENDING")))
 
         assertEquals(1, pendingMutualRequests(setup.firstChatId).size)
     }
@@ -340,7 +388,19 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userBId))
         )
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_EXIT_REQUEST_NOT_AVAILABLE")))
+    }
+
+    @Test
+    fun `missing exit request returns stable not found code`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/exit-requests/${UUID.randomUUID()}/acceptance")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_EXIT_REQUEST_NOT_FOUND")))
     }
 
     @Test
@@ -374,7 +434,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 .content("""{"reason":"NO_LONGER_INTERESTED","details":"<b>cancel</b>"}""")
         )
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_MESSAGE_INVALID")))
     }
 
     private fun pendingMutualRequests(chatId: UUID) =

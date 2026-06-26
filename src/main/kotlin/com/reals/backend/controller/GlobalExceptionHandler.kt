@@ -2,6 +2,7 @@ package com.reals.backend.controller
 
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.validation.ConstraintViolationException
@@ -40,17 +41,20 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValid(
         ex: MethodArgumentNotValidException
-    ): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
+    ): ResponseEntity<ErrorResponse> {
+        val code = ex.chatValidationErrorCode() ?: "VALIDATION_ERROR"
+
+        return ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
-                    code = "VALIDATION_ERROR",
+                    code = code,
                     error = "Bad Request",
                     message = ex.bindingResult.fieldErrors
                         .joinToString("; ") { it.toValidationMessage() }
                         .ifBlank { "Request validation failed" }
                 )
             )
+    }
 
     @ExceptionHandler(HandlerMethodValidationException::class)
     fun handleHandlerMethodValidation(
@@ -263,6 +267,25 @@ class GlobalExceptionHandler {
 
     private fun FieldError.toValidationMessage(): String =
         "$field: ${defaultMessage ?: "invalid value"}"
+
+    private fun MethodArgumentNotValidException.chatValidationErrorCode(): String? {
+        val chatMessageRequestObjects =
+            setOf(
+                "sendMessageRequest",
+                "chatExitRequestCreateRequest",
+                "chatCancellationRequest",
+                "chatSafetyCancellationRequest"
+            )
+
+        return if (
+            bindingResult.objectName in chatMessageRequestObjects &&
+            bindingResult.fieldErrors.any { it.field == "content" || it.field == "details" }
+        ) {
+            DomainErrorCode.CHAT_MESSAGE_INVALID.name
+        } else {
+            null
+        }
+    }
 
     private fun Throwable.isDatabaseUnavailable(): Boolean {
         var current: Throwable? = this

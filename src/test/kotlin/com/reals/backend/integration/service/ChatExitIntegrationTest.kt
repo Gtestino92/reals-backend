@@ -11,6 +11,10 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -158,13 +162,14 @@ class ChatExitIntegrationTest : BaseIT() {
                 requesterUserId = setup.userAId
             )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             chatExitService.timeoutMutualCancellation(
                 chatId = setup.firstChatId,
                 requestId = exitRequest.id,
                 userId = setup.userBId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, exception.code)
 
         assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.firstChatId).status)
         assertEquals(
@@ -181,13 +186,14 @@ class ChatExitIntegrationTest : BaseIT() {
                 setup = acceptedSetup,
                 status = ChatExitRequestStatus.ACCEPTED
             )
-        assertThrows<IllegalStateException> {
+        val acceptException = assertThrows<DomainConflictException> {
             chatExitService.acceptMutualCancellation(
                 chatId = acceptedSetup.firstChatId,
                 requestId = acceptedRequest.id,
                 responderUserId = acceptedSetup.userBId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, acceptException.code)
 
         val rejectedSetup = createMatchWithFirstChat("rejected-exit")
         val rejectedRequest =
@@ -195,13 +201,14 @@ class ChatExitIntegrationTest : BaseIT() {
                 setup = rejectedSetup,
                 status = ChatExitRequestStatus.REJECTED
             )
-        assertThrows<IllegalStateException> {
+        val rejectException = assertThrows<DomainConflictException> {
             chatExitService.rejectMutualCancellation(
                 chatId = rejectedSetup.firstChatId,
                 requestId = rejectedRequest.id,
                 responderUserId = rejectedSetup.userBId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, rejectException.code)
 
         val timedOutSetup = createMatchWithFirstChat("timed-out-exit")
         val timedOutRequest =
@@ -209,13 +216,28 @@ class ChatExitIntegrationTest : BaseIT() {
                 setup = timedOutSetup,
                 status = ChatExitRequestStatus.TIMED_OUT
             )
-        assertThrows<IllegalStateException> {
+        val timeoutException = assertThrows<DomainConflictException> {
             chatExitService.timeoutMutualCancellation(
                 chatId = timedOutSetup.firstChatId,
                 requestId = timedOutRequest.id,
                 userId = timedOutSetup.userBId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, timeoutException.code)
+    }
+
+    @Test
+    fun `missing exit request returns stable not found code`() {
+        val setup = createMatchWithFirstChat()
+
+        val exception = assertThrows<DomainNotFoundException> {
+            chatExitService.acceptMutualCancellation(
+                chatId = setup.firstChatId,
+                requestId = UUID.randomUUID(),
+                responderUserId = setup.userBId
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_FOUND, exception.code)
     }
 
     @Test
@@ -227,13 +249,14 @@ class ChatExitIntegrationTest : BaseIT() {
                 requesterUserId = acceptSetup.userAId
             )
 
-        assertThrows<IllegalStateException> {
+        val acceptException = assertThrows<DomainConflictException> {
             chatExitService.acceptMutualCancellation(
                 chatId = acceptSetup.firstChatId,
                 requestId = acceptRequest.id,
                 responderUserId = acceptSetup.userAId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, acceptException.code)
 
         val rejectSetup = createMatchWithFirstChat("own-reject")
         val rejectRequest =
@@ -242,13 +265,14 @@ class ChatExitIntegrationTest : BaseIT() {
                 requesterUserId = rejectSetup.userAId
             )
 
-        assertThrows<IllegalStateException> {
+        val rejectException = assertThrows<DomainConflictException> {
             chatExitService.rejectMutualCancellation(
                 chatId = rejectSetup.firstChatId,
                 requestId = rejectRequest.id,
                 responderUserId = rejectSetup.userAId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_EXIT_REQUEST_NOT_AVAILABLE, rejectException.code)
     }
 
     @Test
@@ -364,21 +388,23 @@ class ChatExitIntegrationTest : BaseIT() {
     fun `safety cancellation requires details`() {
         val setup = createMatchWithFirstChat()
 
-        assertThrows<IllegalArgumentException> {
+        val nullDetailsException = assertThrows<DomainBadRequestException> {
             chatExitService.cancelChatForSafety(
                 chatId = setup.firstChatId,
                 reporterUserId = setup.userAId,
                 details = null
             )
         }
+        assertEquals(DomainErrorCode.CHAT_MESSAGE_INVALID, nullDetailsException.code)
 
-        assertThrows<IllegalArgumentException> {
+        val blankDetailsException = assertThrows<DomainBadRequestException> {
             chatExitService.cancelChatForSafety(
                 chatId = setup.firstChatId,
                 reporterUserId = setup.userAId,
                 details = "   "
             )
         }
+        assertEquals(DomainErrorCode.CHAT_MESSAGE_INVALID, blankDetailsException.code)
 
         assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.firstChatId).status)
     }
@@ -460,12 +486,13 @@ class ChatExitIntegrationTest : BaseIT() {
         connection.state = ConnectionState.SECOND_CHAT_SCHEDULED
         connectionRepository.save(connection)
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             chatExitService.requestMutualCancellation(
                 chatId = setup.secondChatId,
                 requesterUserId = setup.userAId
             )
         }
+        assertEquals(DomainErrorCode.CHAT_NOT_AVAILABLE, exception.code)
     }
 
     @Test

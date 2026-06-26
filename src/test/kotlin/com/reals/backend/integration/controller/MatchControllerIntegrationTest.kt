@@ -3,7 +3,6 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.MatchState
 import com.reals.backend.integration.ControllerIT
-import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -79,7 +78,23 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.error", equalTo("Conflict")))
-            .andExpect(jsonPath("$.message", containsString("already submitted")))
+            .andExpect(jsonPath("$.code", equalTo("CHAT_DECISION_ALREADY_SUBMITTED")))
+    }
+
+    @Test
+    fun `chat decision after first chat is no longer actionable returns stable code`() {
+        val setup = createMatchWithFirstChat()
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_DECISION_NOT_AVAILABLE")))
     }
 
     @Test
