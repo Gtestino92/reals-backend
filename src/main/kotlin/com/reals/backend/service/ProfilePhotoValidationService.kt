@@ -37,17 +37,6 @@ class ProfilePhotoValidationService(
         )
     }
 
-    fun validateExternalUrl(
-        url: String,
-        replacingPhoto: ProfilePhoto? = null
-    ): ProfilePhotoValidationResult {
-        return ProfilePhotoValidationResult(
-            isPersonPhoto = true,
-            isFullBody = false,
-            status = PhotoValidationStatus.VALIDATED
-        )
-    }
-
     private fun validateImageDecodesAndDimensions(
         contentType: String,
         bytes: ByteArray

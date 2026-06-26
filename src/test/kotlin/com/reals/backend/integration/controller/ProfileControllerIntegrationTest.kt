@@ -102,7 +102,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `profile action without profile returns stable error code`() {
+    fun `json photo creation endpoint is not supported`() {
         val user = userService.createUser("missing-profile-action-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
@@ -111,8 +111,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg","position":1}""")
         )
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.code", equalTo("PROFILE_NOT_FOUND")))
+            .andExpect(status().isUnsupportedMediaType)
     }
 
     @Test
@@ -280,17 +279,16 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `invalid photo position returns bad request before service lookup`() {
+    fun `json photo replacement by position endpoint is not found`() {
         val user = userService.createUser("photo-position-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
-            put("/api/me/profile/photos/position/0")
+            put("/api/me/profile/photos/position/1")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg"}""")
         )
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+            .andExpect(status().isNotFound)
     }
 
     @Test
