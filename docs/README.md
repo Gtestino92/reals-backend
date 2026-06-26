@@ -11,6 +11,7 @@ This directory is the canonical documentation set for the project.
 - `local-development.md`: local profile, H2, auth and run notes.
 - `dev-deployment.md`: first dev deployment shape, GHCR image, PostgreSQL and Firebase runtime variables.
 - `configuration.md`: profile and environment variable reference.
+- `storage-r2-configuration.md`: Cloudflare R2 setup for shared/dev/prod-like profile photo storage.
 - `testing.md`: automated test strategy and commands.
 - `api.md`: current HTTP endpoints exposed by controllers.
 - `openapi.yaml`: formal OpenAPI contract for API clients and tooling.

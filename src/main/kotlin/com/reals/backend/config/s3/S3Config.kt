@@ -38,7 +38,9 @@ data class ProfilePhotoStorageProperties(
         "image/jpeg",
         "image/png",
         "image/webp"
-    )
+    ),
+    val maxWidthPixels: Int = 10_000,
+    val maxHeightPixels: Int = 10_000
 )
 
 @Configuration
