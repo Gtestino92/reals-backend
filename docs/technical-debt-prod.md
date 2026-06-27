@@ -594,3 +594,54 @@ Future cleanup:
 - Some controller comments mention old or tentative behavior.
 - Prefer service implementation and these docs as current source of truth.
 - Remove or update comments once behavior stabilizes.
+
+
+## clean up pre-mvp
+
+
+### 1.1 First-chat guided questions
+
+Decision pending:
+- Whether first-chat guided questions/conversation starters are required for MVP.
+- Whether the question set belongs fully to the frontend, fully to the backend, or backend-provided with frontend rendering.
+
+MVP recommendation:
+- Keep the first implementation simple.
+- Prefer backend-owned predefined question IDs/texts if questions affect product analytics or future experimentation.
+- Prefer frontend-owned static copy only if the set is temporary and not important for backend decisions.
+
+Acceptance criteria:
+- First chat can start with a predictable prompt or question.
+- Users can continue chatting without being blocked by the question mechanic.
+- The decision is documented so future chats do not fork behavior across app versions.
+
+
+## 2. Backend MVP cleanup
+
+### 2.2.1 Future profile photo ordering endpoint
+
+MVP decision:
+- Multipart profile photo upload remains slot-based and requires `position`.
+- Do not implement drag-and-drop reordering as part of the MVP validation shortcut.
+
+Future cleanup:
+- Add a dedicated reorder endpoint, for example `PUT /api/me/profile/photos/order`, when the product needs real drag-and-drop ordering.
+- The endpoint should accept ordered `photoIds`, validate that every photo belongs to the current user's profile, reject duplicate or missing photos, and reassign positions atomically.
+
+Acceptance criteria:
+- Upload and replace-file flows remain unchanged for Android.
+- Reordering is handled by the dedicated endpoint rather than overloading upload semantics.
+
+### 2.2.2 Post-MVP media pipeline options
+
+MVP decision:
+- Keep profile photo uploads backend-mediated.
+- Keep original images only; no generated thumbnails or previews.
+
+Post-MVP options:
+- Consider direct-to-storage upload using presigned write URLs if backend bandwidth becomes a concern.
+- Add generated thumbnails/previews when profile photo load performance needs it.
+
+Acceptance criteria:
+- These options remain separate from the MVP R2 setup.
+- Endpoint contracts stay stable until Android and backend agree on a new media flow.

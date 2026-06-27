@@ -16,27 +16,48 @@ class AccountDeletionFinalizationJob(
     @Scheduled(fixedDelayString = "\${scheduler.account-deletion-finalization-job.fixed-delay}")
     @SchedulerLock(name = "AccountDeletionFinalizationJob", lockAtLeastFor = "PT1M", lockAtMostFor = "PT10M")
     fun run() {
+        finalizeAccountDeletions()
+    }
+
+    internal fun finalizeAccountDeletions(): JobRunSummary {
         val startedAt = System.nanoTime()
-        var finalized = 0
+        val candidates = userService.findRecoverableAccountDeletionCandidates()
+
+        var succeeded = 0
+        var skipped = 0
         var failed = 0
 
-        try {
-            finalized = userService.finalizeRecoverableAccountDeletions()
-        } catch (ex: Exception) {
-            failed = 1
-            log.error("AccountDeletionFinalizationJob - failed to finalize account deletions", ex)
+        candidates.forEach { user ->
+            try {
+                if (userService.finalizeRecoverableAccountDeletion(user.id)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "AccountDeletionFinalizationJob - failed to finalize user={}",
+                    user.id,
+                    ex
+                )
+            }
         }
+
+        val summary = JobRunSummary(
+            processed = candidates.size,
+            succeeded = succeeded,
+            skipped = skipped,
+            failed = failed
+        )
 
         log.logJobSummary(
             jobName = "AccountDeletionFinalizationJob",
-            summary = JobRunSummary(
-                processed = finalized + failed,
-                succeeded = finalized,
-                skipped = 0,
-                failed = failed
-            ),
+            summary = summary,
             startedAt = startedAt
         )
+
+        return summary
     }
 
     fun runNowForDev() {

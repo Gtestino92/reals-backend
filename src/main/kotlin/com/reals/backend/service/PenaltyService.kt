@@ -136,22 +136,29 @@ class PenaltyService(
         }
     }
 
+    @Transactional(readOnly = true)
+    fun findExpiredActivePenalties(
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): List<Penalty> =
+        penaltyRepository.findExpiredActivePenalties(now = now)
+
+    fun expireOverduePenalty(
+        penaltyId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        penaltyRepository.deactivateExpiredActivePenalty(
+            penaltyId = penaltyId,
+            now = now
+        ) == 1
+
     /**
-     * Deactivates all expired penalties.
-     * Called by PenaltyExpirationJob.
+     * Deactivates all expired penalties. Kept for service-level callers; the
+     * scheduled job uses the per-record methods so one failure cannot block
+     * unrelated penalties.
      */
-    fun expireOverduePenalties(): Int {
-
-        val expired =
-            penaltyRepository.findExpiredActivePenalties(
-                now = OffsetDateTime.now()
-            )
-
-        expired.forEach { it.active = false }
-
-        penaltyRepository.saveAll(expired)
-
-        return expired.size
-    }
+    fun expireOverduePenalties(): Int =
+        findExpiredActivePenalties().count { penalty ->
+            expireOverduePenalty(penalty.id)
+        }
 
 }

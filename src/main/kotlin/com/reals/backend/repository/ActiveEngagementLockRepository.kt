@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.OffsetDateTime
 import java.util.UUID
 
 interface ActiveEngagementLockRepository :
@@ -14,6 +15,13 @@ interface ActiveEngagementLockRepository :
         userId: UUID,
         engagementType: EngagementType
     ): Int
+
+    fun countByEngagementType(
+        engagementType: EngagementType
+    ): Long
+
+    @Query("SELECT MIN(activeLock.createdAt) FROM ActiveEngagementLock activeLock")
+    fun findOldestCreatedAt(): OffsetDateTime?
 
     fun deleteByEngagementId(
         engagementId: UUID
