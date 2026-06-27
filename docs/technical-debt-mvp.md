@@ -11,6 +11,9 @@ Do not implement these implicitly while working on unrelated tasks.
 
 ### 4.1 Secrets must remain out of source control
 
+Status:
+- Hygiene documented in `docs/security-mvp.md`.
+
 MVP requirement:
 - Never commit real Firebase Web API keys, Firebase test user passwords, ID tokens or service-account credentials.
 - Bruno tracked environments should keep placeholders.
@@ -18,12 +21,19 @@ MVP requirement:
 
 ### 4.2 Firebase/JWT operational validation for dev/staging
 
+Status:
+- Operational validation checklist documented in `docs/security-mvp.md`.
+- Still requires execution in the deployed dev/staging environment.
+
 MVP requirement:
 - Validate Firebase service-account configuration in the intended dev/staging backend environment.
 - Validate Android Firebase Auth login/provisioning against deployed backend.
 - Validate deleted-account and reactivation behavior against real Firebase tokens.
 
 ### 4.3 Basic sensitive log policy
+
+Status:
+- Policy documented in `docs/security-mvp.md`.
 
 MVP requirement:
 - Do not log:
@@ -36,6 +46,9 @@ MVP requirement:
 Production hardening can go further, but these should already be avoided in MVP.
 
 ### 4.4 CSRF remains disabled only under stateless bearer-token auth
+
+Status:
+- Documented in `docs/security-mvp.md` and in the Spring Security configuration.
 
 Current decision:
 - CSRF protection is intentionally disabled while the API is stateless and authenticated through explicit `Authorization: Bearer ...` tokens.

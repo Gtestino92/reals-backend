@@ -62,7 +62,7 @@ class S3StorageService(
 
             s3Client.deleteObject(request)
         } catch (ex: Exception) {
-            throw ObjectStorageException("Could not delete object from storage: $key", ex)
+            throw ObjectStorageException("Could not delete object from storage", ex)
         }
     }
 

@@ -28,6 +28,7 @@ class SecurityConfig(
         http
             // codeql[java/spring-disabled-csrf-protection]
             // Reals is a stateless API using Authorization bearer tokens, not cookie-based browser sessions.
+            // Revisit before adding cookie auth, form login, browser sessions, or browser-attached credentials.
             .csrf { it.disable() }
             .formLogin { it.disable() }
             .httpBasic { it.disable() }
