@@ -31,6 +31,9 @@ scheduler:
   # Local manual testing should be deterministic. Use /api/local-dev/jobs/.../run
   # endpoints from Bruno instead of background execution.
   enabled: false
+  matchmaking-job:
+    fixed-delay: 60000
+    max-pairs-per-run: 5
 
 matchmaking:
   candidate-pair-limit: 5

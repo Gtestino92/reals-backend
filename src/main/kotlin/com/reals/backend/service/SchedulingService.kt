@@ -342,10 +342,13 @@ class SchedulingService(
      * Marks a PENDING negotiation as FAILED and closes its Connection.
      * Called by SchedulingNegotiationTimeoutJob when Connection.schedulingExpiresAt is past.
      */
-    fun expireNegotiation(connectionId: UUID) {
+    fun expireNegotiation(connectionId: UUID): Boolean {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        if (connection.state != ConnectionState.SCHEDULING_PHASE) {
+            return false
+        }
 
         val negotiation = findNegotiationOrNull(connectionId)
-
         if (negotiation != null && negotiation.status == NegotiationStatus.PENDING) {
             negotiation.status = NegotiationStatus.FAILED
             negotiation.updatedAt = OffsetDateTime.now()
@@ -353,7 +356,7 @@ class SchedulingService(
             negotiationRepository.save(negotiation)
         }
 
-        connectionService.closeConnection(connectionId)
+        return connectionService.closeConnection(connectionId)
     }
 
     // -------------------------------------------------------------------------

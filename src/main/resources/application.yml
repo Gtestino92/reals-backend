@@ -89,6 +89,12 @@ scheduler:
   account-deletion-finalization-job:
     fixed-delay: 3600000
 
+  # Processes queued users into first-chat matches. ShedLock keeps one active
+  # processor at a time across app instances.
+  matchmaking-job:
+    fixed-delay: 60000
+    max-pairs-per-run: 5
+
 account:
   deletion:
     recovery-window-days: 30
