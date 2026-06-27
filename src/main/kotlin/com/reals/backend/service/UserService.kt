@@ -198,24 +198,29 @@ class UserService(
         return userRepository.save(user)
     }
 
-    fun finalizeRecoverableAccountDeletions(now: OffsetDateTime = OffsetDateTime.now()): Int {
-        val deletedUsers = userRepository.findByStatusAndDeletionFinalizesAtLessThanEqual(
+    @Transactional(readOnly = true)
+    fun findRecoverableAccountDeletionCandidates(
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): List<User> =
+        userRepository.findByStatusAndDeletionFinalizesAtLessThanEqual(
             status = UserStatus.DELETED,
             deletionFinalizesAt = now
         )
 
-        var finalized = 0
+    fun finalizeRecoverableAccountDeletion(
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        userRepository.finalizeDeletedUser(
+            userId = userId,
+            finalizedEmail = "deleted.$userId@deleted.reals.local",
+            now = now
+        ) == 1
 
-        deletedUsers.forEach { user ->
-            finalized += userRepository.finalizeDeletedUser(
-                userId = user.id,
-                finalizedEmail = "deleted.${user.id}@deleted.reals.local",
-                now = now
-            )
+    fun finalizeRecoverableAccountDeletions(now: OffsetDateTime = OffsetDateTime.now()): Int =
+        findRecoverableAccountDeletionCandidates(now = now).count { user ->
+            finalizeRecoverableAccountDeletion(userId = user.id, now = now)
         }
-
-        return finalized
-    }
 
     fun lockActiveUserOrThrow(userId: UUID, action: String): User {
         val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()

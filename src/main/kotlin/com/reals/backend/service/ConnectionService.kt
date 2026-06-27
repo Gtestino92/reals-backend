@@ -256,12 +256,12 @@ class ConnectionService(
     /**
      * Closes a Connection and releases both user locks.
      */
-    fun closeConnection(connectionId: UUID) {
+    fun closeConnection(connectionId: UUID): Boolean {
 
         val connection = findByIdOrThrow(connectionId)
 
         if (connection.state == ConnectionState.CLOSED) {
-            return
+            return false
         }
 
         check(
@@ -280,6 +280,8 @@ class ConnectionService(
         connectionRepository.save(connection)
 
         lockRepository.deleteByEngagementId(connection.id)
+
+        return true
     }
 
     fun dismissSecondChatFromHome(

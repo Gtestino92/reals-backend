@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.MatchmakingQueueEntry
+import com.reals.backend.domain.QueueStatus
 import com.reals.backend.repository.projection.MatchmakingCandidatePairProjection
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -16,6 +17,10 @@ interface MatchmakingQueueRepository :
     fun findByUserId(userId: UUID): MatchmakingQueueEntry?
 
     fun deleteByUserId(userId: UUID)
+
+    fun countByStatus(status: QueueStatus): Long
+
+    fun findFirstByStatusOrderByEnteredAtAsc(status: QueueStatus): MatchmakingQueueEntry?
 
     @Query(
         value = """
