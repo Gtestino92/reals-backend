@@ -6,6 +6,8 @@ import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.OffsetDateTime
@@ -215,6 +217,24 @@ class SchedulingServiceIntegrationTest : BaseIT() {
         assertSchedulingCode(DomainErrorCode.SCHEDULING_NEGOTIATION_NOT_FOUND) {
             schedulingService.findNegotiationOrThrow(UUID.randomUUID())
         }
+    }
+
+    @Test
+    fun `expire negotiation fails pending negotiation and closes connection once`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        assertTrue(schedulingService.expireNegotiation(setup.connectionId))
+
+        assertEquals(
+            NegotiationStatus.FAILED,
+            schedulingService.findNegotiationOrThrow(setup.connectionId).status
+        )
+        assertEquals(
+            ConnectionState.CLOSED,
+            connectionService.findByIdOrThrow(setup.connectionId).state
+        )
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        assertFalse(schedulingService.expireNegotiation(setup.connectionId))
     }
 
     private fun assertSchedulingCode(

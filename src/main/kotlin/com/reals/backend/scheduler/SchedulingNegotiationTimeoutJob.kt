@@ -30,6 +30,10 @@ class SchedulingNegotiationTimeoutJob(
         lockAtMostFor = "PT5M"
     )
     fun run() {
+        processTimedOutNegotiations()
+    }
+
+    internal fun processTimedOutNegotiations(): JobRunSummary {
         val startedAt = System.nanoTime()
         log.debug("SchedulingNegotiationTimeoutJob triggered")
 
@@ -40,19 +44,23 @@ class SchedulingNegotiationTimeoutJob(
             )
 
         var succeeded = 0
+        var skipped = 0
         var failed = 0
 
         timedOut.forEach { connection ->
             try {
-                schedulingService.expireNegotiation(
+                val changed = schedulingService.expireNegotiation(
                     connectionId = connection.id
                 )
-                succeeded += 1
-
-                log.info(
-                    "SchedulingNegotiationTimeoutJob - closed connection={}",
-                    connection.id
-                )
+                if (changed) {
+                    succeeded += 1
+                    log.info(
+                        "SchedulingNegotiationTimeoutJob - closed connection={}",
+                        connection.id
+                    )
+                } else {
+                    skipped += 1
+                }
             } catch (ex: Exception) {
                 log.error(
                     "SchedulingNegotiationTimeoutJob - failed for connection={}",
@@ -63,15 +71,19 @@ class SchedulingNegotiationTimeoutJob(
             }
         }
 
+        val summary = JobRunSummary(
+            processed = timedOut.size,
+            succeeded = succeeded,
+            skipped = skipped,
+            failed = failed
+        )
+
         log.logJobSummary(
             jobName = "SchedulingNegotiationTimeoutJob",
-            summary = JobRunSummary(
-                processed = timedOut.size,
-                succeeded = succeeded,
-                skipped = 0,
-                failed = failed
-            ),
+            summary = summary,
             startedAt = startedAt
         )
+
+        return summary
     }
 }

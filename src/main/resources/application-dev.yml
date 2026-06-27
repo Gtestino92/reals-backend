@@ -48,8 +48,8 @@ backoffice:
 scheduler:
   enabled: true
   matchmaking-job:
-    fixed-delay: 60000
-    max-pairs-per-run: 10
+    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:60000}
+    max-pairs-per-run: ${SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN:10}
   chat-timeout-job:
     fixed-delay: 120000
   second-chat-lifecycle-job:

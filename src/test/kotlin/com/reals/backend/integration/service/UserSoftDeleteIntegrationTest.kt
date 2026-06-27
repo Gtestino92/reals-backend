@@ -190,5 +190,28 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
         assertEquals("deleted.${user.id}@deleted.reals.local", finalizedUser.email)
         assertNull(finalizedUser.firebaseUid)
         assertNull(finalizedUser.deletionFinalizesAt)
+        assertFalse(userService.finalizeRecoverableAccountDeletion(user.id))
+    }
+
+    @Test
+    fun `single account deletion finalization is idempotent`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-finalize-single-${UUID.randomUUID()}",
+            email = "finalize-single-${UUID.randomUUID()}@example.com"
+        )
+        userService.deleteUser(user.id)
+
+        val deletedUser = userRepository.findById(user.id).orElseThrow()
+        deletedUser.deletionFinalizesAt = OffsetDateTime.now().minusMinutes(1)
+        userRepository.saveAndFlush(deletedUser)
+
+        assertTrue(userService.finalizeRecoverableAccountDeletion(user.id))
+        assertFalse(userService.finalizeRecoverableAccountDeletion(user.id))
+
+        val finalizedUser = userRepository.findById(user.id).orElseThrow()
+        assertEquals(UserStatus.DELETED, finalizedUser.status)
+        assertEquals("deleted.${user.id}@deleted.reals.local", finalizedUser.email)
+        assertNull(finalizedUser.firebaseUid)
+        assertNull(finalizedUser.deletionFinalizesAt)
     }
 }

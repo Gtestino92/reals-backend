@@ -59,6 +59,49 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `expired penalty expiration is idempotent`() {
+        val user = createActiveProfile(
+            email = "idempotent-penalty-${UUID.randomUUID()}@example.com",
+            displayName = "Idempotent Penalty",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val penalty = penaltyService.createTemporaryPenalty(
+            userId = user,
+            reason = "Idempotent temporary violation",
+            duration = Duration.ofHours(1)
+        )
+        penaltyRepository.updateExpiresAt(
+            penaltyId = penalty.id,
+            expiresAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        assertTrue(penaltyService.expireOverduePenalty(penalty.id))
+        assertFalse(penaltyService.expireOverduePenalty(penalty.id))
+        assertFalse(penaltyRepository.findById(penalty.id).orElseThrow().active)
+    }
+
+    @Test
+    fun `inactive expired penalty is skipped as stale`() {
+        val user = createActiveProfile(
+            email = "stale-penalty-${UUID.randomUUID()}@example.com",
+            displayName = "Stale Penalty",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val penalty = penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = user,
+                reason = "Already inactive temporary violation",
+                expiresAt = OffsetDateTime.now().minusSeconds(1),
+                active = false
+            )
+        )
+
+        assertFalse(penaltyService.expireOverduePenalty(penalty.id))
+    }
+
+    @Test
     fun `permanent penalty from safety report has no expiration`() {
         val setup = createMatchWithFirstChat()
         chatExitService.cancelChatForSafety(

@@ -1,5 +1,6 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.config.MatchmakingJobProperties
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
@@ -52,7 +53,10 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         MatchmakingJob(
             matchmakingProcessorService = matchmakingProcessorService,
-            maxPairsPerRun = 5
+            properties = MatchmakingJobProperties(
+                fixedDelay = 60000,
+                maxPairsPerRun = 5
+            )
         ).run()
 
         val match =

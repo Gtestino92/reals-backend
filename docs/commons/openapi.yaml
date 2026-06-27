@@ -642,6 +642,22 @@ paths:
                   $ref: '#/components/schemas/AdminSafetyReportResponse'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/admin/diagnostics/matchmaking:
+    get:
+      tags: [Admin]
+      summary: Get aggregate matchmaking diagnostics
+      description: Requires ROLE_ADMIN. Returns aggregate queue and active-lock counts only; it does not expose user IDs, profile IDs, match IDs, connection IDs, coordinates or personal data.
+      responses:
+        '200':
+          description: Aggregate matchmaking diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingDiagnosticsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/admin/safety-reports/{reportId}:
     get:
       tags: [Admin]
@@ -1724,6 +1740,16 @@ components:
         exitRequest: { $ref: '#/components/schemas/ChatExitRequestResponse' }
         penaltyApplied: { type: boolean }
         penalizedUserId: { type: string, format: uuid, nullable: true }
+    MatchmakingDiagnosticsResponse:
+      type: object
+      required: [queueWaitingCount, queueTotalCount, activeMatchLocks, activeConnectionLocks]
+      properties:
+        queueWaitingCount: { type: integer, format: int64, minimum: 0 }
+        queueTotalCount: { type: integer, format: int64, minimum: 0 }
+        activeMatchLocks: { type: integer, format: int64, minimum: 0 }
+        activeConnectionLocks: { type: integer, format: int64, minimum: 0 }
+        oldestQueueEntryEnteredAt: { type: string, format: date-time, nullable: true }
+        oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
     AdminSafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, chatId, matchId, reason, details, status, createdAt]
