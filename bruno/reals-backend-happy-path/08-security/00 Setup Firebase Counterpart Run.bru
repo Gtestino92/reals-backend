@@ -26,8 +26,12 @@ script:pre-request {
 
   const runId = Date.now().toString();
   bru.setEnvVar("counterpartRunId", runId);
-  bru.setEnvVar("firebase_counterpart_email", `android.counterpart.${runId}@example.com`);
-  bru.setEnvVar("firebase_counterpart_password", bru.getEnvVar("firebase_counterpart_password") || "Password123!");
+  if (!bru.getEnvVar("firebase_counterpart_email")) {
+    bru.setEnvVar("firebase_counterpart_email", `android.counterpart.${runId}@example.com`);
+  }
+  if (!bru.getEnvVar("firebase_counterpart_password")) {
+    throw new Error("Set firebase_counterpart_password in ignored local.bru before running Firebase security flows.");
+  }
 }
 
 script:post-response {
