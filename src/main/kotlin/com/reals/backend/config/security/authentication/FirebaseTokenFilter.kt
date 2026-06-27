@@ -122,7 +122,10 @@ class FirebaseTokenFilter(
                     )
                 }
         } catch (ex: FirebaseAuthException) {
-            log.debug("Firebase token rejected: ${ex.message}")
+            log.debug(
+                "Firebase token rejected code={}",
+                ex.authErrorCode?.name ?: ex.errorCode?.name ?: ex.javaClass.simpleName
+            )
             SecurityContextHolder.clearContext()
             writeUnauthorized(
                 response = response,
