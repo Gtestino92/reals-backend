@@ -10,8 +10,8 @@ import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfilePhotoRepository
-import com.reals.backend.service.MatchmakingProcessorService
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Assertions.assertEquals

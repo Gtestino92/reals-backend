@@ -1,19 +1,25 @@
-package com.reals.backend.service
+package com.reals.backend.service.notification
 
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.PushDeliveryStatus
 import com.reals.backend.domain.PushNotificationDelivery
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.repository.PushNotificationDeliveryRepository
+import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.PushDeviceTokenService
+import com.reals.backend.service.notification.sender.PushNotification
+import com.reals.backend.service.notification.sender.PushNotificationSender
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
 import java.util.UUID
 
 @Service
 @Transactional
-class VisualReviewNotificationService(
-    private val matchService: MatchService,
+class SecondChatReminderNotificationService(
+    private val connectionService: ConnectionService,
     private val pushDeviceTokenService: PushDeviceTokenService,
     private val pushNotificationSender: PushNotificationSender,
     private val pushNotificationDeliveryRepository: PushNotificationDeliveryRepository
@@ -21,36 +27,46 @@ class VisualReviewNotificationService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun notifyVisualReviewAvailable(matchId: UUID) {
-        try {
-            val match = matchService.findByIdOrThrow(matchId)
+    fun notifySecondChatReminder(
+        connectionId: UUID,
+        confirmedDateTime: OffsetDateTime,
+        minutesBefore: Long
+    ): Boolean {
+        val connection = connectionService.findByIdOrThrow(connectionId)
 
-            listOf(match.userAId, match.userBId).forEach { userId ->
-                notifyUser(
-                    userId = userId,
-                    matchId = matchId
-                )
-            }
-        } catch (ex: Exception) {
-            log.warn(
-                "Failed to process visual review push notifications for match {}: {}",
-                matchId,
-                ex.message,
-                ex
+        if (connection.state !in REMINDER_ELIGIBLE_STATES) {
+            return false
+        }
+
+        listOf(connection.userAId, connection.userBId).forEach { userId ->
+            notifyUser(
+                userId = userId,
+                connectionId = connectionId,
+                confirmedDateTime = confirmedDateTime,
+                minutesBefore = minutesBefore
             )
         }
+
+        return true
     }
 
     private fun notifyUser(
         userId: UUID,
-        matchId: UUID
+        connectionId: UUID,
+        confirmedDateTime: OffsetDateTime,
+        minutesBefore: Long
     ) {
         try {
+            val deliveryAggregateId =
+                secondChatReminderAggregateId(
+                    connectionId = connectionId,
+                    minutesBefore = minutesBefore
+                )
             val existingDelivery =
                 pushNotificationDeliveryRepository.findByUserIdAndNotificationTypeAndAggregateId(
                     userId = userId,
-                    notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
-                    aggregateId = matchId
+                    notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+                    aggregateId = deliveryAggregateId
                 )
 
             if (existingDelivery != null) {
@@ -63,7 +79,7 @@ class VisualReviewNotificationService(
             if (activeTokens.isEmpty()) {
                 saveDelivery(
                     userId = userId,
-                    matchId = matchId,
+                    aggregateId = deliveryAggregateId,
                     status = PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN,
                     now = now
                 )
@@ -73,7 +89,11 @@ class VisualReviewNotificationService(
             val sendResult =
                 pushNotificationSender.sendToTokens(
                     tokens = activeTokens,
-                    notification = visualReviewAvailableNotification(matchId)
+                    notification = secondChatReminderNotification(
+                        connectionId = connectionId,
+                        confirmedDateTime = confirmedDateTime,
+                        minutesBefore = minutesBefore
+                    )
                 )
 
             sendResult.invalidTokens.forEach { token ->
@@ -83,7 +103,7 @@ class VisualReviewNotificationService(
             if (sendResult.sent) {
                 saveDelivery(
                     userId = userId,
-                    matchId = matchId,
+                    aggregateId = deliveryAggregateId,
                     status = PushDeliveryStatus.SENT,
                     sentAt = now,
                     providerMessageId = sendResult.providerMessageIds.joinToString(",").ifBlank { null },
@@ -93,7 +113,7 @@ class VisualReviewNotificationService(
             } else {
                 saveDelivery(
                     userId = userId,
-                    matchId = matchId,
+                    aggregateId = deliveryAggregateId,
                     status = PushDeliveryStatus.FAILED,
                     errorMessage = sendResult.errorMessage ?: "Push sender returned no successful deliveries",
                     now = now
@@ -101,42 +121,53 @@ class VisualReviewNotificationService(
             }
         } catch (ex: Exception) {
             log.warn(
-                "Failed to send visual review push notification for user {} and match {}: {}",
+                "Failed to send second-chat reminder push notification for user {} and connection {}",
                 userId,
-                matchId,
-                ex.message,
+                connectionId,
                 ex
             )
 
             saveFailureBestEffort(
                 userId = userId,
-                matchId = matchId,
+                connectionId = connectionId,
+                minutesBefore = minutesBefore,
                 errorMessage = ex.message ?: ex.javaClass.simpleName
             )
         }
     }
 
-    private fun visualReviewAvailableNotification(matchId: UUID): PushNotification =
+    private fun secondChatReminderNotification(
+        connectionId: UUID,
+        confirmedDateTime: OffsetDateTime,
+        minutesBefore: Long
+    ): PushNotification =
         PushNotification(
-            title = "Tenés una revisión disponible",
-            body = "Ya podés revisar el perfil visual de una conversación reciente.",
+            title = "Tu segunda charla empieza pronto",
+            body = "Tenes una segunda charla programada en $minutesBefore minutos.",
             data = mapOf(
-                "type" to PushNotificationType.VISUAL_REVIEW_AVAILABLE.name,
-                "matchId" to matchId.toString()
+                "type" to PushNotificationType.SECOND_CHAT_REMINDER.name,
+                "connectionId" to connectionId.toString(),
+                "availableAt" to confirmedDateTime.toString()
             )
         )
 
     private fun saveFailureBestEffort(
         userId: UUID,
-        matchId: UUID,
+        connectionId: UUID,
+        minutesBefore: Long,
         errorMessage: String
     ) {
         try {
+            val deliveryAggregateId =
+                secondChatReminderAggregateId(
+                    connectionId = connectionId,
+                    minutesBefore = minutesBefore
+                )
             val existingDelivery =
                 pushNotificationDeliveryRepository.findByUserIdAndNotificationTypeAndAggregateId(
                     userId = userId,
-                    notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
-                    aggregateId = matchId
+                    notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+                    aggregateId = deliveryAggregateId
                 )
 
             if (existingDelivery != null) {
@@ -145,17 +176,16 @@ class VisualReviewNotificationService(
 
             saveDelivery(
                 userId = userId,
-                matchId = matchId,
+                aggregateId = deliveryAggregateId,
                 status = PushDeliveryStatus.FAILED,
                 errorMessage = errorMessage,
                 now = OffsetDateTime.now()
             )
         } catch (ex: Exception) {
             log.warn(
-                "Failed to record failed visual review push delivery for user {} and match {}: {}",
+                "Failed to record failed second-chat reminder push delivery for user {} and connection {}",
                 userId,
-                matchId,
-                ex.message,
+                connectionId,
                 ex
             )
         }
@@ -163,7 +193,7 @@ class VisualReviewNotificationService(
 
     private fun saveDelivery(
         userId: UUID,
-        matchId: UUID,
+        aggregateId: UUID,
         status: PushDeliveryStatus,
         sentAt: OffsetDateTime? = null,
         providerMessageId: String? = null,
@@ -173,8 +203,8 @@ class VisualReviewNotificationService(
         pushNotificationDeliveryRepository.save(
             PushNotificationDelivery(
                 userId = userId,
-                notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
-                aggregateId = matchId,
+                notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+                aggregateId = aggregateId,
                 sentAt = sentAt,
                 status = status,
                 providerMessageId = providerMessageId,
@@ -184,4 +214,19 @@ class VisualReviewNotificationService(
             )
         )
     }
+
+    private companion object {
+        val REMINDER_ELIGIBLE_STATES = setOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED
+        )
+    }
 }
+
+fun secondChatReminderAggregateId(
+    connectionId: UUID,
+    minutesBefore: Long
+): UUID =
+    UUID.nameUUIDFromBytes(
+        "second-chat-reminder:$connectionId:$minutesBefore"
+            .toByteArray(StandardCharsets.UTF_8)
+    )

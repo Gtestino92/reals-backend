@@ -7,7 +7,7 @@
 - `controller`: HTTP endpoints. Controllers parse request DTOs, call services and map responses.
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations, state transitions and external push notification orchestration.
-- `service.matching`: hard matching filters, compatibility evaluation and scoring.
+- `service.matching`: matchmaking queue orchestration, availability checks, diagnostics, hard matching filters, compatibility evaluation and scoring.
 - `service.identity`: identity-verification provider abstraction.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
@@ -53,6 +53,14 @@ Chat responsibilities are split conservatively:
 
 - `ChatService`: chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
 - `ChatExitService`: mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
+
+Push notification responsibilities are split between application orchestration
+and provider transport:
+
+- `service.notification`: event-specific notification services that decide
+  recipients, eligibility, payloads, idempotency keys and delivery recording.
+- `service.notification.sender`: provider adapters for external push delivery,
+  such as Firebase and no-op local/test senders.
 
 ## Persistence
 

@@ -1,4 +1,4 @@
-package com.reals.backend.service
+package com.reals.backend.service.notification.sender
 
 import com.reals.backend.domain.PushDeviceToken
 

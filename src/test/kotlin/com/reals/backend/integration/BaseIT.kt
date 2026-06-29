@@ -33,8 +33,8 @@ import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
-import com.reals.backend.service.MatchmakingProcessorService
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
