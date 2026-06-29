@@ -58,6 +58,25 @@ interface ScheduleNegotiationRepository :
         @Param("expiresBefore") expiresBefore: OffsetDateTime
     ): List<ScheduleNegotiation>
 
+    @Query(
+        """select n from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime >= :windowStart
+             and n.confirmedDateTime <= :windowEnd"""
+    )
+    fun findConfirmedSecondChatReminderDueForWindow(
+        @Param("windowStart") windowStart: OffsetDateTime,
+        @Param("windowEnd") windowEnd: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED
+        )
+    ): List<ScheduleNegotiation>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """update ScheduleNegotiation n

@@ -10,10 +10,6 @@ post {
   auth: none
 }
 
-headers {
-  Authorization: Bearer {{firebase_counterpart_id_token}}
-}
-
 script:post-response {
   const status = res.getStatus();
   if (status === 404 || status === 403) {

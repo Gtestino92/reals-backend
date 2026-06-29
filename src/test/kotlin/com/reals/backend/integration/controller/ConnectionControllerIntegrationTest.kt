@@ -7,6 +7,7 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -71,6 +72,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status", equalTo(NegotiationStatus.CONFIRMED.name)))
             .andExpect(jsonPath("$.confirmedDateTime").exists())
+            .andExpect(jsonPath("$.schedulingExpiresAt").exists())
     }
 
     @Test
@@ -100,6 +102,24 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status", equalTo(NegotiationStatus.CONFIRMED.name)))
             .andExpect(jsonPath("$.confirmedDateTime").exists())
+            .andExpect(jsonPath("$.schedulingExpiresAt").exists())
+    }
+
+    @Test
+    fun `reject current round after scheduling expiration returns stable code`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        connectionRepository.updateSchedulingExpiresAt(
+            connectionId = setup.connectionId,
+            expiresAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/negotiation/rejections")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_EXPIRED")))
     }
 
     @Test
@@ -128,6 +148,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
             .andExpect(jsonPath("$.availableAt").exists())
             .andExpect(jsonPath("$.activatedAt").exists())
+            .andExpect(jsonPath("$.inactivityExpiresAt", nullValue()))
 
         assertEquals(
             1,

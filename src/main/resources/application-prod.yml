@@ -51,25 +51,28 @@ scheduler:
     fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:60000}
     max-pairs-per-run: ${SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN:10}
   chat-timeout-job:
-    fixed-delay: 120000
+    fixed-delay: ${SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY:60000}
   second-chat-lifecycle-job:
-    fixed-delay: 120000
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY:120000}
+  second-chat-reminder-job:
+    # 60000 keeps reminder precision within a 1-minute window.
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY:60000}
   match-expiration-job:
-    fixed-delay: 300000
-    max-chat-duration: PT24H
+    fixed-delay: ${SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY:300000}
+    max-chat-duration: ${SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION:PT20M}
   inactivity-check-job:
-    fixed-delay: 180000
-    inactivity-threshold-minutes: 30
+    fixed-delay: ${SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY:60000}
+    inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
-    fixed-delay: 600000
+    fixed-delay: ${SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY:600000}
   visual-phase-expiration-job:
-    fixed-delay: 300000
+    fixed-delay: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY:300000}
   scheduling-timeout-job:
-    fixed-delay: 900000
+    fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:900000}
   scheduling-activation-job:
-    fixed-delay: 60000
+    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
   account-deletion-finalization-job:
-    fixed-delay: 3600000
+    fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}
 
 account:
   deletion:
@@ -82,7 +85,8 @@ matchmaking:
 
 chat:
   first-chat:
-    duration-minutes: 1440
+    duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
+    inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
     min-messages-per-user: 0
     min-messages-before-free-cancel: 0
   visual-phase:
@@ -136,3 +140,9 @@ storage:
 identity-verification:
   provider: ${IDENTITY_VERIFICATION_PROVIDER:none}
   api-key: ${IDENTITY_VERIFICATION_API_KEY:}
+
+notifications:
+  second-chat-reminder:
+    # Comma-separated lead times in minutes. Keep multiple values in descending
+    # order for readability, for example: 120,10. Values must be positive.
+    minutes-before: ${NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE:10}

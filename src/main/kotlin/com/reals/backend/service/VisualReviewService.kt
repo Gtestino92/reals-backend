@@ -38,6 +38,12 @@ class VisualReviewService(
         visualReviewRepository.findByMatchId(matchId)
             ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
 
+    fun findByMatchIdOrNull(matchId: UUID): VisualReview? =
+        visualReviewRepository.findByMatchId(matchId)
+
+    fun visualExpiresAt(matchId: UUID): OffsetDateTime? =
+        findByMatchIdOrNull(matchId)?.expiresAt
+
     fun initializeForMatch(matchId: UUID): VisualReview {
 
         val existing = visualReviewRepository.findByMatchId(matchId)
@@ -88,10 +94,8 @@ class VisualReviewService(
             return
         }
 
-        review.expiresAt?.let {
-            check(OffsetDateTime.now().isBefore(it)) {
-                "Visual phase expired"
-            }
+        if (match.state == MatchState.VISUAL_PHASE) {
+            requireVisualReviewNotExpired(review)
         }
 
         check(match.state == MatchState.VISUAL_PHASE) {
@@ -133,6 +137,10 @@ class VisualReviewService(
 
         check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
             "Personal messages are only available during visual review or scheduling"
+        }
+
+        if (match.state == MatchState.VISUAL_PHASE) {
+            requireVisualReviewNotExpired(review)
         }
 
         when (userId) {
@@ -247,6 +255,17 @@ class VisualReviewService(
                 code = DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ,
                 message = "Read the partner personal message before making a visual decision."
             )
+        }
+    }
+
+    private fun requireVisualReviewNotExpired(review: VisualReview) {
+        review.expiresAt?.let { expiresAt ->
+            if (!OffsetDateTime.now().isBefore(expiresAt)) {
+                throw DomainConflictException(
+                    code = DomainErrorCode.VISUAL_REVIEW_EXPIRED,
+                    message = "Visual review has expired"
+                )
+            }
         }
     }
 

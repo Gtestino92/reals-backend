@@ -21,19 +21,22 @@ data class MatchResponse(
     val userBId: UUID,
     val state: MatchState,
     val connectionId: UUID?,
+    val visualExpiresAt: OffsetDateTime?,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
 ) {
     companion object {
         fun from(
             match: Match,
-            connectionId: UUID? = null
+            connectionId: UUID? = null,
+            visualExpiresAt: OffsetDateTime? = null
         ) = MatchResponse(
             id = match.id,
             userAId = match.userAId,
             userBId = match.userBId,
             state = match.state,
             connectionId = connectionId,
+            visualExpiresAt = visualExpiresAt,
             createdAt = match.createdAt,
             updatedAt = match.updatedAt
         )

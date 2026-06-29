@@ -195,7 +195,8 @@ data class VisualProfileResponse(
     val myPersonalMessageSubmitted: Boolean,
     val partnerPersonalMessageSubmitted: Boolean,
     val partnerPersonalMessageRead: Boolean,
-    val decisionRequiresPartnerPersonalMessageRead: Boolean
+    val decisionRequiresPartnerPersonalMessageRead: Boolean,
+    val visualExpiresAt: OffsetDateTime?
 ) {
     companion object {
         fun from(
@@ -204,7 +205,8 @@ data class VisualProfileResponse(
             myPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageRead: Boolean,
-            decisionRequiresPartnerPersonalMessageRead: Boolean
+            decisionRequiresPartnerPersonalMessageRead: Boolean,
+            visualExpiresAt: OffsetDateTime?
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
@@ -216,7 +218,8 @@ data class VisualProfileResponse(
             myPersonalMessageSubmitted = myPersonalMessageSubmitted,
             partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
             partnerPersonalMessageRead = partnerPersonalMessageRead,
-            decisionRequiresPartnerPersonalMessageRead = decisionRequiresPartnerPersonalMessageRead
+            decisionRequiresPartnerPersonalMessageRead = decisionRequiresPartnerPersonalMessageRead,
+            visualExpiresAt = visualExpiresAt
         )
     }
 }

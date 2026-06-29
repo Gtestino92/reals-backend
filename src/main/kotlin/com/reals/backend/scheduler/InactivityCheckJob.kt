@@ -19,7 +19,7 @@ class InactivityCheckJob(
     private val chatService: ChatService,
     private val chatMessageRepository: ChatMessageRepository,
     private val connectionRepository: ConnectionRepository,
-    @param:Value("\${scheduler.inactivity-check-job.inactivity-threshold-minutes:30}")
+    @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val inactivityThresholdMinutes: Long
 ) {
 
@@ -29,7 +29,7 @@ class InactivityCheckJob(
         fixedDelayString =
             "\${scheduler.inactivity-check-job.fixed-delay}"
     )
-    @SchedulerLock(name = "InactivityCheckJob", lockAtLeastFor = "PT15s", lockAtMostFor = "PT1M")
+    @SchedulerLock(name = "InactivityCheckJob", lockAtLeastFor = "PT15s", lockAtMostFor = "PT5M")
     fun run() {
         val startedAt = System.nanoTime()
 

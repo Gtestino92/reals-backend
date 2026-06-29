@@ -70,6 +70,9 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/ping").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
+                    // Local-dev tooling controllers are profile-gated and do not run in dev/prod.
+                    // They execute system jobs, so requiring a user bearer token only adds local friction.
+                    .requestMatchers("/api/local-dev/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")

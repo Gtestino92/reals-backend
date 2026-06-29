@@ -1,7 +1,6 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.repository.ConnectionRepository
-import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.SchedulingService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
@@ -15,7 +14,6 @@ import java.time.OffsetDateTime
 @Component
 class SchedulingActivationJob(
     private val connectionRepository: ConnectionRepository,
-    private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService
 ) {
 
@@ -42,13 +40,8 @@ class SchedulingActivationJob(
 
         due.forEach { connection ->
             try {
-                val activated =
-                    connectionService.activateScheduling(
-                        connectionId = connection.id
-                    )
-
-                schedulingService.initializeNegotiation(
-                    connectionId = activated.id
+                schedulingService.activateSchedulingAndInitializeNegotiation(
+                    connectionId = connection.id
                 )
 
                 succeeded += 1
