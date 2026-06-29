@@ -4,7 +4,7 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.EnqueueMatchmakingRequest
 import com.reals.backend.controller.dto.QueueStatusResponse
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.matching.MatchmakingService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*

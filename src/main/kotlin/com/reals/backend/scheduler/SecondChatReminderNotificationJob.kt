@@ -2,7 +2,7 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.repository.ScheduleNegotiationRepository
-import com.reals.backend.service.SecondChatReminderNotificationService
+import com.reals.backend.service.notification.SecondChatReminderNotificationService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value

@@ -31,6 +31,7 @@ import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.service.matching.MatchmakingAvailabilityService
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

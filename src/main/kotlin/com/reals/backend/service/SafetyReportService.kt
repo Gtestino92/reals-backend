@@ -2,12 +2,9 @@ package com.reals.backend.service
 
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatExitReason
-import com.reals.backend.domain.ChatMessage
-import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportStatus
-import com.reals.backend.domain.User
 import com.reals.backend.domain.toSafetyReportReason
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.PenaltyRepository
@@ -20,14 +17,6 @@ import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.NoSuchElementException
 import java.util.UUID
-
-data class SafetyReportDetail(
-    val report: SafetyReport,
-    val reporter: User?,
-    val reported: User?,
-    val messages: List<ChatMessage>,
-    val penalty: Penalty?
-)
 
 @Service
 @Transactional

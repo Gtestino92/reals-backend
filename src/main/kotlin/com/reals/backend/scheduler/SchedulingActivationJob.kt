@@ -1,12 +1,14 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.SchedulingService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
+import java.util.UUID
 
 /**
  * Enables scheduling for connections whose deferred availability time has arrived.
@@ -14,7 +16,8 @@ import java.time.OffsetDateTime
 @Component
 class SchedulingActivationJob(
     private val connectionRepository: ConnectionRepository,
-    private val schedulingService: SchedulingService
+    private val schedulingService: SchedulingService,
+    private val schedulingAvailableNotificationService: SchedulingAvailableNotificationService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -43,6 +46,8 @@ class SchedulingActivationJob(
                 schedulingService.activateSchedulingAndInitializeNegotiation(
                     connectionId = connection.id
                 )
+
+                notifySchedulingAvailable(connection.id)
 
                 succeeded += 1
                 log.info(
@@ -76,5 +81,17 @@ class SchedulingActivationJob(
             ),
             startedAt = startedAt
         )
+    }
+
+    private fun notifySchedulingAvailable(connectionId: UUID) {
+        try {
+            schedulingAvailableNotificationService.notifySchedulingAvailable(connectionId)
+        } catch (ex: Exception) {
+            log.warn(
+                "SchedulingActivationJob - scheduling available notification failed for connection={}",
+                connectionId,
+                ex
+            )
+        }
     }
 }
