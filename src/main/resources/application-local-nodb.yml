@@ -34,6 +34,34 @@ scheduler:
   matchmaking-job:
     fixed-delay: 60000
     max-pairs-per-run: 5
+  chat-timeout-job:
+    fixed-delay: 60000
+  second-chat-lifecycle-job:
+    fixed-delay: 120000
+  second-chat-reminder-job:
+    fixed-delay: 60000
+  match-expiration-job:
+    fixed-delay: 300000
+    max-chat-duration: PT20M
+  inactivity-check-job:
+    fixed-delay: 60000
+    inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
+  penalty-expiration-job:
+    fixed-delay: 600000
+  visual-phase-expiration-job:
+    fixed-delay: 300000
+  scheduling-timeout-job:
+    fixed-delay: 900000
+  scheduling-activation-job:
+    fixed-delay: 60000
+  account-deletion-finalization-job:
+    fixed-delay: 3600000
+
+notifications:
+  second-chat-reminder:
+    # Comma-separated lead times in minutes. Keep multiple values in descending
+    # order for readability, for example: 120,10. Values must be positive.
+    minutes-before: 10
 
 matchmaking:
   candidate-pair-limit: 5

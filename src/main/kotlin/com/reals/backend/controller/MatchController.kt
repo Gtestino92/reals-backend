@@ -30,7 +30,13 @@ class MatchController(
             userId = userId
         )
         val connectionId = connectionService.findConnectionIdByMatchId(matchId = matchId)
-        return ResponseEntity.ok(MatchResponse.from(match = match, connectionId = connectionId))
+        return ResponseEntity.ok(
+            MatchResponse.from(
+                match = match,
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
+            )
+        )
     }
 
     @GetMapping("/{matchId}/chat")
@@ -69,7 +75,8 @@ class MatchController(
                 chat = chat,
                 partner = partnerProfile,
                 myDecision = decisions.myDecision,
-                partnerDecision = decisions.partnerDecision
+                partnerDecision = decisions.partnerDecision,
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
             )
         )
     }
@@ -110,6 +117,7 @@ class MatchController(
             matchId = matchId,
             userId = userId
         )
+        val visualExpiresAt = visualReviewService.visualExpiresAt(matchId)
 
         return ResponseEntity.ok(
             VisualProfileResponse.from(
@@ -125,7 +133,8 @@ class MatchController(
                 partnerPersonalMessageRead =
                     personalMessageStatus.partnerPersonalMessageRead,
                 decisionRequiresPartnerPersonalMessageRead =
-                    personalMessageStatus.decisionRequiresPartnerPersonalMessageRead
+                    personalMessageStatus.decisionRequiresPartnerPersonalMessageRead,
+                visualExpiresAt = visualExpiresAt
             )
         )
     }
@@ -157,7 +166,8 @@ class MatchController(
         return ResponseEntity.ok(
             MatchResponse.from(
                 match = match,
-                connectionId = connectionId
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
             )
         )
     }
@@ -191,7 +201,8 @@ class MatchController(
         return ResponseEntity.ok(
             MatchResponse.from(
                 match = match,
-                connectionId = connectionId
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
             )
         )
     }

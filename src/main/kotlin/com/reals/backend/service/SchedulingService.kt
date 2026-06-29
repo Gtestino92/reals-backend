@@ -47,6 +47,22 @@ class SchedulingService(
         negotiationRepository.findByConnectionId(connectionId)
 
     /**
+     * Atomically activates scheduling and creates the negotiation row. This keeps
+     * the scheduler retry-safe if a previous run reached SCHEDULING_PHASE before
+     * negotiation initialization completed.
+     */
+    fun activateSchedulingAndInitializeNegotiation(connectionId: UUID): ScheduleNegotiation {
+        val connection =
+            connectionService.activateScheduling(
+                connectionId = connectionId
+            )
+
+        return initializeNegotiation(
+            connectionId = connection.id
+        )
+    }
+
+    /**
      * Initializes the negotiation when a Connection enters SCHEDULING_PHASE.
      * Must be called exactly once per Connection.
      */
@@ -291,6 +307,10 @@ class SchedulingService(
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
+        }
+
+        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+            throw schedulingExpired()
         }
 
         val currentRoundProposals =

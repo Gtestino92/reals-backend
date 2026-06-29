@@ -72,6 +72,7 @@ Known scheduler jobs:
 - `PenaltyExpirationJob`
 - `SchedulingNegotiationTimeoutJob`
 - `SecondChatLifecycleJob`
+- `SecondChatReminderNotificationJob`
 - `VisualPhaseExpirationJob`
 - `AccountDeletionFinalizationJob`
 
@@ -80,6 +81,17 @@ Jobs are guarded with ShedLock infrastructure and should be idempotent where pra
 `GET /api/connections/{connectionId}/chat` owns second-chat materialization for user entry. It creates the `SECOND_CHAT` idempotently when the confirmed window is open, then activates it for the conversation.
 
 `SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
+
+`SecondChatReminderNotificationJob` sends privacy-safe external push reminders
+before a confirmed second-chat `confirmedDateTime` while the connection is still
+`SECOND_CHAT_SCHEDULED`. The default lead-time list
+is `[10]` minutes and is configured through
+`notifications.second-chat-reminder.minutes-before`; cadence is configured with
+`scheduler.second-chat-reminder-job.fixed-delay`. A reminder is due only when
+`confirmedDateTime - minutesBefore` falls within the current job window, so lead
+times already in the past are skipped. Delivery is deduplicated per user,
+notification type, connection id and lead time. The payload contains only
+`type`, `connectionId` and `availableAt`.
 
 Local auto-auth profiles expose `/api/local-dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/local-dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. The local matchmaking processor endpoint is also available in `local-firebase` for Android/Firebase manual flows. These endpoints are profile-gated and are not part of the cloud dev or production API.
 

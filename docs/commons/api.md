@@ -22,6 +22,12 @@ For first-chat navigation, `GET /api/me/home` exposes a
 expired and the current user has not decided. Once the current user decides, the
 action disappears from Home.
 
+First-chat countdowns in the client are advisory UX. The backend remains the
+source of truth: absolute timeout uses `expiresAt`/`timeoutAt`, and inactivity
+timeout uses `inactivityExpiresAt`. Mutating endpoints reject stale first-chat
+actions with `CHAT_EXPIRED` for absolute timeout or `CHAT_ABANDONED` for
+inactivity timeout.
+
 For visual review navigation, Home exposes a `pendingActions[]` item with
 `type = VISUAL_REVIEW` only while the match remains in `VISUAL_PHASE`, the
 visual review exists, the visual phase has not expired and the current user has
@@ -33,6 +39,16 @@ privacy-safe external push notification with type `VISUAL_REVIEW_AVAILABLE`.
 The push payload includes only `type` and `matchId`; tap behavior remains a
 client concern and Home remains the source of actionable state. There is no
 internal notification inbox, notification bell or unread count.
+
+When a second chat has a confirmed scheduled time and the connection is still
+`SECOND_CHAT_SCHEDULED`, `SecondChatReminderNotificationJob`
+attempts privacy-safe external push reminders per participant before
+`confirmedDateTime` using the list `notifications.second-chat-reminder.minutes-before`
+(default `[10]`). Reminder windows whose target time
+`confirmedDateTime - minutesBefore` is already in the past are skipped. The
+notification type is `SECOND_CHAT_REMINDER`; the payload includes only `type`,
+`connectionId` and `availableAt`. Delivery is deduplicated per user,
+notification type, connection id and lead time.
 
 Home returns `matchmaking` for search UX:
 
@@ -58,6 +74,11 @@ is not actionable and is surfaced through
 job moves the connection to `SCHEDULING_PHASE`. It still occupies internal
 capacity through connection locks, but it is surfaced only as this passive
 preparation notice until scheduling is activated.
+
+`SCHEDULING_PENDING` is advanced by `SchedulingActivationJob`, not by user
+actions and not by `SchedulingNegotiationTimeoutJob`. The scheduling timeout is
+actionable only after the connection reaches `SCHEDULING_PHASE`; activation
+recalculates `schedulingExpiresAt` from that moment.
 
 Second-chat next steps include `secondChat.availableAt` when a confirmed
 negotiation exists. This value is the agreed second-chat start time in ISO-8601
@@ -117,18 +138,18 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 ## Matches
 
-- `GET /api/matches/{matchId}`: fetch match details and linked connection id if present.
-- `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision` and `expiresAt`.
-- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later. Includes `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
-- `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy.
-- `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending.
+- `GET /api/matches/{matchId}`: fetch match details and linked connection id if present. Includes `visualExpiresAt` when a visual review deadline exists for the match.
+- `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt` and `inactivityExpiresAt`.
+- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later. Includes `visualExpiresAt` and `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
+- `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
+- `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
 - `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
 - `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before visual approval.
 
 ## Chats
 
-- `GET /api/chats/{chatId}`: fetch chat.
-- `POST /api/chats/{chatId}/messages`: send message as authenticated user.
+- `GET /api/chats/{chatId}`: fetch chat. First-chat responses include `inactivityExpiresAt`; second-chat responses return `inactivityExpiresAt = null`.
+- `POST /api/chats/{chatId}/messages`: send message as authenticated user. First-chat sends after absolute timeout are rejected with `CHAT_EXPIRED`; sends after inactivity timeout are rejected with `CHAT_ABANDONED`.
 - `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant. With no cursor, returns the legacy array. With `after={messageId}` or `afterMessageId={messageId}`, returns `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
 - `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation. Returns `201 Created` when a new pending request is created. If the same requester repeats the call while their pending mutual request still exists, returns `200 OK` with the existing request and does not overwrite `reason` or `details`. If the partner already has a pending mutual request for the chat, returns `409 Conflict`.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
@@ -154,17 +175,23 @@ Temporary penalties require positive `durationHours`; permanent penalties reject
 - `GET /api/connections/{connectionId}`: fetch connection.
 - `GET /api/connections/{connectionId}/chat`: fetch the second chat for a connection. If no chat exists and the confirmed second-chat window is open (`now >= availableAt && now < expiresAt`), this idempotently creates and activates the `SECOND_CHAT`. If called before `availableAt`, returns conflict with `SECOND_CHAT_NOT_AVAILABLE_YET`; if called after `expiresAt` with no chat, returns conflict with `SECOND_CHAT_EXPIRED`.
 - `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
-- `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation.
+- `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation. Includes `schedulingExpiresAt` from the parent connection so clients can show a countdown without an extra request.
 - `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects the current scheduling round after reviewing partner proposals. This opens the next round, or fails/closes if max rounds are exceeded.
 
+Scheduling mutations after `schedulingExpiresAt` are rejected with
+`SCHEDULING_EXPIRED`. The timeout job owns the persistent transition to
+`FAILED`/closed when it runs.
+
 After mutual visual approval the backend creates a connection in
 `SCHEDULING_PENDING`. This connection already counts against each participant's
 active connection limit, but scheduling endpoints are not actionable until
 `SchedulingActivationJob` moves it to `SCHEDULING_PHASE` and initializes the
-negotiation.
+negotiation. In local profiles, if Home shows only
+`SCHEDULING_PREPARING`/`pendingSchedulingConnectionCount`, run the local
+scheduling activation job before testing scheduling proposal or timeout flows.
 
 ## Local Dev Tooling Endpoints
 
@@ -173,6 +200,22 @@ These endpoints are profile-gated for local manual testing:
 - `POST /api/local-dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
 - `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
+
+These local-dev endpoints execute system tooling and do not require a user
+bearer token. They are not available in `dev` or `prod`.
+
+Supported local job triggers:
+
+- `POST /api/local-dev/jobs/scheduling-activation/run`
+- `POST /api/local-dev/jobs/second-chat-reminder/run`
+- `POST /api/local-dev/jobs/second-chat-lifecycle/run`
+- `POST /api/local-dev/jobs/chat-timeout/run`
+- `POST /api/local-dev/jobs/visual-phase-expiration/run`
+- `POST /api/local-dev/jobs/match-expiration/run`
+- `POST /api/local-dev/jobs/scheduling-timeout/run`
+- `POST /api/local-dev/jobs/inactivity-check/run`
+- `POST /api/local-dev/jobs/penalty-expiration/run`
+- `POST /api/local-dev/jobs/account-deletion-finalization/run`
 
 The second-chat confirmed time can be moved into the past for local testing with:
 
@@ -183,6 +226,10 @@ Second-chat read-only lifecycle can be tested locally with:
 - `POST /api/local-dev/jobs/second-chat-lifecycle/run`
 - `POST /api/local-dev/timeouts/chats/{chatId}/expire-now` to end the writable window.
 - `POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now` to end read-only retention.
+
+Second-chat reminder push notifications can be tested locally with:
+
+- `POST /api/local-dev/jobs/second-chat-reminder/run`
 
 Deferred scheduling activation can be tested locally with:
 
@@ -234,3 +281,7 @@ Selected stable frontend-facing domain codes:
 - `INVALID_PROFILE_PHOTO`: uploaded profile photo file is invalid.
 - `PROFILE_PHOTO_NOT_FOUND`: requested profile photo does not belong to the current profile.
 - `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.
+- `CHAT_EXPIRED`: chat action was attempted after the absolute chat deadline.
+- `CHAT_ABANDONED`: first-chat action was attempted after the inactivity deadline.
+- `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
+- `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.

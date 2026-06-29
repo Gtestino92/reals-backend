@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
 
 class MatchControllerIntegrationTest : ControllerIT() {
 
@@ -32,6 +33,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id", equalTo(setup.firstChatId.toString())))
             .andExpect(jsonPath("$.expiresAt").exists())
+            .andExpect(jsonPath("$.inactivityExpiresAt").exists())
             .andExpect(jsonPath("$.partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))
@@ -98,6 +100,23 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `chat decision after first chat inactivity returns abandoned code`() {
+        val setup = createMatchWithFirstChat()
+        val chat = chatService.findByIdOrThrow(setup.firstChatId)
+        chat.startedAt = OffsetDateTime.now().minusMinutes(6)
+        chatRepository.save(chat)
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/chat-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_ABANDONED")))
+    }
+
+    @Test
     fun `non participant cannot get match`() {
         val setup = createMatchWithFirstChat()
         val stranger = userService.createUser("match-stranger-${java.util.UUID.randomUUID()}@example.com")
@@ -137,6 +156,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(false)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
             .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
+            .andExpect(jsonPath("$.visualExpiresAt").exists())
     }
 
     @Test
@@ -279,6 +299,25 @@ class MatchControllerIntegrationTest : ControllerIT() {
                     equalTo("Read the partner personal message before making a visual decision.")
                 )
             )
+    }
+
+    @Test
+    fun `visual decision after visual expiration returns stable conflict code`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewRepository.updateExpiresAtByMatchId(
+            matchId = setup.matchId,
+            expiresAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_EXPIRED")))
     }
 
     @Test

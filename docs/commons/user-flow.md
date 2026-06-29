@@ -34,7 +34,9 @@ A new match starts in `CHAT_ACTIVE`. The first chat is created separately:
 ChatService.startFirstChat(matchId)
 ```
 
-Messages can be sent only when the chat is active, not timed out and the sender belongs to the match. Sending a message updates `Chat.lastMessageAt`.
+Messages can be sent only when the chat is active, not timed out, not abandoned
+by inactivity and the sender belongs to the match. Sending a message updates
+`Chat.lastMessageAt`.
 
 Clients discover active first chats through `GET /api/me/home`. While a match is
 in `CHAT_ACTIVE`, Home includes a `pendingActions[]` item with
@@ -48,7 +50,14 @@ Home also returns `matchmaking`, `activeInteractionsSummary`, `nextSteps` and
 `passiveNotices` so clients can render navigation without deriving actions from
 raw `MatchState`, `ConnectionState` or expiration timestamps.
 
-`GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`, `myDecision`, `partnerDecision` and `expiresAt`. The decision fields are API-facing statuses from the current user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+`GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`,
+`myDecision`, `partnerDecision`, `expiresAt` and `inactivityExpiresAt`. The
+decision fields are API-facing statuses from the current user's perspective:
+`PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+
+Client countdowns are advisory. The backend remains the source of truth and
+rejects first-chat mutations with `CHAT_EXPIRED` after the absolute deadline or
+`CHAT_ABANDONED` after the inactivity deadline.
 
 Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
 
@@ -79,11 +88,15 @@ Personal messages are stored on `VisualReview`. Current behavior allows reading
 the partner message during visual review once it exists, and requires reading it
 before deciding if the partner already submitted one.
 
+Match and visual-profile responses expose `visualExpiresAt` so clients can warn
+before the visual phase expires. New visual decisions after that deadline are
+rejected by the backend.
+
 ## 6. Connection Creation
 
 `ConnectionService.createFromMatch(match)` creates a connection after visual approval.
 
-It validates active connection limits and creates `CONNECTION` locks immediately. A connection starts in `SCHEDULING_PENDING` with `schedulingAvailableAt`; it occupies connection capacity but is not yet actionable in Home.
+It validates active connection limits and creates `CONNECTION` locks immediately. A connection starts in `SCHEDULING_PENDING` with `schedulingAvailableAt`; it occupies connection capacity but is not yet actionable in Home. `SCHEDULING_PENDING` is a deferred activation state, not a user-driven coordination state.
 
 ## 7. Scheduling
 
@@ -93,6 +106,13 @@ Scheduling is activated later by `SchedulingActivationJob` when
 does not include the connection in `nextSteps`; clients can see it only through
 `activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
 notice `SCHEDULING_PREPARING`.
+
+`SchedulingNegotiationTimeoutJob` applies only after activation, while the
+connection is in `SCHEDULING_PHASE`. The `schedulingExpiresAt` value created
+with `SCHEDULING_PENDING` is provisional; activation recalculates the actionable
+deadline from the moment scheduling becomes available. In local profiles, where
+schedulers are disabled, run `SchedulingActivationJob` manually before testing
+scheduling proposals or scheduling timeout.
 
 Once active, users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 
@@ -111,6 +131,11 @@ If more than one slot overlaps, the backend chooses the slot with the lowest com
 Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
 
 If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILED` and the connection closes.
+
+Negotiation responses expose the parent connection's `schedulingExpiresAt` so
+clients can warn before the scheduling phase expires. Scheduling mutations after
+that deadline are rejected by the backend; the timeout job performs the
+persistent failed/closed transition when it runs.
 
 ## 8. Second Chat
 

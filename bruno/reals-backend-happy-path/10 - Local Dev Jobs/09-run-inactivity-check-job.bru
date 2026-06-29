@@ -1,0 +1,17 @@
+meta {
+  name: 09 Run Inactivity Check Job
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/inactivity-check/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "InactivityCheckJob") {
+    throw new Error("Expected InactivityCheckJob to run.");
+  }
+}

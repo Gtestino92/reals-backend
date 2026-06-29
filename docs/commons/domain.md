@@ -74,7 +74,7 @@ User:
 Push notifications:
 
 - `PushPlatform`: `ANDROID`
-- `PushNotificationType`: `VISUAL_REVIEW_AVAILABLE`
+- `PushNotificationType`: `VISUAL_REVIEW_AVAILABLE`, `SECOND_CHAT_REMINDER`
 - `PushDeliveryStatus`: `SENT`, `SKIPPED_NO_ACTIVE_TOKEN`, `FAILED`
 
 ## Relationships
@@ -92,7 +92,7 @@ Push notifications:
 - `ScheduleProposal` belongs to a connection and user.
 - `ActiveEngagementLock` logically belongs to a user and either a match or connection.
 - `PushDeviceToken` belongs to a user and stores an enabled FCM device token.
-- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id.
+- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each.
 
 ## Active Engagement Locks
 
