@@ -1,7 +1,7 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.config.MatchmakingJobProperties
-import com.reals.backend.service.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingProcessorService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled

@@ -1,24 +1,15 @@
-package com.reals.backend.service
+package com.reals.backend.service.matching
 
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.PenaltyService
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
-
-data class MatchmakingAvailability(
-    val canSearch: Boolean,
-    val blockedReason: MatchmakingBlockedReason?
-)
-
-data class MatchmakingBlockedReason(
-    val code: String,
-    val message: String
-)
 
 @Service
 class MatchmakingAvailabilityService(

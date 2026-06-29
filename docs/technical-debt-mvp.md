@@ -56,7 +56,7 @@ Acceptance criteria:
 The following are intentionally not MVP blockers:
 
 - Real-time chat via WebSocket or SSE.
-- Additional push notification event coverage beyond `VISUAL_REVIEW_AVAILABLE`.
+- Additional push notification event coverage beyond currently implemented MVP events.
 - Google Sign-In / social auth providers.
 - Reveal quotas.
 - Advanced compatibility scoring.
@@ -72,3 +72,23 @@ The following are intentionally not MVP blockers:
 - Application-level message encryption.
 - Parallel matchmaking workers.
 - Kubernetes/Helm/Terraform unless the chosen platform requires them.
+
+### 6.1 Push notification delivery workflow cleanup
+
+Current notification event services intentionally keep their event-specific
+behavior explicit, but they repeat the same delivery workflow:
+
+- check existing `PushNotificationDelivery` by user, notification type and aggregate id;
+- load active device tokens;
+- send through `PushNotificationSender`;
+- disable invalid tokens;
+- save `SENT`, `FAILED` or `SKIPPED_NO_ACTIVE_TOKEN`;
+- catch per-user failures without failing the owning product transition.
+
+Planned cleanup:
+
+- Extract a shared `PushNotificationDeliveryService` under `service.notification`.
+- Keep event services responsible for eligibility, recipients and payload shape.
+- Keep provider transport under `service.notification.sender`.
+- Preserve existing idempotency semantics and delivery statuses.
+- Avoid changing notification timing, scheduler cadence or payload contents during the extraction.

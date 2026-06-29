@@ -2,7 +2,7 @@ package com.reals.backend.controller.dev
 
 import com.reals.backend.controller.dto.MatchResponse
 import com.reals.backend.controller.dto.ProcessQueueResponse
-import com.reals.backend.service.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingProcessorService
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping

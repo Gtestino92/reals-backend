@@ -1,4 +1,4 @@
-package com.reals.backend.service
+package com.reals.backend.service.notification.sender
 
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingException

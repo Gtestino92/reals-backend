@@ -1,6 +1,6 @@
 package com.reals.backend.controller.dto
 
-import com.reals.backend.service.MatchmakingDiagnostics
+import com.reals.backend.service.matching.MatchmakingDiagnostics
 import java.time.OffsetDateTime
 
 data class MatchmakingDiagnosticsResponse(
