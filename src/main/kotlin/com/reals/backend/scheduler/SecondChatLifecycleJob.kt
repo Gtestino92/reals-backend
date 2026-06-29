@@ -30,7 +30,7 @@ class SecondChatLifecycleJob(
     @SchedulerLock(
         name = "SecondChatLifecycleJob",
         lockAtLeastFor = "PT30S",
-        lockAtMostFor = "PT2M"
+        lockAtMostFor = "PT5M"
     )
     fun run() {
         processSecondChatLifecycle()

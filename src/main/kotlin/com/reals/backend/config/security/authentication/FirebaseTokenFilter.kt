@@ -41,6 +41,7 @@ class FirebaseTokenFilter(
         return request.method.equals("OPTIONS", ignoreCase = true) ||
             path == "/api/ping" ||
             path.startsWith("/api/auth/") ||
+            path.startsWith("/api/local-dev/") ||
             path == "/actuator/health" ||
             path.startsWith("/actuator/health/") ||
             path == "/actuator/info" ||

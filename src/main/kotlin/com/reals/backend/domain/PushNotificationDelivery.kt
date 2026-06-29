@@ -11,7 +11,8 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 enum class PushNotificationType {
-    VISUAL_REVIEW_AVAILABLE
+    VISUAL_REVIEW_AVAILABLE,
+    SECOND_CHAT_REMINDER
 }
 
 enum class PushDeliveryStatus {

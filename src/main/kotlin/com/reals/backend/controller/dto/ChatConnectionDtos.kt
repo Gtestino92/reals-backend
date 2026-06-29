@@ -24,10 +24,14 @@ data class ChatResponse(
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
-    val lastMessageAt: OffsetDateTime?
+    val lastMessageAt: OffsetDateTime?,
+    val inactivityExpiresAt: OffsetDateTime?
 ) {
     companion object {
-        fun from(c: Chat) = ChatResponse(
+        fun from(
+            c: Chat,
+            inactivityExpiresAt: OffsetDateTime? = null
+        ) = ChatResponse(
             id = c.id,
             matchId = c.matchId,
             connectionId = c.connectionId,
@@ -40,7 +44,8 @@ data class ChatResponse(
             expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
             readOnlyUntil = c.readOnlyUntil,
-            lastMessageAt = c.lastMessageAt
+            lastMessageAt = c.lastMessageAt,
+            inactivityExpiresAt = inactivityExpiresAt
         )
     }
 }
@@ -73,6 +78,7 @@ data class FirstChatResponse(
     val endedAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?,
+    val inactivityExpiresAt: OffsetDateTime?,
     val partner: PartnerSummaryResponse,
     val myDecision: ChatParticipantDecisionStatus,
     val partnerDecision: ChatParticipantDecisionStatus
@@ -82,7 +88,8 @@ data class FirstChatResponse(
             chat: Chat,
             partner: Profile,
             myDecision: ChatParticipantDecisionStatus,
-            partnerDecision: ChatParticipantDecisionStatus
+            partnerDecision: ChatParticipantDecisionStatus,
+            inactivityExpiresAt: OffsetDateTime?
         ) = FirstChatResponse(
             id = chat.id,
             matchId = chat.matchId,
@@ -97,6 +104,7 @@ data class FirstChatResponse(
             endedAt = chat.endedAt,
             readOnlyUntil = chat.readOnlyUntil,
             lastMessageAt = chat.lastMessageAt,
+            inactivityExpiresAt = inactivityExpiresAt,
             partner = PartnerSummaryResponse.from(partner),
             myDecision = myDecision,
             partnerDecision = partnerDecision
@@ -211,9 +219,15 @@ data class ChatExitOutcomeResponse(
     val penalizedUserId: UUID?
 ) {
     companion object {
-        fun from(o: ChatExitOutcome) =
+        fun from(
+            o: ChatExitOutcome,
+            inactivityExpiresAt: OffsetDateTime? = null
+        ) =
             ChatExitOutcomeResponse(
-                chat = ChatResponse.from(o.chat),
+                chat = ChatResponse.from(
+                    c = o.chat,
+                    inactivityExpiresAt = inactivityExpiresAt
+                ),
                 exitRequest = ChatExitRequestResponse.from(o.exitRequest),
                 penaltyApplied = o.penaltyApplied,
                 penalizedUserId = o.penalizedUserId
@@ -303,6 +317,7 @@ data class NegotiationResponse(
     val roundNumber: Int,
     val status: NegotiationStatus,
     val confirmedDateTime: OffsetDateTime?,
+    val schedulingExpiresAt: OffsetDateTime,
     val chatId: UUID?,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
@@ -310,6 +325,7 @@ data class NegotiationResponse(
     companion object {
         fun from(
             n: ScheduleNegotiation,
+            schedulingExpiresAt: OffsetDateTime,
             chatId: UUID? = null
         ) = NegotiationResponse(
             id = n.id,
@@ -317,6 +333,7 @@ data class NegotiationResponse(
             roundNumber = n.roundNumber,
             status = n.status,
             confirmedDateTime = n.confirmedDateTime,
+            schedulingExpiresAt = schedulingExpiresAt,
             chatId = chatId,
             createdAt = n.createdAt,
             updatedAt = n.updatedAt

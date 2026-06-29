@@ -46,10 +46,11 @@ class ConnectionController(
     ): ResponseEntity<ChatResponse> =
         ResponseEntity.ok(
             ChatResponse.from(
-                chatService.findVisibleSecondChatOrThrow(
+                c = chatService.findVisibleSecondChatOrThrow(
                     connectionId = connectionId,
                     userId = userId
-                )
+                ),
+                inactivityExpiresAt = null
             )
         )
 
@@ -71,7 +72,7 @@ class ConnectionController(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
-        connectionService.findByIdForUserOrThrow(
+        val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,
             userId = userId
         )
@@ -80,7 +81,10 @@ class ConnectionController(
             connectionId = connectionId
         )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 
@@ -148,8 +152,15 @@ class ConnectionController(
             proposalId = proposalId,
             acceptorUserId = userId
         )
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 
@@ -167,8 +178,15 @@ class ConnectionController(
             connectionId = connectionId,
             userId = userId
         )
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 }

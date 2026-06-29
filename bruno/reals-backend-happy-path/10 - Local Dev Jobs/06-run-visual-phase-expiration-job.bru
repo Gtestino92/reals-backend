@@ -1,0 +1,17 @@
+meta {
+  name: 06 Run Visual Phase Expiration Job
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/visual-phase-expiration/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "VisualPhaseExpirationJob") {
+    throw new Error("Expected VisualPhaseExpirationJob to run.");
+  }
+}

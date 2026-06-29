@@ -29,7 +29,7 @@ class VisualPhaseExpirationJob(
     @SchedulerLock(
         name = "VisualPhaseExpirationJob",
         lockAtLeastFor = "PT30S",
-        lockAtMostFor = "PT3M"
+        lockAtMostFor = "PT5M"
     )
     fun run() {
         val startedAt = System.nanoTime()

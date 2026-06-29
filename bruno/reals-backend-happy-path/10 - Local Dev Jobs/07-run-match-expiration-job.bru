@@ -1,0 +1,17 @@
+meta {
+  name: 07 Run Match Expiration Job
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/match-expiration/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "MatchExpirationJob") {
+    throw new Error("Expected MatchExpirationJob to run.");
+  }
+}

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component
 /* Expires active first-chat sessions that have exceeded their absolute timeoutAt deadline.
     Second-chat timeout/read-only cleanup is owned by SecondChatLifecycleJob.
     The client uses timeoutAt to display a countdown - this job marks first chats EXPIRED in the DB.
-    Runs every 2 minutes - fast response needed so users don't wait on a dead session.
+    Runs every minute - fast response needed so users don't wait on a dead session.
  */
 @Component
 class ChatTimeoutJob(
@@ -20,7 +20,7 @@ class ChatTimeoutJob(
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Scheduled(fixedDelayString = "\${scheduler.chat-timeout-job.fixed-delay}")
-    @SchedulerLock(name = "ChatTimeoutJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
+    @SchedulerLock(name = "ChatTimeoutJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT5M")
     fun run() {
         processTimedOutChats()
     }

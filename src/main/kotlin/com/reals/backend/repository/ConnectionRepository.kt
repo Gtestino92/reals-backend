@@ -24,13 +24,23 @@ interface ConnectionRepository :
     @Query(
         """
         select c from Connection c
-        where c.state = :state
-          and c.schedulingAvailableAt is not null
+        where c.schedulingAvailableAt is not null
           and c.schedulingAvailableAt <= :now
+          and (
+            c.state = :pendingState
+            or (
+              c.state = :phaseState
+              and not exists (
+                select n.id from ScheduleNegotiation n
+                where n.connectionId = c.id
+              )
+            )
+          )
         """
     )
     fun findSchedulingActivationDue(
-        @Param("state") state: ConnectionState = ConnectionState.SCHEDULING_PENDING,
+        @Param("pendingState") pendingState: ConnectionState = ConnectionState.SCHEDULING_PENDING,
+        @Param("phaseState") phaseState: ConnectionState = ConnectionState.SCHEDULING_PHASE,
         @Param("now") now: OffsetDateTime
     ): List<Connection>
 

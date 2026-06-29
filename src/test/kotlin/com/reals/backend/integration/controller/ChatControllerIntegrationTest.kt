@@ -5,6 +5,7 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.MatchState
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
@@ -18,6 +19,50 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 class ChatControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `get chat includes first chat inactivity deadline and updates after message`() {
+        val setup = createMatchWithFirstChat()
+        val initialChat = chatService.findByIdOrThrow(setup.firstChatId)
+
+        val initialBody = mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.inactivityExpiresAt").exists())
+            .andReturn()
+            .response
+            .contentAsString
+
+        assertEquals(
+            initialChat.startedAt.plusMinutes(5).toInstant(),
+            OffsetDateTime.parse(objectMapper.readTree(initialBody)["inactivityExpiresAt"].asString()).toInstant()
+        )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Actualiza inactividad"}""")
+        )
+            .andExpect(status().isOk)
+
+        val reloadedChat = chatService.findByIdOrThrow(setup.firstChatId)
+        val updatedBody = mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .contentAsString
+
+        assertEquals(
+            reloadedChat.lastMessageAt!!.plusMinutes(5).toInstant(),
+            OffsetDateTime.parse(objectMapper.readTree(updatedBody)["inactivityExpiresAt"].asString()).toInstant()
+        )
+    }
 
     @Test
     fun `send and list messages over http`() {
@@ -225,6 +270,27 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("CHAT_EXPIRED")))
     }
+
+    @Test
+    fun `send message after first chat inactivity returns stable abandoned code`() {
+        val setup = createMatchWithFirstChat()
+        val chat = chatService.findByIdOrThrow(setup.firstChatId)
+        chat.startedAt = OffsetDateTime.now().minusMinutes(6)
+        chatRepository.save(chat)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Tarde por inactividad"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("CHAT_ABANDONED")))
+
+        assertEquals(ChatStatus.ABANDONED, chatService.findByIdOrThrow(setup.firstChatId).status)
+        assertEquals(MatchState.EXPIRED, matchRepository.findById(setup.matchId).orElseThrow().state)
+    }
+
 
     @Test
     fun `invalid chat id returns bad request`() {

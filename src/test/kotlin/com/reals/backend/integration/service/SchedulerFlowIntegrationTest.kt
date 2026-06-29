@@ -199,7 +199,42 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         SchedulingActivationJob(
             connectionRepository = connectionRepository,
-            connectionService = connectionService,
+            schedulingService = schedulingService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `scheduling activation job initializes missing negotiation for already activated connection`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNull(schedulingService.findNegotiationOrNull(connection.id))
+
+        SchedulingActivationJob(
+            connectionRepository = connectionRepository,
             schedulingService = schedulingService
         ).run()
 

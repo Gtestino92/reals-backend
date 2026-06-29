@@ -46,7 +46,7 @@ class ChatService(
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
 
-    @param:Value("\${chat.first-chat.duration-minutes:1440}")
+    @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
 
     @param:Value("\${chat.second-chat.duration-minutes:2880}")
@@ -56,7 +56,10 @@ class ChatService(
     private val secondChatReadOnlyRetentionMinutes: Long,
 
     @param:Value("\${chat.first-chat.min-messages-per-user:0}")
-    private val minMessagesPerUser: Int
+    private val minMessagesPerUser: Int,
+
+    @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
+    private val firstChatInactivityThresholdMinutes: Long
 ) {
 
     private companion object {
@@ -95,6 +98,15 @@ class ChatService(
                 timeoutAt = now.plusMinutes(firstChatDurationMinutes)
             )
         )
+    }
+
+    fun inactivityExpiresAt(chat: Chat): OffsetDateTime? {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return null
+        }
+
+        return (chat.lastMessageAt ?: chat.startedAt)
+            .plusMinutes(firstChatInactivityThresholdMinutes)
     }
 
     fun startSecondChat(
@@ -489,11 +501,10 @@ class ChatService(
                 ?: throw chatNotFound()
 
         if (chat.status != ChatStatus.ACTIVE) {
-            throw DomainConflictException(
-                code = unavailableCode,
-                message = "Chat is not available"
-            )
+            throw chatUnavailableForStatus(chat.status, unavailableCode)
         }
+
+        validateActiveChatWindow(chat)
 
         return chat
     }
@@ -682,7 +693,11 @@ class ChatService(
         )
 
     private fun validateActiveChatWindow(chat: Chat) {
-        if (chat.status == ChatStatus.EXPIRED || chat.status == ChatStatus.ABANDONED) {
+        if (chat.status == ChatStatus.ABANDONED) {
+            throw chatAbandoned()
+        }
+
+        if (chat.status == ChatStatus.EXPIRED) {
             throw chatExpired()
         }
 
@@ -690,8 +705,27 @@ class ChatService(
             throw chatNotAvailable()
         }
 
-        if (!OffsetDateTime.now().isBefore(chat.timeoutAt)) {
+        val now = OffsetDateTime.now()
+
+        if (!now.isBefore(chat.timeoutAt)) {
+            if (chat.chatType == ChatType.FIRST_CHAT) {
+                endChat(
+                    chatId = chat.id,
+                    finalStatus = ChatStatus.EXPIRED
+                )
+            }
             throw chatExpired()
+        }
+
+        if (
+            chat.chatType == ChatType.FIRST_CHAT &&
+            inactivityExpiresAt(chat)?.isAfter(now) == false
+        ) {
+            endChat(
+                chatId = chat.id,
+                finalStatus = ChatStatus.ABANDONED
+            )
+            throw chatAbandoned()
         }
     }
 
@@ -747,6 +781,25 @@ class ChatService(
             code = DomainErrorCode.CHAT_EXPIRED,
             message = "Chat has expired"
         )
+
+    private fun chatAbandoned(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_ABANDONED,
+            message = "Chat was closed due to inactivity"
+        )
+
+    private fun chatUnavailableForStatus(
+        status: ChatStatus,
+        fallbackCode: DomainErrorCode
+    ): DomainConflictException =
+        when (status) {
+            ChatStatus.ABANDONED -> chatAbandoned()
+            ChatStatus.EXPIRED -> chatExpired()
+            else -> DomainConflictException(
+                code = fallbackCode,
+                message = "Chat is not available"
+            )
+        }
 
     private fun invalidChatMessage(): DomainBadRequestException =
         DomainBadRequestException(

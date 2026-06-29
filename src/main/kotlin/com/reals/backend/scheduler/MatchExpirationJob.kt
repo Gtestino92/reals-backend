@@ -15,7 +15,7 @@ import java.time.OffsetDateTime
 /**
  * Expires matches that have exceeded their allowed duration without progressing.
  *
- * Primary: CHAT_ACTIVE matches stuck beyond [maxChatDuration] (default PT24H).
+ * Primary: CHAT_ACTIVE matches stuck beyond [maxChatDuration] (default PT20M).
  * Fallback: VISUAL_PHASE matches whose visual_reviews.expires_at is past — acts as safety net
  * in case VisualPhaseExpirationJob misses a record.
  *
@@ -28,7 +28,7 @@ class MatchExpirationJob(
     private val visualReviewRepository: VisualReviewRepository,
     private val matchService: MatchService,
 
-    @param:Value("\${scheduler.match-expiration-job.max-chat-duration:PT24H}")
+    @param:Value("\${scheduler.match-expiration-job.max-chat-duration:PT20M}")
     private val maxChatDuration: Duration
 
 ) {
@@ -39,7 +39,7 @@ class MatchExpirationJob(
     @SchedulerLock(
         name = "MatchExpirationJob",
         lockAtLeastFor = "PT30S",
-        lockAtMostFor = "PT2M"
+        lockAtMostFor = "PT5M"
     )
     fun run() {
         val startedAt = System.nanoTime()
