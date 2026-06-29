@@ -17,7 +17,7 @@ class PenaltyExpirationJob(
         fixedDelayString =
             "\${scheduler.penalty-expiration-job.fixed-delay}"
     )
-    @SchedulerLock(name = "PenaltyExpirationJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
+    @SchedulerLock(name = "PenaltyExpirationJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT5M")
     fun run() {
         processExpiredPenalties()
     }

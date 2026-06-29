@@ -10,10 +10,6 @@ post {
   auth: none
 }
 
-headers {
-  Authorization: Bearer {{firebase_counterpart_id_token}}
-}
-
 script:post-response {
   const body = res.getBody();
   if (body.target !== "connection-scheduling-availability") {

@@ -277,6 +277,16 @@ for deterministic manual testing:
 POST /api/local-dev/jobs/{job}/run
 ```
 
+`/api/local-dev/**` endpoints are profile-gated local tooling and do not
+require a user bearer token. They are not exposed by the `dev` or `prod`
+profiles.
+
+The Bruno collection includes direct triggers under:
+
+```text
+bruno/reals-backend-happy-path/10 - Local Dev Jobs
+```
+
 Local-only user provisioning for Bruno/dev flows is available at:
 
 ```http
@@ -290,6 +300,21 @@ for Firebase/Android manual flows:
 
 ```http
 POST /api/local-dev/matchmaking/process?maxPairsPerRun=10
+```
+
+Supported local job triggers:
+
+```http
+POST /api/local-dev/jobs/scheduling-activation/run
+POST /api/local-dev/jobs/second-chat-reminder/run
+POST /api/local-dev/jobs/second-chat-lifecycle/run
+POST /api/local-dev/jobs/chat-timeout/run
+POST /api/local-dev/jobs/visual-phase-expiration/run
+POST /api/local-dev/jobs/match-expiration/run
+POST /api/local-dev/jobs/scheduling-timeout/run
+POST /api/local-dev/jobs/inactivity-check/run
+POST /api/local-dev/jobs/penalty-expiration/run
+POST /api/local-dev/jobs/account-deletion-finalization/run
 ```
 
 To move a confirmed second-chat time into the past for manual entry testing:

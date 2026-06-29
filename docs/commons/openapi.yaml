@@ -1597,6 +1597,11 @@ components:
         decisionRequiresPartnerPersonalMessageRead:
           type: boolean
           description: True when the partner has submitted a personal message and the authenticated user must fetch/read it before making a visual decision.
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Visual review deadline used by clients for advisory countdowns; backend remains the source of truth.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]
@@ -1619,6 +1624,10 @@ components:
         userBId: { type: string, format: uuid }
         state: { $ref: '#/components/schemas/MatchState' }
         connectionId: { type: string, format: uuid, nullable: true }
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     ChatDecisionRequest:
@@ -1658,6 +1667,11 @@ components:
         endedAt: { type: string, format: date-time, nullable: true }
         readOnlyUntil: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
+        inactivityExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply.
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
@@ -1877,13 +1891,14 @@ components:
         createdAt: { type: string, format: date-time }
     NegotiationResponse:
       type: object
-      required: [id, connectionId, roundNumber, status, createdAt, updatedAt]
+      required: [id, connectionId, roundNumber, status, schedulingExpiresAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         connectionId: { type: string, format: uuid }
         roundNumber: { type: integer }
         status: { $ref: '#/components/schemas/NegotiationStatus' }
         confirmedDateTime: { type: string, format: date-time, nullable: true }
+        schedulingExpiresAt: { type: string, format: date-time }
         chatId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

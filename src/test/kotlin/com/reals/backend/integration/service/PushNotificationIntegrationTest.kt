@@ -1,16 +1,21 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.PushDeliveryStatus
 import com.reals.backend.domain.PushDeviceToken
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.scheduler.SecondChatReminderNotificationJob
 import com.reals.backend.service.PushNotification
 import com.reals.backend.service.PushNotificationSender
 import com.reals.backend.service.PushSendResult
+import com.reals.backend.service.SecondChatReminderNotificationService
 import com.reals.backend.service.VisualReviewNotificationService
+import com.reals.backend.service.secondChatReminderAggregateId
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -34,6 +39,12 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var visualReviewNotificationService: VisualReviewNotificationService
+
+    @Autowired
+    private lateinit var secondChatReminderNotificationService: SecondChatReminderNotificationService
+
+    @Autowired
+    private lateinit var secondChatReminderNotificationJob: SecondChatReminderNotificationJob
 
     @BeforeEach
     fun resetPushSender() {
@@ -197,11 +208,225 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
     }
 
+    @Test
+    fun `second chat reminder due query returns only confirmed actionable upcoming negotiations`() {
+        val now = OffsetDateTime.now()
+        val due =
+            confirmSecondChat(
+                confirmedDateTime = now.plusMinutes(10).plusSeconds(30)
+            )
+        confirmSecondChat(
+            confirmedDateTime = now.plusMinutes(20)
+        )
+        confirmSecondChat(
+            confirmedDateTime = now.minusMinutes(1)
+        )
+        confirmSecondChat(
+            confirmedDateTime = now.plusMinutes(5),
+            status = NegotiationStatus.PENDING
+        )
+        confirmSecondChat(
+            confirmedDateTime = now.plusMinutes(5),
+            state = ConnectionState.CLOSED
+        )
+        val alreadyAvailable =
+            confirmSecondChat(
+                confirmedDateTime = now.plusMinutes(10).plusSeconds(30),
+                state = ConnectionState.SECOND_CHAT_AVAILABLE
+            )
+
+        val dueNegotiations =
+            negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
+                windowStart = now.plusMinutes(10),
+                windowEnd = now.plusMinutes(11)
+            )
+
+        assertEquals(listOf(due.connectionId), dueNegotiations.map { it.connectionId })
+        assertFalse(dueNegotiations.map { it.connectionId }.contains(alreadyAvailable.connectionId))
+
+        val tooLateFor120MinuteReminder =
+            confirmSecondChat(
+                confirmedDateTime = now.plusMinutes(60)
+            )
+
+        val dueFor120MinuteReminder =
+            negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
+                windowStart = now.plusMinutes(120),
+                windowEnd = now.plusMinutes(121)
+            )
+
+        assertFalse(dueFor120MinuteReminder.map { it.connectionId }.contains(tooLateFor120MinuteReminder.connectionId))
+    }
+
+    @Test
+    fun `second chat reminder sends privacy safe notification to both users and deduplicates`() {
+        val confirmedDateTime = OffsetDateTime.now().plusMinutes(5)
+        val setup = confirmSecondChat(confirmedDateTime = confirmedDateTime)
+        pushDeviceTokenService.registerToken(setup.userAId, "second-chat-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "second-chat-token-b", PushPlatform.ANDROID)
+
+        assertTrue(
+            secondChatReminderNotificationService.notifySecondChatReminder(
+                connectionId = setup.connectionId,
+                confirmedDateTime = confirmedDateTime,
+                minutesBefore = 10
+            )
+        )
+
+        assertEquals(2, pushSender.attempts.size)
+        assertEquals(
+            listOf("second-chat-token-a", "second-chat-token-b"),
+            pushSender.attempts.flatMap { it.tokens }.sorted()
+        )
+
+        pushSender.attempts.forEach { attempt ->
+            assertEquals("Tu segunda charla empieza pronto", attempt.notification.title)
+            assertEquals("Tenes una segunda charla programada en 10 minutos.", attempt.notification.body)
+            assertEquals(
+                setOf("type", "connectionId", "availableAt"),
+                attempt.notification.data.keys
+            )
+            assertEquals(PushNotificationType.SECOND_CHAT_REMINDER.name, attempt.notification.data["type"])
+            assertEquals(setup.connectionId.toString(), attempt.notification.data["connectionId"])
+            assertEquals(confirmedDateTime.toString(), attempt.notification.data["availableAt"])
+        }
+
+        val deliveries = secondChatReminderDeliveriesFor(setup.connectionId, minutesBefore = 10)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+
+        secondChatReminderNotificationService.notifySecondChatReminder(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime,
+            minutesBefore = 10
+        )
+
+        assertEquals(2, secondChatReminderDeliveriesFor(setup.connectionId, minutesBefore = 10).size)
+        assertEquals(2, pushSender.attempts.size)
+
+        secondChatReminderNotificationService.notifySecondChatReminder(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime,
+            minutesBefore = 120
+        )
+
+        assertEquals(2, secondChatReminderDeliveriesFor(setup.connectionId, minutesBefore = 120).size)
+        assertEquals(4, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `second chat reminder creates skipped deliveries when users have no active tokens`() {
+        val setup = confirmSecondChat(confirmedDateTime = OffsetDateTime.now().plusMinutes(5))
+
+        assertDoesNotThrow {
+            secondChatReminderNotificationService.notifySecondChatReminder(
+                connectionId = setup.connectionId,
+                confirmedDateTime = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime
+                    ?: error("Expected confirmed time"),
+                minutesBefore = 10
+            )
+        }
+
+        val deliveries = secondChatReminderDeliveriesFor(setup.connectionId, minutesBefore = 10)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN })
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `second chat reminder disables invalid tokens reported by sender`() {
+        val confirmedDateTime = OffsetDateTime.now().plusMinutes(5)
+        val setup = confirmSecondChat(confirmedDateTime = confirmedDateTime)
+        pushDeviceTokenService.registerToken(setup.userAId, "second-chat-invalid-token", PushPlatform.ANDROID)
+        pushSender.nextResult =
+            PushSendResult(
+                sent = false,
+                invalidTokens = listOf("second-chat-invalid-token"),
+                errorMessage = "registration token is not registered"
+            )
+
+        secondChatReminderNotificationService.notifySecondChatReminder(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime,
+            minutesBefore = 10
+        )
+
+        val token = pushDeviceTokenRepository.findByToken("second-chat-invalid-token")
+            ?: error("Expected token to exist")
+        assertFalse(token.enabled)
+
+        val deliveryForUserA = pushNotificationDeliveryRepository
+            .findByUserIdAndNotificationTypeAndAggregateId(
+                userId = setup.userAId,
+                notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+                aggregateId = secondChatReminderAggregateId(
+                    connectionId = setup.connectionId,
+                    minutesBefore = 10
+                )
+            )
+            ?: error("Expected delivery for user A")
+        assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+    }
+
+    @Test
+    fun `second chat reminder job sends due reminders once`() {
+        val due = confirmSecondChat(confirmedDateTime = OffsetDateTime.now().plusMinutes(10).plusSeconds(30))
+        val notDue = confirmSecondChat(confirmedDateTime = OffsetDateTime.now().plusMinutes(20))
+        pushDeviceTokenService.registerToken(due.userAId, "job-due-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(due.userBId, "job-due-token-b", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(notDue.userAId, "job-not-due-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(notDue.userBId, "job-not-due-token-b", PushPlatform.ANDROID)
+
+        secondChatReminderNotificationJob.runNowForDev()
+
+        assertEquals(2, secondChatReminderDeliveriesFor(due.connectionId, minutesBefore = 10).size)
+        assertEquals(0, secondChatReminderDeliveriesFor(notDue.connectionId, minutesBefore = 10).size)
+        assertEquals(listOf("job-due-token-a", "job-due-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+
+        secondChatReminderNotificationJob.runNowForDev()
+
+        assertEquals(2, secondChatReminderDeliveriesFor(due.connectionId, minutesBefore = 10).size)
+        assertEquals(2, pushSender.attempts.size)
+    }
+
     private fun deliveriesFor(matchId: UUID) =
         pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
             notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
             aggregateId = matchId
         )
+
+    private fun secondChatReminderDeliveriesFor(
+        connectionId: UUID,
+        minutesBefore: Long
+    ) =
+        pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+            aggregateId = secondChatReminderAggregateId(
+                connectionId = connectionId,
+                minutesBefore = minutesBefore
+            )
+        )
+
+    private fun confirmSecondChat(
+        confirmedDateTime: OffsetDateTime,
+        state: ConnectionState = ConnectionState.SECOND_CHAT_SCHEDULED,
+        status: NegotiationStatus = NegotiationStatus.CONFIRMED
+    ): ConnectionFixture {
+        val setup = createConnectionInSchedulingPhase()
+        val connection = connectionRepository.findById(setup.connectionId).orElseThrow()
+        connection.state = state
+        connection.updatedAt = OffsetDateTime.now()
+        connectionRepository.saveAndFlush(connection)
+
+        val negotiation = negotiationRepository.findByConnectionId(setup.connectionId)
+            ?: error("Expected scheduling negotiation")
+        negotiation.status = status
+        negotiation.confirmedDateTime = confirmedDateTime
+        negotiation.updatedAt = OffsetDateTime.now()
+        negotiationRepository.saveAndFlush(negotiation)
+
+        return setup
+    }
 
     @TestConfiguration
     class PushSenderTestConfig {
