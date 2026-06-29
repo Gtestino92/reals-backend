@@ -1,6 +1,7 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
 import com.reals.backend.domain.ChatExitRequestCreationResult
@@ -11,6 +12,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
@@ -34,6 +36,7 @@ class ChatExitService(
     private val matchService: MatchService,
     private val penaltyService: PenaltyService,
     private val safetyReportService: SafetyReportService,
+    private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
@@ -136,7 +139,10 @@ class ChatExitService(
         exitRequest.resolvedAt = OffsetDateTime.now()
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -166,7 +172,10 @@ class ChatExitService(
         exitRequest.resolvedAt = OffsetDateTime.now()
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -205,7 +214,10 @@ class ChatExitService(
         exitRequest.resolvedAt = now
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL
+        )
 
         // Client-triggered mutual timeout means the pending request was not
         // answered in time. It is not a unilateral cancellation and must not
@@ -248,7 +260,10 @@ class ChatExitService(
             )
         )
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.UNILATERAL_CANCEL
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -287,7 +302,7 @@ class ChatExitService(
             )
         )
 
-        safetyReportService.createPendingReport(
+        val report = safetyReportService.createPendingReport(
             chat = chat,
             reporterUserId = reporterUserId,
             reportedUserId = reportedUserId,
@@ -295,7 +310,17 @@ class ChatExitService(
             details = normalizedDetails
         )
 
-        finishCancelledChat(chat)
+        userBlockService.blockUser(
+            blockerUserId = reporterUserId,
+            blockedUserId = reportedUserId,
+            source = UserBlockSource.SAFETY_REPORT,
+            sourceReportId = report.id
+        )
+
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.SAFETY_REPORT
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -390,9 +415,13 @@ class ChatExitService(
         return sent < minimum
     }
 
-    private fun finishCancelledChat(chat: Chat) {
+    private fun finishCancelledChat(
+        chat: Chat,
+        endedReason: ChatEndReason
+    ) {
         chat.status = ChatStatus.CANCELLED
         chat.endedAt = OffsetDateTime.now()
+        chat.endedReason = endedReason
         chatRepository.save(chat)
 
         when (chat.chatType) {

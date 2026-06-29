@@ -22,6 +22,13 @@ enum class SafetyReportReason {
     OTHER
 }
 
+enum class SafetyReportContextType {
+    CHAT,
+    VISUAL_PROFILE,
+    PERSONAL_MESSAGE,
+    PROFILE_PHOTO
+}
+
 @Entity
 @Table(name = "safety_reports")
 data class SafetyReport(
@@ -39,14 +46,21 @@ data class SafetyReport(
     @Column(name = "reported_user_id", nullable = false)
     var reportedUserId: UUID,
 
-    @Column(name = "chat_id", nullable = false)
-    var chatId: UUID,
+    @Column(name = "chat_id")
+    var chatId: UUID? = null,
 
     @Column(name = "match_id", nullable = false)
     var matchId: UUID,
 
     @Column(name = "connection_id")
     var connectionId: UUID? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "context_type", nullable = false)
+    var contextType: SafetyReportContextType = SafetyReportContextType.CHAT,
+
+    @Column(name = "context_id")
+    var contextId: UUID? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "reason", nullable = false)

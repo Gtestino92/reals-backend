@@ -144,25 +144,14 @@ data class ProfileResponse(
 }
 
 data class PhotoResponse(
-val id: UUID,
-val url: String,
-val position: Int,
-val isPersonPhoto: Boolean,
-val isFullBody: Boolean,
-val validationStatus: PhotoValidationStatus
+    val id: UUID,
+    val url: String,
+    val position: Int,
+    val isPersonPhoto: Boolean,
+    val isFullBody: Boolean,
+    val validationStatus: PhotoValidationStatus
 ) {
     companion object {
-        fun from(photo: ProfilePhoto): PhotoResponse {
-            return PhotoResponse(
-                id = photo.id,
-                url = photo.url,
-                position = photo.position,
-                isPersonPhoto = photo.isPersonPhoto,
-                isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
-            )
-        }
-
         fun from(
             photo: ProfilePhoto,
             url: String
@@ -201,7 +190,7 @@ data class VisualProfileResponse(
     companion object {
         fun from(
             profile: Profile,
-            photos: List<ProfilePhoto>,
+            photos: List<PhotoResponse>,
             myPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageRead: Boolean,
@@ -212,9 +201,7 @@ data class VisualProfileResponse(
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
-            photos = photos
-                .sortedBy { it.position }
-                .map { PhotoResponse.from(it) },
+            photos = photos.sortedBy { it.position },
             myPersonalMessageSubmitted = myPersonalMessageSubmitted,
             partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
             partnerPersonalMessageRead = partnerPersonalMessageRead,

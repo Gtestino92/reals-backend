@@ -61,6 +61,17 @@ interface MatchmakingQueueRepository :
                 WHERE p.user_id = qb.user_id
                     AND p.active = true
             )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM user_blocks ub
+                WHERE (
+                    ub.blocker_user_id = qa.user_id
+                    AND ub.blocked_user_id = qb.user_id
+                ) OR (
+                    ub.blocker_user_id = qb.user_id
+                    AND ub.blocked_user_id = qa.user_id
+                )
+            )
             AND pa.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
             AND pa.intention = pb.intention

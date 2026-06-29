@@ -1,5 +1,6 @@
 package com.reals.backend.scheduler
 
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.service.ChatService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -40,7 +41,8 @@ class ChatTimeoutJob(
             try {
                 val changed = chatService.endChat(
                     chatId = chat.id,
-                    finalStatus = ChatStatus.EXPIRED
+                    finalStatus = ChatStatus.EXPIRED,
+                    endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
                 )
                 if (changed) {
                     succeeded += 1

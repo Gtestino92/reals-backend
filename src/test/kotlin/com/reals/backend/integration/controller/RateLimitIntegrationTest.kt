@@ -15,7 +15,10 @@ import java.util.UUID
         "security.rate-limit.enabled=true",
         "security.rate-limit.provision-capacity=1",
         "security.rate-limit.provision-refill-tokens=1",
-        "security.rate-limit.provision-refill-period-seconds=60"
+        "security.rate-limit.provision-refill-period-seconds=60",
+        "security.rate-limit.safety-report-capacity=1",
+        "security.rate-limit.safety-report-refill-tokens=1",
+        "security.rate-limit.safety-report-refill-period-seconds=60"
     ]
 )
 class RateLimitIntegrationTest : ControllerIT() {
@@ -34,6 +37,32 @@ class RateLimitIntegrationTest : ControllerIT() {
         mockMvc.perform(
             post("/api/me/provision")
                 .with(authenticatedWithFirebase(firebaseUid, email))
+        )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(header().exists("Retry-After"))
+            .andExpect(jsonPath("$.code", equalTo("RATE_LIMIT_EXCEEDED")))
+    }
+
+    @Test
+    fun `safety report endpoint returns too many requests after limit is exceeded`() {
+        val token = "safety-report-rate-limit-${UUID.randomUUID()}"
+        val userId = UUID.randomUUID()
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .header("Authorization", "Bearer $token")
+                .with(authenticatedAs(userId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isBadRequest)
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .header("Authorization", "Bearer $token")
+                .with(authenticatedAs(userId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
         )
             .andExpect(status().isTooManyRequests)
             .andExpect(header().exists("Retry-After"))

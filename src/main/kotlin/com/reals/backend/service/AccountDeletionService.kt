@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
@@ -116,6 +117,7 @@ class AccountDeletionService(
         chats.forEach {
             it.status = ChatStatus.CANCELLED
             it.endedAt = now
+            it.endedReason = ChatEndReason.USER_DELETED
         }
         chatRepository.saveAll(chats)
     }

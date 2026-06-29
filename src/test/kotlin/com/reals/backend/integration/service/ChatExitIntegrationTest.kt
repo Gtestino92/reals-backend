@@ -1,5 +1,6 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
 import com.reals.backend.domain.ChatExitRequestStatus
@@ -9,7 +10,9 @@ import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
@@ -46,6 +49,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNotNull(chatService.findByIdOrThrow(setup.firstChatId).endedAt)
@@ -72,6 +76,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.REJECTED, outcome.exitRequest.status)
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertFalse(outcome.penaltyApplied)
@@ -99,6 +104,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.TIMED_OUT, outcome.exitRequest.status)
         assertFalse(outcome.penaltyApplied)
         assertNull(outcome.penalizedUserId)
@@ -321,6 +327,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.UNILATERAL_CANCEL, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
         assertTrue(outcome.penaltyApplied)
@@ -345,6 +352,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.UNILATERAL_CANCEL, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
         assertFalse(outcome.penaltyApplied)
@@ -365,6 +373,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.SAFETY_REPORT, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.SAFETY_REPORT, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
         assertFalse(outcome.penaltyApplied)
@@ -380,8 +389,32 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(setup.userBId, report.reportedUserId)
         assertEquals(setup.firstChatId, report.chatId)
         assertEquals(setup.matchId, report.matchId)
+        assertEquals(SafetyReportContextType.CHAT, report.contextType)
+        assertEquals(setup.firstChatId, report.contextId)
         assertNull(report.connectionId)
         assertNull(report.penaltyId)
+
+        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId
+        ) ?: error("Expected safety report to create a user block")
+        assertEquals(UserBlockSource.SAFETY_REPORT, block.source)
+        assertEquals(report.id, block.sourceReportId)
+        assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+        assertTrue(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
+
+        val repeatedBlock = userBlockService.blockUser(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId,
+            source = UserBlockSource.SAFETY_REPORT,
+            sourceReportId = report.id
+        )
+        assertEquals(block.id, repeatedBlock.id)
+        assertEquals(
+            1,
+            userBlockRepository.findAll()
+                .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
+        )
     }
 
     @Test
@@ -426,6 +459,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
         assertNoConnectionLocks(setup.userAId, setup.userBId)
@@ -448,6 +482,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.REJECTED, outcome.exitRequest.status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
         assertNoConnectionLocks(setup.userAId, setup.userBId)
@@ -472,6 +507,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestStatus.TIMED_OUT, outcome.exitRequest.status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
         assertFalse(outcome.penaltyApplied)
@@ -519,6 +555,7 @@ class ChatExitIntegrationTest : BaseIT() {
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
+        assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
         assertEquals(setup.userAId, outcome.penalizedUserId)
         assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))

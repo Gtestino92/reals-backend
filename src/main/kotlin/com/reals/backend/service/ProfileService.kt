@@ -287,10 +287,8 @@ class ProfileService(
 
         profilePhotoRepository.delete(existing)
 
-        storageKey?.let { key ->
-            runCatching {
-                storageService.delete(key)
-            }
+        runCatching {
+            storageService.delete(storageKey)
         }
 
         moveActiveProfileToDraftAfterPhotoMutation(profile)
@@ -345,7 +343,6 @@ class ProfileService(
 
             newUploadedKey = storedObject.key
 
-            existingPhoto.url = storedObject.url
             existingPhoto.storageProvider = PhotoStorageProvider.S3
             existingPhoto.storageBucket = storedObject.bucket
             existingPhoto.storageKey = storedObject.key
@@ -355,10 +352,8 @@ class ProfileService(
 
             val saved = profilePhotoRepository.save(existingPhoto)
 
-            oldStorageKey?.let { key ->
-                runCatching {
-                    storageService.delete(key)
-                }
+            runCatching {
+                storageService.delete(oldStorageKey)
             }
 
             moveActiveProfileToDraftAfterPhotoMutation(profile)
@@ -419,7 +414,6 @@ class ProfileService(
                 ProfilePhoto(
                     id = photoId,
                     profileId = profileId,
-                    url = storedObject.url,
                     storageProvider = PhotoStorageProvider.S3,
                     storageBucket = storedObject.bucket,
                     storageKey = storedObject.key,
@@ -457,10 +451,7 @@ class ProfileService(
     }
 
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
-        val key = photo.storageKey
-            ?: throw IllegalStateException("Profile photo without storage key: ${photo.id}")
-
-        return storageService.getReadUrl(key)
+        return storageService.getReadUrl(photo.storageKey)
     }
 
     private fun validateDisplayName(displayName: String) {

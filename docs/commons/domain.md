@@ -37,6 +37,7 @@ Matching and chat:
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
 - `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `CANCELLED`, `EXPIRED`, `ABANDONED`, `CLOSED`
+- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `SYSTEM_CLOSED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
@@ -44,6 +45,7 @@ Matching and chat:
 - `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `SafetyReportStatus`: `PENDING`, `DISMISSED`, `CONFIRMED`
 - `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
+- `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`
 - `PenaltyType`: `TEMPORARY_BAN`, `PERMANENT_BAN`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
@@ -85,7 +87,8 @@ Push notifications:
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
 - `ChatDecision` belongs to a chat and match.
 - `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report chat closures.
-- `SafetyReport` is the moderation source of truth for reported safety incidents.
+- `SafetyReport` is the moderation source of truth for reported safety incidents. It stores an explicit context type and context id; chat safety cancellation uses `CHAT` with the chat id, visual profile and personal message reports use the match id, and profile photo reports use the photo id.
+- `UserBlock` records directional blocks. Matchmaking treats a block in either direction between two users as a bidirectional exclusion.
 - `VisualReview` belongs to a match.
 - `Connection` belongs to a match.
 - `ScheduleNegotiation` belongs to a connection.
@@ -121,7 +124,10 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Rejected mutual cancellation currently has no penalty. Future scoring may apply a lower penalty to the requester.
 - Timed-out mutual cancellation currently has no penalty. It is not a unilateral cancellation; if the requester resolves the timeout because the responder did not answer in time, the requester must not be penalized.
 - Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
-- Safety cancellation closes the chat as `CANCELLED`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
+- Safety cancellation closes the chat as `CANCELLED`, records `ChatEndReason.SAFETY_REPORT`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
+- Safety cancellation automatically creates a directional `UserBlock` from reporter to reported. Matchmaking excludes the pair in both directions even though only one block row is stored.
+- General user safety reports outside chat cancellation validate a real chat or visual-review interaction and create the same directional block without closing any chat. Duplicate reports for the same reporter, reported user, context type and context id return the existing report.
+- `ChatStatus` remains the operational state; `ChatEndReason` records why a chat ended.
 - Temporary penalties have `PenaltyType.TEMPORARY_BAN` and a non-null `expiresAt`; the penalty expiration job deactivates them after expiry.
 - Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are never expired by the job.
 - Active penalties block matchmaking. Creating a penalty removes the penalized user from the matchmaking queue if present.
@@ -138,7 +144,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced in the basic matchmaking query. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.
-- File-backed profile photos store provider, bucket and object key. API responses expose renderable read URLs; private storage should use presigned URLs and clients should refresh them instead of treating them as permanent identifiers.
+- File-backed profile photos store provider, bucket and object key. The database does not store renderable photo URLs; `storageKey` is the source of truth for retrieval. API responses still expose `PhotoResponse.url`, but that URL is generated at response time from the stored object key. Private storage may use presigned, time-limited URLs, so clients should refresh photo responses instead of treating URLs as permanent identifiers.
 
 ## Account Deletion And Recovery
 

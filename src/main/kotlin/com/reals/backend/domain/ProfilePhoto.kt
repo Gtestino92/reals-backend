@@ -37,9 +37,6 @@ data class ProfilePhoto(
     @Column(name = "profile_id", nullable = false)
     var profileId: UUID,
 
-    @Column(name = "url", nullable = false)
-    var url: String,
-
     @Enumerated(EnumType.STRING)
     @Column(name = "storage_provider", nullable = false)
     var storageProvider: PhotoStorageProvider = PhotoStorageProvider.S3,
@@ -47,8 +44,8 @@ data class ProfilePhoto(
     @Column(name = "storage_bucket")
     var storageBucket: String? = null,
 
-    @Column(name = "storage_key")
-    var storageKey: String? = null,
+    @Column(name = "storage_key", nullable = false)
+    var storageKey: String,
 
     @Column(name = "position", nullable = false)
     var position: Int,

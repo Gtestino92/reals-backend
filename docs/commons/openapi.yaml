@@ -619,6 +619,32 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/safety/reports:
+    post:
+      tags: [Safety]
+      summary: Create a user safety report
+      description: Creates a user report for chat, visual profile, personal message or profile photo context without necessarily closing a chat. The backend validates the reporter/reported relationship from the referenced aggregate, creates or reuses a directional user block, and treats duplicates for the same reporter, reported user, context type and context id idempotently.
+      requestBody:
+        $ref: '#/components/requestBodies/CreateSafetyReport'
+      responses:
+        '201':
+          description: Created safety report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportResponse'
+        '200':
+          description: Existing duplicate safety report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/admin/safety-reports:
     get:
       tags: [Admin]
@@ -973,6 +999,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ChatSafetyCancellationRequest'
+    CreateSafetyReport:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateSafetyReportRequest'
     SafetyReportDismissal:
       required: true
       content:
@@ -1729,6 +1761,33 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
         details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+    CreateSafetyReportRequest:
+      type: object
+      required: [reportedUserId, contextType, reason, details]
+      properties:
+        reportedUserId: { type: string, format: uuid }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        chatId: { type: string, format: uuid, nullable: true }
+        matchId: { type: string, format: uuid, nullable: true }
+        connectionId: { type: string, format: uuid, nullable: true }
+        profilePhotoId: { type: string, format: uuid, nullable: true }
+        reason: { $ref: '#/components/schemas/SafetyReportReason' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+    SafetyReportResponse:
+      type: object
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        reporterUserId: { type: string, format: uuid }
+        reportedUserId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
+        matchId: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid, nullable: true }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        contextId: { type: string, format: uuid, nullable: true }
+        reason: { $ref: '#/components/schemas/SafetyReportReason' }
+        status: { $ref: '#/components/schemas/SafetyReportStatus' }
+        createdAt: { type: string, format: date-time }
     ChatExitRequestResponse:
       type: object
       required: [id, chatId, requesterUserId, responderUserId, type, status, createdAt]
@@ -1766,14 +1825,16 @@ components:
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
     AdminSafetyReportResponse:
       type: object
-      required: [id, reporterUserId, reportedUserId, chatId, matchId, reason, details, status, createdAt]
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, createdAt]
       properties:
         id: { type: string, format: uuid }
         reporterUserId: { type: string, format: uuid }
         reportedUserId: { type: string, format: uuid }
-        chatId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
         matchId: { type: string, format: uuid }
         connectionId: { type: string, format: uuid, nullable: true }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        contextId: { type: string, format: uuid, nullable: true }
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string }
         status: { $ref: '#/components/schemas/SafetyReportStatus' }
@@ -1965,6 +2026,9 @@ components:
     SafetyReportReason:
       type: string
       enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+    SafetyReportContextType:
+      type: string
+      enum: [CHAT, VISUAL_PROFILE, PERSONAL_MESSAGE, PROFILE_PHOTO]
     PenaltyType:
       type: string
       enum: [TEMPORARY_BAN, PERMANENT_BAN]

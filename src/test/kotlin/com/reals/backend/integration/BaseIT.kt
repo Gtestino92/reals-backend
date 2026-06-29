@@ -28,6 +28,7 @@ import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
@@ -41,6 +42,7 @@ import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.SafetyReportService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions
 import org.springframework.beans.factory.annotation.Autowired
@@ -63,6 +65,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var userService: UserService
+
+    @Autowired
+    protected lateinit var userBlockService: UserBlockService
 
     @Autowired
     protected lateinit var profileService: ProfileService
@@ -143,6 +148,9 @@ abstract class BaseIT {
     protected lateinit var userRepository: UserRepository
 
     @Autowired
+    protected lateinit var userBlockRepository: UserBlockRepository
+
+    @Autowired
     protected lateinit var profileRepository: ProfileRepository
 
     @Autowired
@@ -184,15 +192,14 @@ abstract class BaseIT {
         repeat(4) { index ->
             profilePhotoRepository.save(
                 ProfilePhoto(
-                profileId = profile.id,
-                url = "http://localhost:9000/reals-profile-photos/users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
-                storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
-                storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
-                position = index + 1,
-                isPersonPhoto = index == 0,
-                isFullBody = index == 0,
-                validationStatus = PhotoValidationStatus.VALIDATED
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED
                 )
             )
         }
