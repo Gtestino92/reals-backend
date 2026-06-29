@@ -1,8 +1,10 @@
-package com.reals.backend.service
+package com.reals.backend.service.matching
 
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchmakingPairProcessingException
 import com.reals.backend.domain.MatchmakingProcessResult
+import com.reals.backend.service.ChatService
+import com.reals.backend.service.MatchService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager

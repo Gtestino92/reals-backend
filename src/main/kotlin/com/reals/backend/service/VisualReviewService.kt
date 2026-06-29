@@ -12,12 +12,6 @@ import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
 
-data class VisualReviewPersonalMessageStatus(
-    val partnerPersonalMessageSubmitted: Boolean,
-    val partnerPersonalMessageRead: Boolean,
-    val decisionRequiresPartnerPersonalMessageRead: Boolean
-)
-
 @Service
 @Transactional
 class VisualReviewService(

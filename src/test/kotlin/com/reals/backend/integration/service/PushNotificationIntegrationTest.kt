@@ -8,14 +8,17 @@ import com.reals.backend.domain.PushDeliveryStatus
 import com.reals.backend.domain.PushDeviceToken
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
-import com.reals.backend.service.PushNotification
-import com.reals.backend.service.PushNotificationSender
-import com.reals.backend.service.PushSendResult
-import com.reals.backend.service.SecondChatReminderNotificationService
-import com.reals.backend.service.VisualReviewNotificationService
-import com.reals.backend.service.secondChatReminderAggregateId
+import com.reals.backend.scheduler.SchedulingActivationJob
+import com.reals.backend.service.notification.SchedulingAvailableNotificationService
+import com.reals.backend.service.notification.SecondChatReminderNotificationService
+import com.reals.backend.service.notification.VisualReviewNotificationService
+import com.reals.backend.service.notification.secondChatReminderAggregateId
+import com.reals.backend.service.notification.sender.PushNotification
+import com.reals.backend.service.notification.sender.PushNotificationSender
+import com.reals.backend.service.notification.sender.PushSendResult
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -39,6 +42,9 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var visualReviewNotificationService: VisualReviewNotificationService
+
+    @Autowired
+    private lateinit var schedulingAvailableNotificationService: SchedulingAvailableNotificationService
 
     @Autowired
     private lateinit var secondChatReminderNotificationService: SecondChatReminderNotificationService
@@ -206,6 +212,159 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
             ?: error("Expected delivery for user A")
         assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+    }
+
+    @Test
+    fun `scheduling available sends privacy safe notification to both users and deduplicates`() {
+        val setup = createConnectionInSchedulingPhase()
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-token-b", PushPlatform.ANDROID)
+
+        schedulingAvailableNotificationService.notifySchedulingAvailable(setup.connectionId)
+
+        assertEquals(2, pushSender.attempts.size)
+        assertEquals(
+            listOf("scheduling-token-a", "scheduling-token-b"),
+            pushSender.attempts.flatMap { it.tokens }.sorted()
+        )
+
+        pushSender.attempts.forEach { attempt ->
+            assertEquals("Ya pueden coordinar horarios", attempt.notification.title)
+            assertEquals(
+                "La coordinación para la segunda charla ya está disponible.",
+                attempt.notification.body
+            )
+            assertEquals(
+                setOf("type", "connectionId", "matchId"),
+                attempt.notification.data.keys
+            )
+            assertEquals(PushNotificationType.SCHEDULING_AVAILABLE.name, attempt.notification.data["type"])
+            assertEquals(setup.connectionId.toString(), attempt.notification.data["connectionId"])
+            assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
+        }
+
+        val deliveries = schedulingAvailableDeliveriesFor(setup.connectionId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+        assertTrue(deliveries.all { it.aggregateId == setup.connectionId })
+
+        schedulingAvailableNotificationService.notifySchedulingAvailable(setup.connectionId)
+
+        assertEquals(2, schedulingAvailableDeliveriesFor(setup.connectionId).size)
+        assertEquals(2, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `scheduling available creates skipped deliveries when users have no active tokens`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        assertDoesNotThrow {
+            schedulingAvailableNotificationService.notifySchedulingAvailable(setup.connectionId)
+        }
+
+        val deliveries = schedulingAvailableDeliveriesFor(setup.connectionId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN })
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `scheduling available records failed deliveries when sender fails`() {
+        val setup = createConnectionInSchedulingPhase()
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-failed-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-failed-token-b", PushPlatform.ANDROID)
+        pushSender.throwOnSend = RuntimeException("provider unavailable")
+
+        assertDoesNotThrow {
+            schedulingAvailableNotificationService.notifySchedulingAvailable(setup.connectionId)
+        }
+
+        val deliveries = schedulingAvailableDeliveriesFor(setup.connectionId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
+        assertTrue(deliveries.all { it.errorMessage?.contains("provider unavailable") == true })
+        assertEquals(2, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `scheduling available disables invalid tokens reported by sender`() {
+        val setup = createConnectionInSchedulingPhase()
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-invalid-token", PushPlatform.ANDROID)
+        pushSender.nextResult =
+            PushSendResult(
+                sent = false,
+                invalidTokens = listOf("scheduling-invalid-token"),
+                errorMessage = "registration token is not registered"
+            )
+
+        schedulingAvailableNotificationService.notifySchedulingAvailable(setup.connectionId)
+
+        val token = pushDeviceTokenRepository.findByToken("scheduling-invalid-token")
+            ?: error("Expected token to exist")
+        assertFalse(token.enabled)
+
+        val deliveryForUserA = pushNotificationDeliveryRepository
+            .findByUserIdAndNotificationTypeAndAggregateId(
+                userId = setup.userAId,
+                notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
+                aggregateId = setup.connectionId
+            )
+            ?: error("Expected delivery for user A")
+        assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+    }
+
+    @Test
+    fun `scheduling available skips when connection is not actionable`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
+
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-pending-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-pending-token-b", PushPlatform.ANDROID)
+
+        schedulingAvailableNotificationService.notifySchedulingAvailable(connection.id)
+
+        assertEquals(0, schedulingAvailableDeliveriesFor(connection.id).size)
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `scheduling activation job keeps activation successful when scheduling notification fails`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-job-failed-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-job-failed-token-b", PushPlatform.ANDROID)
+        pushSender.throwOnSend = RuntimeException("provider unavailable")
+
+        SchedulingActivationJob(
+            connectionRepository = connectionRepository,
+            schedulingService = schedulingService,
+            schedulingAvailableNotificationService = schedulingAvailableNotificationService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        val deliveries = schedulingAvailableDeliveriesFor(connection.id)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
+        assertEquals(2, pushSender.attempts.size)
     }
 
     @Test
@@ -393,6 +552,12 @@ class PushNotificationIntegrationTest : BaseIT() {
         pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
             notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
             aggregateId = matchId
+        )
+
+    private fun schedulingAvailableDeliveriesFor(connectionId: UUID) =
+        pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
+            aggregateId = connectionId
         )
 
     private fun secondChatReminderDeliveriesFor(

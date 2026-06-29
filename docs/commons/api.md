@@ -189,7 +189,10 @@ After mutual visual approval the backend creates a connection in
 `SCHEDULING_PENDING`. This connection already counts against each participant's
 active connection limit, but scheduling endpoints are not actionable until
 `SchedulingActivationJob` moves it to `SCHEDULING_PHASE` and initializes the
-negotiation. In local profiles, if Home shows only
+negotiation. At that point the backend sends one privacy-safe
+`SCHEDULING_AVAILABLE` push per participant and connection. Notification taps
+should refresh/open Home for MVP; the payload contains only `type`,
+`connectionId` and `matchId`. In local profiles, if Home shows only
 `SCHEDULING_PREPARING`/`pendingSchedulingConnectionCount`, run the local
 scheduling activation job before testing scheduling proposal or timeout flows.
 

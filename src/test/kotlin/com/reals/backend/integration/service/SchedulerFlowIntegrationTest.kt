@@ -9,6 +9,9 @@ import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.PushDeliveryStatus
+import com.reals.backend.domain.PushNotificationType
+import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
@@ -18,6 +21,7 @@ import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
+import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -27,11 +31,15 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class SchedulerFlowIntegrationTest : BaseIT() {
+
+    @Autowired
+    private lateinit var schedulingAvailableNotificationService: SchedulingAvailableNotificationService
 
     @Test
     fun `matchmaking job creates match and first chat from queued users`() {
@@ -196,10 +204,13 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionId = connection.id,
             availableAt = OffsetDateTime.now().minusSeconds(1)
         )
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-job-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-job-token-b", PushPlatform.ANDROID)
 
         SchedulingActivationJob(
             connectionRepository = connectionRepository,
-            schedulingService = schedulingService
+            schedulingService = schedulingService,
+            schedulingAvailableNotificationService = schedulingAvailableNotificationService
         ).run()
 
         assertEquals(
@@ -207,6 +218,13 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             connectionRepository.findById(connection.id).orElseThrow().state
         )
         assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        val deliveries =
+            pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+                notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
+                aggregateId = connection.id
+            )
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
     }
@@ -235,7 +253,8 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         SchedulingActivationJob(
             connectionRepository = connectionRepository,
-            schedulingService = schedulingService
+            schedulingService = schedulingService,
+            schedulingAvailableNotificationService = schedulingAvailableNotificationService
         ).run()
 
         assertEquals(
