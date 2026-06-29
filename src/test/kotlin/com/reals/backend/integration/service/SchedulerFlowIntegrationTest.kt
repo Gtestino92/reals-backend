@@ -1,6 +1,7 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.config.MatchmakingJobProperties
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
@@ -118,6 +119,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         ChatTimeoutJob(chatService).run()
 
         assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.firstChatId).status)
+        assertEquals(ChatEndReason.ABSOLUTE_TIMEOUT, chatService.findByIdOrThrow(setup.firstChatId).endedReason)
         assertEquals(MatchState.EXPIRED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNoMatchLocks(setup.userAId, setup.userBId)
     }
@@ -467,6 +469,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         val secondChat = chatRepository.findById(setup.secondChatId).orElseThrow()
         assertEquals(ChatStatus.EXPIRED, secondChat.status)
+        assertEquals(ChatEndReason.ABSOLUTE_TIMEOUT, secondChat.endedReason)
         assertNotNull(secondChat.endedAt)
         assertNotNull(secondChat.readOnlyUntil)
         assertTrue(secondChat.readOnlyUntil!!.isAfter(OffsetDateTime.now()))
@@ -497,7 +500,9 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         )
         secondChatLifecycleJob().runNowForDev()
 
-        assertEquals(ChatStatus.CLOSED, chatRepository.findById(setup.secondChatId).orElseThrow().status)
+        val secondChat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        assertEquals(ChatStatus.CLOSED, secondChat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED, secondChat.endedReason)
         assertEquals(
             ConnectionState.CLOSED,
             connectionRepository.findById(setup.connectionId).orElseThrow().state

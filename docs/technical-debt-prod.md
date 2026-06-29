@@ -177,6 +177,8 @@ Future work:
 
 Current state:
 - Safety cancellation/report can record a report and apply a penalty.
+- User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
+- User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
 - Full manual review workflow is not complete.
 
 Production work:
@@ -186,16 +188,17 @@ Production work:
 - Evidence/context view.
 - Escalation policy.
 - Appeal or correction policy if needed.
-- Photo/profile reports, not only chat safety reports.
 - Audit trail.
 
 ### 4.2 User blocking and objectionable content controls
 
 Future work:
 - Clear user-facing block/report actions.
-- Ability to avoid future rematches after report/block.
+- User-facing manual block and unblock behavior.
 - Explicit policy for objectionable profile photos and messages.
 - Internal tooling to remove content and sanction users.
+- Admin-created reports should support a report source such as `USER`, `ADMIN` or `SYSTEM`.
+- Admin-created safety reports should allow `SafetyReport.reporterUserId` to be nullable. Admin-created reports are intentionally not part of the current backend flow.
 
 ### 4.3 Sensitive message data protection
 

@@ -44,7 +44,6 @@ class S3StorageService(
             StoredObject(
                 bucket = properties.bucket,
                 key = key,
-                url = getReadUrl(key),
                 contentType = normalizedContentType,
                 sizeBytes = bytes.size.toLong()
             )

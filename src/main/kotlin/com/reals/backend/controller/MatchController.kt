@@ -110,7 +110,7 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val photos = profileService.getPhotos(
+        val photos = profileService.getPhotoResponses(
             profileId = partnerProfile.id
         )
         val personalMessageStatus = visualReviewService.getPersonalMessageStatusForUser(

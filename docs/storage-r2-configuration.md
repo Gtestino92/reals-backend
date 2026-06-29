@@ -11,7 +11,8 @@ Android multipart upload
 -> Backend receives MultipartFile
 -> Backend performs technical validation
 -> Backend uploads to S3-compatible storage
--> Backend returns a renderable read URL
+-> Backend stores provider, bucket and object key
+-> Backend returns a renderable read URL generated from the object key
 ```
 
 There is no direct Android-to-R2 upload in the MVP flow.
@@ -23,6 +24,8 @@ There is no direct Android-to-R2 upload in the MVP flow.
 - Both use the same `S3StorageService` and `storage.s3.*` configuration.
 - Buckets should stay private by default.
 - API responses expose renderable read URLs, not storage keys or bucket names.
+- The database stores profile-photo storage metadata, not read URLs. `storageKey`
+  is the source of truth for retrieving a profile photo.
 
 ## R2 Bucket Setup
 
@@ -89,6 +92,6 @@ No public bucket or `STORAGE_S3_PUBLIC_BASE_URL` is required in `PRESIGNED` mode
 4. Confirm the upload response returns a renderable presigned `url`.
 5. Call `GET /api/me/profile/photos` and confirm it returns fresh renderable URLs.
 6. Replace a photo through `PUT /api/me/profile/photos/{photoId}/file`.
-7. Confirm the replacement object appears and the old object cleanup path behaves as expected.
+7. Confirm the replacement object appears, the response URL points at the new object key and the old object cleanup path behaves as expected.
 8. Delete a photo and confirm object deletion behaves as expected.
 9. Upload the required number of valid photos and activate the profile.

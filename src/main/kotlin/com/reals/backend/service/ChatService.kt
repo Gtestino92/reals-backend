@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatDecision
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
@@ -255,6 +256,7 @@ class ChatService(
         if (aDecision != null && bDecision != null) {
             chat.status = ChatStatus.FINISHED
             chat.endedAt = OffsetDateTime.now()
+            chat.endedReason = ChatEndReason.SYSTEM_CLOSED
             chatRepository.save(chat)
 
             matchService.transitionToVisualPhase(matchId)
@@ -266,10 +268,17 @@ class ChatService(
     fun endChat(
         chatId: UUID,
         finalStatus: ChatStatus,
+        endedReason: ChatEndReason,
         abandonedUserIds: List<UUID> = emptyList()
     ): Boolean {
         require(finalStatus == ChatStatus.EXPIRED || finalStatus == ChatStatus.ABANDONED) {
             "endChat only accepts EXPIRED or ABANDONED, got $finalStatus"
+        }
+        require(
+            (finalStatus == ChatStatus.EXPIRED && endedReason == ChatEndReason.ABSOLUTE_TIMEOUT) ||
+                (finalStatus == ChatStatus.ABANDONED && endedReason == ChatEndReason.INACTIVITY_TIMEOUT)
+        ) {
+            "Invalid endedReason $endedReason for finalStatus $finalStatus"
         }
 
         val chat = findByIdOrThrow(chatId)
@@ -278,6 +287,7 @@ class ChatService(
 
         chat.status = finalStatus
         chat.endedAt = OffsetDateTime.now()
+        chat.endedReason = endedReason
         chatRepository.save(chat)
 
         when (chat.chatType) {
@@ -439,6 +449,7 @@ class ChatService(
 
         chat.status = ChatStatus.CLOSED
         chat.endedAt = OffsetDateTime.now()
+        chat.endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
         chatRepository.save(chat)
 
         chat.connectionId?.let { connectionService.closeConnection(it) }
@@ -460,6 +471,7 @@ class ChatService(
 
         chat.status = ChatStatus.EXPIRED
         chat.endedAt = now
+        chat.endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
         chat.readOnlyUntil = now.plusMinutes(secondChatReadOnlyRetentionMinutes)
         chatRepository.save(chat)
 
@@ -479,6 +491,7 @@ class ChatService(
         }
 
         chat.status = ChatStatus.CLOSED
+        chat.endedReason = ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED
         chatRepository.save(chat)
 
         chat.connectionId?.let { connectionService.closeConnection(it) }
@@ -712,7 +725,8 @@ class ChatService(
             if (chat.chatType == ChatType.FIRST_CHAT) {
                 endChat(
                     chatId = chat.id,
-                    finalStatus = ChatStatus.EXPIRED
+                    finalStatus = ChatStatus.EXPIRED,
+                    endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
                 )
             }
             throw chatExpired()
@@ -724,7 +738,8 @@ class ChatService(
         ) {
             endChat(
                 chatId = chat.id,
-                finalStatus = ChatStatus.ABANDONED
+                finalStatus = ChatStatus.ABANDONED,
+                endedReason = ChatEndReason.INACTIVITY_TIMEOUT
             )
             throw chatAbandoned()
         }

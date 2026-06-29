@@ -37,6 +37,9 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
+| `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
+| `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
+| `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
 | `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
@@ -72,7 +75,9 @@ Sensitive runtime secrets:
 S3-compatible storage has two endpoint concerns. `STORAGE_S3_ENDPOINT` is where the
 backend writes and deletes objects. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
 embedded in returned presigned URLs and must be reachable by the client that
-renders the image.
+renders the image. Profile photo rows store storage metadata, including the
+object key, and response URLs are generated from that key when the API returns a
+photo DTO.
 
 For Cloudflare R2 shared/dev/prod-like environments, see
 `docs/storage-r2-configuration.md`. R2 should use private buckets and

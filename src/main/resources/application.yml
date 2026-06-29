@@ -187,6 +187,9 @@ security:
     profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:30}
     profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:30}
     profile-photo-refill-period-seconds: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_PERIOD_SECONDS:60}
+    safety-report-capacity: ${RATE_LIMIT_SAFETY_REPORT_CAPACITY:5}
+    safety-report-refill-tokens: ${RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS:5}
+    safety-report-refill-period-seconds: ${RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS:86400}
 
 info:
   app:

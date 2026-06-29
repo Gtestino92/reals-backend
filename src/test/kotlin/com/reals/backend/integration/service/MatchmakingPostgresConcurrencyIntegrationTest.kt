@@ -165,7 +165,6 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             profilePhotoRepository.save(
                 ProfilePhoto(
                     profileId = profile.id,
-                    url = "http://localhost:9000/reals-profile-photos/users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     storageProvider = PhotoStorageProvider.S3,
                     storageBucket = "reals-profile-photos-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",

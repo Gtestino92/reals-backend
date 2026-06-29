@@ -3,11 +3,16 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.MatchState
 import com.reals.backend.integration.ControllerIT
+import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyString
+import org.mockito.Mockito
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -16,6 +21,17 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.OffsetDateTime
 
 class MatchControllerIntegrationTest : ControllerIT() {
+
+    @MockitoBean
+    private lateinit var storageService: S3StorageService
+
+    @BeforeEach
+    fun stubPhotoReadUrls() {
+        Mockito.`when`(storageService.getReadUrl(anyString()))
+            .thenAnswer { invocation ->
+                "http://localhost:9000/reals-profile-photos-test/${invocation.arguments[0]}"
+            }
+    }
 
     @Test
     fun `get first chat returns partner and participant decisions`() {
@@ -146,6 +162,8 @@ class MatchControllerIntegrationTest : ControllerIT() {
     @Test
     fun `visual profile returns myPersonalMessageSubmitted false before message`() {
         val setup = createMatchInVisualPhase()
+        val partnerProfile = profileService.findByUserId(setup.userBId)!!
+        val expectedFirstPhotoKey = "users/${setup.userBId}/profile-photos/${partnerProfile.id}-1.jpg"
 
         mockMvc.perform(
             get("/api/matches/${setup.matchId}/visual-profile")
@@ -157,6 +175,12 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
             .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
             .andExpect(jsonPath("$.visualExpiresAt").exists())
+            .andExpect(
+                jsonPath(
+                    "$.photos[0].url",
+                    equalTo("http://localhost:9000/reals-profile-photos-test/$expectedFirstPhotoKey")
+                )
+            )
     }
 
     @Test

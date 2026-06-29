@@ -1,6 +1,7 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.repository.ChatMessageRepository
@@ -55,6 +56,7 @@ class InactivityCheckJob(
                 val changed = chatService.endChat(
                     chatId = chat.id,
                     finalStatus = ChatStatus.ABANDONED,
+                    endedReason = ChatEndReason.INACTIVITY_TIMEOUT,
                     abandonedUserIds = abandonedUserIds
                 )
                 if (changed) {
