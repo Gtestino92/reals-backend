@@ -5,6 +5,7 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.MatchRepository
@@ -165,14 +166,14 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             profilePhotoRepository.save(
                 ProfilePhoto(
                     profileId = profile.id,
-                    url = "http://localhost:9000/reals-profile-photos/users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     storageProvider = PhotoStorageProvider.S3,
                     storageBucket = "reals-profile-photos-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,
                     isFullBody = index == 0,
-                    validationStatus = PhotoValidationStatus.VALIDATED
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
                 )
             )
         }

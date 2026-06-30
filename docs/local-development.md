@@ -239,10 +239,11 @@ S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 S3_READ_URL_MODE=PRESIGNED
 ```
 
-The backend uploads objects through the internal Docker hostname `minio`, but
-generates browser-facing presigned read URLs with `localhost`. Buckets remain
-private locally; frontend clients should render the returned `url` directly and
-must not persist it as a permanent object URL because it expires.
+The backend uploads objects through the internal Docker hostname `minio`, stores
+the object key in `profile_photos.storage_key`, and generates browser-facing
+presigned read URLs with `localhost` when returning photo responses. Buckets
+remain private locally; frontend clients should render the returned `url`
+directly and must not persist it as a permanent object URL because it expires.
 
 For Android Emulator rendering, `localhost` points to the emulator itself. Use a
 local runtime override instead:

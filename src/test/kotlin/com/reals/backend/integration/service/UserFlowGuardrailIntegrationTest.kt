@@ -76,7 +76,6 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             StoredObject(
                 bucket = "test-bucket",
                 key = "users/$userId/profile-photos/extra.jpg",
-                url = "http://localhost:9000/test-bucket/users/$userId/profile-photos/extra.jpg",
                 contentType = MediaType.IMAGE_JPEG_VALUE,
                 sizeBytes = jpegBytes().size.toLong()
             )
@@ -108,7 +107,6 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             StoredObject(
                 bucket = "test-bucket",
                 key = "users/$userId/profile-photos/replacement.jpg",
-                url = "http://localhost:9000/test-bucket/users/$userId/profile-photos/replacement.jpg",
                 contentType = MediaType.IMAGE_JPEG_VALUE,
                 sizeBytes = jpegBytes().size.toLong()
             )
@@ -364,7 +362,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         ).thenReturn(storedObject)
 
         Mockito.`when`(storageService.getReadUrl(storedObject.key))
-            .thenReturn(storedObject.url)
+            .thenReturn("http://localhost:9000/test-bucket/${storedObject.key}")
     }
 
     private fun jpegBytes(): ByteArray {

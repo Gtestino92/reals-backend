@@ -82,13 +82,15 @@ Future work:
 
 Current state:
 - `Profile.identityVerified` exists.
+- `Profile.identityVerificationStatus` is the richer persisted verification state.
 - Identity verification endpoint exists.
 - Provider abstraction exists.
-- Current `none` provider always returns `verified=false`.
+- Current `none` provider returns `VERIFIED` for MVP/local compatibility only; it is not real external identity or age verification.
 
 Production decision:
 - Identity verification is separate from profile photos.
 - Do not infer identity from person detection, full-body detection or visual approval.
+- Decide whether production profile activation must set `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
 
 Future implementation:
 - Choose identity verification provider or internal verification flow.
@@ -99,7 +101,10 @@ Future implementation:
   - profile photo comparison;
   - or hybrid process.
 - Store provider reference/audit metadata.
-- Define retry/failure states.
+- Define retry/failure policy around `PENDING`, `REJECTED` and `NEEDS_REVIEW`.
+- Define manual review flow for `NEEDS_REVIEW`.
+- Define provider webhook/callback handling if provider verification is asynchronous.
+- Define privacy and data-retention policy for provider artifacts.
 - Define frontend UX.
 - Decide whether identity verification is:
   - optional;
@@ -114,17 +119,20 @@ Future implementation:
 ### 3.1 Future upload lifecycle
 
 MVP shortcut:
-- Technical upload success may create `VALIDATED` photos with permissive semantic defaults.
+- `validationStatus` now means technical upload validation only.
+- `moderationStatus` is separate and currently uses provider `none`, which returns `APPROVED` without external review.
+- Production can enable `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`, but a real provider is still pending.
 
 Production target:
 1. User uploads a photo.
 2. Backend performs technical checks.
 3. If upload succeeds, photo starts as `PENDING`.
-4. Analysis/moderation updates:
+4. Technical analysis updates:
    - `validation_status = VALIDATED` or `FAILED`;
    - `isPersonPhoto`;
    - `isFullBody`;
-   - optional provider/model/version metadata.
+5. Content moderation updates `moderation_status`.
+6. Optional provider/model/version metadata is recorded if a future provider needs it.
 
 ### 3.2 Future activation analysis
 
@@ -146,16 +154,15 @@ Preferred long-term direction:
 ### 3.3 Future moderation workflow for photos
 
 Future work:
-- Add report profile/photo flow.
 - Add admin ability to hide/reject/remove photos.
-- Add moderation states or reuse `FAILED` carefully.
-- Add optional automatic image moderation for:
+- Add external automatic image moderation for:
   - nudity;
   - explicit sexual content;
   - violence;
   - hate symbols;
   - minors/underage risk;
   - other prohibited content.
+- Add person detection, full-body detection and face/person consistency if product requirements need them.
 - Define whether rejected photos are deleted, hidden, quarantined or retained for audit.
 
 ### 3.4 Media storage production work
@@ -177,6 +184,10 @@ Future work:
 
 Current state:
 - Safety cancellation/report can record a report and apply a penalty.
+- User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
+- User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
+- Safety reports capture an evidence snapshot with message counts, timestamps and transcript hash, not a full transcript copy.
+- Safety-relevant backend flows record `audit_events` with operational metadata only.
 - Full manual review workflow is not complete.
 
 Production work:
@@ -186,16 +197,21 @@ Production work:
 - Evidence/context view.
 - Escalation policy.
 - Appeal or correction policy if needed.
-- Photo/profile reports, not only chat safety reports.
-- Audit trail.
+- Request context enrichment for audit events, including request id and hashed IP/user-agent if needed.
+- Admin-created reports.
+- Nullable `SafetyReport.reporterUserId` for admin/system-created reports.
+- Admin DTOs that expose only reduced, intentional safety data.
+- Counters for pending/confirmed reports.
 
 ### 4.2 User blocking and objectionable content controls
 
 Future work:
 - Clear user-facing block/report actions.
-- Ability to avoid future rematches after report/block.
+- User-facing manual block and unblock behavior.
 - Explicit policy for objectionable profile photos and messages.
 - Internal tooling to remove content and sanction users.
+- Admin-created reports should support a report source such as `USER`, `ADMIN` or `SYSTEM`.
+- Admin-created safety reports should allow `SafetyReport.reporterUserId` to be nullable. Admin-created reports are intentionally not part of the current backend flow.
 
 ### 4.3 Sensitive message data protection
 

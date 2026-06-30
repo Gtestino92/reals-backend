@@ -17,12 +17,16 @@ data class RateLimitProperties(
     val profilePhotoCapacity: Int = 30,
     val profilePhotoRefillTokens: Int = 30,
     val profilePhotoRefillPeriodSeconds: Long = 60,
+    val safetyReportCapacity: Int = 5,
+    val safetyReportRefillTokens: Int = 5,
+    val safetyReportRefillPeriodSeconds: Long = 86_400,
 ) {
     init {
         validateRule("default", defaultCapacity, defaultRefillTokens, defaultRefillPeriodSeconds)
         validateRule("provision", provisionCapacity, provisionRefillTokens, provisionRefillPeriodSeconds)
         validateRule("messages", messageCapacity, messageRefillTokens, messageRefillPeriodSeconds)
         validateRule("profile-photos", profilePhotoCapacity, profilePhotoRefillTokens, profilePhotoRefillPeriodSeconds)
+        validateRule("safety-reports", safetyReportCapacity, safetyReportRefillTokens, safetyReportRefillPeriodSeconds)
     }
 
     private fun validateRule(

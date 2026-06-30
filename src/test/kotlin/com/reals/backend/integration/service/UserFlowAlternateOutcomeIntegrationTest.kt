@@ -1,6 +1,7 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
@@ -9,12 +10,16 @@ import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
 import java.util.UUID
@@ -31,7 +36,9 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNoMatchLocks(setup.userAId, setup.userBId)
         assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
-        assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(setup.firstChatId).status)
+        val chat = chatService.findByIdOrThrow(setup.firstChatId)
+        assertEquals(ChatStatus.CANCELLED, chat.status)
+        assertEquals(ChatEndReason.UNILATERAL_CANCEL, chat.endedReason)
     }
 
     @Test
@@ -70,6 +77,69 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         assertTrue(matchmakingService.findNextCandidatePair() == null)
         assertNoMatchLocks(userA, userB)
+        assertFalse(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `blocked queued users are excluded from candidate pairs`() {
+        val userA = createActiveProfile(
+            email = "blocked-candidate-a-${UUID.randomUUID()}@example.com",
+            displayName = "Blocked Candidate A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val userB = createActiveProfile(
+            email = "blocked-candidate-b-${UUID.randomUUID()}@example.com",
+            displayName = "Blocked Candidate B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        userBlockService.blockUser(
+            blockerUserId = userA,
+            blockedUserId = userB,
+            source = UserBlockSource.MANUAL
+        )
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
+
+        val candidatePairs =
+            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+                limit = 5,
+                today = LocalDate.now()
+            )
+
+        assertTrue(candidatePairs.isEmpty())
+        assertNull(matchmakingService.findNextCandidatePair())
+        assertFalse(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `match service rejects blocked pairs defensively`() {
+        val userA = createActiveProfile(
+            email = "blocked-match-a-${UUID.randomUUID()}@example.com",
+            displayName = "Blocked Match A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+        val userB = createActiveProfile(
+            email = "blocked-match-b-${UUID.randomUUID()}@example.com",
+            displayName = "Blocked Match B",
+            gender = Gender.MALE,
+            lookingForGender = LookingForGender.WOMEN
+        )
+
+        userBlockService.blockUser(
+            blockerUserId = userB,
+            blockedUserId = userA,
+            source = UserBlockSource.MANUAL
+        )
+
+        val exception = assertThrows<DomainConflictException> {
+            matchService.createMatch(userA, userB)
+        }
+
+        assertEquals(DomainErrorCode.USER_PAIR_BLOCKED, exception.code)
         assertFalse(matchExistsForUsers(userA, userB))
     }
 

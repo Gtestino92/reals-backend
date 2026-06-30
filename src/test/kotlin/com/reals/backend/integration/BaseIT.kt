@@ -8,11 +8,14 @@ import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.AuditEventRepository
 import com.reals.backend.repository.ChatDecisionRepository
+import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
@@ -23,24 +26,29 @@ import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
 import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
+import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
-import com.reals.backend.service.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions
 import org.springframework.beans.factory.annotation.Autowired
@@ -63,6 +71,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var userService: UserService
+
+    @Autowired
+    protected lateinit var userBlockService: UserBlockService
 
     @Autowired
     protected lateinit var profileService: ProfileService
@@ -95,6 +106,12 @@ abstract class BaseIT {
     protected lateinit var safetyReportService: SafetyReportService
 
     @Autowired
+    protected lateinit var auditEventService: AuditEventService
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotService: SafetyReportEvidenceSnapshotService
+
+    @Autowired
     protected lateinit var penaltyService: PenaltyService
 
     @Autowired
@@ -108,6 +125,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var chatExitRequestRepository: ChatExitRequestRepository
+
+    @Autowired
+    protected lateinit var chatMessageRepository: ChatMessageRepository
 
     @Autowired
     protected lateinit var chatRepository: ChatRepository
@@ -134,13 +154,22 @@ abstract class BaseIT {
     protected lateinit var penaltyRepository: PenaltyRepository
 
     @Autowired
+    protected lateinit var auditEventRepository: AuditEventRepository
+
+    @Autowired
     protected lateinit var safetyReportRepository: SafetyReportRepository
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotRepository: SafetyReportEvidenceSnapshotRepository
 
     @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository
 
     @Autowired
     protected lateinit var userRepository: UserRepository
+
+    @Autowired
+    protected lateinit var userBlockRepository: UserBlockRepository
 
     @Autowired
     protected lateinit var profileRepository: ProfileRepository
@@ -184,15 +213,15 @@ abstract class BaseIT {
         repeat(4) { index ->
             profilePhotoRepository.save(
                 ProfilePhoto(
-                profileId = profile.id,
-                url = "http://localhost:9000/reals-profile-photos/users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
-                storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
-                storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
-                position = index + 1,
-                isPersonPhoto = index == 0,
-                isFullBody = index == 0,
-                validationStatus = PhotoValidationStatus.VALIDATED
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
                 )
             )
         }

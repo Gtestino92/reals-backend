@@ -222,7 +222,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Run identity verification for the profile
-      description: Current provider none keeps identityVerified=false.
+      description: Current provider none marks the profile VERIFIED for MVP/local compatibility and does not represent real external identity or age verification.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
@@ -619,6 +619,32 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/safety/reports:
+    post:
+      tags: [Safety]
+      summary: Create a user safety report
+      description: Creates a user report for chat, visual profile, personal message or profile photo context without necessarily closing a chat. The backend validates the reporter/reported relationship from the referenced aggregate, creates or reuses a directional user block, and treats duplicates for the same reporter, reported user, context type and context id idempotently.
+      requestBody:
+        $ref: '#/components/requestBodies/CreateSafetyReport'
+      responses:
+        '201':
+          description: Created safety report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportResponse'
+        '200':
+          description: Existing duplicate safety report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/admin/safety-reports:
     get:
       tags: [Admin]
@@ -973,6 +999,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ChatSafetyCancellationRequest'
+    CreateSafetyReport:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateSafetyReportRequest'
     SafetyReportDismissal:
       required: true
       content:
@@ -1531,7 +1563,7 @@ components:
           format: binary
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, identityVerified, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
@@ -1539,6 +1571,7 @@ components:
         birthDate: { type: string, format: date }
         age: { type: integer }
         identityVerified: { type: boolean }
+        identityVerificationStatus: { $ref: '#/components/schemas/IdentityVerificationStatus' }
         gender: { $ref: '#/components/schemas/Gender' }
         lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
         intention: { $ref: '#/components/schemas/Intention' }
@@ -1554,7 +1587,7 @@ components:
         updatedAt: { type: string, format: date-time }
     PhotoResponse:
       type: object
-      required: [id, url, position, isPersonPhoto, isFullBody, validationStatus]
+      required: [id, url, position, isPersonPhoto, isFullBody, validationStatus, moderationStatus]
       properties:
         id: { type: string, format: uuid }
         url:
@@ -1566,6 +1599,9 @@ components:
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
           description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
+        moderationStatus:
+          allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
+          description: Content moderation status. With provider none, APPROVED is a permissive MVP result and does not represent external safety review.
     VisualProfileResponse:
       type: object
       required:
@@ -1729,6 +1765,33 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
         details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+    CreateSafetyReportRequest:
+      type: object
+      required: [reportedUserId, contextType, reason, details]
+      properties:
+        reportedUserId: { type: string, format: uuid }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        chatId: { type: string, format: uuid, nullable: true }
+        matchId: { type: string, format: uuid, nullable: true }
+        connectionId: { type: string, format: uuid, nullable: true }
+        profilePhotoId: { type: string, format: uuid, nullable: true }
+        reason: { $ref: '#/components/schemas/SafetyReportReason' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+    SafetyReportResponse:
+      type: object
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        reporterUserId: { type: string, format: uuid }
+        reportedUserId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
+        matchId: { type: string, format: uuid }
+        connectionId: { type: string, format: uuid, nullable: true }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        contextId: { type: string, format: uuid, nullable: true }
+        reason: { $ref: '#/components/schemas/SafetyReportReason' }
+        status: { $ref: '#/components/schemas/SafetyReportStatus' }
+        createdAt: { type: string, format: date-time }
     ChatExitRequestResponse:
       type: object
       required: [id, chatId, requesterUserId, responderUserId, type, status, createdAt]
@@ -1766,14 +1829,16 @@ components:
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
     AdminSafetyReportResponse:
       type: object
-      required: [id, reporterUserId, reportedUserId, chatId, matchId, reason, details, status, createdAt]
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, createdAt]
       properties:
         id: { type: string, format: uuid }
         reporterUserId: { type: string, format: uuid }
         reportedUserId: { type: string, format: uuid }
-        chatId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
         matchId: { type: string, format: uuid }
         connectionId: { type: string, format: uuid, nullable: true }
+        contextType: { $ref: '#/components/schemas/SafetyReportContextType' }
+        contextId: { type: string, format: uuid, nullable: true }
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string }
         status: { $ref: '#/components/schemas/SafetyReportStatus' }
@@ -1914,6 +1979,9 @@ components:
     ProfileStatus:
       type: string
       enum: [DRAFT, ACTIVE, INACTIVE]
+    IdentityVerificationStatus:
+      type: string
+      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW]
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]
@@ -1923,6 +1991,9 @@ components:
     PhotoValidationStatus:
       type: string
       enum: [PENDING, VALIDATED, FAILED]
+    PhotoModerationStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, NEEDS_REVIEW]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]
@@ -1965,6 +2036,9 @@ components:
     SafetyReportReason:
       type: string
       enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+    SafetyReportContextType:
+      type: string
+      enum: [CHAT, VISUAL_PROFILE, PERSONAL_MESSAGE, PROFILE_PHOTO]
     PenaltyType:
       type: string
       enum: [TEMPORARY_BAN, PERMANENT_BAN]

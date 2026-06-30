@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.MatchmakingQueueRepository
@@ -9,14 +11,15 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.OffsetDateTime
-import java.util.UUID
+import java.util.*
 
 @Service
 @Transactional
 class PenaltyService(
     private val penaltyRepository: PenaltyRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
-    private val trustScoreEvaluator: TrustScoreEvaluator
+    private val trustScoreEvaluator: TrustScoreEvaluator,
+    private val auditEventService: AuditEventService
 ) {
 
     fun hasActivePenalty(userId: UUID): Boolean {
@@ -119,7 +122,20 @@ class PenaltyService(
     private fun savePenalty(penalty: Penalty): Penalty {
         validatePenaltyShape(penalty)
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
-        return penaltyRepository.save(penalty)
+        val saved = penaltyRepository.save(penalty)
+        auditEventService.record(
+            eventType = AuditEventType.PENALTY_APPLIED,
+            aggregateType = AuditAggregateType.PENALTY,
+            aggregateId = saved.id,
+            actorUserId = saved.appliedByUserId,
+            targetUserId = saved.userId,
+            metadata = mapOf(
+                "type" to saved.type.name,
+                "sourceReportId" to saved.sourceReportId,
+                "expiresAtPresent" to (saved.expiresAt != null)
+            )
+        )
+        return saved
     }
 
     private fun validatePenaltyShape(penalty: Penalty) {
@@ -150,15 +166,4 @@ class PenaltyService(
             penaltyId = penaltyId,
             now = now
         ) == 1
-
-    /**
-     * Deactivates all expired penalties. Kept for service-level callers; the
-     * scheduled job uses the per-record methods so one failure cannot block
-     * unrelated penalties.
-     */
-    fun expireOverduePenalties(): Int =
-        findExpiredActivePenalties().count { penalty ->
-            expireOverduePenalty(penalty.id)
-        }
-
 }
