@@ -38,4 +38,20 @@ interface UserHomeStatusRepository : JpaRepository<UserHomeStatus, UUID> {
         @Param("userId") userId: UUID,
         @Param("updatedAt") updatedAt: OffsetDateTime
     ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update UserHomeStatus s
+        set s.dirty = false,
+            s.updatedAt = :updatedAt
+        where s.userId = :userId
+          and s.version = :expectedVersion
+        """
+    )
+    fun markCleanIfVersionStill(
+        @Param("userId") userId: UUID,
+        @Param("expectedVersion") expectedVersion: Long,
+        @Param("updatedAt") updatedAt: OffsetDateTime
+    ): Int
 }

@@ -76,4 +76,46 @@ class HomeStatusServiceIntegrationTest : BaseIT() {
         assertEquals(before + 1, after.version)
         assertTrue(after.dirty)
     }
+
+    @Test
+    fun `markCleanIfVersionStill clears dirty when version still matches`() {
+        val user = userService.createUser("home-status-clean-match-${UUID.randomUUID()}@example.com")
+        val before = homeStatusService.bump(
+            userId = user.id,
+            reason = "test_clean_match"
+        )
+
+        val cleaned = homeStatusService.markCleanIfVersionStill(
+            userId = user.id,
+            expectedVersion = before.version
+        )
+        val after = homeStatusService.getOrCreateStatus(user.id)
+
+        assertTrue(cleaned)
+        assertEquals(before.version, after.version)
+        assertFalse(after.dirty)
+    }
+
+    @Test
+    fun `markCleanIfVersionStill does not clear newer dirty version`() {
+        val user = userService.createUser("home-status-clean-stale-${UUID.randomUUID()}@example.com")
+        val before = homeStatusService.bump(
+            userId = user.id,
+            reason = "test_clean_stale_first"
+        )
+        homeStatusService.bump(
+            userId = user.id,
+            reason = "test_clean_stale_second"
+        )
+
+        val cleaned = homeStatusService.markCleanIfVersionStill(
+            userId = user.id,
+            expectedVersion = before.version
+        )
+        val after = homeStatusService.getOrCreateStatus(user.id)
+
+        assertFalse(cleaned)
+        assertEquals(before.version + 1, after.version)
+        assertTrue(after.dirty)
+    }
 }

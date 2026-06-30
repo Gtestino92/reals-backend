@@ -41,10 +41,15 @@ class MeController(
     @GetMapping("/api/me/home")
     fun getHome(
         @CurrentUserId userId: UUID
-    ): ResponseEntity<HomeResponse> =
-        ResponseEntity.ok(
-            meHomeService.getHome(userId = userId)
+    ): ResponseEntity<HomeResponse> {
+        val statusBefore = homeStatusService.getOrCreateStatus(userId = userId)
+        val home = meHomeService.getHome(userId = userId)
+        homeStatusService.markCleanIfVersionStill(
+            userId = userId,
+            expectedVersion = statusBefore.version
         )
+        return ResponseEntity.ok(home)
+    }
 
     @GetMapping("/api/me/home/status")
     fun getHomeStatus(
