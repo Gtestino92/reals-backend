@@ -16,7 +16,8 @@ import java.util.UUID
 @Transactional
 class UserBlockService(
     private val userBlockRepository: UserBlockRepository,
-    private val auditEventService: AuditEventService
+    private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService
 ) {
 
     fun blockUser(
@@ -62,6 +63,11 @@ class UserBlockService(
                     "source" to source.name,
                     "sourceReportId" to sourceReportId
                 )
+            )
+            homeStateInvalidationService.bumpBoth(
+                userAId = blockerUserId,
+                userBId = blockedUserId,
+                reason = "user_block_created"
             )
             block
         } catch (ex: DataIntegrityViolationException) {

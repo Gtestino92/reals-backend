@@ -1,0 +1,26 @@
+meta {
+  name: 10 Android Home Status
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/me/home/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || typeof body.version !== "number" || typeof body.dirty !== "boolean" || !body.serverTime) {
+    throw new Error("Expected HomeStatusResponse with version, dirty and serverTime.");
+  }
+
+  bru.setEnvVar("androidHomeStatusVersion", String(body.version));
+  bru.setEnvVar("androidHomeStatusDirty", String(body.dirty));
+  bru.setEnvVar("androidHomeStatusServerTime", body.serverTime);
+}

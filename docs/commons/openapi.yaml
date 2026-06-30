@@ -119,6 +119,38 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/me/home/status:
+    get:
+      tags: [Me]
+      summary: Get authenticated user's Home version status
+      description: Returns a cheap persisted Home version and dirty flag for polling/change detection. Does not aggregate the full Home response.
+      responses:
+        '200':
+          description: Current Home version status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/me/home/pending:
+    get:
+      tags: [Me]
+      summary: Get authenticated user's lightweight pending Home state
+      description: Returns pending actions, next steps, passive notices and current Home version without partner summaries, matchmaking availability or active interaction counts.
+      responses:
+        '200':
+          description: Lightweight pending Home state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomePendingStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/push-tokens:
     put:
       tags: [Me]
@@ -1402,6 +1434,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/HomePassiveNoticeResponse'
+    HomeStatusResponse:
+      type: object
+      required: [version, dirty, serverTime]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        dirty: { type: boolean }
+        serverTime: { type: string, format: date-time }
+    HomePendingStateResponse:
+      type: object
+      required: [version, pendingActions, nextSteps, passiveNotices, serverTime]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        pendingActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomePendingActionLiteResponse'
+        nextSteps:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomeNextStepLiteResponse'
+        passiveNotices:
+          type: array
+          items:
+            $ref: '#/components/schemas/HomePassiveNoticeResponse'
+        serverTime: { type: string, format: date-time }
     HomeActiveInteractionsSummaryResponse:
       type: object
       required: [activeInitialCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
@@ -1447,6 +1504,13 @@ components:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
           nullable: true
+    HomePendingActionLiteResponse:
+      type: object
+      required: [type, matchId]
+      properties:
+        type: { $ref: '#/components/schemas/HomePendingActionType' }
+        matchId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
     HomeNextStepResponse:
       type: object
       required: [type, connectionId, matchId]
@@ -1461,6 +1525,29 @@ components:
         secondChat:
           allOf:
             - $ref: '#/components/schemas/HomeChatResponse'
+          nullable: true
+    HomeNextStepLiteResponse:
+      type: object
+      required: [type, connectionId, matchId]
+      properties:
+        type: { $ref: '#/components/schemas/HomeNextStepType' }
+        connectionId: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        secondChat:
+          allOf:
+            - $ref: '#/components/schemas/HomePendingSecondChatLiteResponse'
+          nullable: true
+    HomePendingSecondChatLiteResponse:
+      type: object
+      properties:
+        chatId: { type: string, format: uuid, nullable: true }
+        availableAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        readOnlyUntil: { type: string, format: date-time, nullable: true }
+        durationMinutes:
+          type: integer
+          format: int64
+          minimum: 1
           nullable: true
     HomePassiveNoticeResponse:
       type: object

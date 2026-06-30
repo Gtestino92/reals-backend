@@ -19,6 +19,7 @@ class VisualReviewService(
     private val visualReviewRepository: VisualReviewRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
@@ -39,6 +40,7 @@ class VisualReviewService(
         findByMatchIdOrNull(matchId)?.expiresAt
 
     fun initializeForMatch(matchId: UUID): VisualReview {
+        val match = matchService.findByIdOrThrow(matchId)
 
         val existing = visualReviewRepository.findByMatchId(matchId)
 
@@ -46,13 +48,19 @@ class VisualReviewService(
             return existing
         }
 
-        return visualReviewRepository.save(
+        val review = visualReviewRepository.save(
             VisualReview(
                 matchId = matchId,
                 expiresAt = OffsetDateTime.now()
                     .plusMinutes(visualPhaseDurationMinutes)
             )
         )
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "visual_review_available"
+        )
+        return review
     }
 
     fun recordDecision(
@@ -85,6 +93,11 @@ class VisualReviewService(
                 userId = userId
             )
             resolveVisualPhaseIfReady(match = match, review = review)
+            homeStateInvalidationService.bumpBoth(
+                userAId = match.userAId,
+                userBId = match.userBId,
+                reason = "visual_review_decision_replayed"
+            )
             return
         }
 
@@ -117,6 +130,11 @@ class VisualReviewService(
             userId = userId
         )
         resolveVisualPhaseIfReady(match = match, review = review)
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "visual_review_decision_recorded"
+        )
     }
 
     fun recordPersonalMessage(

@@ -1,0 +1,40 @@
+meta {
+  name: 11 Android Home Pending
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/me/home/pending
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || typeof body.version !== "number" || !Array.isArray(body.pendingActions) || !Array.isArray(body.nextSteps) || !Array.isArray(body.passiveNotices) || !body.serverTime) {
+    throw new Error("Expected HomePendingStateResponse with version, pendingActions, nextSteps, passiveNotices and serverTime.");
+  }
+  if (body.matchmaking !== undefined || body.activeInteractionsSummary !== undefined) {
+    throw new Error("Pending Home response should not include full Home summary fields.");
+  }
+  if (body.pendingActions.some((item) => item.partner !== undefined) || body.nextSteps.some((item) => item.partner !== undefined)) {
+    throw new Error("Pending Home response should not include partner summaries.");
+  }
+
+  bru.setEnvVar("androidHomePendingVersion", String(body.version));
+  bru.setEnvVar("androidHomePendingActionsCount", String(body.pendingActions.length));
+  bru.setEnvVar("androidHomeNextStepsCount", String(body.nextSteps.length));
+  bru.setEnvVar("androidHomePassiveNoticesCount", String(body.passiveNotices.length));
+
+  const firstAction = body.pendingActions[0];
+  if (firstAction) {
+    bru.setEnvVar("androidHomePendingActionType", firstAction.type);
+    bru.setEnvVar("androidHomePendingMatchId", firstAction.matchId || "");
+    bru.setEnvVar("androidHomePendingChatId", firstAction.chatId || "");
+  }
+}

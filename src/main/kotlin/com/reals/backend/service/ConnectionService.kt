@@ -22,6 +22,7 @@ class ConnectionService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value($$"${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
@@ -86,6 +87,11 @@ class ConnectionService(
         )
 
         ensureConnectionLocks(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = connection.userAId,
+            userBId = connection.userBId,
+            reason = "connection_created"
+        )
 
         return connection
     }
@@ -122,7 +128,13 @@ class ConnectionService(
         connection.schedulingExpiresAt = now.plusMinutes(negotiationDurationMinutes)
         connection.updatedAt = now
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "scheduling_available"
+        )
+        return saved
     }
 
     private fun checkConnectionLimit(userId: UUID) {
@@ -206,7 +218,13 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT_SCHEDULED
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_scheduled"
+        )
+        return saved
     }
 
     /**
@@ -228,7 +246,13 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT_AVAILABLE
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_available"
+        )
+        return saved
     }
 
     /**
@@ -250,7 +274,13 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_entered"
+        )
+        return saved
     }
 
     /**
@@ -280,6 +310,11 @@ class ConnectionService(
         connectionRepository.save(connection)
 
         lockRepository.deleteByEngagementId(connection.id)
+        homeStateInvalidationService.bumpBoth(
+            userAId = connection.userAId,
+            userBId = connection.userBId,
+            reason = "connection_closed"
+        )
 
         return true
     }
@@ -308,12 +343,17 @@ class ConnectionService(
             "Second chat for connection $connectionId is still actionable"
         }
 
-        return dismissalRepository.save(
+        val dismissal = dismissalRepository.save(
             ConnectionHomeDismissal(
                 userId = userId,
                 connectionId = connectionId
             )
         )
+        homeStateInvalidationService.bump(
+            userId = userId,
+            reason = "connection_home_dismissed"
+        )
+        return dismissal
     }
 
     private fun isSecondChatDismissible(connection: Connection): Boolean {

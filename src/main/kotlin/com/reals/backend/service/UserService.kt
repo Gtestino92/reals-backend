@@ -31,6 +31,7 @@ class UserService(
     private val accountDeletionService: AccountDeletionService,
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
     private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
 ) {
@@ -170,6 +171,10 @@ class UserService(
         user.firebaseUid?.let {
             revokeExternalTokensAfterCommit(firebaseUid = it)
         }
+        homeStateInvalidationService.bump(
+            userId = userId,
+            reason = "account_deleted"
+        )
     }
 
     fun reactivateUser(userId: UUID): User {
@@ -210,6 +215,10 @@ class UserService(
             aggregateType = AuditAggregateType.USER,
             aggregateId = saved.id,
             actorUserId = saved.id
+        )
+        homeStateInvalidationService.bump(
+            userId = saved.id,
+            reason = "account_reactivated"
         )
         return saved
     }

@@ -22,6 +22,7 @@ class MatchService(
     private val queueRepository: MatchmakingQueueRepository,
     private val userService: UserService,
     private val userBlockService: UserBlockService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -86,6 +87,11 @@ class MatchService(
 
         queueRepository.deleteByUserId(userId = userAId)
         queueRepository.deleteByUserId(userId = userBId)
+        homeStateInvalidationService.bumpBoth(
+            userAId = userAId,
+            userBId = userBId,
+            reason = "match_created"
+        )
 
         return match
     }
@@ -153,7 +159,13 @@ class MatchService(
         match.state = MatchState.VISUAL_PHASE
         match.updatedAt = OffsetDateTime.now()
 
-        return matchRepository.save(match)
+        val saved = matchRepository.save(match)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "match_visual_phase"
+        )
+        return saved
     }
 
     /**
@@ -176,7 +188,13 @@ class MatchService(
         match.state = MatchState.VISUAL_APPROVED
         match.updatedAt = OffsetDateTime.now()
 
-        return matchRepository.save(match)
+        val saved = matchRepository.save(match)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "match_visual_approved"
+        )
+        return saved
     }
 
     /**
@@ -202,6 +220,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_chat_rejected"
         )
 
         return match
@@ -230,6 +254,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_visual_rejected"
         )
 
         return match
@@ -261,6 +291,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_expired"
         )
 
         return true

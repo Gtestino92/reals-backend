@@ -50,6 +50,7 @@ class ChatService(
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
     private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -94,8 +95,9 @@ class ChatService(
 
     fun startFirstChat(matchId: UUID): Chat {
         val now = OffsetDateTime.now()
+        val match = matchService.findByIdOrThrow(matchId)
 
-        return chatRepository.save(
+        val chat = chatRepository.save(
             Chat(
                 matchId = matchId,
                 chatType = ChatType.FIRST_CHAT,
@@ -103,6 +105,12 @@ class ChatService(
                 timeoutAt = now.plusMinutes(firstChatDurationMinutes)
             )
         )
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "first_chat_started"
+        )
+        return chat
     }
 
     fun inactivityExpiresAt(chat: Chat): OffsetDateTime? {
@@ -124,7 +132,7 @@ class ChatService(
             .findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
             ?.let { return it }
 
-        return chatRepository.saveAndFlush(
+        val chat = chatRepository.saveAndFlush(
             Chat(
                 matchId = matchId,
                 connectionId = connectionId,
@@ -136,6 +144,13 @@ class ChatService(
                 timeoutAt = availableAt.plusMinutes(secondChatDurationMinutes)
             )
         )
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        homeStateInvalidationService.bumpBoth(
+            userAId = connection.userAId,
+            userBId = connection.userBId,
+            reason = "second_chat_started"
+        )
+        return chat
     }
 
     fun sendMessage(
@@ -267,6 +282,12 @@ class ChatService(
             visualReviewService.initializeForMatch(matchId)
             visualReviewNotificationService.notifyVisualReviewAvailable(matchId)
         }
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "first_chat_decision_recorded"
+        )
     }
 
     fun endChat(
@@ -480,6 +501,14 @@ class ChatService(
         chat.endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
         chat.readOnlyUntil = now.plusMinutes(secondChatReadOnlyRetentionMinutes)
         chatRepository.save(chat)
+        chat.connectionId?.let { connectionId ->
+            val connection = connectionService.findByIdOrThrow(connectionId)
+            homeStateInvalidationService.bumpBoth(
+                userAId = connection.userAId,
+                userBId = connection.userBId,
+                reason = "second_chat_read_only"
+            )
+        }
 
         return true
     }
