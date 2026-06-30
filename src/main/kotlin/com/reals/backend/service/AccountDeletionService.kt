@@ -25,7 +25,8 @@ class AccountDeletionService(
     private val chatRepository: ChatRepository,
     private val scheduleNegotiationRepository: ScheduleNegotiationRepository,
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
-    private val auditEventService: AuditEventService
+    private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService
 ) {
 
     fun closeActiveEngagementsForDeletedUser(
@@ -86,6 +87,15 @@ class AccountDeletionService(
                 activeEngagementLockRepository.deleteByEngagementId(it.id)
             }
         }
+
+        homeStateInvalidationService.bumpUsers(
+            userIds = (
+                listOf(userId) +
+                    matches.flatMap { listOf(it.userAId, it.userBId) } +
+                    connections.flatMap { listOf(it.userAId, it.userBId) }
+                ).distinct(),
+            reason = "account_deletion_closed_engagements"
+        )
     }
 
     private fun closeVisibleChats(

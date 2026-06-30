@@ -17,6 +17,20 @@ data class HomeResponse(
     val passiveNotices: List<HomePassiveNoticeResponse>
 )
 
+data class HomeStatusResponse(
+    val version: Long,
+    val dirty: Boolean,
+    val serverTime: OffsetDateTime
+)
+
+data class HomePendingStateResponse(
+    val version: Long,
+    val pendingActions: List<HomePendingActionLiteResponse>,
+    val nextSteps: List<HomeNextStepLiteResponse>,
+    val passiveNotices: List<HomePassiveNoticeResponse>,
+    val serverTime: OffsetDateTime
+)
+
 data class HomeActiveInteractionsSummaryResponse(
     val activeInitialCount: Int,
     val activeConnectionCount: Int,
@@ -47,6 +61,12 @@ data class HomePendingActionResponse(
     val partner: PartnerSummaryResponse?
 )
 
+data class HomePendingActionLiteResponse(
+    val type: HomePendingActionType,
+    val matchId: UUID,
+    val chatId: UUID?
+)
+
 enum class HomeNextStepType {
     SCHEDULING,
     SECOND_CHAT_SCHEDULED,
@@ -60,6 +80,21 @@ data class HomeNextStepResponse(
     val matchId: UUID,
     val partner: PartnerSummaryResponse?,
     val secondChat: HomeChatResponse? = null
+)
+
+data class HomeNextStepLiteResponse(
+    val type: HomeNextStepType,
+    val connectionId: UUID,
+    val matchId: UUID,
+    val secondChat: HomePendingSecondChatLiteResponse? = null
+)
+
+data class HomePendingSecondChatLiteResponse(
+    val chatId: UUID?,
+    val availableAt: OffsetDateTime?,
+    val expiresAt: OffsetDateTime?,
+    val readOnlyUntil: OffsetDateTime?,
+    val durationMinutes: Long?
 )
 
 enum class HomePassiveNoticeType {

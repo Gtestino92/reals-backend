@@ -1,6 +1,7 @@
 package com.reals.backend.service.matching
 
 import com.reals.backend.domain.*
+import com.reals.backend.service.HomeStateInvalidationService
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
@@ -23,6 +24,7 @@ class MatchmakingService(
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
     private val compatibilityScorer: CompatibilityScorer,
     private val searchLocationMatchFilter: SearchLocationMatchFilter,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -72,6 +74,10 @@ class MatchmakingService(
             existingQueueEntry.longitude = longitude
             existingQueueEntry.accuracyMeters = accuracyMeters
             queueRepository.save(existingQueueEntry)
+            homeStateInvalidationService.bump(
+                userId = userId,
+                reason = "matchmaking_queue_updated"
+            )
             return
         }
 
@@ -83,10 +89,21 @@ class MatchmakingService(
                 accuracyMeters = accuracyMeters
             )
         )
+        homeStateInvalidationService.bump(
+            userId = userId,
+            reason = "matchmaking_queue_entered"
+        )
     }
 
     fun dequeue(userId: UUID) {
+        val wasQueued = queueRepository.existsByUserId(userId)
         queueRepository.deleteByUserId(userId)
+        if (wasQueued) {
+            homeStateInvalidationService.bump(
+                userId = userId,
+                reason = "matchmaking_queue_left"
+            )
+        }
     }
 
     /**

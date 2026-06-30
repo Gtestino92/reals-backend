@@ -1,0 +1,26 @@
+meta {
+  name: 12 Android Home Full
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/api/me/home
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.matchmaking || !body.activeInteractionsSummary || !Array.isArray(body.pendingActions) || !Array.isArray(body.nextSteps) || !Array.isArray(body.passiveNotices)) {
+    throw new Error("Expected full HomeResponse.");
+  }
+
+  bru.setEnvVar("androidHomeFullPendingActionsCount", String(body.pendingActions.length));
+  bru.setEnvVar("androidHomeFullNextStepsCount", String(body.nextSteps.length));
+  bru.setEnvVar("androidHomeFullPassiveNoticesCount", String(body.passiveNotices.length));
+}

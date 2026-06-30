@@ -1,0 +1,40 @@
+meta {
+  name: 31 Counterpart Home Pending
+  type: http
+  seq: 31
+}
+
+get {
+  url: {{baseUrl}}/api/me/home/pending
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || typeof body.version !== "number" || !Array.isArray(body.pendingActions) || !Array.isArray(body.nextSteps) || !Array.isArray(body.passiveNotices) || !body.serverTime) {
+    throw new Error("Expected HomePendingStateResponse with version, pendingActions, nextSteps, passiveNotices and serverTime.");
+  }
+  if (body.matchmaking !== undefined || body.activeInteractionsSummary !== undefined) {
+    throw new Error("Pending Home response should not include full Home summary fields.");
+  }
+  if (body.pendingActions.some((item) => item.partner !== undefined) || body.nextSteps.some((item) => item.partner !== undefined)) {
+    throw new Error("Pending Home response should not include partner summaries.");
+  }
+
+  bru.setEnvVar("counterpartHomePendingVersion", String(body.version));
+  bru.setEnvVar("counterpartHomePendingActionsCount", String(body.pendingActions.length));
+  bru.setEnvVar("counterpartHomeNextStepsCount", String(body.nextSteps.length));
+  bru.setEnvVar("counterpartHomePassiveNoticesCount", String(body.passiveNotices.length));
+
+  const firstAction = body.pendingActions[0];
+  if (firstAction) {
+    bru.setEnvVar("counterpartHomePendingActionType", firstAction.type);
+    bru.setEnvVar("counterpartHomePendingMatchId", firstAction.matchId || "");
+    bru.setEnvVar("counterpartHomePendingChatId", firstAction.chatId || "");
+  }
+}

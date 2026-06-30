@@ -12,6 +12,8 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
+- `GET /api/me/home/status`: fetch the authenticated user's persisted Home `version`, `dirty` flag and `serverTime`. This is cheap and does not aggregate full Home state.
+- `GET /api/me/home/pending`: fetch lightweight pending/actionable Home navigation state with the current Home `version`. It returns pending actions, next steps and passive notices without partner summaries, matchmaking availability or active interaction counts.
 - `PUT /api/me/push-tokens`: register or refresh the authenticated user's Android FCM device token. Body: `{ "token": "...", "platform": "ANDROID" }`. Returns `{ "registered": true }`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
@@ -65,6 +67,16 @@ Home also returns `activeInteractionsSummary`:
 - `activeConnectionCount`: visible/revealed active connections, excluding `SCHEDULING_PENDING`.
 - `pendingSchedulingConnectionCount`: unrevealed pending scheduling coordinations created after mutual visual approval.
 - `actionableConnectionCount`: connections returned in `nextSteps[]`.
+
+The lightweight pending endpoint intentionally omits partner summaries. Clients
+that need full profile/matchmaking context should call `GET /api/me/home`,
+which remains the source of truth for the complete Home contract. Future clients
+can poll `GET /api/me/home/status` and call the full Home endpoint only when the
+persisted version changes.
+
+Bruno debug requests for this `local-firebase` flow live under
+`bruno/reals-backend-happy-path/11 - Home Polling Debug`; they use Firebase
+`Authorization: Bearer ...` tokens, not `X-Dev-User-Id`.
 
 `nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED`,
 `SECOND_CHAT_AVAILABLE` and `SECOND_CHAT_READ_ONLY` items. `SCHEDULING_PENDING`
