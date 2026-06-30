@@ -59,7 +59,42 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
+            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("NOT_STARTED")))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `noop identity verification marks profile verified`() {
+        val user = userService.createUser("identity-noop-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Identity Noop",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile/identity-verification")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.identityVerified", equalTo(true)))
+            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("VERIFIED")))
+
+        val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
+        org.junit.jupiter.api.Assertions.assertEquals(true, profile.identityVerified)
+        org.junit.jupiter.api.Assertions.assertEquals(
+            com.reals.backend.domain.IdentityVerificationStatus.VERIFIED,
+            profile.identityVerificationStatus
+        )
     }
 
     @Test

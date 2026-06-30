@@ -4,11 +4,12 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReport
+import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
-import com.reals.backend.service.SafetyReportDetail
+import com.reals.backend.service.reports.SafetyReportDetail
 import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
@@ -21,9 +22,11 @@ data class AdminSafetyReportResponse(
     val id: UUID,
     val reporterUserId: UUID,
     val reportedUserId: UUID,
-    val chatId: UUID,
+    val chatId: UUID?,
     val matchId: UUID,
     val connectionId: UUID?,
+    val contextType: SafetyReportContextType,
+    val contextId: UUID?,
     val reason: SafetyReportReason,
     val details: String,
     val status: SafetyReportStatus,
@@ -42,6 +45,8 @@ data class AdminSafetyReportResponse(
                 chatId = report.chatId,
                 matchId = report.matchId,
                 connectionId = report.connectionId,
+                contextType = report.contextType,
+                contextId = report.contextId,
                 reason = report.reason,
                 details = report.details,
                 status = report.status,

@@ -11,6 +11,8 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
+import com.reals.backend.service.photo.PhotoModerationResult
+import com.reals.backend.service.photo.ProfilePhotoModerationService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -26,9 +28,11 @@ class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
+    private val profilePhotoModerationService: ProfilePhotoModerationService,
     private val identityVerificationService: IdentityVerificationService,
     private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
+    private val auditEventService: AuditEventService,
 
     @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -40,7 +44,16 @@ class ProfileService(
     private val minPersonPhotos: Int,
 
     @param:Value("\${profile.photos.min-full-body-photos}")
-    private val minFullBodyPhotos: Int
+    private val minFullBodyPhotos: Int,
+
+    @param:Value("\${profile.photos.moderation.persist-rejected-photos:false}")
+    private val persistRejectedPhotos: Boolean,
+
+    @param:Value("\${profile.photos.require-moderation-approval-for-activation:false}")
+    private val requireModerationApprovalForActivation: Boolean,
+
+    @param:Value("\${profile.identity-verification.require-for-activation:false}")
+    private val requireIdentityVerificationForActivation: Boolean
 ) {
 
     private companion object {
@@ -122,27 +135,40 @@ class ProfileService(
 
     fun verifyIdentity(profileId: UUID): Profile {
         val profile = findByIdOrThrow(profileId)
+        val oldStatus = profile.identityVerificationStatus
 
         val identityVerification = identityVerificationService.verify(
             IdentityVerificationRequest(
                 userId = profile.userId,
+                profileId = profile.id,
                 displayName = profile.displayName,
                 birthDate = profile.birthDate
             )
         )
 
-        if (identityVerification.verified && !profile.identityVerified) {
-            profile.identityVerified = true
-            profile.updatedAt = OffsetDateTime.now()
-            return profileRepository.save(profile)
-        }
+        profile.identityVerificationStatus = identityVerification.status
+        profile.identityVerified = identityVerification.status == IdentityVerificationStatus.VERIFIED
+        profile.updatedAt = OffsetDateTime.now()
 
-        return profile
+        val saved = profileRepository.save(profile)
+        auditEventService.record(
+            eventType = AuditEventType.IDENTITY_VERIFICATION_UPDATED,
+            aggregateType = AuditAggregateType.PROFILE,
+            aggregateId = saved.id,
+            actorUserId = saved.userId,
+            metadata = mapOf(
+                "oldStatus" to oldStatus.name,
+                "newStatus" to saved.identityVerificationStatus.name,
+                "identityVerified" to saved.identityVerified
+            )
+        )
+        return saved
     }
 
     fun activateProfile(profileId: UUID): Profile {
 
         val profile = findByIdOrThrow(profileId)
+        val previousStatus = profile.status
 
         if (
             profile.status != ProfileStatus.DRAFT &&
@@ -155,11 +181,23 @@ class ProfileService(
         }
 
         validatePhotosOrThrow(profileId)
+        validateIdentityVerificationForActivation(profile)
 
         profile.status = ProfileStatus.ACTIVE
         profile.updatedAt = OffsetDateTime.now()
 
-        return profileRepository.save(profile)
+        val saved = profileRepository.save(profile)
+        auditEventService.record(
+            eventType = AuditEventType.PROFILE_ACTIVATED,
+            aggregateType = AuditAggregateType.PROFILE,
+            aggregateId = saved.id,
+            actorUserId = saved.userId,
+            metadata = mapOf(
+                "previousStatus" to previousStatus.name,
+                "newStatus" to saved.status.name
+            )
+        )
+        return saved
     }
 
     private fun validatePhotoCount(profileId: UUID, position: Int) {
@@ -178,11 +216,6 @@ class ProfileService(
                 message = "Profile already has the maximum number of photos ($maxPhotoCount)"
             )
         }
-    }
-
-    fun isEligibleForMatchmaking(profileId: UUID): Boolean {
-        val profile = findByIdOrThrow(profileId)
-        return profile.status == ProfileStatus.ACTIVE
     }
 
     fun getPhotos(profileId: UUID): List<ProfilePhoto> {
@@ -287,17 +320,28 @@ class ProfileService(
 
         profilePhotoRepository.delete(existing)
 
-        storageKey?.let { key ->
-            runCatching {
-                storageService.delete(key)
-            }
+        runCatching {
+            storageService.delete(storageKey)
         }
 
         moveActiveProfileToDraftAfterPhotoMutation(profile)
 
         profile.updatedAt = OffsetDateTime.now()
 
-        return profileRepository.save(profile)
+        val savedProfile = profileRepository.save(profile)
+        auditEventService.record(
+            eventType = AuditEventType.PROFILE_PHOTO_DELETED,
+            aggregateType = AuditAggregateType.PROFILE_PHOTO,
+            aggregateId = existing.id,
+            actorUserId = profile.userId,
+            metadata = mapOf(
+                "profileId" to profile.id,
+                "position" to existing.position,
+                "validationStatus" to existing.validationStatus.name,
+                "moderationStatus" to existing.moderationStatus.name
+            )
+        )
+        return savedProfile
     }
 
     @Transactional
@@ -331,6 +375,13 @@ class ProfileService(
             bytes = bytes,
             replacingPhoto = existingPhoto
         )
+        val moderation = moderateUploadedPhotoOrThrow(
+            userId = profile.userId,
+            profileId = profileId,
+            photoId = newObjectPhotoId,
+            contentType = normalizedContentType,
+            bytes = bytes
+        )
 
         var newUploadedKey: String? = null
         val oldStorageKey = existingPhoto.storageKey
@@ -345,23 +396,29 @@ class ProfileService(
 
             newUploadedKey = storedObject.key
 
-            existingPhoto.url = storedObject.url
             existingPhoto.storageProvider = PhotoStorageProvider.S3
             existingPhoto.storageBucket = storedObject.bucket
             existingPhoto.storageKey = storedObject.key
             existingPhoto.isPersonPhoto = validation.isPersonPhoto
             existingPhoto.isFullBody = validation.isFullBody
             existingPhoto.validationStatus = validation.status
+            existingPhoto.moderationStatus = moderation.status
 
             val saved = profilePhotoRepository.save(existingPhoto)
 
-            oldStorageKey?.let { key ->
-                runCatching {
-                    storageService.delete(key)
-                }
+            runCatching {
+                storageService.delete(oldStorageKey)
             }
 
             moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+            auditEventService.record(
+                eventType = AuditEventType.PROFILE_PHOTO_REPLACED,
+                aggregateType = AuditAggregateType.PROFILE_PHOTO,
+                aggregateId = saved.id,
+                actorUserId = profile.userId,
+                metadata = photoAuditMetadata(saved)
+            )
 
             return saved
 
@@ -402,6 +459,13 @@ class ProfileService(
             bytes = bytes,
             replacingPhoto = null
         )
+        val moderation = moderateUploadedPhotoOrThrow(
+            userId = profile.userId,
+            profileId = profileId,
+            photoId = photoId,
+            contentType = normalizedContentType,
+            bytes = bytes
+        )
 
         var uploadedKey: String? = null
 
@@ -419,18 +483,26 @@ class ProfileService(
                 ProfilePhoto(
                     id = photoId,
                     profileId = profileId,
-                    url = storedObject.url,
                     storageProvider = PhotoStorageProvider.S3,
                     storageBucket = storedObject.bucket,
                     storageKey = storedObject.key,
                     position = position,
                     isPersonPhoto = validation.isPersonPhoto,
                     isFullBody = validation.isFullBody,
-                    validationStatus = validation.status
+                    validationStatus = validation.status,
+                    moderationStatus = moderation.status
                 )
             )
 
             moveActiveProfileToDraftAfterPhotoMutation(profile)
+
+            auditEventService.record(
+                eventType = AuditEventType.PROFILE_PHOTO_UPLOADED,
+                aggregateType = AuditAggregateType.PROFILE_PHOTO,
+                aggregateId = photo.id,
+                actorUserId = profile.userId,
+                metadata = photoAuditMetadata(photo)
+            )
 
             return photo
 
@@ -457,11 +529,16 @@ class ProfileService(
     }
 
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
-        val key = photo.storageKey
-            ?: throw IllegalStateException("Profile photo without storage key: ${photo.id}")
-
-        return storageService.getReadUrl(key)
+        return storageService.getReadUrl(photo.storageKey)
     }
+
+    private fun photoAuditMetadata(photo: ProfilePhoto): Map<String, Any?> =
+        mapOf(
+            "profileId" to photo.profileId,
+            "position" to photo.position,
+            "validationStatus" to photo.validationStatus.name,
+            "moderationStatus" to photo.moderationStatus.name
+        )
 
     private fun validateDisplayName(displayName: String) {
         require(displayName.length in DISPLAY_NAME_MIN_LENGTH..DISPLAY_NAME_MAX_LENGTH) {
@@ -620,6 +697,55 @@ class ProfileService(
                 message = "Profile must have at least $minFullBodyPhotos validated full-body photos"
             )
         }
+
+        if (
+            requireModerationApprovalForActivation &&
+            photos.any { it.moderationStatus != PhotoModerationStatus.APPROVED }
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_MODERATION_NOT_APPROVED,
+                message = "All profile photos must be approved by moderation before activation"
+            )
+        }
+    }
+
+    private fun validateIdentityVerificationForActivation(profile: Profile) {
+        if (
+            requireIdentityVerificationForActivation &&
+            profile.identityVerificationStatus != IdentityVerificationStatus.VERIFIED
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_IDENTITY_VERIFICATION_REQUIRED,
+                message = "Profile identity must be verified before activation"
+            )
+        }
+    }
+
+    private fun moderateUploadedPhotoOrThrow(
+        userId: UUID,
+        profileId: UUID,
+        photoId: UUID,
+        contentType: String,
+        bytes: ByteArray
+    ): PhotoModerationResult {
+        val result = profilePhotoModerationService.moderateUploadedPhoto(
+            userId = userId,
+            profileId = profileId,
+            photoId = photoId,
+            contentType = contentType,
+            bytes = bytes
+        )
+
+        if (result.status == PhotoModerationStatus.REJECTED && !persistRejectedPhotos) {
+            // MVP default: rejected photos are not uploaded or persisted. A future
+            // moderation workflow may retain rejected media for review/audit.
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PROFILE_PHOTO_REJECTED,
+                message = "Profile photo was rejected by moderation"
+            )
+        }
+
+        return result
     }
 
     private fun normalizeOptionalText(value: String?): String? =

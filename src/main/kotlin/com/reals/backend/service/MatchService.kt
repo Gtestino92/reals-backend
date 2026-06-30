@@ -4,6 +4,8 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -19,6 +21,7 @@ class MatchService(
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
     private val userService: UserService,
+    private val userBlockService: UserBlockService,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -53,6 +56,10 @@ class MatchService(
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
+        checkNotBlockedPair(
+            userAId = userAId,
+            userBId = userBId
+        )
 
         val match = matchRepository.save(
             Match(
@@ -92,6 +99,18 @@ class MatchService(
 
         check(active < maxActiveMatches) {
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
+        }
+    }
+
+    private fun checkNotBlockedPair(
+        userAId: UUID,
+        userBId: UUID
+    ) {
+        if (userBlockService.isBlockedPair(userAId, userBId)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_PAIR_BLOCKED,
+                message = "Cannot create match between users with an existing block"
+            )
         }
     }
 

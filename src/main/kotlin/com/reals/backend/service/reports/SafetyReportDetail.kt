@@ -1,4 +1,4 @@
-package com.reals.backend.service
+package com.reals.backend.service.reports
 
 import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.Penalty

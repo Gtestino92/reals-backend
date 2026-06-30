@@ -73,7 +73,7 @@ For those cases, service-level integration tests catch more realistic regression
 `ProfilePhotoFileControllerIntegrationTest` covers:
 
 - multipart upload and replace flows
-- storage-backed read URLs
+- storage-key-backed read URLs generated at response time
 - object deletion when a stored photo is deleted or replaced
 - file validation errors and ownership checks
 

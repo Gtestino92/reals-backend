@@ -104,6 +104,14 @@ class RateLimitFilter(
                     refillPeriodSeconds = properties.profilePhotoRefillPeriodSeconds
                 )
 
+            method == "POST" && path == "/api/safety/reports" ->
+                RateLimitRule(
+                    id = "safety-reports",
+                    capacity = properties.safetyReportCapacity,
+                    refillTokens = properties.safetyReportRefillTokens,
+                    refillPeriodSeconds = properties.safetyReportRefillPeriodSeconds
+                )
+
             else ->
                 RateLimitRule(
                     id = "default",

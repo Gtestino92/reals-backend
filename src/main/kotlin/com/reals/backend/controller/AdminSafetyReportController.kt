@@ -6,7 +6,7 @@ import com.reals.backend.controller.dto.AdminSafetyReportResponse
 import com.reals.backend.controller.dto.SafetyReportDismissRequest
 import com.reals.backend.controller.dto.SafetyReportPenaltyRequest
 import com.reals.backend.domain.SafetyReportStatus
-import com.reals.backend.service.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping

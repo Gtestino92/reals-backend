@@ -1,6 +1,9 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
 import com.reals.backend.domain.ChatExitRequestCreationResult
@@ -11,6 +14,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
@@ -18,6 +22,7 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.reports.SafetyReportService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -34,7 +39,9 @@ class ChatExitService(
     private val matchService: MatchService,
     private val penaltyService: PenaltyService,
     private val safetyReportService: SafetyReportService,
+    private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
+    private val auditEventService: AuditEventService,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
@@ -136,7 +143,11 @@ class ChatExitService(
         exitRequest.resolvedAt = OffsetDateTime.now()
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = responderUserId
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -166,7 +177,11 @@ class ChatExitService(
         exitRequest.resolvedAt = OffsetDateTime.now()
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = responderUserId
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -205,7 +220,11 @@ class ChatExitService(
         exitRequest.resolvedAt = now
         chatExitRequestRepository.save(exitRequest)
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = userId
+        )
 
         // Client-triggered mutual timeout means the pending request was not
         // answered in time. It is not a unilateral cancellation and must not
@@ -248,7 +267,11 @@ class ChatExitService(
             )
         )
 
-        finishCancelledChat(chat)
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.UNILATERAL_CANCEL,
+            actorUserId = userId
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -287,7 +310,7 @@ class ChatExitService(
             )
         )
 
-        safetyReportService.createPendingReport(
+        val report = safetyReportService.createPendingReport(
             chat = chat,
             reporterUserId = reporterUserId,
             reportedUserId = reportedUserId,
@@ -295,7 +318,18 @@ class ChatExitService(
             details = normalizedDetails
         )
 
-        finishCancelledChat(chat)
+        userBlockService.blockUser(
+            blockerUserId = reporterUserId,
+            blockedUserId = reportedUserId,
+            source = UserBlockSource.SAFETY_REPORT,
+            sourceReportId = report.id
+        )
+
+        finishCancelledChat(
+            chat = chat,
+            endedReason = ChatEndReason.SAFETY_REPORT,
+            actorUserId = reporterUserId
+        )
 
         return ChatExitOutcome(
             chat = chat,
@@ -390,10 +424,28 @@ class ChatExitService(
         return sent < minimum
     }
 
-    private fun finishCancelledChat(chat: Chat) {
+    private fun finishCancelledChat(
+        chat: Chat,
+        endedReason: ChatEndReason,
+        actorUserId: UUID? = null
+    ) {
         chat.status = ChatStatus.CANCELLED
         chat.endedAt = OffsetDateTime.now()
+        chat.endedReason = endedReason
         chatRepository.save(chat)
+        auditEventService.record(
+            eventType = AuditEventType.CHAT_ENDED,
+            aggregateType = AuditAggregateType.CHAT,
+            aggregateId = chat.id,
+            actorUserId = actorUserId,
+            metadata = mapOf(
+                "chatType" to chat.chatType.name,
+                "status" to chat.status.name,
+                "endedReason" to endedReason.name,
+                "matchId" to chat.matchId,
+                "connectionId" to chat.connectionId
+            )
+        )
 
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> matchService.rejectChatPhase(chat.matchId)

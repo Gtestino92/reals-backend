@@ -37,6 +37,10 @@ Allowed transitions:
 `ACTIVE -> ABANDONED` is the first-chat inactivity closure. It can be applied by
 the inactivity job or by endpoint validation before a stale mutation is accepted.
 
+`ChatStatus` remains the operational state. Persisted `ChatEndReason` records
+why a chat ended, such as safety report, unilateral cancellation, absolute
+timeout, inactivity timeout, account deletion or second-chat read-only cleanup.
+
 Terminal states:
 
 - `FINISHED`

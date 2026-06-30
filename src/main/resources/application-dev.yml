@@ -108,6 +108,10 @@ profile:
     required-count: 9
     min-person-photos: 3
     min-full-body-photos: 1
+  identity-verification:
+    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:${IDENTITY_VERIFICATION_PROVIDER:none}}
+    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
 
 engagement:
   max-active-matches: 5
@@ -136,10 +140,6 @@ storage:
       - image/jpeg
       - image/png
       - image/webp
-
-identity-verification:
-  provider: ${IDENTITY_VERIFICATION_PROVIDER:none}
-  api-key: ${IDENTITY_VERIFICATION_API_KEY:}
 
 notifications:
   second-chat-reminder:

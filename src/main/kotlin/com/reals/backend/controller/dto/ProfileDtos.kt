@@ -1,8 +1,10 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
@@ -101,6 +103,7 @@ data class ProfileResponse(
     val birthDate: LocalDate,
     val age: Int,
     val identityVerified: Boolean,
+    val identityVerificationStatus: IdentityVerificationStatus,
     val gender: Gender,
     val lookingForGender: LookingForGender,
     val intention: Intention,
@@ -126,6 +129,7 @@ data class ProfileResponse(
             birthDate = profile.birthDate,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             identityVerified = profile.identityVerified,
+            identityVerificationStatus = profile.identityVerificationStatus,
             gender = profile.gender,
             lookingForGender = profile.lookingForGender,
             intention = profile.intention,
@@ -144,25 +148,15 @@ data class ProfileResponse(
 }
 
 data class PhotoResponse(
-val id: UUID,
-val url: String,
-val position: Int,
-val isPersonPhoto: Boolean,
-val isFullBody: Boolean,
-val validationStatus: PhotoValidationStatus
+    val id: UUID,
+    val url: String,
+    val position: Int,
+    val isPersonPhoto: Boolean,
+    val isFullBody: Boolean,
+    val validationStatus: PhotoValidationStatus,
+    val moderationStatus: PhotoModerationStatus
 ) {
     companion object {
-        fun from(photo: ProfilePhoto): PhotoResponse {
-            return PhotoResponse(
-                id = photo.id,
-                url = photo.url,
-                position = photo.position,
-                isPersonPhoto = photo.isPersonPhoto,
-                isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
-            )
-        }
-
         fun from(
             photo: ProfilePhoto,
             url: String
@@ -173,7 +167,8 @@ val validationStatus: PhotoValidationStatus
                 position = photo.position,
                 isPersonPhoto = photo.isPersonPhoto,
                 isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
+                validationStatus = photo.validationStatus,
+                moderationStatus = photo.moderationStatus
             )
         }
     }
@@ -201,7 +196,7 @@ data class VisualProfileResponse(
     companion object {
         fun from(
             profile: Profile,
-            photos: List<ProfilePhoto>,
+            photos: List<PhotoResponse>,
             myPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageRead: Boolean,
@@ -212,9 +207,7 @@ data class VisualProfileResponse(
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
-            photos = photos
-                .sortedBy { it.position }
-                .map { PhotoResponse.from(it) },
+            photos = photos.sortedBy { it.position },
             myPersonalMessageSubmitted = myPersonalMessageSubmitted,
             partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
             partnerPersonalMessageRead = partnerPersonalMessageRead,
