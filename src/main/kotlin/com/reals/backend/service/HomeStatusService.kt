@@ -77,6 +77,17 @@ class HomeStatusService(
             updatedAt = OffsetDateTime.now()
         ) == 1
 
+    @Transactional
+    fun markCleanIfVersionStill(
+        userId: UUID,
+        expectedVersion: Long
+    ): Boolean =
+        homeStatusRepository.markCleanIfVersionStill(
+            userId = userId,
+            expectedVersion = expectedVersion,
+            updatedAt = OffsetDateTime.now()
+        ) == 1
+
     private fun createDefaultStatusIfMissing(
         userId: UUID,
         now: OffsetDateTime
