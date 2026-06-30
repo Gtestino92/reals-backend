@@ -43,7 +43,9 @@ data class SafetyReportResponse(
         fun from(report: SafetyReport) =
             SafetyReportResponse(
                 id = report.id,
-                reporterUserId = report.reporterUserId,
+                reporterUserId = requireNotNull(report.reporterUserId) {
+                    "User-facing safety report response requires a reporter user id"
+                },
                 reportedUserId = report.reportedUserId,
                 chatId = report.chatId,
                 matchId = report.matchId,

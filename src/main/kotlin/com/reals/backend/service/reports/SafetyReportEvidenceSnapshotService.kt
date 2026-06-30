@@ -39,6 +39,10 @@ class SafetyReportEvidenceSnapshotService(
         )
     }
 
+    @Transactional(readOnly = true)
+    fun findByReportId(reportId: java.util.UUID): SafetyReportEvidenceSnapshot? =
+        snapshotRepository.findBySafetyReportId(reportId)
+
     private fun transcriptHash(messages: List<ChatMessage>): String {
         val input = messages.joinToString(separator = "\n") { message ->
             "${message.id}|${message.senderId}|${message.sentAt}|${message.content}"

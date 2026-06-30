@@ -1,5 +1,6 @@
 package com.reals.backend.service.reports
 
+import com.reals.backend.controller.dto.CreateAdminSafetyReportRequest
 import com.reals.backend.controller.dto.CreateSafetyReportRequest
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatExitReason
@@ -10,6 +11,7 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
+import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.toSafetyReportReason
@@ -26,7 +28,9 @@ import com.reals.backend.service.MatchService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.validation.PlainText
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -67,7 +71,8 @@ class SafetyReportService(
         reason: ChatExitReason,
         details: String
     ): SafetyReport {
-        val existing = safetyReportRepository.findByReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+            source = SafetyReportSource.USER,
             reporterUserId = reporterUserId,
             reportedUserId = reportedUserId,
             contextType = SafetyReportContextType.CHAT,
@@ -85,6 +90,8 @@ class SafetyReportService(
                 chatId = chat.id,
                 matchId = chat.matchId,
                 connectionId = chat.connectionId,
+                source = SafetyReportSource.USER,
+                createdByAdminUserId = null,
                 contextType = SafetyReportContextType.CHAT,
                 contextId = chat.id,
                 reason = reason.toSafetyReportReason(),
@@ -92,7 +99,7 @@ class SafetyReportService(
             )
         )
 
-        captureEvidenceAndAuditReportCreated(report)
+        captureEvidenceAndAuditReportCreated(report, actorUserId = reporterUserId)
         return report
     }
 
@@ -106,7 +113,8 @@ class SafetyReportService(
         )
         val details = normalizeReportDetails(request.details)
 
-        val existing = safetyReportRepository.findByReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+            source = SafetyReportSource.USER,
             reporterUserId = reporterUserId,
             reportedUserId = context.reportedUserId,
             contextType = context.contextType,
@@ -133,6 +141,8 @@ class SafetyReportService(
                 chatId = context.chatId,
                 matchId = context.matchId,
                 connectionId = context.connectionId,
+                source = SafetyReportSource.USER,
+                createdByAdminUserId = null,
                 contextType = context.contextType,
                 contextId = context.contextId,
                 reason = request.reason,
@@ -140,7 +150,7 @@ class SafetyReportService(
             )
         )
 
-        captureEvidenceAndAuditReportCreated(report)
+        captureEvidenceAndAuditReportCreated(report, actorUserId = reporterUserId)
 
         userBlockService.blockUser(
             blockerUserId = reporterUserId,
@@ -155,29 +165,83 @@ class SafetyReportService(
         )
     }
 
+    fun createAdminReport(
+        adminUserId: UUID,
+        request: CreateAdminSafetyReportRequest
+    ): SafetyReport {
+        findUserOrInvalid(adminUserId, "Admin user was not found")
+        val reportedUser = findUserOrInvalid(request.reportedUserId, "Reported user was not found")
+        val reporterUser = request.reporterUserId?.let {
+            if (it == request.reportedUserId) {
+                throw invalidAdminCreate("Reporter cannot be the reported user")
+            }
+            findUserOrInvalid(it, "Reporter user was not found")
+        }
+        val details = normalizeReportDetails(request.details)
+        val context = resolveAdminContext(
+            request = request,
+            reporterUserId = reporterUser?.id
+        )
+
+        if (context.reportedUserId != reportedUser.id) {
+            throw invalidAdminCreate("Reported user does not match the reporting context")
+        }
+
+        val report = safetyReportRepository.save(
+            SafetyReport(
+                reporterUserId = reporterUser?.id,
+                reportedUserId = reportedUser.id,
+                chatId = context.chatId,
+                matchId = context.matchId,
+                connectionId = context.connectionId,
+                source = SafetyReportSource.ADMIN,
+                createdByAdminUserId = adminUserId,
+                contextType = context.contextType,
+                contextId = context.contextId,
+                reason = request.reason,
+                details = details
+            )
+        )
+
+        captureEvidenceAndAuditReportCreated(report, actorUserId = adminUserId)
+        return report
+    }
+
     @Transactional(readOnly = true)
     fun listReports(status: SafetyReportStatus): List<SafetyReport> =
         safetyReportRepository.findByStatusOrderByCreatedAtDesc(status)
 
     @Transactional(readOnly = true)
+    fun listReportDetails(
+        status: SafetyReportStatus?,
+        source: SafetyReportSource?,
+        reportedUserId: UUID?,
+        reporterUserId: UUID?
+    ): List<SafetyReportDetail> =
+        safetyReportRepository.findAllByOrderByCreatedAtDesc()
+            .asSequence()
+            .filter { status == null || it.status == status }
+            .filter { source == null || it.source == source }
+            .filter { reportedUserId == null || it.reportedUserId == reportedUserId }
+            .filter { reporterUserId == null || it.reporterUserId == reporterUserId }
+            .take(100)
+            .map { buildReportDetail(it, includeMessages = false, includePenalty = false) }
+            .toList()
+
+    @Transactional(readOnly = true)
     fun getReport(reportId: UUID): SafetyReport =
         safetyReportRepository.findById(reportId)
             .orElseThrow {
-                NoSuchElementException("Safety report not found: $reportId")
+                DomainNotFoundException(
+                    code = DomainErrorCode.SAFETY_REPORT_NOT_FOUND,
+                    message = "Safety report was not found"
+                )
             }
 
     @Transactional(readOnly = true)
     fun getReportDetail(reportId: UUID): SafetyReportDetail {
         val report = getReport(reportId)
-        return SafetyReportDetail(
-            report = report,
-            reporter = userRepository.findById(report.reporterUserId).orElse(null),
-            reported = userRepository.findById(report.reportedUserId).orElse(null),
-            messages = report.chatId
-                ?.let { chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(it) }
-                ?: emptyList(),
-            penalty = report.penaltyId?.let { penaltyRepository.findById(it).orElse(null) }
-        )
+        return buildReportDetail(report, includeMessages = true, includePenalty = true)
     }
 
     fun dismissReport(
@@ -186,6 +250,7 @@ class SafetyReportService(
         notes: String?
     ): SafetyReport {
         val report = getReport(reportId)
+        val previousStatus = report.status
         validatePending(report)
 
         report.status = SafetyReportStatus.DISMISSED
@@ -193,7 +258,20 @@ class SafetyReportService(
         report.reviewedByUserId = adminUserId
         report.verdictNotes = normalizeNotes(notes)
 
-        return safetyReportRepository.save(report)
+        val saved = safetyReportRepository.save(report)
+        auditEventService.record(
+            eventType = AuditEventType.SAFETY_REPORT_DISMISSED,
+            aggregateType = AuditAggregateType.SAFETY_REPORT,
+            aggregateId = saved.id,
+            actorUserId = adminUserId,
+            targetUserId = saved.reportedUserId,
+            metadata = mapOf(
+                "source" to saved.source.name,
+                "previousStatus" to previousStatus.name,
+                "newStatus" to saved.status.name
+            )
+        )
+        return saved
     }
 
     fun confirmReportWithPenalty(
@@ -205,6 +283,7 @@ class SafetyReportService(
         notes: String?
     ): SafetyReport {
         val report = getReport(reportId)
+        val previousStatus = report.status
         validatePending(report)
 
         val normalizedReason = reason.trim()
@@ -247,12 +326,30 @@ class SafetyReportService(
         report.verdictNotes = normalizeNotes(notes)
         report.penaltyId = penalty.id
 
-        return safetyReportRepository.save(report)
+        val saved = safetyReportRepository.save(report)
+        auditEventService.record(
+            eventType = AuditEventType.SAFETY_REPORT_CONFIRMED,
+            aggregateType = AuditAggregateType.SAFETY_REPORT,
+            aggregateId = saved.id,
+            actorUserId = adminUserId,
+            targetUserId = saved.reportedUserId,
+            metadata = mapOf(
+                "source" to saved.source.name,
+                "previousStatus" to previousStatus.name,
+                "newStatus" to saved.status.name,
+                "penaltyId" to penalty.id,
+                "penaltyType" to penalty.type.name
+            )
+        )
+        return saved
     }
 
     private fun validatePending(report: SafetyReport) {
-        check(report.status == SafetyReportStatus.PENDING) {
-            "Safety report ${report.id} is not pending"
+        if (report.status != SafetyReportStatus.PENDING) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SAFETY_REPORT_ALREADY_REVIEWED,
+                message = "Safety report is already reviewed"
+            )
         }
     }
 
@@ -285,7 +382,160 @@ class SafetyReportService(
                 reporterUserId = reporterUserId,
                 request = request
             )
+
+            SafetyReportContextType.USER -> throw invalidContext("USER report context is admin-only")
         }
+    }
+
+    private fun resolveAdminContext(
+        request: CreateAdminSafetyReportRequest,
+        reporterUserId: UUID?
+    ): SafetyReportContext =
+        when (request.contextType) {
+            SafetyReportContextType.USER -> resolveAdminUserContext(request)
+
+            SafetyReportContextType.CHAT ->
+                if (reporterUserId != null) {
+                    resolveChatContext(reporterUserId, request.toUserRequest())
+                } else {
+                    resolveAdminChatContext(request)
+                }
+
+            SafetyReportContextType.VISUAL_PROFILE ->
+                if (reporterUserId != null) {
+                    resolveMatchContext(
+                        reporterUserId = reporterUserId,
+                        request = request.toUserRequest(),
+                        contextType = SafetyReportContextType.VISUAL_PROFILE
+                    )
+                } else {
+                    resolveAdminMatchContext(request, SafetyReportContextType.VISUAL_PROFILE)
+                }
+
+            SafetyReportContextType.PERSONAL_MESSAGE ->
+                if (reporterUserId != null) {
+                    resolvePersonalMessageContext(reporterUserId, request.toUserRequest())
+                } else {
+                    resolveAdminPersonalMessageContext(request)
+                }
+
+            SafetyReportContextType.PROFILE_PHOTO ->
+                if (reporterUserId != null) {
+                    resolveProfilePhotoContext(reporterUserId, request.toUserRequest())
+                } else {
+                    resolveAdminProfilePhotoContext(request)
+                }
+        }
+
+    private fun resolveAdminUserContext(request: CreateAdminSafetyReportRequest): SafetyReportContext {
+        if (
+            request.chatId != null ||
+            request.matchId != null ||
+            request.connectionId != null ||
+            request.profilePhotoId != null
+        ) {
+            throw invalidAdminCreate("USER context must not include chat, match, connection or photo ids")
+        }
+
+        return SafetyReportContext(
+            reportedUserId = request.reportedUserId,
+            chatId = null,
+            matchId = null,
+            connectionId = null,
+            contextType = SafetyReportContextType.USER,
+            contextId = request.reportedUserId
+        )
+    }
+
+    private fun resolveAdminChatContext(request: CreateAdminSafetyReportRequest): SafetyReportContext {
+        val chatId = request.chatId ?: throw invalidAdminCreate("chatId is required")
+        val chat = chatRepository.findById(chatId)
+            .orElseThrow { invalidAdminCreate("Chat context was not found") }
+        val match = findMatchOrInvalid(chat.matchId)
+        requireMatchParticipant(match, request.reportedUserId)
+        requireOptionalIdMatches("matchId", request.matchId, chat.matchId)
+        requireOptionalIdMatches("connectionId", request.connectionId, chat.connectionId)
+
+        return SafetyReportContext(
+            reportedUserId = request.reportedUserId,
+            chatId = chat.id,
+            matchId = chat.matchId,
+            connectionId = chat.connectionId,
+            contextType = SafetyReportContextType.CHAT,
+            contextId = chat.id
+        )
+    }
+
+    private fun resolveAdminMatchContext(
+        request: CreateAdminSafetyReportRequest,
+        contextType: SafetyReportContextType
+    ): SafetyReportContext {
+        val matchId = request.matchId ?: throw invalidAdminCreate("matchId is required")
+        if (request.connectionId != null) {
+            throw invalidAdminCreate("connectionId is not supported for this context")
+        }
+        val match = findMatchOrInvalid(matchId)
+        requireVisualPhaseOrLater(match)
+        requireMatchParticipant(match, request.reportedUserId)
+
+        return SafetyReportContext(
+            reportedUserId = request.reportedUserId,
+            chatId = null,
+            matchId = match.id,
+            connectionId = null,
+            contextType = contextType,
+            contextId = match.id
+        )
+    }
+
+    private fun resolveAdminPersonalMessageContext(request: CreateAdminSafetyReportRequest): SafetyReportContext {
+        val context = resolveAdminMatchContext(
+            request = request,
+            contextType = SafetyReportContextType.PERSONAL_MESSAGE
+        )
+        val match = findMatchOrInvalid(requireNotNull(context.matchId))
+        val review = visualReviewRepository.findByMatchId(match.id)
+            ?: throw invalidAdminCreate("Personal message context was not found")
+        val reportedUserSubmittedMessage =
+            when (context.reportedUserId) {
+                match.userAId -> review.personalMessageA != null
+                match.userBId -> review.personalMessageB != null
+                else -> false
+            }
+
+        if (!reportedUserSubmittedMessage) {
+            throw invalidAdminCreate("Reported user has no personal message in this match")
+        }
+
+        return context
+    }
+
+    private fun resolveAdminProfilePhotoContext(request: CreateAdminSafetyReportRequest): SafetyReportContext {
+        val matchId = request.matchId ?: throw invalidAdminCreate("matchId is required")
+        val photoId = request.profilePhotoId ?: throw invalidAdminCreate("profilePhotoId is required")
+        if (request.connectionId != null) {
+            throw invalidAdminCreate("connectionId is not supported for this context")
+        }
+        val match = findMatchOrInvalid(matchId)
+        requireVisualPhaseOrLater(match)
+        requireMatchParticipant(match, request.reportedUserId)
+        val profilePhoto = profilePhotoRepository.findById(photoId)
+            .orElseThrow { invalidAdminCreate("Profile photo context was not found") }
+        val ownerProfile = profileRepository.findById(profilePhoto.profileId)
+            .orElseThrow { invalidAdminCreate("Profile photo owner was not found") }
+
+        if (ownerProfile.userId != request.reportedUserId) {
+            throw invalidAdminCreate("Profile photo does not belong to the reported user")
+        }
+
+        return SafetyReportContext(
+            reportedUserId = ownerProfile.userId,
+            chatId = null,
+            matchId = match.id,
+            connectionId = null,
+            contextType = SafetyReportContextType.PROFILE_PHOTO,
+            contextId = profilePhoto.id
+        )
     }
 
     private fun resolveChatContext(
@@ -358,7 +608,7 @@ class SafetyReportService(
             request = request,
             contextType = SafetyReportContextType.PERSONAL_MESSAGE
         )
-        val match = findMatchOrInvalid(context.matchId)
+        val match = findMatchOrInvalid(requireNotNull(context.matchId))
         val review = visualReviewRepository.findByMatchId(match.id)
             ?: throw invalidContext("Personal message context was not found")
         val reportedUserSubmittedMessage =
@@ -444,6 +694,12 @@ class SafetyReportService(
         }
     }
 
+    private fun requireMatchParticipant(match: Match, userId: UUID) {
+        if (userId != match.userAId && userId != match.userBId) {
+            throw invalidAdminCreate("Reported user does not belong to the reporting context")
+        }
+    }
+
     private fun requireReportedUserMatches(
         requestedReportedUserId: UUID,
         inferredReportedUserId: UUID
@@ -485,7 +741,54 @@ class SafetyReportService(
         return normalized
     }
 
-    private fun captureEvidenceAndAuditReportCreated(report: SafetyReport) {
+    private fun buildReportDetail(
+        report: SafetyReport,
+        includeMessages: Boolean,
+        includePenalty: Boolean
+    ): SafetyReportDetail =
+        SafetyReportDetail(
+            report = report,
+            reporter = report.reporterUserId?.let { userRepository.findById(it).orElse(null) },
+            reported = userRepository.findById(report.reportedUserId).orElse(null),
+            messages = if (includeMessages) {
+                report.chatId
+                    ?.let { chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(it) }
+                    ?: emptyList()
+            } else {
+                emptyList()
+            },
+            penalty = if (includePenalty) {
+                report.penaltyId?.let { penaltyRepository.findById(it).orElse(null) }
+            } else {
+                null
+            },
+            evidence = evidenceSnapshotService.findByReportId(report.id),
+            reportedUserCounters = reportCounters(report.reportedUserId)
+        )
+
+    private fun reportCounters(reportedUserId: UUID): SafetyReportUserCounters {
+        val since = OffsetDateTime.now().minusDays(30)
+        return SafetyReportUserCounters(
+            pendingReportsTotal = safetyReportRepository.countByReportedUserIdAndStatus(
+                reportedUserId = reportedUserId,
+                status = SafetyReportStatus.PENDING
+            ),
+            confirmedReportsTotal = safetyReportRepository.countByReportedUserIdAndStatus(
+                reportedUserId = reportedUserId,
+                status = SafetyReportStatus.CONFIRMED
+            ),
+            confirmedReportsLast30Days = safetyReportRepository.countByReportedUserIdAndStatusAndCreatedAtGreaterThanEqual(
+                reportedUserId = reportedUserId,
+                status = SafetyReportStatus.CONFIRMED,
+                createdAt = since
+            )
+        )
+    }
+
+    private fun captureEvidenceAndAuditReportCreated(
+        report: SafetyReport,
+        actorUserId: UUID?
+    ) {
         runCatching {
             evidenceSnapshotService.captureForReport(report)
         }.onFailure {
@@ -496,9 +799,10 @@ class SafetyReportService(
             eventType = AuditEventType.SAFETY_REPORT_CREATED,
             aggregateType = AuditAggregateType.SAFETY_REPORT,
             aggregateId = report.id,
-            actorUserId = report.reporterUserId,
+            actorUserId = actorUserId,
             targetUserId = report.reportedUserId,
             metadata = mapOf(
+                "source" to report.source.name,
                 "contextType" to report.contextType.name,
                 "contextId" to report.contextId,
                 "reason" to report.reason.name,
@@ -507,9 +811,22 @@ class SafetyReportService(
         )
     }
 
+    private fun findUserOrInvalid(
+        userId: UUID,
+        message: String
+    ) =
+        userRepository.findById(userId)
+            .orElseThrow { invalidAdminCreate(message) }
+
     private fun invalidContext(message: String): DomainBadRequestException =
         DomainBadRequestException(
             code = DomainErrorCode.SAFETY_REPORT_CONTEXT_INVALID,
+            message = message
+        )
+
+    private fun invalidAdminCreate(message: String): DomainBadRequestException =
+        DomainBadRequestException(
+            code = DomainErrorCode.SAFETY_REPORT_ADMIN_CREATE_INVALID,
             message = message
         )
 }
@@ -522,8 +839,20 @@ data class SafetyReportCreationResult(
 private data class SafetyReportContext(
     val reportedUserId: UUID,
     val chatId: UUID?,
-    val matchId: UUID,
+    val matchId: UUID?,
     val connectionId: UUID?,
     val contextType: SafetyReportContextType,
     val contextId: UUID
 )
+
+private fun CreateAdminSafetyReportRequest.toUserRequest(): CreateSafetyReportRequest =
+    CreateSafetyReportRequest(
+        reportedUserId = reportedUserId,
+        contextType = contextType,
+        chatId = chatId,
+        matchId = matchId,
+        connectionId = connectionId,
+        profilePhotoId = profilePhotoId,
+        reason = reason,
+        details = details
+    )

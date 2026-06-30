@@ -26,7 +26,14 @@ enum class SafetyReportContextType {
     CHAT,
     VISUAL_PROFILE,
     PERSONAL_MESSAGE,
-    PROFILE_PHOTO
+    PROFILE_PHOTO,
+    USER
+}
+
+enum class SafetyReportSource {
+    USER,
+    ADMIN,
+    SYSTEM
 }
 
 @Entity
@@ -40,8 +47,8 @@ data class SafetyReport(
     @Column(name = "version", nullable = false)
     var version: Long = 0,
 
-    @Column(name = "reporter_user_id", nullable = false)
-    var reporterUserId: UUID,
+    @Column(name = "reporter_user_id")
+    var reporterUserId: UUID? = null,
 
     @Column(name = "reported_user_id", nullable = false)
     var reportedUserId: UUID,
@@ -49,8 +56,15 @@ data class SafetyReport(
     @Column(name = "chat_id")
     var chatId: UUID? = null,
 
-    @Column(name = "match_id", nullable = false)
-    var matchId: UUID,
+    @Column(name = "match_id")
+    var matchId: UUID? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false)
+    var source: SafetyReportSource = SafetyReportSource.USER,
+
+    @Column(name = "created_by_admin_user_id")
+    var createdByAdminUserId: UUID? = null,
 
     @Column(name = "connection_id")
     var connectionId: UUID? = null,
