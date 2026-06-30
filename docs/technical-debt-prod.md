@@ -186,8 +186,11 @@ Current state:
 - Safety cancellation/report can record a report and apply a penalty.
 - User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
 - User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
+- Admin-created reports can be general `USER` context reports or contextual reports. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
 - Safety reports capture an evidence snapshot with message counts, timestamps and transcript hash, not a full transcript copy.
 - Safety-relevant backend flows record `audit_events` with operational metadata only.
+- Admin safety DTOs intentionally avoid raw email, Firebase UID and full `User` exposure.
+- Pending/confirmed report counters are computed dynamically for the reported user.
 - Full manual review workflow is not complete.
 
 Production work:
@@ -198,10 +201,8 @@ Production work:
 - Escalation policy.
 - Appeal or correction policy if needed.
 - Request context enrichment for audit events, including request id and hashed IP/user-agent if needed.
-- Admin-created reports.
-- Nullable `SafetyReport.reporterUserId` for admin/system-created reports.
-- Admin DTOs that expose only reduced, intentional safety data.
-- Counters for pending/confirmed reports.
+- Additional admin filters/pagination if report volume grows.
+- Decide when admin-created reports should optionally create blocks or other containment actions.
 
 ### 4.2 User blocking and objectionable content controls
 
@@ -210,8 +211,7 @@ Future work:
 - User-facing manual block and unblock behavior.
 - Explicit policy for objectionable profile photos and messages.
 - Internal tooling to remove content and sanction users.
-- Admin-created reports should support a report source such as `USER`, `ADMIN` or `SYSTEM`.
-- Admin-created safety reports should allow `SafetyReport.reporterUserId` to be nullable. Admin-created reports are intentionally not part of the current backend flow.
+- Define and implement future `SYSTEM` safety report sources if automated detection creates reports.
 
 ### 4.3 Sensitive message data protection
 

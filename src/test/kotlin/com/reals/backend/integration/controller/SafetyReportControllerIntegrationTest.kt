@@ -3,6 +3,7 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
@@ -47,6 +48,9 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
 
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportContextType.VISUAL_PROFILE, report.contextType)
+        assertEquals(SafetyReportSource.USER, report.source)
+        assertEquals(setup.userAId, report.reporterUserId)
+        assertNull(report.createdByAdminUserId)
         assertEquals(setup.matchId, report.contextId)
         assertNull(report.chatId)
 

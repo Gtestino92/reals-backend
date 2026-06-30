@@ -48,8 +48,9 @@ Matching and chat:
 - `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `SafetyReportStatus`: `PENDING`, `DISMISSED`, `CONFIRMED`
 - `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
-- `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`
-- `AuditEventType`: `SAFETY_REPORT_CREATED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`
+- `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`, `USER`
+- `SafetyReportSource`: `USER`, `ADMIN`, `SYSTEM`
+- `AuditEventType`: `SAFETY_REPORT_CREATED`, `SAFETY_REPORT_DISMISSED`, `SAFETY_REPORT_CONFIRMED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`
 - `AuditAggregateType`: `USER`, `PROFILE`, `PROFILE_PHOTO`, `CHAT`, `MATCH`, `CONNECTION`, `SAFETY_REPORT`, `USER_BLOCK`, `PENALTY`
 - `PhotoValidationStatus`: `PENDING`, `VALIDATED`, `FAILED`
 - `PhotoModerationStatus`: `PENDING`, `APPROVED`, `REJECTED`, `NEEDS_REVIEW`
@@ -94,7 +95,8 @@ Push notifications:
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
 - `ChatDecision` belongs to a chat and match.
 - `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report chat closures.
-- `SafetyReport` is the moderation source of truth for reported safety incidents. It stores an explicit context type and context id; chat safety cancellation uses `CHAT` with the chat id, visual profile and personal message reports use the match id, and profile photo reports use the photo id.
+- `SafetyReport` is the moderation source of truth for reported safety incidents. It stores an explicit source, context type and context id; chat safety cancellation uses `CHAT` with the chat id, visual profile and personal message reports use the match id, profile photo reports use the photo id, and admin-only general user reports use `USER` with the reported user id.
+- `SafetyReport.reporterUserId` is nullable because admin/system reports may not have a user reporter. `source = USER` means user-submitted, `source = ADMIN` means backoffice-created, and `SYSTEM` is reserved for future flows.
 - `SafetyReportEvidenceSnapshot` stores one auxiliary evidence snapshot per safety report. It stores chat/message counts and a deterministic transcript SHA-256 hash, but does not store the transcript or duplicate message contents.
 - `AuditEvent` records safety-relevant operational events with minimal metadata. It must not store raw IP addresses, raw user agents, chat message contents, report details, emails, Firebase UIDs, photo URLs, storage keys or other sensitive payloads.
 - `UserBlock` records directional blocks. Matchmaking treats a block in either direction between two users as a bidirectional exclusion.
@@ -136,7 +138,11 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Safety cancellation closes the chat as `CANCELLED`, records `ChatEndReason.SAFETY_REPORT`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
 - Safety cancellation automatically creates a directional `UserBlock` from reporter to reported. Matchmaking excludes the pair in both directions even though only one block row is stored.
 - General user safety reports outside chat cancellation validate a real chat or visual-review interaction and create the same directional block without closing any chat. Duplicate reports for the same reporter, reported user, context type and context id return the existing report.
+- User-created reports always have `source = USER`, a non-null reporter and create or reuse a directional block from reporter to reported.
+- Admin-created reports have `source = ADMIN`, `createdByAdminUserId`, and may have no user reporter. They do not auto-block, auto-close chats or auto-apply penalties in the creation path.
+- `SafetyReportContextType.USER` is admin-only for now. User-facing `POST /api/safety/reports` rejects it.
 - Creating a safety report also captures a `SafetyReportEvidenceSnapshot` and records a `SAFETY_REPORT_CREATED` audit event. Evidence capture uses message content only as hash input and does not persist a second copy of message text.
+- Dismissing or confirming a safety report records `SAFETY_REPORT_DISMISSED` or `SAFETY_REPORT_CONFIRMED`; audit metadata excludes report details, verdict notes and penalty reasons.
 - `ChatStatus` remains the operational state; `ChatEndReason` records why a chat ended.
 - Temporary penalties have `PenaltyType.TEMPORARY_BAN` and a non-null `expiresAt`; the penalty expiration job deactivates them after expiry.
 - Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are never expired by the job.
@@ -149,6 +155,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Safety report evidence snapshots store message counts, first/last message timestamps and `transcriptSha256`.
 - Transcript hashing orders messages by `sentAt ASC, id ASC` and hashes stable fields including message content. The content is used only as hash input.
 - Audit and evidence records are internal persistence only in the current backend. There are no admin/backoffice APIs for reading or mutating them yet.
+- Admin safety DTOs intentionally avoid raw email, Firebase UID and full `User` exposure. Report counters are computed dynamically for the reported user, not denormalized into user/report rows.
 
 ## Profile Rules
 

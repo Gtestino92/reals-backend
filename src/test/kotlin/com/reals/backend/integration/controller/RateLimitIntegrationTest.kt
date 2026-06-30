@@ -68,4 +68,28 @@ class RateLimitIntegrationTest : ControllerIT() {
             .andExpect(header().exists("Retry-After"))
             .andExpect(jsonPath("$.code", equalTo("RATE_LIMIT_EXCEEDED")))
     }
+
+    @Test
+    fun `admin safety report endpoint does not use safety report specific rate limit`() {
+        val token = "admin-safety-report-rate-limit-${UUID.randomUUID()}"
+        val adminUserId = UUID.randomUUID()
+
+        mockMvc.perform(
+            post("/api/admin/safety-reports")
+                .header("Authorization", "Bearer $token")
+                .with(authenticatedAsAdmin(adminUserId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isBadRequest)
+
+        mockMvc.perform(
+            post("/api/admin/safety-reports")
+                .header("Authorization", "Bearer $token")
+                .with(authenticatedAsAdmin(adminUserId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
 }
