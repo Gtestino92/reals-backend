@@ -1,10 +1,12 @@
-package com.reals.backend.service
+package com.reals.backend.service.reports
 
 import com.reals.backend.controller.dto.CreateSafetyReportRequest
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
@@ -19,9 +21,14 @@ import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.service.AuditEventService
+import com.reals.backend.service.MatchService
+import com.reals.backend.service.PenaltyService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.validation.PlainText
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -42,8 +49,12 @@ class SafetyReportService(
     private val penaltyRepository: PenaltyRepository,
     private val userRepository: UserRepository,
     private val userBlockService: UserBlockService,
+    private val auditEventService: AuditEventService,
+    private val evidenceSnapshotService: SafetyReportEvidenceSnapshotService,
     private val penaltyService: PenaltyService
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     private companion object {
         const val NOTES_MAX_LENGTH = 1000
@@ -67,7 +78,7 @@ class SafetyReportService(
             return existing
         }
 
-        return safetyReportRepository.save(
+        val report = safetyReportRepository.save(
             SafetyReport(
                 reporterUserId = reporterUserId,
                 reportedUserId = reportedUserId,
@@ -80,6 +91,9 @@ class SafetyReportService(
                 details = details
             )
         )
+
+        captureEvidenceAndAuditReportCreated(report)
+        return report
     }
 
     fun createUserReport(
@@ -125,6 +139,8 @@ class SafetyReportService(
                 details = details
             )
         )
+
+        captureEvidenceAndAuditReportCreated(report)
 
         userBlockService.blockUser(
             blockerUserId = reporterUserId,
@@ -467,6 +483,28 @@ class SafetyReportService(
             PlainText.requireValid("Notes", normalized)
         }
         return normalized
+    }
+
+    private fun captureEvidenceAndAuditReportCreated(report: SafetyReport) {
+        runCatching {
+            evidenceSnapshotService.captureForReport(report)
+        }.onFailure {
+            log.warn("Failed to capture safety report evidence snapshot for report={}", report.id, it)
+        }
+
+        auditEventService.record(
+            eventType = AuditEventType.SAFETY_REPORT_CREATED,
+            aggregateType = AuditAggregateType.SAFETY_REPORT,
+            aggregateId = report.id,
+            actorUserId = report.reporterUserId,
+            targetUserId = report.reportedUserId,
+            metadata = mapOf(
+                "contextType" to report.contextType.name,
+                "contextId" to report.contextId,
+                "reason" to report.reason.name,
+                "status" to report.status.name
+            )
+        )
     }
 
     private fun invalidContext(message: String): DomainBadRequestException =

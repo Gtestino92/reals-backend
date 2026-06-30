@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
@@ -20,6 +22,7 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.reports.SafetyReportService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -38,6 +41,7 @@ class ChatExitService(
     private val safetyReportService: SafetyReportService,
     private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
+    private val auditEventService: AuditEventService,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
@@ -141,7 +145,8 @@ class ChatExitService(
 
         finishCancelledChat(
             chat = chat,
-            endedReason = ChatEndReason.MUTUAL_CANCEL
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = responderUserId
         )
 
         return ChatExitOutcome(
@@ -174,7 +179,8 @@ class ChatExitService(
 
         finishCancelledChat(
             chat = chat,
-            endedReason = ChatEndReason.MUTUAL_CANCEL
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = responderUserId
         )
 
         return ChatExitOutcome(
@@ -216,7 +222,8 @@ class ChatExitService(
 
         finishCancelledChat(
             chat = chat,
-            endedReason = ChatEndReason.MUTUAL_CANCEL
+            endedReason = ChatEndReason.MUTUAL_CANCEL,
+            actorUserId = userId
         )
 
         // Client-triggered mutual timeout means the pending request was not
@@ -262,7 +269,8 @@ class ChatExitService(
 
         finishCancelledChat(
             chat = chat,
-            endedReason = ChatEndReason.UNILATERAL_CANCEL
+            endedReason = ChatEndReason.UNILATERAL_CANCEL,
+            actorUserId = userId
         )
 
         return ChatExitOutcome(
@@ -319,7 +327,8 @@ class ChatExitService(
 
         finishCancelledChat(
             chat = chat,
-            endedReason = ChatEndReason.SAFETY_REPORT
+            endedReason = ChatEndReason.SAFETY_REPORT,
+            actorUserId = reporterUserId
         )
 
         return ChatExitOutcome(
@@ -417,12 +426,26 @@ class ChatExitService(
 
     private fun finishCancelledChat(
         chat: Chat,
-        endedReason: ChatEndReason
+        endedReason: ChatEndReason,
+        actorUserId: UUID? = null
     ) {
         chat.status = ChatStatus.CANCELLED
         chat.endedAt = OffsetDateTime.now()
         chat.endedReason = endedReason
         chatRepository.save(chat)
+        auditEventService.record(
+            eventType = AuditEventType.CHAT_ENDED,
+            aggregateType = AuditAggregateType.CHAT,
+            aggregateId = chat.id,
+            actorUserId = actorUserId,
+            metadata = mapOf(
+                "chatType" to chat.chatType.name,
+                "status" to chat.status.name,
+                "endedReason" to endedReason.name,
+                "matchId" to chat.matchId,
+                "connectionId" to chat.connectionId
+            )
+        )
 
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> matchService.rejectChatPhase(chat.matchId)

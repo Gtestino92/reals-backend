@@ -3,7 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.CreateSafetyReportRequest
 import com.reals.backend.controller.dto.SafetyReportResponse
-import com.reals.backend.service.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping

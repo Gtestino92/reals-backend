@@ -117,7 +117,7 @@ these values as text, not HTML.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile.
 - `PUT /api/me/profile/match-filters`: replace dynamic matchmaking filters. Body: `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
-- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` keeps `identityVerified=false`.
+- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `DELETE /api/me/profile/photos/{photoId}`: delete photo by id.

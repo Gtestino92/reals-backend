@@ -9,7 +9,7 @@ import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
-import com.reals.backend.service.SafetyReportDetail
+import com.reals.backend.service.reports.SafetyReportDetail
 import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern

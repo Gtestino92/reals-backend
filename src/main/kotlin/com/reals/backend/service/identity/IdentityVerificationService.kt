@@ -1,30 +1,34 @@
 package com.reals.backend.service.identity
 
+import com.reals.backend.domain.IdentityVerificationStatus
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 @Service
 class IdentityVerificationService(
-    providers: List<IdentityVerificationProvider>,
+    private val provider: IdentityVerificationProvider,
 
-    @Value("\${identity-verification.provider:none}")
-    providerName: String
+    @param:Value("\${profile.identity-verification.fail-on-provider-error:false}")
+    private val failOnProviderError: Boolean
 ) {
 
-    private val selectedProvider: IdentityVerificationProvider =
-        providers.associateBy { it.providerName.lowercase() }
-            .let { availableProviders ->
-                val requestedProvider = providerName.trim()
-                    .takeIf { it.isNotBlank() }
-                    ?: "none"
-
-                availableProviders[requestedProvider.lowercase()]
-                    ?: error(
-                        "Unsupported identity-verification provider '$requestedProvider'. " +
-                            "Available providers: ${availableProviders.keys.sorted().joinToString()}"
-                    )
+    fun verify(request: IdentityVerificationRequest): IdentityVerificationResult =
+        try {
+            provider.verify(request)
+        } catch (ex: Exception) {
+            if (failOnProviderError) {
+                throw DomainConflictException(
+                    code = DomainErrorCode.IDENTITY_VERIFICATION_PROVIDER_ERROR,
+                    message = "Identity verification provider failed"
+                )
             }
 
-    fun verify(request: IdentityVerificationRequest): IdentityVerificationResult =
-        selectedProvider.verify(request)
+            IdentityVerificationResult(
+                status = IdentityVerificationStatus.NEEDS_REVIEW,
+                provider = "provider-error",
+                reason = ex.message
+            )
+        }
 }

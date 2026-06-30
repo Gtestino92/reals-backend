@@ -13,7 +13,9 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.AuditEventRepository
 import com.reals.backend.repository.ChatDecisionRepository
+import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
@@ -24,6 +26,7 @@ import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
 import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
@@ -35,13 +38,15 @@ import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.MatchService
+import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
-import com.reals.backend.service.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
@@ -101,6 +106,12 @@ abstract class BaseIT {
     protected lateinit var safetyReportService: SafetyReportService
 
     @Autowired
+    protected lateinit var auditEventService: AuditEventService
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotService: SafetyReportEvidenceSnapshotService
+
+    @Autowired
     protected lateinit var penaltyService: PenaltyService
 
     @Autowired
@@ -114,6 +125,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var chatExitRequestRepository: ChatExitRequestRepository
+
+    @Autowired
+    protected lateinit var chatMessageRepository: ChatMessageRepository
 
     @Autowired
     protected lateinit var chatRepository: ChatRepository
@@ -140,7 +154,13 @@ abstract class BaseIT {
     protected lateinit var penaltyRepository: PenaltyRepository
 
     @Autowired
+    protected lateinit var auditEventRepository: AuditEventRepository
+
+    @Autowired
     protected lateinit var safetyReportRepository: SafetyReportRepository
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotRepository: SafetyReportEvidenceSnapshotRepository
 
     @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository

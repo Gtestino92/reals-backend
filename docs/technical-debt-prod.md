@@ -82,13 +82,15 @@ Future work:
 
 Current state:
 - `Profile.identityVerified` exists.
+- `Profile.identityVerificationStatus` is the richer persisted verification state.
 - Identity verification endpoint exists.
 - Provider abstraction exists.
-- Current `none` provider always returns `verified=false`.
+- Current `none` provider returns `VERIFIED` for MVP/local compatibility only; it is not real external identity or age verification.
 
 Production decision:
 - Identity verification is separate from profile photos.
 - Do not infer identity from person detection, full-body detection or visual approval.
+- Decide whether production profile activation must set `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
 
 Future implementation:
 - Choose identity verification provider or internal verification flow.
@@ -99,7 +101,10 @@ Future implementation:
   - profile photo comparison;
   - or hybrid process.
 - Store provider reference/audit metadata.
-- Define retry/failure states.
+- Define retry/failure policy around `PENDING`, `REJECTED` and `NEEDS_REVIEW`.
+- Define manual review flow for `NEEDS_REVIEW`.
+- Define provider webhook/callback handling if provider verification is asynchronous.
+- Define privacy and data-retention policy for provider artifacts.
 - Define frontend UX.
 - Decide whether identity verification is:
   - optional;
@@ -181,6 +186,8 @@ Current state:
 - Safety cancellation/report can record a report and apply a penalty.
 - User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
 - User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
+- Safety reports capture an evidence snapshot with message counts, timestamps and transcript hash, not a full transcript copy.
+- Safety-relevant backend flows record `audit_events` with operational metadata only.
 - Full manual review workflow is not complete.
 
 Production work:
@@ -190,7 +197,11 @@ Production work:
 - Evidence/context view.
 - Escalation policy.
 - Appeal or correction policy if needed.
-- Audit trail.
+- Request context enrichment for audit events, including request id and hashed IP/user-agent if needed.
+- Admin-created reports.
+- Nullable `SafetyReport.reporterUserId` for admin/system-created reports.
+- Admin DTOs that expose only reduced, intentional safety data.
+- Counters for pending/confirmed reports.
 
 ### 4.2 User blocking and objectionable content controls
 

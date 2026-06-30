@@ -1,5 +1,7 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainBadRequestException
@@ -41,6 +43,15 @@ class UserBlockServiceIntegrationTest : BaseIT() {
         assertEquals(first.id, second.id)
         assertEquals(1, userBlockRepository.count())
         assertEquals(UserBlockSource.MANUAL, second.source)
+        assertEquals(
+            1,
+            auditEventRepository.findAll()
+                .count {
+                    it.eventType == AuditEventType.USER_BLOCK_CREATED &&
+                        it.aggregateType == AuditAggregateType.USER_BLOCK &&
+                        it.aggregateId == first.id
+                }
+        )
     }
 
     @Test
