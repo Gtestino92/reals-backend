@@ -13,3 +13,4 @@ apply: always
 - Do not assume Maven CLI is available; prefer IntelliJ run/build unless the user confirms CLI usage.
 - Do not bypass services for state transitions.
 - Do not mutate domain state directly from controllers, schedulers or repositories.
+- Work branches created or renamed by agents must use the `feature/` prefix unless the user explicitly asks for another branch type.
