@@ -1,8 +1,10 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
+import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
-import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
@@ -28,6 +30,7 @@ class UserService(
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
     private val accountDeletionService: AccountDeletionService,
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
+    private val auditEventService: AuditEventService,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
 ) {
@@ -157,6 +160,12 @@ class UserService(
         )
 
         check(updatedRows == 1) { "Active user not found: $userId" }
+        auditEventService.record(
+            eventType = AuditEventType.ACCOUNT_DELETION_REQUESTED,
+            aggregateType = AuditAggregateType.USER,
+            aggregateId = userId,
+            actorUserId = userId
+        )
 
         user.firebaseUid?.let {
             revokeExternalTokensAfterCommit(firebaseUid = it)
@@ -195,7 +204,14 @@ class UserService(
             enableExternalAccountAfterCommit(firebaseUid = it)
         }
 
-        return userRepository.save(user)
+        val saved = userRepository.save(user)
+        auditEventService.record(
+            eventType = AuditEventType.ACCOUNT_REACTIVATED,
+            aggregateType = AuditAggregateType.USER,
+            aggregateId = saved.id,
+            actorUserId = saved.id
+        )
+        return saved
     }
 
     @Transactional(readOnly = true)

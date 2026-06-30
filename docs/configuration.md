@@ -41,6 +41,9 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
 | `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` for MVP/local compatibility. |
+| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`, which marks profiles verified without external review for MVP/local compatibility. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
+| `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
+| `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
@@ -62,7 +65,6 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for enabling deferred scheduling. Defaults to `60000`. |
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
-| `IDENTITY_VERIFICATION_PROVIDER` | no | Defaults to `none`. |
 
 Sensitive runtime secrets:
 
@@ -74,7 +76,7 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
 | `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
-| `IDENTITY_VERIFICATION_API_KEY` | when a non-`none` provider exists | Keep empty while identity verification is disabled. |
+| `IDENTITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future identity provider; keep empty while provider is `none`. |
 
 S3-compatible storage has two endpoint concerns. `STORAGE_S3_ENDPOINT` is where the
 backend writes and deletes objects. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
@@ -138,12 +140,14 @@ recalculates the actionable deadline from the activation time.
 
 ## Identity Verification
 
-`identity-verification.provider` currently supports only `none`. The provider
-abstraction exists so a real identity-verification integration can be added
-later without changing profile creation flow. Identity verification is invoked
-explicitly through `POST /api/me/profile/identity-verification`; profile
-creation does not call the provider. With `provider=none`, profiles keep
-`identityVerified=false`.
+`profile.identity-verification.provider` currently supports only `none`. The
+provider abstraction exists so a real identity-verification integration can be
+added later without changing profile creation flow. Identity verification is
+invoked explicitly through `POST /api/me/profile/identity-verification`; profile
+creation does not call the provider. With `provider=none`, profiles are marked
+`identityVerificationStatus=VERIFIED` and `identityVerified=true` for MVP/local
+compatibility only; this does not represent real external identity or age
+verification.
 
 `IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
 empty until that provider is implemented.

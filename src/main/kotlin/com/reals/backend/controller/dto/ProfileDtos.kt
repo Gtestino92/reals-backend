@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
@@ -102,6 +103,7 @@ data class ProfileResponse(
     val birthDate: LocalDate,
     val age: Int,
     val identityVerified: Boolean,
+    val identityVerificationStatus: IdentityVerificationStatus,
     val gender: Gender,
     val lookingForGender: LookingForGender,
     val intention: Intention,
@@ -127,6 +129,7 @@ data class ProfileResponse(
             birthDate = profile.birthDate,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             identityVerified = profile.identityVerified,
+            identityVerificationStatus = profile.identityVerificationStatus,
             gender = profile.gender,
             lookingForGender = profile.lookingForGender,
             intention = profile.intention,

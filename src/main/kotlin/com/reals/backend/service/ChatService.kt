@@ -4,6 +4,8 @@ import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatDecision
 import com.reals.backend.domain.ChatEndReason
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
@@ -47,6 +49,7 @@ class ChatService(
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
+    private val auditEventService: AuditEventService,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -258,6 +261,7 @@ class ChatService(
             chat.endedAt = OffsetDateTime.now()
             chat.endedReason = ChatEndReason.SYSTEM_CLOSED
             chatRepository.save(chat)
+            recordChatEnded(chat)
 
             matchService.transitionToVisualPhase(matchId)
             visualReviewService.initializeForMatch(matchId)
@@ -289,6 +293,7 @@ class ChatService(
         chat.endedAt = OffsetDateTime.now()
         chat.endedReason = endedReason
         chatRepository.save(chat)
+        recordChatEnded(chat)
 
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> matchService.expireMatch(chat.matchId)
@@ -451,6 +456,7 @@ class ChatService(
         chat.endedAt = OffsetDateTime.now()
         chat.endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
         chatRepository.save(chat)
+        recordChatEnded(chat)
 
         chat.connectionId?.let { connectionService.closeConnection(it) }
 
@@ -493,10 +499,30 @@ class ChatService(
         chat.status = ChatStatus.CLOSED
         chat.endedReason = ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED
         chatRepository.save(chat)
+        recordChatEnded(chat)
 
         chat.connectionId?.let { connectionService.closeConnection(it) }
 
         return true
+    }
+
+    private fun recordChatEnded(
+        chat: Chat,
+        actorUserId: UUID? = null
+    ) {
+        auditEventService.record(
+            eventType = AuditEventType.CHAT_ENDED,
+            aggregateType = AuditAggregateType.CHAT,
+            aggregateId = chat.id,
+            actorUserId = actorUserId,
+            metadata = mapOf(
+                "chatType" to chat.chatType.name,
+                "status" to chat.status.name,
+                "endedReason" to chat.endedReason?.name,
+                "matchId" to chat.matchId,
+                "connectionId" to chat.connectionId
+            )
+        )
     }
 
     fun findActiveFirstChatOrThrow(matchId: UUID): Chat {

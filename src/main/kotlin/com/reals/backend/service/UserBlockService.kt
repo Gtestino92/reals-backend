@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.UserBlock
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.repository.UserBlockRepository
@@ -13,7 +15,8 @@ import java.util.UUID
 @Service
 @Transactional
 class UserBlockService(
-    private val userBlockRepository: UserBlockRepository
+    private val userBlockRepository: UserBlockRepository,
+    private val auditEventService: AuditEventService
 ) {
 
     fun blockUser(
@@ -41,7 +44,7 @@ class UserBlockService(
         )?.let { return it }
 
         return try {
-            userBlockRepository.saveAndFlush(
+            val block = userBlockRepository.saveAndFlush(
                 UserBlock(
                     blockerUserId = blockerUserId,
                     blockedUserId = blockedUserId,
@@ -49,6 +52,18 @@ class UserBlockService(
                     sourceReportId = sourceReportId
                 )
             )
+            auditEventService.record(
+                eventType = AuditEventType.USER_BLOCK_CREATED,
+                aggregateType = AuditAggregateType.USER_BLOCK,
+                aggregateId = block.id,
+                actorUserId = blockerUserId,
+                targetUserId = blockedUserId,
+                metadata = mapOf(
+                    "source" to source.name,
+                    "sourceReportId" to sourceReportId
+                )
+            )
+            block
         } catch (ex: DataIntegrityViolationException) {
             userBlockRepository.findByBlockerUserIdAndBlockedUserId(
                 blockerUserId = blockerUserId,

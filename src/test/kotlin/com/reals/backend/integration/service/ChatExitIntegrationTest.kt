@@ -1,12 +1,13 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequest
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
-import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
@@ -26,10 +27,13 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.access.AccessDeniedException
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class ChatExitIntegrationTest : BaseIT() {
+
+    private val objectMapper = jacksonObjectMapper()
 
     @Test
     fun `accept mutual cancellation closes first chat`() {
@@ -414,6 +418,47 @@ class ChatExitIntegrationTest : BaseIT() {
             1,
             userBlockRepository.findAll()
                 .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
+        )
+
+        val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
+            ?: error("Expected safety report evidence snapshot")
+        assertEquals(report.id, snapshot.safetyReportId)
+        assertEquals(setup.firstChatId, snapshot.chatId)
+        assertEquals(setup.matchId, snapshot.matchId)
+        assertEquals(0, snapshot.messageCount)
+
+        val reportAudit = auditEventRepository.findAll()
+            .single {
+                it.eventType == AuditEventType.SAFETY_REPORT_CREATED &&
+                    it.aggregateType == AuditAggregateType.SAFETY_REPORT &&
+                    it.aggregateId == report.id
+            }
+        assertEquals(setup.userAId, reportAudit.actorUserId)
+        assertEquals(setup.userBId, reportAudit.targetUserId)
+        val metadata = objectMapper.readTree(reportAudit.metadataJson)
+
+        assertEquals("CHAT", metadata.get("contextType").asString())
+        assertEquals(setup.firstChatId.toString(), metadata.get("contextId").asString())
+        assertEquals("INAPPROPRIATE_BEHAVIOR", metadata.get("reason").asString())
+        assertEquals("PENDING", metadata.get("status").asString())
+        assertFalse(reportAudit.metadataJson!!.contains("Reported inappropriate behavior"))
+        val chatEndedAudit = auditEventRepository.findAll()
+            .single {
+                it.eventType == AuditEventType.CHAT_ENDED &&
+                    it.aggregateType == AuditAggregateType.CHAT &&
+                    it.aggregateId == setup.firstChatId
+            }
+        assertEquals(setup.userAId, chatEndedAudit.actorUserId)
+        assertTrue(chatEndedAudit.metadataJson!!.contains("SAFETY_REPORT"))
+
+        assertEquals(
+            1,
+            auditEventRepository.findAll()
+                .count {
+                    it.eventType == AuditEventType.USER_BLOCK_CREATED &&
+                        it.aggregateType == AuditAggregateType.USER_BLOCK &&
+                        it.aggregateId == block.id
+                }
         )
     }
 

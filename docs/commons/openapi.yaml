@@ -222,7 +222,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Run identity verification for the profile
-      description: Current provider none keeps identityVerified=false.
+      description: Current provider none marks the profile VERIFIED for MVP/local compatibility and does not represent real external identity or age verification.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
@@ -1563,7 +1563,7 @@ components:
           format: binary
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, identityVerified, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
@@ -1571,6 +1571,7 @@ components:
         birthDate: { type: string, format: date }
         age: { type: integer }
         identityVerified: { type: boolean }
+        identityVerificationStatus: { $ref: '#/components/schemas/IdentityVerificationStatus' }
         gender: { $ref: '#/components/schemas/Gender' }
         lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
         intention: { $ref: '#/components/schemas/Intention' }
@@ -1978,6 +1979,9 @@ components:
     ProfileStatus:
       type: string
       enum: [DRAFT, ACTIVE, INACTIVE]
+    IdentityVerificationStatus:
+      type: string
+      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW]
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]
