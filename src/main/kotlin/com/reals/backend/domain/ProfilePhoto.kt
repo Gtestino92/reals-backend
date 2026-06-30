@@ -15,6 +15,13 @@ enum class PhotoStorageProvider {
     S3
 }
 
+enum class PhotoModerationStatus {
+    PENDING,
+    APPROVED,
+    REJECTED,
+    NEEDS_REVIEW
+}
+
 @Entity
 @Table(
     name = "profile_photos",
@@ -59,6 +66,10 @@ data class ProfilePhoto(
     @Enumerated(EnumType.STRING)
     @Column(name = "validation_status", nullable = false)
     var validationStatus: PhotoValidationStatus = PhotoValidationStatus.PENDING,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "moderation_status", nullable = false)
+    var moderationStatus: PhotoModerationStatus = PhotoModerationStatus.PENDING,
 
     @Column(name = "created_at", nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now()

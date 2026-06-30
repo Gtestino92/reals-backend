@@ -57,10 +57,12 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.isPersonPhoto", equalTo(true)))
             .andExpect(jsonPath("$.isFullBody", equalTo(true)))
             .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
+            .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
 
         val profile = profileService.findByUserId(userId)!!
         val savedPhoto = profileService.getPhotos(profile.id).single()
         assertEquals("users/$userId/profile-photos/uploaded.jpg", savedPhoto.storageKey)
+        assertEquals("APPROVED", savedPhoto.moderationStatus.name)
 
         mockMvc.perform(
             get("/api/me/profile/photos")
@@ -68,6 +70,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].url", equalTo(expectedUrl)))
+            .andExpect(jsonPath("$[0].moderationStatus", equalTo("APPROVED")))
     }
 
     @Test
@@ -115,6 +118,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.isPersonPhoto", equalTo(true)))
             .andExpect(jsonPath("$.isFullBody", equalTo(true)))
             .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
+            .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
 
         assertEquals(newObject.key, profileService.getPhotos(profile.id).single().storageKey)
         Mockito.verify(storageService).delete(oldObject.key)
@@ -309,6 +313,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             )
                 .andExpect(status().isCreated)
                 .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
+                .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
                 .andExpect(jsonPath("$.isPersonPhoto", equalTo(true)))
                 .andExpect(jsonPath("$.isFullBody", equalTo(true)))
         }

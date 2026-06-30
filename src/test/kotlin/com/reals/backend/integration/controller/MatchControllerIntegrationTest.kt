@@ -181,6 +181,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
                     equalTo("http://localhost:9000/reals-profile-photos-test/$expectedFirstPhotoKey")
                 )
             )
+            .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))
     }
 
     @Test

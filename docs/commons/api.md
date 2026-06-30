@@ -129,6 +129,14 @@ returned to clients. For private S3/R2/MinIO storage these URLs may be presigned
 and time-limited, so clients should use them for display and refetch photo
 responses when needed instead of persisting URLs permanently.
 
+Photo upload validation has two separate fields. `validationStatus` is the
+blocking technical upload result for file type, size, decoding and dimensions.
+`moderationStatus` is the content-moderation result. The current default
+provider is `none`, which permissively returns `APPROVED` and does not represent
+an external safety, person or full-body review. Production can later require
+`moderationStatus = APPROVED` for activation with
+`PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
+
 ## Matchmaking
 
 - `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`.

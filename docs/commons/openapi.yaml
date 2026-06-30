@@ -1586,7 +1586,7 @@ components:
         updatedAt: { type: string, format: date-time }
     PhotoResponse:
       type: object
-      required: [id, url, position, isPersonPhoto, isFullBody, validationStatus]
+      required: [id, url, position, isPersonPhoto, isFullBody, validationStatus, moderationStatus]
       properties:
         id: { type: string, format: uuid }
         url:
@@ -1598,6 +1598,9 @@ components:
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
           description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
+        moderationStatus:
+          allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
+          description: Content moderation status. With provider none, APPROVED is a permissive MVP result and does not represent external safety review.
     VisualProfileResponse:
       type: object
       required:
@@ -1984,6 +1987,9 @@ components:
     PhotoValidationStatus:
       type: string
       enum: [PENDING, VALIDATED, FAILED]
+    PhotoModerationStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, NEEDS_REVIEW]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]
