@@ -225,6 +225,86 @@ Before production:
 - Evaluate application-level field encryption with keys stored outside the database.
 - Define data export/deletion behavior for account deletion if required.
 
+### 4.4 Backoffice production access hardening
+
+Current state:
+
+* Admin endpoints are exposed under `/api/admin/**`.
+* Access is protected at application level with `ROLE_ADMIN`.
+* Admin role is currently derived from configured admin email allowlist.
+* There is no dedicated backoffice UI yet.
+* CORS is not currently a meaningful protection for non-browser tools such as Bruno, Postman, curl, or internal scripts.
+
+Before production backoffice usage:
+
+* Define the production backoffice access model:
+
+  * internal-only tooling;
+  * browser-based admin UI;
+  * VPN/Zero Trust protected access;
+  * or public internet endpoint with stricter controls.
+* If a browser-based backoffice UI is introduced, add restrictive CORS:
+
+  * allow only the official admin origin, e.g. `https://admin.reals.app`;
+  * allow dev/staging admin origins only in non-prod profiles;
+  * do not use wildcard origins for admin endpoints;
+  * keep `allowCredentials=false` while using Bearer tokens;
+  * revisit CSRF if cookie-based admin sessions are ever introduced.
+* Require MFA for all admin accounts through the chosen identity provider.
+* Revisit admin role assignment:
+
+  * current email allowlist is acceptable for MVP/dev;
+  * production should consider Firebase custom claims, persisted admin roles, or another auditable role management mechanism;
+  * avoid relying indefinitely on static config-only admin identity.
+* Add admin-specific rate limiting:
+
+  * protect `/api/admin/**` from accidental scripts, abusive clients, and brute-force-like usage;
+  * keep limits separate from user-facing safety report rate limits.
+* Consider network-layer restrictions for backoffice:
+
+  * VPN;
+  * Cloudflare Access / Zero Trust;
+  * IP allowlist;
+  * private ingress;
+  * or equivalent platform-level access control.
+* Keep application-level authorization even if network restrictions are added.
+* Strengthen admin audit coverage:
+
+  * record admin user id;
+  * record action type;
+  * record target aggregate/entity;
+  * record result/success/failure;
+  * record timestamp;
+  * avoid storing raw sensitive content unless explicitly required;
+  * avoid exposing raw email, Firebase UID, message bodies, report details, or storage keys in broad admin summaries.
+* Add operational visibility for admin usage:
+
+  * count admin requests by endpoint;
+  * alert on repeated forbidden/unauthorized admin access;
+  * alert on unusual admin activity volume;
+  * monitor admin action failure rates.
+* Define admin session/token operational policy:
+
+  * expected token lifetime;
+  * reauthentication expectations for sensitive actions;
+  * behavior when admin access is revoked;
+  * emergency admin lockout/revocation procedure.
+* Document which admin actions are safe read-only actions and which are mutating/escalating actions.
+* Consider requiring explicit confirmation or stronger authorization for high-impact actions:
+
+  * confirming/dismissing safety reports;
+  * applying sanctions;
+  * removing content;
+  * changing user status;
+  * accessing sensitive evidence views.
+
+Non-goals for MVP:
+
+* Do not add a full admin role management system until there is real backoffice usage.
+* Do not introduce cookie-based admin sessions unless there is a clear product/security reason.
+* Do not treat CORS as a replacement for authentication, authorization, MFA, audit, or network-level access controls.
+
+
 ---
 
 ## 5. Location and geographic matching
@@ -331,13 +411,26 @@ Risk:
 - Home is likely to become one of the most frequently requested endpoints.
 - It aggregates match, chat, visual review, connection, scheduling, second-chat and blocked-state information.
 
+Implemented first step:
+- Full `GET /api/me/home` remains the source of truth and keeps its existing response contract.
+- `GET /api/me/home/pending` returns lightweight pending/actionable navigation state for future polling without partner summaries or the full Home summary.
+- `GET /api/me/home/status` returns a persisted per-user Home `version`, `dirty` flag and `serverTime`.
+- Home-relevant state transitions bump the persisted version in PostgreSQL, so change detection works across multiple backend instances.
+- Android can later poll `/api/me/home/status` and only call full Home when the version changes.
+
 Before scale:
 - Measure Home endpoint latency.
 - Review generated queries.
 - Avoid expensive repeated joins.
-- Consider a dedicated read model if Home becomes costly.
 - Reduce polling once push notifications are available.
-- Consider short-lived per-user caching only after correctness is stable.
+- Keep the persisted version semantics and invalidation hooks correct before introducing stronger caching or projections.
+
+Future options:
+- Full PostgreSQL read model/projection: add a `user_home_projection` table with precomputed pending/Home JSON or structured columns if full Home aggregation becomes expensive.
+- Redis/Valkey distributed cache: cache `HomeResponse` or pending state per user and invalidate on Home status bumps after correctness and invalidation are stable.
+- ETag / `If-None-Match` / `304`: use the Home version as the basis once version semantics are stable.
+- Push-driven refresh: Firebase Cloud Messaging can notify clients to refresh Home status or full Home; polling should remain the fallback.
+- Realtime transport: WebSocket or SSE should be considered only if chat/Home polling plus push is not enough, and must use shared pub/sub or managed infrastructure in multi-instance mode.
 
 ---
 

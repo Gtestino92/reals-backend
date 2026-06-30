@@ -19,7 +19,8 @@ class PenaltyService(
     private val penaltyRepository: PenaltyRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val trustScoreEvaluator: TrustScoreEvaluator,
-    private val auditEventService: AuditEventService
+    private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService
 ) {
 
     fun hasActivePenalty(userId: UUID): Boolean {
@@ -135,6 +136,10 @@ class PenaltyService(
                 "expiresAtPresent" to (saved.expiresAt != null)
             )
         )
+        homeStateInvalidationService.bump(
+            userId = saved.userId,
+            reason = "penalty_applied"
+        )
         return saved
     }
 
@@ -161,9 +166,18 @@ class PenaltyService(
     fun expireOverduePenalty(
         penaltyId: UUID,
         now: OffsetDateTime = OffsetDateTime.now()
-    ): Boolean =
-        penaltyRepository.deactivateExpiredActivePenalty(
+    ): Boolean {
+        val userId = penaltyRepository.findById(penaltyId).orElse(null)?.userId
+        val expired = penaltyRepository.deactivateExpiredActivePenalty(
             penaltyId = penaltyId,
             now = now
         ) == 1
+        if (expired && userId != null) {
+            homeStateInvalidationService.bump(
+                userId = userId,
+                reason = "penalty_expired"
+            )
+        }
+        return expired
+    }
 }

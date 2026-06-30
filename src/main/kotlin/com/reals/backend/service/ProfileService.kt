@@ -33,6 +33,7 @@ class ProfileService(
     private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
     private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -130,7 +131,12 @@ class ProfileService(
             status = ProfileStatus.DRAFT
         )
 
-        return profileRepository.save(profile)
+        val saved = profileRepository.save(profile)
+        homeStateInvalidationService.bump(
+            userId = saved.userId,
+            reason = "profile_created"
+        )
+        return saved
     }
 
     fun verifyIdentity(profileId: UUID): Profile {
@@ -196,6 +202,10 @@ class ProfileService(
                 "previousStatus" to previousStatus.name,
                 "newStatus" to saved.status.name
             )
+        )
+        homeStateInvalidationService.bump(
+            userId = saved.userId,
+            reason = "profile_activated"
         )
         return saved
     }
@@ -324,7 +334,7 @@ class ProfileService(
             storageService.delete(storageKey)
         }
 
-        moveActiveProfileToDraftAfterPhotoMutation(profile)
+        val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
         profile.updatedAt = OffsetDateTime.now()
 
@@ -341,6 +351,12 @@ class ProfileService(
                 "moderationStatus" to existing.moderationStatus.name
             )
         )
+        if (movedToDraft) {
+            homeStateInvalidationService.bump(
+                userId = savedProfile.userId,
+                reason = "profile_moved_to_draft"
+            )
+        }
         return savedProfile
     }
 
@@ -410,7 +426,7 @@ class ProfileService(
                 storageService.delete(oldStorageKey)
             }
 
-            moveActiveProfileToDraftAfterPhotoMutation(profile)
+            val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
             auditEventService.record(
                 eventType = AuditEventType.PROFILE_PHOTO_REPLACED,
@@ -419,6 +435,12 @@ class ProfileService(
                 actorUserId = profile.userId,
                 metadata = photoAuditMetadata(saved)
             )
+            if (movedToDraft) {
+                homeStateInvalidationService.bump(
+                    userId = profile.userId,
+                    reason = "profile_moved_to_draft"
+                )
+            }
 
             return saved
 
@@ -494,7 +516,7 @@ class ProfileService(
                 )
             )
 
-            moveActiveProfileToDraftAfterPhotoMutation(profile)
+            val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
             auditEventService.record(
                 eventType = AuditEventType.PROFILE_PHOTO_UPLOADED,
@@ -503,6 +525,12 @@ class ProfileService(
                 actorUserId = profile.userId,
                 metadata = photoAuditMetadata(photo)
             )
+            if (movedToDraft) {
+                homeStateInvalidationService.bump(
+                    userId = profile.userId,
+                    reason = "profile_moved_to_draft"
+                )
+            }
 
             return photo
 
@@ -521,11 +549,13 @@ class ProfileService(
         return resolvePhotoReadUrl(photo)
     }
 
-    private fun moveActiveProfileToDraftAfterPhotoMutation(profile: Profile) {
+    private fun moveActiveProfileToDraftAfterPhotoMutation(profile: Profile): Boolean {
         if (profile.status == ProfileStatus.ACTIVE) {
             profile.status = ProfileStatus.DRAFT
             profile.updatedAt = OffsetDateTime.now()
+            return true
         }
+        return false
     }
 
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {

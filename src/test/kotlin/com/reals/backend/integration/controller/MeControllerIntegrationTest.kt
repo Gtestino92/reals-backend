@@ -215,6 +215,29 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `home pending returns lightweight pending data with current version`() {
+        val setup = createMatchWithFirstChat()
+        val status = homeStatusService.getOrCreateStatus(setup.userAId)
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(status.version.toInt())))
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.matchmaking").doesNotExist())
+            .andExpect(jsonPath("$.activeInteractionsSummary").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
+    }
+
+    @Test
     fun `home returns pending VISUAL_REVIEW action`() {
         val setup = createMatchInVisualPhase()
 
