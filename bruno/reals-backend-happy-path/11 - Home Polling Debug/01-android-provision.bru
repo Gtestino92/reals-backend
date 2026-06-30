@@ -1,0 +1,35 @@
+meta {
+  name: 01 Android Provision
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK or 201 Created, got ${status}`);
+  }
+
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected provisioned backend user response with id.");
+  }
+
+  const expectedEmail = bru.getEnvVar("firebase_email");
+  if (expectedEmail && body.email !== expectedEmail) {
+    throw new Error(`Expected Firebase user email ${expectedEmail}, got ${body.email}`);
+  }
+
+  bru.setEnvVar("firebaseUserId", body.id);
+  bru.setEnvVar("androidUserId", body.id);
+}

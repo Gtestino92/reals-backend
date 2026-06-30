@@ -1,0 +1,33 @@
+meta {
+  name: 00 Android Sign In
+  type: http
+  seq: 0
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_email}}",
+    "password": "{{firebase_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
+  }
+
+  bru.setEnvVar("firebase_id_token", body.idToken);
+  bru.setEnvVar("firebase_uid", body.localId);
+}

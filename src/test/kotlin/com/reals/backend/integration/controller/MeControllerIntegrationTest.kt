@@ -193,6 +193,78 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `full home clears dirty home status without changing version`() {
+        val userId = userService.createUser(
+            email = "home-clean-dirty-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_dirty_before_full_home"
+        )
+
+        kotlin.test.assertEquals(1, dirtyStatus.version)
+        kotlin.test.assertTrue(dirtyStatus.dirty)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+
+        val cleanStatus = homeStatusService.getOrCreateStatus(userId)
+        kotlin.test.assertEquals(dirtyStatus.version, cleanStatus.version)
+        kotlin.test.assertFalse(cleanStatus.dirty)
+    }
+
+    @Test
+    fun `home status endpoint returns dirty false after full home load`() {
+        val userId = userService.createUser(
+            email = "home-status-clean-after-full-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_status_after_full_home"
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            get("/api/me/home/status")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(dirtyStatus.version.toInt())))
+            .andExpect(jsonPath("$.dirty", equalTo(false)))
+            .andExpect(jsonPath("$.serverTime").exists())
+    }
+
+    @Test
+    fun `pending home does not clear dirty home status`() {
+        val userId = userService.createUser(
+            email = "home-pending-keeps-dirty-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_pending_keeps_dirty"
+        )
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(dirtyStatus.version.toInt())))
+
+        val statusAfterPending = homeStatusService.getOrCreateStatus(userId)
+        kotlin.test.assertEquals(dirtyStatus.version, statusAfterPending.version)
+        kotlin.test.assertTrue(statusAfterPending.dirty)
+    }
+
+    @Test
     fun `home returns pending FIRST_CHAT action`() {
         val setup = createMatchWithFirstChat()
 
@@ -212,6 +284,29 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home pending returns lightweight pending data with current version`() {
+        val setup = createMatchWithFirstChat()
+        val status = homeStatusService.getOrCreateStatus(setup.userAId)
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(status.version.toInt())))
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.matchmaking").doesNotExist())
+            .andExpect(jsonPath("$.activeInteractionsSummary").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
     }
 
     @Test

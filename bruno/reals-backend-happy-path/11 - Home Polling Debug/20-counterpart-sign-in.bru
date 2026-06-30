@@ -1,0 +1,33 @@
+meta {
+  name: 20 Counterpart Sign In
+  type: http
+  seq: 20
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_counterpart_email}}",
+    "password": "{{firebase_counterpart_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase counterpart sign-in response with idToken, localId and email.");
+  }
+
+  bru.setEnvVar("firebase_counterpart_id_token", body.idToken);
+  bru.setEnvVar("firebase_counterpart_uid", body.localId);
+}

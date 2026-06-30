@@ -33,10 +33,12 @@ import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.UserBlockRepository
+import com.reals.backend.repository.UserHomeStatusRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
@@ -118,6 +120,9 @@ abstract class BaseIT {
     protected lateinit var pushDeviceTokenService: PushDeviceTokenService
 
     @Autowired
+    protected lateinit var homeStatusService: HomeStatusService
+
+    @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
 
     @Autowired
@@ -170,6 +175,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var userBlockRepository: UserBlockRepository
+
+    @Autowired
+    protected lateinit var homeStatusRepository: UserHomeStatusRepository
 
     @Autowired
     protected lateinit var profileRepository: ProfileRepository

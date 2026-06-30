@@ -1,0 +1,26 @@
+meta {
+  name: 30 Counterpart Home Status
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/api/me/home/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || typeof body.version !== "number" || typeof body.dirty !== "boolean" || !body.serverTime) {
+    throw new Error("Expected HomeStatusResponse with version, dirty and serverTime.");
+  }
+
+  bru.setEnvVar("counterpartHomeStatusVersion", String(body.version));
+  bru.setEnvVar("counterpartHomeStatusDirty", String(body.dirty));
+  bru.setEnvVar("counterpartHomeStatusServerTime", body.serverTime);
+}
