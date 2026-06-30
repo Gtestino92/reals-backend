@@ -5,6 +5,7 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.MatchRepository
@@ -171,7 +172,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     position = index + 1,
                     isPersonPhoto = index == 0,
                     isFullBody = index == 0,
-                    validationStatus = PhotoValidationStatus.VALIDATED
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
                 )
             )
         }

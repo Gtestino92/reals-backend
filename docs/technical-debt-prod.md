@@ -114,17 +114,20 @@ Future implementation:
 ### 3.1 Future upload lifecycle
 
 MVP shortcut:
-- Technical upload success may create `VALIDATED` photos with permissive semantic defaults.
+- `validationStatus` now means technical upload validation only.
+- `moderationStatus` is separate and currently uses provider `none`, which returns `APPROVED` without external review.
+- Production can enable `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`, but a real provider is still pending.
 
 Production target:
 1. User uploads a photo.
 2. Backend performs technical checks.
 3. If upload succeeds, photo starts as `PENDING`.
-4. Analysis/moderation updates:
+4. Technical analysis updates:
    - `validation_status = VALIDATED` or `FAILED`;
    - `isPersonPhoto`;
    - `isFullBody`;
-   - optional provider/model/version metadata.
+5. Content moderation updates `moderation_status`.
+6. Optional provider/model/version metadata is recorded if a future provider needs it.
 
 ### 3.2 Future activation analysis
 
@@ -146,16 +149,15 @@ Preferred long-term direction:
 ### 3.3 Future moderation workflow for photos
 
 Future work:
-- Add report profile/photo flow.
 - Add admin ability to hide/reject/remove photos.
-- Add moderation states or reuse `FAILED` carefully.
-- Add optional automatic image moderation for:
+- Add external automatic image moderation for:
   - nudity;
   - explicit sexual content;
   - violence;
   - hate symbols;
   - minors/underage risk;
   - other prohibited content.
+- Add person detection, full-body detection and face/person consistency if product requirements need them.
 - Define whether rejected photos are deleted, hidden, quarantined or retained for audit.
 
 ### 3.4 Media storage production work

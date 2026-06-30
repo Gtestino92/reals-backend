@@ -157,6 +157,13 @@ profile:
     # Minimum full-body photos required
     min-full-body-photos: 1
 
+    require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:false}
+
+    moderation:
+      provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
+      fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
+      persist-rejected-photos: ${PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS:false}
+
 engagement:
   # Maximum number of simultaneous active Matches a user can participate in
   # A match is active while its lock of type MATCH exists

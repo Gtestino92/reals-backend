@@ -46,6 +46,8 @@ Matching and chat:
 - `SafetyReportStatus`: `PENDING`, `DISMISSED`, `CONFIRMED`
 - `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`
+- `PhotoValidationStatus`: `PENDING`, `VALIDATED`, `FAILED`
+- `PhotoModerationStatus`: `PENDING`, `APPROVED`, `REJECTED`, `NEEDS_REVIEW`
 - `PenaltyType`: `TEMPORARY_BAN`, `PERMANENT_BAN`
 - `VisualDecision`: `APPROVED`, `REJECTED`
 
@@ -145,6 +147,9 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.
 - File-backed profile photos store provider, bucket and object key. The database does not store renderable photo URLs; `storageKey` is the source of truth for retrieval. API responses still expose `PhotoResponse.url`, but that URL is generated at response time from the stored object key. Private storage may use presigned, time-limited URLs, so clients should refresh photo responses instead of treating URLs as permanent identifiers.
+- Profile photo technical validation is immediate and blocking. Invalid file type, size, decode or dimensions reject the upload before storage or persistence. `validationStatus` records that technical validation result.
+- Profile photo content moderation is separate and persisted as `moderationStatus`. The current `none` provider returns `APPROVED` without external review. Future moderation providers may handle adult/nudity/safety checks, person detection, full-body detection, face/person consistency and minor/age-risk signals.
+- By default profile activation does not require moderation approval. When `profile.photos.require-moderation-approval-for-activation=true`, every technically valid required photo must have `moderationStatus = APPROVED`.
 
 ## Account Deletion And Recovery
 

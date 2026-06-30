@@ -3,6 +3,7 @@ package com.reals.backend.controller.dto
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
@@ -149,7 +150,8 @@ data class PhotoResponse(
     val position: Int,
     val isPersonPhoto: Boolean,
     val isFullBody: Boolean,
-    val validationStatus: PhotoValidationStatus
+    val validationStatus: PhotoValidationStatus,
+    val moderationStatus: PhotoModerationStatus
 ) {
     companion object {
         fun from(
@@ -162,7 +164,8 @@ data class PhotoResponse(
                 position = photo.position,
                 isPersonPhoto = photo.isPersonPhoto,
                 isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
+                validationStatus = photo.validationStatus,
+                moderationStatus = photo.moderationStatus
             )
         }
     }

@@ -11,6 +11,8 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
+import com.reals.backend.service.photo.ProfilePhotoModerationService
+import com.reals.backend.service.photo.PhotoModerationResult
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -26,6 +28,7 @@ class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
+    private val profilePhotoModerationService: ProfilePhotoModerationService,
     private val identityVerificationService: IdentityVerificationService,
     private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
@@ -40,7 +43,13 @@ class ProfileService(
     private val minPersonPhotos: Int,
 
     @param:Value("\${profile.photos.min-full-body-photos}")
-    private val minFullBodyPhotos: Int
+    private val minFullBodyPhotos: Int,
+
+    @param:Value("\${profile.photos.moderation.persist-rejected-photos:false}")
+    private val persistRejectedPhotos: Boolean,
+
+    @param:Value("\${profile.photos.require-moderation-approval-for-activation:false}")
+    private val requireModerationApprovalForActivation: Boolean
 ) {
 
     private companion object {
@@ -329,6 +338,13 @@ class ProfileService(
             bytes = bytes,
             replacingPhoto = existingPhoto
         )
+        val moderation = moderateUploadedPhotoOrThrow(
+            userId = profile.userId,
+            profileId = profileId,
+            photoId = newObjectPhotoId,
+            contentType = normalizedContentType,
+            bytes = bytes
+        )
 
         var newUploadedKey: String? = null
         val oldStorageKey = existingPhoto.storageKey
@@ -349,6 +365,7 @@ class ProfileService(
             existingPhoto.isPersonPhoto = validation.isPersonPhoto
             existingPhoto.isFullBody = validation.isFullBody
             existingPhoto.validationStatus = validation.status
+            existingPhoto.moderationStatus = moderation.status
 
             val saved = profilePhotoRepository.save(existingPhoto)
 
@@ -397,6 +414,13 @@ class ProfileService(
             bytes = bytes,
             replacingPhoto = null
         )
+        val moderation = moderateUploadedPhotoOrThrow(
+            userId = profile.userId,
+            profileId = profileId,
+            photoId = photoId,
+            contentType = normalizedContentType,
+            bytes = bytes
+        )
 
         var uploadedKey: String? = null
 
@@ -420,7 +444,8 @@ class ProfileService(
                     position = position,
                     isPersonPhoto = validation.isPersonPhoto,
                     isFullBody = validation.isFullBody,
-                    validationStatus = validation.status
+                    validationStatus = validation.status,
+                    moderationStatus = moderation.status
                 )
             )
 
@@ -611,6 +636,43 @@ class ProfileService(
                 message = "Profile must have at least $minFullBodyPhotos validated full-body photos"
             )
         }
+
+        if (
+            requireModerationApprovalForActivation &&
+            photos.any { it.moderationStatus != PhotoModerationStatus.APPROVED }
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PROFILE_PHOTO_MODERATION_NOT_APPROVED,
+                message = "All profile photos must be approved by moderation before activation"
+            )
+        }
+    }
+
+    private fun moderateUploadedPhotoOrThrow(
+        userId: UUID,
+        profileId: UUID,
+        photoId: UUID,
+        contentType: String,
+        bytes: ByteArray
+    ): PhotoModerationResult {
+        val result = profilePhotoModerationService.moderateUploadedPhoto(
+            userId = userId,
+            profileId = profileId,
+            photoId = photoId,
+            contentType = contentType,
+            bytes = bytes
+        )
+
+        if (result.status == PhotoModerationStatus.REJECTED && !persistRejectedPhotos) {
+            // MVP default: rejected photos are not uploaded or persisted. A future
+            // moderation workflow may retain rejected media for review/audit.
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PROFILE_PHOTO_REJECTED,
+                message = "Profile photo was rejected by moderation"
+            )
+        }
+
+        return result
     }
 
     private fun normalizeOptionalText(value: String?): String? =
