@@ -11,6 +11,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.UserBlockSource
@@ -388,6 +389,7 @@ class ChatExitIntegrationTest : BaseIT() {
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportStatus.PENDING, report.status)
         assertEquals(SafetyReportReason.INAPPROPRIATE_BEHAVIOR, report.reason)
+        assertEquals(SafetyReportSource.USER, report.source)
         assertEquals("Reported inappropriate behavior", report.details)
         assertEquals(setup.userAId, report.reporterUserId)
         assertEquals(setup.userBId, report.reportedUserId)
