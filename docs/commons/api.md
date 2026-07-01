@@ -132,6 +132,7 @@ these values as text, not HTML.
 - `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
+- `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
 - `DELETE /api/me/profile/photos/{photoId}`: delete photo by id.
 - `PUT /api/me/profile/photos/{photoId}/file`: replace an existing photo file by id.
 
