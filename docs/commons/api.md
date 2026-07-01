@@ -127,7 +127,7 @@ these values as text, not HTML.
 - `POST /api/me/profile`: create the authenticated user's profile.
 - `GET /api/me/profile`: get authenticated user's profile.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
-- `POST /api/me/profile/activation`: activate authenticated user's profile.
+- `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo upload/replacement/deletion or match-filter configuration.
 - `PUT /api/me/profile/match-filters`: replace dynamic matchmaking filters. Body: `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
 - `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
@@ -299,6 +299,7 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
 - `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
 - `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
+- `EMAIL_NOT_VERIFIED`: profile activation requires a verified email in the current Firebase ID token.
 - `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
 - `PROFILE_FULL_BODY_PHOTO_REQUIRED`: activation requires a full-body photo.

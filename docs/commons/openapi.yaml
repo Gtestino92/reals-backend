@@ -228,13 +228,24 @@ paths:
     post:
       tags: [Profiles]
       summary: Activate authenticated user's profile
+      description: Requires the current Firebase ID token to have emailVerified=true. Email verification is not required for profile creation, editing, photo upload, photo replacement, photo deletion or match-filter configuration.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Profile cannot be activated, including EMAIL_NOT_VERIFIED when the current Firebase token has not verified email.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                emailNotVerified:
+                  value:
+                    code: EMAIL_NOT_VERIFIED
+                    error: Conflict
+                    message: Verificá tu email antes de activar el perfil.
   /api/me/profile/match-filters:
     put:
       tags: [Profiles]

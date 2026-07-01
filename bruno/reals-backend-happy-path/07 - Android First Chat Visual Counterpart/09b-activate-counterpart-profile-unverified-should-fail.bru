@@ -1,0 +1,31 @@
+meta {
+  name: 09b Activate Counterpart Profile Unverified Should Fail
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/activation
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 409) {
+    throw new Error(`Expected 409 Conflict for unverified email activation, got ${status}.`);
+  }
+  
+  const body = res.getBody();
+  if (!body || body.code !== "EMAIL_NOT_VERIFIED") {
+    throw new Error(`Expected EMAIL_NOT_VERIFIED, got ${body && body.code}`);
+  }
+  
+  if (body.message !== "Verificá tu email antes de activar el perfil.") {
+    throw new Error(`Unexpected message: ${body.message}`);
+  }
+}

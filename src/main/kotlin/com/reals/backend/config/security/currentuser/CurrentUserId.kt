@@ -5,8 +5,9 @@ package com.reals.backend.config.security.currentuser
  *
  * Local-nodb and local-postgres use DevAutoAuthFilter.
  * Local-firebase/dev/prod should use FirebaseTokenFilter.
- * Both filters set the SecurityContext principal to the internal user UUID
- * string, keeping controllers independent from the auth provider.
+ * Filters set the SecurityContext principal to either the internal user UUID
+ * string or CurrentUserAuthContext, keeping controllers independent from the
+ * auth provider when they only need the user id.
  */
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)

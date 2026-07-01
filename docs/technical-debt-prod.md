@@ -754,3 +754,88 @@ Post-MVP options:
 Acceptance criteria:
 - These options remain separate from the MVP R2 setup.
 - Endpoint contracts stay stable until Android and backend agree on a new media flow.
+
+
+## Tech debt prod: cleanup de cuentas no verificadas
+
+### Contexto
+
+Reals permite que un usuario cree cuenta y avance parcialmente en onboarding antes de verificar su email. La verificación de email se exige como precondición para activar el perfil y entrar al flujo operativo real.
+
+Esta decisión mejora el onboarding y evita bloquear la creación de cuenta prematuramente, pero deja una deuda operativa: pueden acumularse cuentas Firebase y usuarios locales que nunca verifican email ni llegan a activar perfil.
+
+### Riesgo
+
+Cuentas no verificadas pueden generar:
+
+* acumulación de usuarios inactivos en Firebase Auth;
+* acumulación de usuarios locales en base de datos;
+* perfiles incompletos o en borrador sin valor operativo;
+* posible consumo innecesario de storage si se permitieron fotos antes de verificar;
+* ruido en métricas de adquisición/onboarding;
+* superficie de abuso por creación masiva de cuentas no verificadas.
+
+### Regla funcional actual recomendada
+
+Mantener permitido antes de verificar email:
+
+* sign-up/sign-in;
+* provisioning backend;
+* creación de perfil;
+* edición de perfil;
+* configuración de filtros;
+* eventualmente carga de fotos para no friccionar onboarding MVP.
+
+Bloquear antes de verificar email:
+
+* activación de perfil;
+* entrada a matchmaking;
+* cualquier operación que haga visible/operativo al usuario dentro del flujo social.
+
+### Cleanup propuesto para producción
+
+Implementar un job periódico que detecte cuentas no verificadas e inactivas y las limpie o marque para limpieza.
+
+Criterios tentativos:
+
+* usuario local creado hace más de 14 o 30 días;
+* email Firebase sigue sin verificar;
+* perfil inexistente, DRAFT o INACTIVE;
+* nunca activó perfil;
+* nunca participó en matchmaking/chat/visual review/connection;
+* no tiene reportes, auditoría crítica ni datos que deban preservarse.
+
+### Acciones posibles
+
+Opción A — Soft cleanup local:
+
+* marcar usuario local como `DELETED` o estado específico `UNVERIFIED_EXPIRED`;
+* anonimizar datos locales no necesarios;
+* conservar auditoría mínima.
+
+Opción B — Cleanup completo coordinado:
+
+* borrar o deshabilitar usuario en Firebase Auth;
+* marcar/borrar datos locales asociados;
+* eliminar fotos/storage no usadas;
+* registrar evento de auditoría técnico.
+
+Opción C — Fase intermedia:
+
+* primero marcar como “eligible for cleanup”;
+* luego ejecutar eliminación final después de una ventana adicional.
+
+### Consideraciones
+
+* No borrar cuentas que hayan tenido actividad real del flujo social.
+* No borrar cuentas vinculadas a reportes, bloqueos, auditoría de seguridad o disputas.
+* Coordinar cleanup local con Firebase Auth para evitar estados inconsistentes.
+* Evitar que un usuario pueda quedar en limbo: Firebase activo pero backend eliminado, o viceversa, sin mensaje claro.
+* Agregar métricas: cuentas creadas, verificadas, expiradas, limpiadas, fallidas.
+* Agregar rate limit/cooldown para reenvío de email de verificación antes de producción pública.
+* Revisar si fotos deben estar permitidas antes de verificar email o si deben bloquearse en producción para reducir abuso de storage.
+
+### Prioridad
+
+No es bloqueante para MVP cerrado/local.
+Debe resolverse antes de una beta pública amplia o producción abierta.

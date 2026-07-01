@@ -6,20 +6,15 @@ meta {
 
 post {
   url: {{baseUrl}}/api/me/profile/photos
-  body: json
+  body: multipartForm
   auth: none
 }
 
 headers {
-  Content-Type: application/json
   Authorization: Bearer {{firebase_counterpart_id_token}}
 }
 
-body:json {
-  {
-    "url": "https://example.com/android-counterpart-{{counterpartRunId}}-1.jpg",
-    "position": 1,
-    "isPersonPhoto": true,
-    "isFullBody": true
-  }
+body:multipart-form {
+  position: 1
+  file: @file({{profile_photo_file_path}})
 }

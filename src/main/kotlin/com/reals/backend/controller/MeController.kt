@@ -1,6 +1,7 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.HomePendingStateResponse
 import com.reals.backend.controller.dto.HomeResponse
@@ -104,6 +105,15 @@ class MeController(
         if (principal is String) {
             val user = userService.findByIdOrThrow(
                 userId = UUID.fromString(principal)
+            )
+            return ResponseEntity.ok(
+                UserResponse.from(user)
+            )
+        }
+
+        if (principal is CurrentUserAuthContext) {
+            val user = userService.findByIdOrThrow(
+                userId = principal.userId
             )
             return ResponseEntity.ok(
                 UserResponse.from(user)

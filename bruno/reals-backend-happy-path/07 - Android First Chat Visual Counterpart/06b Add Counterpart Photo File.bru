@@ -1,26 +1,22 @@
 meta {
-  name: 06b Add Counterpart Photo File
+  name: 06b Get Counterpart Photos After Photo 1
   type: http
   seq: 8
 }
 
-post {
+get {
   url: {{baseUrl}}/api/me/profile/photos
-  body: multipartForm
-  auth: inherit
+  body: none
+  auth: none
 }
 
 headers {
   Authorization: Bearer {{firebase_counterpart_id_token}}
-  Content-Type: multipart/form-data
 }
 
-body:multipart-form {
-  file: @file()
-  position: 1
-}
-
-settings {
-  encodeUrl: false
-  timeout: 0
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body) || body.length < 1) {
+    throw new Error("Expected at least one counterpart profile photo.");
+  }
 }
