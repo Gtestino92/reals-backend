@@ -1,0 +1,39 @@
+meta {
+  name: 09d Reorder Counterpart Photos
+  type: http
+  seq: 15
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/photos/reorder
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "placements": [
+      {
+        "photoId": "a1e80b4d-588f-45fb-b46e-ff7f723395f9",
+        "position": 2
+      },
+      {
+        "photoId": "f056e752-73b5-4c3a-bf63-a74845548c9b",
+        "position": 1
+      },
+      {
+        "photoId": "534e3a8c-1586-4b98-9c05-5224e664b69e",
+        "position": 3
+      },
+      {
+        "photoId": "19354e07-0976-49fb-bd71-e61c1c0d2b35",
+        "position": 7
+      }
+    ]
+  }
+}

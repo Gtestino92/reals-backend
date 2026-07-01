@@ -6,8 +6,10 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.CreateProfileRequest
 import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.controller.dto.ProfileResponse
+import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
+import com.reals.backend.service.PhotoPlacement
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -238,6 +240,34 @@ class ProfileController(
 
         return ResponseEntity.ok(
             profileService.getPhotoResponses(profileId = profile.id)
+        )
+    }
+
+    @PutMapping("/photos/reorder")
+    fun reorderPhotos(
+        @CurrentUserId userId: UUID,
+        @Valid
+        @RequestBody request: ReorderProfilePhotosRequest
+    ): ResponseEntity<List<PhotoResponse>> {
+        val profile = findProfileForCurrentUserOrThrow(userId)
+
+        val photos = profileService.reorderPhotos(
+            profileId = profile.id,
+            placements = request.placements.map {
+                PhotoPlacement(
+                    photoId = it.photoId,
+                    position = it.position
+                )
+            }
+        )
+
+        return ResponseEntity.ok(
+            photos.map {
+                PhotoResponse.from(
+                    photo = it,
+                    url = profileService.resolvePhotoReadUrlForResponse(it)
+                )
+            }
         )
     }
 

@@ -378,6 +378,75 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `reorder photos returns photo responses ordered by position`() {
+        val user = userService.createUser("reorder-controller-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Reorder Controller",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+        val first = profilePhotoRepository.save(
+            ProfilePhoto(
+                profileId = profile.id,
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "reals-profile-photos-test",
+                storageKey = "users/${user.id}/profile-photos/first.jpg",
+                position = 1,
+                isPersonPhoto = true,
+                isFullBody = false,
+                validationStatus = PhotoValidationStatus.VALIDATED,
+                moderationStatus = PhotoModerationStatus.APPROVED
+            )
+        )
+        val second = profilePhotoRepository.save(
+            ProfilePhoto(
+                profileId = profile.id,
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "reals-profile-photos-test",
+                storageKey = "users/${user.id}/profile-photos/second.jpg",
+                position = 2,
+                isPersonPhoto = false,
+                isFullBody = true,
+                validationStatus = PhotoValidationStatus.PENDING,
+                moderationStatus = PhotoModerationStatus.NEEDS_REVIEW
+            )
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/photos/reorder")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "placements" to listOf(
+                                mapOf("photoId" to first.id, "position" to 4),
+                                mapOf("photoId" to second.id, "position" to 1)
+                            )
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id", equalTo(second.id.toString())))
+            .andExpect(jsonPath("$[0].position", equalTo(1)))
+            .andExpect(jsonPath("$[0].isPersonPhoto", equalTo(false)))
+            .andExpect(jsonPath("$[0].isFullBody", equalTo(true)))
+            .andExpect(jsonPath("$[0].validationStatus", equalTo("PENDING")))
+            .andExpect(jsonPath("$[0].moderationStatus", equalTo("NEEDS_REVIEW")))
+            .andExpect(jsonPath("$[1].id", equalTo(first.id.toString())))
+            .andExpect(jsonPath("$[1].position", equalTo(4)))
+    }
+
+    @Test
     fun `delete missing photo returns stable error code`() {
         val user = userService.createUser("missing-photo-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
