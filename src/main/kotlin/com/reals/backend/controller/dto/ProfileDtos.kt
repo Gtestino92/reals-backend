@@ -10,6 +10,7 @@ import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.validation.PlainText
+import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -54,6 +55,20 @@ data class UpdateMatchFiltersRequest(
     @field:Min(1)
     @field:Max(1000)
     val maxDistanceKm: Int
+)
+
+data class ReorderProfilePhotosRequest(
+    @field:Valid
+    @field:Size(min = 1, max = 9)
+    val placements: List<PhotoPlacementRequest>
+)
+
+data class PhotoPlacementRequest(
+    val photoId: UUID,
+
+    @field:Min(1)
+    @field:Max(9)
+    val position: Int
 )
 
 data class CreateProfileRequest(
