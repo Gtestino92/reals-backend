@@ -16,11 +16,17 @@ import com.reals.backend.service.photo.ProfilePhotoModerationService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
 import java.util.*
+
+data class PhotoPlacement(
+    val photoId: UUID,
+    val position: Int
+)
 
 @Service
 @Transactional
@@ -64,6 +70,9 @@ class ProfileService(
         const val BIO_MAX_LENGTH = 1000
         const val MIN_PROFILE_AGE = 18
         const val MAX_PROFILE_AGE = 99
+        const val MIN_PHOTO_POSITION = 1
+        const val MAX_PHOTO_POSITION = 9
+        const val TEMPORARY_PHOTO_POSITION_OFFSET = 1000
     }
 
     fun findByUserId(userId: UUID): Profile? =
@@ -245,6 +254,74 @@ class ProfileService(
                     url = resolvePhotoReadUrl(photo)
                 )
             }
+    }
+
+    @Transactional
+    fun reorderPhotos(
+        profileId: UUID,
+        placements: List<PhotoPlacement>
+    ): List<ProfilePhoto> {
+        val profile = findByIdOrThrow(profileId)
+        validatePhotoPlacementsBasicShape(placements)
+
+        val photos = profilePhotoRepository.findByProfileId(profileId)
+        val currentPhotoIds = photos.map { it.id }.toSet()
+        val requestedPhotoIds = placements.map { it.photoId }.toSet()
+
+        if (!currentPhotoIds.containsAll(requestedPhotoIds)) {
+            val missingForCurrentProfile = requestedPhotoIds.first { it !in currentPhotoIds }
+            throw profilePhotoNotFound(missingForCurrentProfile)
+        }
+
+        if (requestedPhotoIds != currentPhotoIds) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Reorder request must include every current profile photo exactly once"
+            )
+        }
+
+        val requestedPositionsByPhotoId = placements.associate { it.photoId to it.position }
+        val previousPositionsByPhotoId = photos.associate { it.id.toString() to it.position }
+        val newPositionsByPhotoId = placements.associate { it.photoId.toString() to it.position }
+
+        try {
+            // Reordering may swap positions that are unique within a profile.
+            // Move all affected photos to temporary out-of-grid positions first so the
+            // database never observes two rows with the same final position during the swap.
+            photos.forEachIndexed { index, photo ->
+                photo.position = TEMPORARY_PHOTO_POSITION_OFFSET + index
+            }
+            profilePhotoRepository.saveAll(photos)
+            profilePhotoRepository.flush()
+
+            photos.forEach { photo ->
+                photo.position = requestedPositionsByPhotoId.getValue(photo.id)
+            }
+            val saved = profilePhotoRepository.saveAll(photos)
+            profilePhotoRepository.flush()
+
+            profile.updatedAt = OffsetDateTime.now()
+            profileRepository.save(profile)
+
+            auditEventService.record(
+                eventType = AuditEventType.PROFILE_PHOTOS_REORDERED,
+                aggregateType = AuditAggregateType.PROFILE,
+                aggregateId = profile.id,
+                actorUserId = profile.userId,
+                metadata = mapOf(
+                    "profileId" to profile.id,
+                    "previousPositions" to previousPositionsByPhotoId,
+                    "newPositions" to newPositionsByPhotoId
+                )
+            )
+
+            return saved.sortedBy { it.position }
+        } catch (ex: DataIntegrityViolationException) {
+            throw DomainConflictException(
+                code = DomainErrorCode.PHOTO_POSITION_OCCUPIED,
+                message = "Photo positions could not be reordered because of a position conflict"
+            )
+        }
     }
 
     fun updateProfile(
@@ -631,10 +708,43 @@ class ProfileService(
     }
 
     private fun validatePhotoPosition(position: Int) {
-        if (position !in 1..maxPhotoCount) {
+        if (position !in MIN_PHOTO_POSITION..maxPhotoCount) {
             throw DomainBadRequestException(
                 code = DomainErrorCode.PHOTO_POSITION_INVALID,
                 message = "Photo position must be between 1 and $maxPhotoCount"
+            )
+        }
+    }
+
+    private fun validatePhotoPlacementsBasicShape(placements: List<PhotoPlacement>) {
+        if (placements.isEmpty() || placements.size > MAX_PHOTO_POSITION) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Reorder request must include between 1 and $MAX_PHOTO_POSITION photo placements"
+            )
+        }
+
+        val invalidPosition = placements.firstOrNull {
+            it.position !in MIN_PHOTO_POSITION..MAX_PHOTO_POSITION
+        }
+        if (invalidPosition != null) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PHOTO_POSITION_INVALID,
+                message = "Photo position must be between $MIN_PHOTO_POSITION and $MAX_PHOTO_POSITION"
+            )
+        }
+
+        if (placements.map { it.position }.toSet().size != placements.size) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.PHOTO_POSITION_OCCUPIED,
+                message = "Each profile photo must receive a unique final position"
+            )
+        }
+
+        if (placements.map { it.photoId }.toSet().size != placements.size) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.INVALID_PROFILE_PHOTO,
+                message = "Each profile photo can only appear once in a reorder request"
             )
         }
     }
