@@ -33,7 +33,7 @@ script:pre-request {
   const runId = Date.now().toString();
   bru.setEnvVar("counterpartRunId", runId);
   if (!bru.getEnvVar("firebase_counterpart_email")) {
-    bru.setEnvVar("firebase_counterpart_email", `android.counterpart.${runId}@example.com`);
+    bru.setEnvVar("firebase_counterpart_email", `android.counterpart@example.com`);
   }
   if (!bru.getEnvVar("firebase_counterpart_password")) {
     throw new Error("Set firebase_counterpart_password in ignored local.bru before running Firebase counterpart flows.");

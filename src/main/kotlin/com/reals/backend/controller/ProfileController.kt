@@ -1,5 +1,7 @@
 package com.reals.backend.controller
 
+import com.reals.backend.config.security.currentuser.CurrentUserAuth
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.CreateProfileRequest
 import com.reals.backend.controller.dto.PhotoResponse
@@ -7,6 +9,7 @@ import com.reals.backend.controller.dto.ProfileResponse
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.validation.Valid
@@ -114,9 +117,16 @@ class ProfileController(
 
     @PostMapping("/activation")
     fun activateMyProfile(
-        @CurrentUserId userId: UUID
+        @CurrentUserAuth authContext: CurrentUserAuthContext
     ): ResponseEntity<ProfileResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        if (!authContext.emailVerified) {
+            throw DomainConflictException(
+                code = DomainErrorCode.EMAIL_NOT_VERIFIED,
+                message = "Verificá tu email antes de activar el perfil."
+            )
+        }
+
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val activated = profileService.activateProfile(
             profileId = profile.id

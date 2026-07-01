@@ -3,8 +3,14 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfilePhoto
+import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -279,6 +285,51 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `activate profile fails when email is not verified`() {
+        val userId = createActivationReadyDraftProfile()
+
+        mockMvc.perform(
+            post("/api/me/profile/activation")
+                .with(
+                    authenticatedWithContext(
+                        userId = userId,
+                        firebaseUid = "firebase-$userId",
+                        email = "unverified-$userId@example.com",
+                        emailVerified = false
+                    )
+                )
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("EMAIL_NOT_VERIFIED")))
+            .andExpect(jsonPath("$.message", equalTo("Verificá tu email antes de activar el perfil.")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        assertEquals(ProfileStatus.DRAFT, profile.status)
+    }
+
+    @Test
+    fun `activate profile succeeds when email is verified`() {
+        val userId = createActivationReadyDraftProfile()
+
+        mockMvc.perform(
+            post("/api/me/profile/activation")
+                .with(
+                    authenticatedWithContext(
+                        userId = userId,
+                        firebaseUid = "firebase-$userId",
+                        email = "verified-$userId@example.com",
+                        emailVerified = true
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        assertEquals(ProfileStatus.ACTIVE, profile.status)
+    }
+
+    @Test
     fun `update match filters rejects inverted age range with stable error code`() {
         val user = userService.createUser("filters-invalid-range-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
@@ -349,5 +400,40 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
+    }
+
+    private fun createActivationReadyDraftProfile(): UUID {
+        val user = userService.createUser("activation-ready-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Activation Ready",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        repeat(4) { index ->
+            profilePhotoRepository.save(
+                ProfilePhoto(
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
+                )
+            )
+        }
+
+        return user.id
     }
 }

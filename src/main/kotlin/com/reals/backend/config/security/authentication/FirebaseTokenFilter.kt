@@ -3,6 +3,7 @@ package com.reals.backend.config.security.authentication
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
@@ -93,7 +94,12 @@ class FirebaseTokenFilter(
 
                 SecurityContextHolder.getContext().authentication =
                     UsernamePasswordAuthenticationToken(
-                        user.id.toString(),
+                        CurrentUserAuthContext(
+                            userId = user.id,
+                            firebaseUid = decoded.uid,
+                            email = decoded.email,
+                            emailVerified = decoded.isEmailVerified
+                        ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
                     )
@@ -114,7 +120,12 @@ class FirebaseTokenFilter(
                     )
                 } else {
                     UsernamePasswordAuthenticationToken(
-                        user.id.toString(),
+                        CurrentUserAuthContext(
+                            userId = user.id,
+                            firebaseUid = decoded.uid,
+                            email = decoded.email,
+                            emailVerified = decoded.isEmailVerified
+                        ),
                         null,
                         authoritiesForActiveUser(
                             localEmail = user.email,

@@ -17,14 +17,14 @@ headers {
 
 body:json {
   {
-    "displayName": "Diana",
+    "displayName": "Juls",
     "birthDate": "1995-05-10",
-    "gender": "FEMALE",
-    "lookingForGender": "MEN",
+    "gender": "MALE",
+    "lookingForGender": "WOMEN",
     "intention": "DATE",
     "city": "Buenos Aires",
     "country": "AR",
-    "bio": "Usuario Firebase generado desde Bruno para probar primer chat y review visual.",
+    "bio": "Yo",
     "preferredMinAge": 18,
     "preferredMaxAge": 99,
     "maxDistanceKm": 50
@@ -32,9 +32,18 @@ body:json {
 }
 
 script:post-response {
+  const status = res.getStatus();
   const body = res.getBody();
+  
+  if (status === 409 && body && body.code === "PROFILE_ALREADY_EXISTS") {
+    throw new Error("Counterpart profile already exists for this Firebase user. Use GET /api/me/profile to recover counterpartProfileId, or use a fresh firebase_counterpart_email.");
+  }
+  
   if (!body || !body.id) {
-    throw new Error("Expected counterpart profile id.");
+    throw new Error(
+      `Expected counterpart profile id. Got status ${status}, code ${body && body.code}, message ${body && body.message}. ` +
+      "If this is MALFORMED_REQUEST, check enum values: lookingForGender must be MEN, WOMEN, EVERYONE or OTHER."
+    );
   }
   bru.setEnvVar("counterpartProfileId", body.id);
 }

@@ -55,6 +55,29 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `provision me returns existing backend user from auth context principal`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-context-${UUID.randomUUID()}",
+            email = "existing-context-${UUID.randomUUID()}@example.com"
+        )
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(
+                    authenticatedWithContext(
+                        userId = user.id,
+                        firebaseUid = user.firebaseUid,
+                        email = user.email,
+                        emailVerified = false
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+    }
+
+    @Test
     fun `unprovisioned firebase principal cannot access user endpoints`() {
         mockMvc.perform(
             get("/api/me")

@@ -9,38 +9,35 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver
 import org.springframework.web.method.support.ModelAndViewContainer
 import java.util.UUID
 
-/**
- * Resolves controller parameters annotated with @CurrentUserId by reading the
- * authenticated principal from the SecurityContext.
- *
- * Auth filters may set the principal as an internal user UUID string or a
- * CurrentUserAuthContext.
- */
 @Component
-class CurrentUserIdArgumentResolver :
+class CurrentUserAuthArgumentResolver :
     HandlerMethodArgumentResolver {
 
     override fun supportsParameter(
         parameter: MethodParameter
     ): Boolean =
-        parameter.hasParameterAnnotation(CurrentUserId::class.java)
-                && parameter.parameterType == UUID::class.java
+        parameter.hasParameterAnnotation(CurrentUserAuth::class.java)
+                && parameter.parameterType == CurrentUserAuthContext::class.java
 
     override fun resolveArgument(
         parameter: MethodParameter,
         mavContainer: ModelAndViewContainer?,
         webRequest: NativeWebRequest,
         binderFactory: WebDataBinderFactory?
-    ): UUID {
-
+    ): CurrentUserAuthContext {
         val principal =
             SecurityContextHolder.getContext()
                 .authentication?.principal
                 ?: error("No authenticated principal found in SecurityContext")
 
         return when (principal) {
-            is CurrentUserAuthContext -> principal.userId
-            is String -> UUID.fromString(principal)
+            is CurrentUserAuthContext -> principal
+            is String -> CurrentUserAuthContext(
+                userId = UUID.fromString(principal),
+                firebaseUid = null,
+                email = null,
+                emailVerified = true
+            )
             else -> error("Unsupported authenticated principal type: ${principal::class.qualifiedName}")
         }
     }

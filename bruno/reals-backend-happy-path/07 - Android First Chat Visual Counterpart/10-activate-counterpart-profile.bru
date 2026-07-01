@@ -1,7 +1,7 @@
 meta {
   name: 10 Activate Counterpart Profile
   type: http
-  seq: 12
+  seq: 15
 }
 
 post {
@@ -15,7 +15,14 @@ headers {
 }
 
 script:post-response {
+  const status = res.getStatus();
   const body = res.getBody();
+  if (status === 409 && body && body.code === "EMAIL_NOT_VERIFIED") {
+    throw new Error("Email is still not verified in the refreshed Firebase ID token. Open the verification email, then rerun 09c and this request.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK for counterpart activation, got ${status}.`);
+  }
   if (!body || body.status !== "ACTIVE") {
     throw new Error(`Expected counterpart profile ACTIVE, got ${body && body.status}.`);
   }
