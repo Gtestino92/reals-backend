@@ -37,6 +37,68 @@ Expected response:
 {"status":"ok"}
 ```
 
+## Testing From Another Device Or Network
+
+The local docs and Bruno collection default to `localhost`, which only works
+from the same machine that runs the backend. When another device needs to call
+the local backend, use an address that is reachable from that device.
+
+Same LAN or same Wi-Fi:
+
+```text
+http://<developer-machine-lan-ip>:8080
+```
+
+Example:
+
+```text
+http://192.168.0.5:8080
+```
+
+Then update the client base URL:
+
+- Bruno: set `baseUrl` in the ignored local environment file, for example
+  `bruno/reals-backend-happy-path/environments/local.bru`.
+- Android physical device: point the app's backend URL at the same LAN IP and
+  port.
+- Android Emulator on the same host: keep using emulator-specific host routing
+  such as `10.0.2.2` where documented below.
+
+Windows/macOS/Linux firewall rules must allow inbound traffic to the backend
+port. With Docker Compose, the backend is already published as `8080:8080`, so
+the host port is `8080`.
+
+Profile photo URLs need the same treatment. If the client renders photos from
+local MinIO, `S3_PRESIGNED_URL_ENDPOINT` must be reachable by that client:
+
+```text
+S3_PRESIGNED_URL_ENDPOINT=http://<developer-machine-lan-ip>:9000
+```
+
+If this stays as `http://localhost:9000`, another phone or computer will try to
+load MinIO from itself instead of from the backend developer machine. With
+Docker Compose, MinIO is already published as `9000:9000`.
+
+Different network or different router:
+
+- Prefer a VPN or a tunnel such as Cloudflare Tunnel/ngrok for short manual
+  testing.
+- Port forwarding can work, but it exposes local services to the internet and
+  should be temporary and tightly controlled.
+- Do not expose `local-nodb`, `local-postgres`, or other local-dev tooling to
+  the public internet. Those profiles expose test helpers such as
+  `/api/local-dev/**`.
+- If the backend needs to be reachable for repeated Android testing outside the
+  developer LAN, prefer a real shared `dev` deployment instead of a local
+  machine behind a router.
+
+Check reachability from the client network before debugging application logic:
+
+```http
+GET http://<reachable-host>:8080/api/ping
+GET http://<reachable-host>:8080/actuator/health/readiness
+```
+
 ## H2 Console
 
 URL:

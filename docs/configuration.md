@@ -85,9 +85,9 @@ renders the image. Profile photo rows store storage metadata, including the
 object key, and response URLs are generated from that key when the API returns a
 photo DTO.
 
-For Cloudflare R2 shared/dev/prod-like environments, see
-`docs/storage-r2-configuration.md`. R2 should use private buckets and
-`STORAGE_S3_READ_URL_MODE=PRESIGNED` for MVP.
+For Cloudflare R2, hosted MinIO and other S3-compatible shared/dev/prod-like
+environments, see `docs/storage-r2-configuration.md`. Buckets should stay
+private and use `STORAGE_S3_READ_URL_MODE=PRESIGNED` for MVP.
 
 For AWS deployments, prefer IAM roles for S3 access instead of long-lived access keys. In that setup the application usually only needs the bucket setting; AWS credentials come from the runtime role.
 
