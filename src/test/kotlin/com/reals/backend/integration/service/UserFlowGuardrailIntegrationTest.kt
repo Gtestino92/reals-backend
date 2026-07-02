@@ -6,20 +6,34 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.domain.StoredObject
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.S3StorageService
+import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.eq
+import org.mockito.Mockito
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
+import org.springframework.test.context.bean.override.mockito.MockitoBean
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.util.UUID
+import javax.imageio.ImageIO
 
 class UserFlowGuardrailIntegrationTest : BaseIT() {
+
+    @MockitoBean
+    private lateinit var storageService: S3StorageService
 
     @Test
     fun `profile cannot be activated without required photos`() {
@@ -58,12 +72,20 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
 
-        profileService.addPhoto(
+        stubStorageUpload(
+            StoredObject(
+                bucket = "test-bucket",
+                key = "users/$userId/profile-photos/extra.jpg",
+                contentType = MediaType.IMAGE_JPEG_VALUE,
+                sizeBytes = jpegBytes().size.toLong()
+            )
+        )
+
+        profileService.uploadPhoto(
             profileId = profile.id,
-            url = "https://example.com/${profile.id}-extra.jpg",
             position = 5,
-            isPersonPhoto = false,
-            isFullBody = false
+            contentType = MediaType.IMAGE_JPEG_VALUE,
+            bytes = jpegBytes()
         )
 
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
@@ -79,13 +101,22 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
+        val photo = profileService.getPhotos(profile.id).first()
+
+        stubStorageUpload(
+            StoredObject(
+                bucket = "test-bucket",
+                key = "users/$userId/profile-photos/replacement.jpg",
+                contentType = MediaType.IMAGE_JPEG_VALUE,
+                sizeBytes = jpegBytes().size.toLong()
+            )
+        )
 
         profileService.replacePhoto(
             profileId = profile.id,
-            position = 1,
-            url = "https://example.com/${profile.id}-replacement.jpg",
-            isPersonPhoto = true,
-            isFullBody = true
+            photoId = photo.id,
+            contentType = MediaType.IMAGE_JPEG_VALUE,
+            bytes = jpegBytes()
         )
 
         assertEquals(ProfileStatus.DRAFT, profileService.findByIdOrThrow(profile.id).status)
@@ -177,17 +208,52 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             decision = ChatContinueDecision.APPROVED
         )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             chatService.recordChatDecision(
                 matchId = setup.matchId,
                 userId = setup.userAId,
                 decision = ChatContinueDecision.APPROVED
             )
         }
+        assertEquals(DomainErrorCode.CHAT_DECISION_ALREADY_SUBMITTED, exception.code)
     }
 
     @Test
-    fun `visual approval requires reading partner personal message when present`() {
+    fun `chat decision cannot be submitted after first chat is no longer actionable`() {
+        val setup = createMatchWithFirstChat()
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        val exception = assertThrows<DomainConflictException> {
+            chatService.recordChatDecision(
+                matchId = setup.matchId,
+                userId = setup.userAId,
+                decision = ChatContinueDecision.APPROVED
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_DECISION_NOT_AVAILABLE, exception.code)
+    }
+
+    @Test
+    fun `chat decision cannot be submitted while mutual cancellation is pending`() {
+        val setup = createMatchWithFirstChat()
+        chatExitService.requestMutualCancellation(
+            chatId = setup.firstChatId,
+            requesterUserId = setup.userAId
+        )
+
+        val exception = assertThrows<DomainConflictException> {
+            chatService.recordChatDecision(
+                matchId = setup.matchId,
+                userId = setup.userBId,
+                decision = ChatContinueDecision.APPROVED
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, exception.code)
+    }
+
+    @Test
+    fun `visual decision requires reading partner personal message when present`() {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
@@ -195,9 +261,10 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
 
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me caiste bien")
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
         }
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
 
         assertEquals("Me caiste bien", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
 
@@ -237,12 +304,13 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             proposedDateTime = futureHalfHourSlot()
         )
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             schedulingService.acceptProposal(
                 proposalId = proposal.id,
                 acceptorUserId = setup.userAId
             )
         }
+        assertEquals(DomainErrorCode.SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL, exception.code)
     }
 
     @Test
@@ -268,7 +336,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
 
-        assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainBadRequestException> {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
@@ -280,5 +348,42 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
                 )
             )
         }
+        assertEquals(DomainErrorCode.SCHEDULING_INVALID_PROPOSALS, exception.code)
+    }
+
+    private fun stubStorageUpload(storedObject: StoredObject) {
+        Mockito.`when`(
+            storageService.uploadProfilePhoto(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE),
+                anyByteArray()
+            )
+        ).thenReturn(storedObject)
+
+        Mockito.`when`(storageService.getReadUrl(storedObject.key))
+            .thenReturn("http://localhost:9000/test-bucket/${storedObject.key}")
+    }
+
+    private fun jpegBytes(): ByteArray {
+        val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
+        val output = ByteArrayOutputStream()
+        ImageIO.write(image, "jpg", output)
+        return output.toByteArray()
+    }
+
+    private fun anyUuid(): UUID {
+        any(UUID::class.java)
+        return UUID.randomUUID()
+    }
+
+    private fun anyByteArray(): ByteArray {
+        any(ByteArray::class.java)
+        return byteArrayOf()
+    }
+
+    private fun eqString(value: String): String {
+        eq(value)
+        return value
     }
 }

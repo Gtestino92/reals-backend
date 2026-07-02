@@ -1,0 +1,36 @@
+meta {
+  name: 29 Counterpart Reject Current Scheduling Round
+  type: http
+  seq: 38
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/negotiation/rejections
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  const body = res.getBody();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}: ${JSON.stringify(body)}`);
+  }
+  if (!body || !body.id) {
+    throw new Error(`Expected scheduling negotiation response after round rejection, got: ${JSON.stringify(body)}`);
+  }
+  bru.setEnvVar("negotiationId", body.id);
+}
+
+docs {
+  Rejects the current scheduling round as a whole, not an individual proposal. Run this only after both Android and the counterpart have submitted non-overlapping proposals for the current round. After this request, run 24 Get Counterpart Scheduling Negotiation and 25 Get Counterpart Scheduling Proposals to refresh state.
+}

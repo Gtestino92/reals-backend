@@ -8,10 +8,46 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.presigner.S3Presigner
+import java.util.UUID
 
 class S3StorageServiceTest {
+
+    @Test
+    fun `upload profile photo returns storage metadata without generating read url`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val presigner = Mockito.mock(S3Presigner::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = presigner,
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+
+        val userId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val photoId = UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+        val storedObject = service.uploadProfilePhoto(
+            userId = userId,
+            photoId = photoId,
+            contentType = "IMAGE/JPEG",
+            bytes = byteArrayOf(1, 2, 3)
+        )
+
+        assertEquals("reals-profile-photos", storedObject.bucket)
+        assertEquals("users/$userId/profile-photos/$photoId.jpg", storedObject.key)
+        assertEquals("image/jpeg", storedObject.contentType)
+        assertEquals(3, storedObject.sizeBytes)
+        Mockito.verify(s3Client).putObject(
+            any(PutObjectRequest::class.java),
+            any(RequestBody::class.java)
+        )
+        Mockito.verifyNoInteractions(presigner)
+    }
 
     @Test
     fun `presigned read url uses browser-facing endpoint`() {
@@ -82,6 +118,30 @@ class S3StorageServiceTest {
             assertThrows<ObjectStorageException> {
                 service.getReadUrl("users/user-id/profile-photos/photo.png")
             }
+        } finally {
+            presigner.close()
+        }
+    }
+
+    @Test
+    fun `presigned read url does not require public base url`() {
+        val properties = storageProperties(
+            publicBaseUrl = null,
+            readUrlMode = S3ReadUrlMode.PRESIGNED
+        )
+        val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
+
+        try {
+            val service = S3StorageService(
+                s3Client = Mockito.mock(S3Client::class.java),
+                s3Presigner = presigner,
+                properties = properties
+            )
+
+            val url = service.getReadUrl("users/user-id/profile-photos/photo.png")
+
+            assertTrue(url.startsWith("http://localhost:9000/reals-profile-photos/"))
+            assertTrue(url.contains("X-Amz-Signature="))
         } finally {
             presigner.close()
         }

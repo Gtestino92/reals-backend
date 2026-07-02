@@ -4,7 +4,8 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.repository.UserRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -20,6 +21,8 @@ class MatchService(
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
     private val userService: UserService,
+    private val userBlockService: UserBlockService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int
@@ -54,6 +57,10 @@ class MatchService(
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
+        checkNotBlockedPair(
+            userAId = userAId,
+            userBId = userBId
+        )
 
         val match = matchRepository.save(
             Match(
@@ -80,6 +87,11 @@ class MatchService(
 
         queueRepository.deleteByUserId(userId = userAId)
         queueRepository.deleteByUserId(userId = userBId)
+        homeStateInvalidationService.bumpBoth(
+            userAId = userAId,
+            userBId = userBId,
+            reason = "match_created"
+        )
 
         return match
     }
@@ -96,6 +108,18 @@ class MatchService(
         }
     }
 
+    private fun checkNotBlockedPair(
+        userAId: UUID,
+        userBId: UUID
+    ) {
+        if (userBlockService.isBlockedPair(userAId, userBId)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_PAIR_BLOCKED,
+                message = "Cannot create match between users with an existing block"
+            )
+        }
+    }
+
     private fun validateParticipant(
         match: Match,
         userId: UUID
@@ -103,6 +127,16 @@ class MatchService(
         if (userId != match.userAId && userId != match.userBId) {
             throw AccessDeniedException("User $userId does not belong to match ${match.id}")
         }
+    }
+
+    fun releaseMatchLockForUser(
+        matchId: UUID,
+        userId: UUID
+    ) {
+        lockRepository.deleteByUserIdAndEngagementId(
+            userId = userId,
+            engagementId = matchId
+        )
     }
 
     /**
@@ -125,7 +159,13 @@ class MatchService(
         match.state = MatchState.VISUAL_PHASE
         match.updatedAt = OffsetDateTime.now()
 
-        return matchRepository.save(match)
+        val saved = matchRepository.save(match)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "match_visual_phase"
+        )
+        return saved
     }
 
     /**
@@ -148,7 +188,13 @@ class MatchService(
         match.state = MatchState.VISUAL_APPROVED
         match.updatedAt = OffsetDateTime.now()
 
-        return matchRepository.save(match)
+        val saved = matchRepository.save(match)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "match_visual_approved"
+        )
+        return saved
     }
 
     /**
@@ -174,6 +220,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_chat_rejected"
         )
 
         return match
@@ -202,6 +254,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_visual_rejected"
         )
 
         return match
@@ -233,6 +291,12 @@ class MatchService(
 
         lockRepository.deleteByEngagementId(
             engagementId = matchId
+        )
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "match_expired"
         )
 
         return true

@@ -1,0 +1,40 @@
+meta {
+  name: 26c Submit Counterpart Proposals No Overlap
+  type: http
+  seq: 36
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "proposedDateTimes": [
+      "{{counterpartNoOverlapDateTime}}",
+      "{{counterpartNoOverlapDateTimeLater}}"
+    ]
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body) || !body[0] || !body[0].id) {
+    throw new Error("Expected created counterpart scheduling proposals list.");
+  }
+  bru.setEnvVar("proposalBId", body[0].id);
+  if (body.some((proposal) => proposal.status === "ACCEPTED")) {
+    throw new Error("No-overlap scenario unexpectedly auto-confirmed scheduling.");
+  }
+}
+
+docs {
+  Use this after Android has already proposed different slots from the app. These instants should not overlap Android's proposals, so the negotiation stays pending until a participant rejects the round or accepts a partner proposal. Update values if they are in the past.
+}

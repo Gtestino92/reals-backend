@@ -1,41 +1,53 @@
 package com.reals.backend.service
 
+import com.reals.backend.config.s3.ProfilePhotoStorageProperties
 import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.service.exception.DomainBadRequestException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
-import org.springframework.mock.env.MockEnvironment
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 
 class ProfilePhotoValidationServiceTest {
 
     @Test
-    fun `uploaded photo is validated in local firebase profile`() {
+    fun `uploaded photo is validated after technical image validation`() {
         val service = ProfilePhotoValidationService(
-            MockEnvironment().apply {
-                setActiveProfiles("local-firebase")
-            }
+            ProfilePhotoStorageProperties()
         )
 
         val result = service.validateUploadedPhoto(
             contentType = "image/jpeg",
-            bytes = byteArrayOf(1)
+            bytes = jpegBytes()
         )
 
         assertEquals(PhotoValidationStatus.VALIDATED, result.status)
+        assertEquals(true, result.isPersonPhoto)
+        assertEquals(true, result.isFullBody)
     }
 
     @Test
-    fun `uploaded photo remains pending outside local and test profiles`() {
+    fun `uploaded photo rejects invalid dimensions`() {
         val service = ProfilePhotoValidationService(
-            MockEnvironment().apply {
-                setActiveProfiles("prod")
-            }
+            ProfilePhotoStorageProperties(maxWidthPixels = 0)
         )
 
-        val result = service.validateUploadedPhoto(
-            contentType = "image/jpeg",
-            bytes = byteArrayOf(1)
-        )
+        val ex = assertThrows(DomainBadRequestException::class.java) {
+            service.validateUploadedPhoto(
+                contentType = "image/jpeg",
+                bytes = jpegBytes()
+            )
+        }
 
-        assertEquals(PhotoValidationStatus.PENDING, result.status)
+        assertEquals("INVALID_PROFILE_PHOTO", ex.code.name)
+    }
+
+    private fun jpegBytes(): ByteArray {
+        val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
+        val output = ByteArrayOutputStream()
+        ImageIO.write(image, "jpg", output)
+        return output.toByteArray()
     }
 }

@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
+import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Max
@@ -20,19 +21,22 @@ data class MatchResponse(
     val userBId: UUID,
     val state: MatchState,
     val connectionId: UUID?,
+    val visualExpiresAt: OffsetDateTime?,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
 ) {
     companion object {
         fun from(
             match: Match,
-            connectionId: UUID? = null
+            connectionId: UUID? = null,
+            visualExpiresAt: OffsetDateTime? = null
         ) = MatchResponse(
             id = match.id,
             userAId = match.userAId,
             userBId = match.userBId,
             state = match.state,
             connectionId = connectionId,
+            visualExpiresAt = visualExpiresAt,
             createdAt = match.createdAt,
             updatedAt = match.updatedAt
         )
@@ -46,7 +50,7 @@ data class VisualDecisionRequest(
 data class PersonalMessageRequest(
     @field:NotBlank
     @field:Size(max = 280)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val message: String
 )
 

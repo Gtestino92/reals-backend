@@ -23,6 +23,7 @@ This repository is the backend for Reals, a structured dating / connection produ
 - Local no-auth profiles `local-nodb` and `local-postgres` use `DevAutoAuthFilter`, which injects user `00000000-0000-0000-0000-000000000001` with `ROLE_USER`.
 - Sanity endpoint: `GET /api/ping`.
 - Maven CLI may not be installed on the target machine. Prefer IntelliJ IDEA run/build actions unless the user explicitly confirms CLI availability.
+- Work branches created or renamed by agents must use the `feature/` prefix unless the user explicitly asks for another branch type.
 
 ## Architecture Rules
 
@@ -157,7 +158,8 @@ From local H2 profiles:
 - `docs/local-development.md` explains local setup.
 - `docs/api.md` summarizes current controllers and endpoints.
 - `docs/testing.md` explains the test strategy and how to run tests.
-- `docs/technical-debt.md` lists known non-implemented or undecided behavior.
+- `docs/technical-debt-mvp.md` lists known non-implemented or undecided behavior for mvp.
+- `docs/technical-debt-prod.md` lists known non-implemented or undecided behavior for prod.
 
 ## When Unsure
 

@@ -4,10 +4,15 @@ import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchmakingProcessResult
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.service.MatchmakingProcessorService
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.repository.ProfilePhotoRepository
+import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -47,6 +52,9 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
 
     @Autowired
     private lateinit var matchRepository: MatchRepository
+
+    @Autowired
+    private lateinit var profilePhotoRepository: ProfilePhotoRepository
 
     @Autowired
     private lateinit var matchmakingQueueRepository: MatchmakingQueueRepository
@@ -155,12 +163,18 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         )
 
         repeat(4) { index ->
-            profileService.addPhoto(
-                profileId = profile.id,
-                url = "https://example.com/${profile.id}-${index + 1}.jpg",
-                position = index + 1,
-                isPersonPhoto = index == 0,
-                isFullBody = index == 0
+            profilePhotoRepository.save(
+                ProfilePhoto(
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
+                )
             )
         }
 

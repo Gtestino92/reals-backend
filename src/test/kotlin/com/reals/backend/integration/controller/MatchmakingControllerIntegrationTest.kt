@@ -6,6 +6,7 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.Penalty
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -42,6 +43,62 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.userId", equalTo(userId.toString())))
             .andExpect(jsonPath("$.inQueue", equalTo(true)))
+    }
+
+    @Test
+    fun `enqueue is idempotent and refreshes search location`() {
+        val userId = createActiveProfile(
+            email = "queue-location-refresh-http-${UUID.randomUUID()}@example.com",
+            displayName = "Queue Location Refresh HTTP",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+
+        mockMvc.perform(
+            post("/api/matchmaking/queue")
+                .with(authenticatedAs(userId))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "latitude": -34.6037,
+                      "longitude": -58.3816,
+                      "accuracyMeters": 50
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.userId", equalTo(userId.toString())))
+            .andExpect(jsonPath("$.inQueue", equalTo(true)))
+
+        assertEquals(1L, matchmakingQueueRepository.count())
+
+        mockMvc.perform(
+            post("/api/matchmaking/queue")
+                .with(authenticatedAs(userId))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "latitude": -31.4201,
+                      "longitude": -64.1888,
+                      "accuracyMeters": 25
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.userId", equalTo(userId.toString())))
+            .andExpect(jsonPath("$.inQueue", equalTo(true)))
+
+        val queueEntry = matchmakingQueueRepository.findByUserId(userId)
+            ?: error("Expected user to remain queued")
+
+        assertEquals(1L, matchmakingQueueRepository.count())
+        assertEquals(-31.4201, queueEntry.latitude)
+        assertEquals(-64.1888, queueEntry.longitude)
+        assertEquals(25, queueEntry.accuracyMeters)
     }
 
     @Test

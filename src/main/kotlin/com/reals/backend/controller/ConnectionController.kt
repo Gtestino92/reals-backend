@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.AddProposalRequest
 import com.reals.backend.controller.dto.ChatResponse
+import com.reals.backend.controller.dto.ConnectionDismissalResponse
 import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.ScheduleProposalResponse
@@ -45,19 +46,33 @@ class ConnectionController(
     ): ResponseEntity<ChatResponse> =
         ResponseEntity.ok(
             ChatResponse.from(
-                chatService.findVisibleSecondChatOrThrow(
+                c = chatService.findVisibleSecondChatOrThrow(
                     connectionId = connectionId,
                     userId = userId
-                )
+                ),
+                inactivityExpiresAt = null
             )
         )
+
+    @PostMapping("/{connectionId}/second-chat-dismissal")
+    fun dismissSecondChatFromHome(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<ConnectionDismissalResponse> {
+        connectionService.dismissSecondChatFromHome(
+            connectionId = connectionId,
+            userId = userId
+        )
+
+        return ResponseEntity.ok(ConnectionDismissalResponse(dismissed = true))
+    }
 
     @GetMapping("/{connectionId}/negotiation")
     fun getNegotiation(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
-        connectionService.findByIdForUserOrThrow(
+        val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,
             userId = userId
         )
@@ -66,7 +81,10 @@ class ConnectionController(
             connectionId = connectionId
         )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 
@@ -134,8 +152,15 @@ class ConnectionController(
             proposalId = proposalId,
             acceptorUserId = userId
         )
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 
@@ -153,8 +178,15 @@ class ConnectionController(
             connectionId = connectionId,
             userId = userId
         )
+        val connection = connectionService.findByIdForUserOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
         return ResponseEntity.ok(
-            NegotiationResponse.from(negotiation)
+            NegotiationResponse.from(
+                n = negotiation,
+                schedulingExpiresAt = connection.schedulingExpiresAt
+            )
         )
     }
 }

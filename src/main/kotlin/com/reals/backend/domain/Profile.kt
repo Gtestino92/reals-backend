@@ -32,6 +32,14 @@ enum class ProfileStatus {
     INACTIVE
 }
 
+enum class IdentityVerificationStatus {
+    NOT_STARTED,
+    PENDING,
+    VERIFIED,
+    REJECTED,
+    NEEDS_REVIEW
+}
+
 @Entity
 @Table(name = "profiles")
 data class Profile(
@@ -54,6 +62,10 @@ data class Profile(
 
     @Column(name = "identity_verified", nullable = false)
     var identityVerified: Boolean = false,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "identity_verification_status", nullable = false)
+    var identityVerificationStatus: IdentityVerificationStatus = IdentityVerificationStatus.NOT_STARTED,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false)

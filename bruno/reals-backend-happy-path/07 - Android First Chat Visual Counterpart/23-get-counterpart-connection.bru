@@ -1,0 +1,28 @@
+meta {
+  name: 23 Get Counterpart Connection
+  type: http
+  seq: 31
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  const body = res.getBody();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}: ${JSON.stringify(body)}`);
+  }
+  if (!body || !body.id) {
+    throw new Error(`Expected counterpart connection response with id, got: ${JSON.stringify(body)}`);
+  }
+  bru.setEnvVar("counterpartConnectionId", body.id);
+  bru.setEnvVar("connectionId", body.id);
+}

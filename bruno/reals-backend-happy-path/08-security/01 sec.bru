@@ -1,0 +1,46 @@
+meta {
+  name: 01 Rate Limit Consume Provision Bucket
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebaseIdToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  const runId = Date.now().toString();
+  bru.setEnvVar("rateLimitRunId", runId);
+}
+
+script:post-response {
+  if (res.status !== 200 && res.status !== 201) {
+      throw new Error(`Expected first rate-limit request to provision a user, got ${res.status}.`);
+    }
+  
+    const limit =
+      res.getHeader("X-RateLimit-Limit") ||
+      res.getHeader("x-ratelimit-limit");
+  
+    const remaining =
+      res.getHeader("X-RateLimit-Remaining") ||
+      res.getHeader("x-ratelimit-remaining");
+  
+    console.log("X-RateLimit-Limit:", limit);
+    console.log("X-RateLimit-Remaining:", remaining);
+  
+    if (!limit || remaining === undefined || remaining === null) {
+      throw new Error("Expected rate-limit response headers.");
+    }
+}

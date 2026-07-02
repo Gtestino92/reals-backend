@@ -11,9 +11,14 @@ target/
 ### Local data ###
 data/
 minio-data/
+reals-minio-data/
 secrets/
+.env
+.env.*
+!.env.example
 bruno/reals-backend-happy-path/environments/local.bru
 *firebase*credentials*.json
+*firebase*service-account*.json
 *service-account*.json
 
 ### Kotlin ###
@@ -40,9 +45,6 @@ bin/
 
 ### VS Code ###
 .vscode/
-
-### VS Code ###
-minio-data/
 
 ### Mac OS ###
 .DS_Store

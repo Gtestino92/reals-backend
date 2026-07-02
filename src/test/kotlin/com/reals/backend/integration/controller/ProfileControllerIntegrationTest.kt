@@ -3,8 +3,14 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfilePhoto
+import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -59,7 +65,69 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
+            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("NOT_STARTED")))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `noop identity verification marks profile verified`() {
+        val user = userService.createUser("identity-noop-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Identity Noop",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile/identity-verification")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.identityVerified", equalTo(true)))
+            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("VERIFIED")))
+
+        val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
+        org.junit.jupiter.api.Assertions.assertEquals(true, profile.identityVerified)
+        org.junit.jupiter.api.Assertions.assertEquals(
+            com.reals.backend.domain.IdentityVerificationStatus.VERIFIED,
+            profile.identityVerificationStatus
+        )
+    }
+
+    @Test
+    fun `create profile rejects markup in text fields`() {
+        val user = userService.createUser("profile-markup-${UUID.randomUUID()}@example.com")
+        val body = mapOf(
+            "displayName" to "<script>alert(1)</script>",
+            "birthDate" to LocalDate.of(1995, 1, 1).toString(),
+            "gender" to Gender.FEMALE.name,
+            "lookingForGender" to LookingForGender.MEN.name,
+            "intention" to Intention.DATE.name,
+            "city" to "Buenos Aires",
+            "country" to "AR",
+            "bio" to "Plain bio",
+            "preferredMinAge" to 30,
+            "preferredMaxAge" to 40,
+            "maxDistanceKm" to 75
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
     }
 
     @Test
@@ -75,7 +143,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `profile action without profile returns stable error code`() {
+    fun `json photo creation endpoint is not supported`() {
         val user = userService.createUser("missing-profile-action-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
@@ -84,8 +152,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg","position":1}""")
         )
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.code", equalTo("PROFILE_NOT_FOUND")))
+            .andExpect(status().isUnsupportedMediaType)
     }
 
     @Test
@@ -218,6 +285,51 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `activate profile fails when email is not verified`() {
+        val userId = createActivationReadyDraftProfile()
+
+        mockMvc.perform(
+            post("/api/me/profile/activation")
+                .with(
+                    authenticatedWithContext(
+                        userId = userId,
+                        firebaseUid = "firebase-$userId",
+                        email = "unverified-$userId@example.com",
+                        emailVerified = false
+                    )
+                )
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("EMAIL_NOT_VERIFIED")))
+            .andExpect(jsonPath("$.message", equalTo("Verificá tu email antes de activar el perfil.")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        assertEquals(ProfileStatus.DRAFT, profile.status)
+    }
+
+    @Test
+    fun `activate profile succeeds when email is verified`() {
+        val userId = createActivationReadyDraftProfile()
+
+        mockMvc.perform(
+            post("/api/me/profile/activation")
+                .with(
+                    authenticatedWithContext(
+                        userId = userId,
+                        firebaseUid = "firebase-$userId",
+                        email = "verified-$userId@example.com",
+                        emailVerified = true
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        assertEquals(ProfileStatus.ACTIVE, profile.status)
+    }
+
+    @Test
     fun `update match filters rejects inverted age range with stable error code`() {
         val user = userService.createUser("filters-invalid-range-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
@@ -253,17 +365,85 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `invalid photo position returns bad request before service lookup`() {
+    fun `json photo replacement by position endpoint is not found`() {
         val user = userService.createUser("photo-position-${UUID.randomUUID()}@example.com")
 
         mockMvc.perform(
-            put("/api/me/profile/photos/position/0")
+            put("/api/me/profile/photos/position/1")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
                 .content("""{"url":"https://example.com/photo.jpg"}""")
         )
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `reorder photos returns photo responses ordered by position`() {
+        val user = userService.createUser("reorder-controller-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Reorder Controller",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+        val first = profilePhotoRepository.save(
+            ProfilePhoto(
+                profileId = profile.id,
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "reals-profile-photos-test",
+                storageKey = "users/${user.id}/profile-photos/first.jpg",
+                position = 1,
+                isPersonPhoto = true,
+                isFullBody = false,
+                validationStatus = PhotoValidationStatus.VALIDATED,
+                moderationStatus = PhotoModerationStatus.APPROVED
+            )
+        )
+        val second = profilePhotoRepository.save(
+            ProfilePhoto(
+                profileId = profile.id,
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "reals-profile-photos-test",
+                storageKey = "users/${user.id}/profile-photos/second.jpg",
+                position = 2,
+                isPersonPhoto = false,
+                isFullBody = true,
+                validationStatus = PhotoValidationStatus.PENDING,
+                moderationStatus = PhotoModerationStatus.NEEDS_REVIEW
+            )
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/photos/reorder")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "placements" to listOf(
+                                mapOf("photoId" to first.id, "position" to 4),
+                                mapOf("photoId" to second.id, "position" to 1)
+                            )
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id", equalTo(second.id.toString())))
+            .andExpect(jsonPath("$[0].position", equalTo(1)))
+            .andExpect(jsonPath("$[0].isPersonPhoto", equalTo(false)))
+            .andExpect(jsonPath("$[0].isFullBody", equalTo(true)))
+            .andExpect(jsonPath("$[0].validationStatus", equalTo("PENDING")))
+            .andExpect(jsonPath("$[0].moderationStatus", equalTo("NEEDS_REVIEW")))
+            .andExpect(jsonPath("$[1].id", equalTo(first.id.toString())))
+            .andExpect(jsonPath("$[1].position", equalTo(4)))
     }
 
     @Test
@@ -289,5 +469,40 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
+    }
+
+    private fun createActivationReadyDraftProfile(): UUID {
+        val user = userService.createUser("activation-ready-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Activation Ready",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN,
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        repeat(4) { index ->
+            profilePhotoRepository.save(
+                ProfilePhoto(
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
+                )
+            )
+        }
+
+        return user.id
     }
 }

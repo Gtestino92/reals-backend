@@ -39,7 +39,7 @@ scheduler:
     fixed-delay: 3600000
   inactivity-check-job:
     fixed-delay: 3600000
-    inactivity-threshold-minutes: 30
+    inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: 3600000
   visual-phase-expiration-job:
@@ -48,6 +48,13 @@ scheduler:
     fixed-delay: 3600000
   account-deletion-finalization-job:
     fixed-delay: 3600000
+  second-chat-reminder-job:
+    fixed-delay: 60000
+
+notifications:
+  second-chat-reminder:
+    # Comma-separated lead times in minutes.
+    minutes-before: 10
 
 account:
   deletion:
@@ -60,13 +67,15 @@ matchmaking:
 
 chat:
   first-chat:
-    duration-minutes: 1440
+    duration-minutes: 15
+    inactivity-threshold-minutes: 5
     min-messages-per-user: 0
     min-messages-before-free-cancel: 1
   visual-phase:
     duration-minutes: 1440
   second-chat:
-    duration-minutes: 2880
+    duration-minutes: 120
+    read-only-retention-minutes: 1440
     min-messages-before-free-cancel: 1
 
 scheduling:
@@ -84,6 +93,10 @@ profile:
 engagement:
   max-active-matches: 5
   max-active-connections: 2
+
+security:
+  rate-limit:
+    enabled: false
 
 storage:
   s3:

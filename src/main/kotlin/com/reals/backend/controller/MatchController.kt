@@ -30,22 +30,56 @@ class MatchController(
             userId = userId
         )
         val connectionId = connectionService.findConnectionIdByMatchId(matchId = matchId)
-        return ResponseEntity.ok(MatchResponse.from(match = match, connectionId = connectionId))
+        return ResponseEntity.ok(
+            MatchResponse.from(
+                match = match,
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
+            )
+        )
     }
 
     @GetMapping("/{matchId}/chat")
     fun getFirstChat(
         @CurrentUserId userId: UUID,
         @PathVariable matchId: UUID
-    ): ResponseEntity<ChatResponse> =
-        ResponseEntity.ok(
-            ChatResponse.from(
-                chatService.findActiveFirstChatForUserOrThrow(
-                    matchId = matchId,
-                    userId = userId
-                )
+    ): ResponseEntity<FirstChatResponse> {
+        val match = matchService.findByIdForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
+        val partnerId =
+            when (userId) {
+                match.userAId -> match.userBId
+                match.userBId -> match.userAId
+                else -> error("User was already validated as match participant")
+            }
+
+        val partnerProfile = profileService.findByUserId(partnerId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.PROFILE_NOT_FOUND,
+                message = "Partner profile not found"
+            )
+
+        val decisions = chatService.getFirstChatDecisionStatuses(
+            matchId = matchId,
+            userId = userId
+        )
+        val chat = chatService.findActiveFirstChatForUserOrThrow(
+            matchId = matchId,
+            userId = userId
+        )
+
+        return ResponseEntity.ok(
+            FirstChatResponse.from(
+                chat = chat,
+                partner = partnerProfile,
+                myDecision = decisions.myDecision,
+                partnerDecision = decisions.partnerDecision,
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
             )
         )
+    }
 
     /*
         Returns the profile of the OTHER user in the match, ass seen from [requestingUserId]
@@ -76,14 +110,31 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val photos = profileService.getPhotos(
+        val photos = profileService.getPhotoResponses(
             profileId = partnerProfile.id
         )
+        val personalMessageStatus = visualReviewService.getPersonalMessageStatusForUser(
+            matchId = matchId,
+            userId = userId
+        )
+        val visualExpiresAt = visualReviewService.visualExpiresAt(matchId)
 
         return ResponseEntity.ok(
             VisualProfileResponse.from(
                 profile = partnerProfile,
-                photos = photos
+                photos = photos,
+                myPersonalMessageSubmitted =
+                    visualReviewService.hasPersonalMessageSubmitted(
+                        matchId = matchId,
+                        userId = userId
+                    ),
+                partnerPersonalMessageSubmitted =
+                    personalMessageStatus.partnerPersonalMessageSubmitted,
+                partnerPersonalMessageRead =
+                    personalMessageStatus.partnerPersonalMessageRead,
+                decisionRequiresPartnerPersonalMessageRead =
+                    personalMessageStatus.decisionRequiresPartnerPersonalMessageRead,
+                visualExpiresAt = visualExpiresAt
             )
         )
     }
@@ -115,16 +166,18 @@ class MatchController(
         return ResponseEntity.ok(
             MatchResponse.from(
                 match = match,
-                connectionId = connectionId
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
             )
         )
     }
 
     /**
      * Records a visual decision for a user (APPROVED or REJECTED)
-     * When both users have decided, the match transitions automatically
-     *  - mutual APPROVED -> VISUAL_APPROVED, Connection created
-     *  - any REJECTED -> VISUAL_REJECTED, locks released
+     * The user's match lock is released immediately.
+     * When both users have decided, the match transitions automatically:
+     *  - mutual APPROVED -> VISUAL_APPROVED, pending Connection created
+     *  - any REJECTED -> VISUAL_REJECTED, remaining locks released
      */
     @PostMapping("/{matchId}/visual-decision")
     fun recordVisualDecision(
@@ -148,7 +201,8 @@ class MatchController(
         return ResponseEntity.ok(
             MatchResponse.from(
                 match = match,
-                connectionId = connectionId
+                connectionId = connectionId,
+                visualExpiresAt = visualReviewService.visualExpiresAt(match.id)
             )
         )
     }

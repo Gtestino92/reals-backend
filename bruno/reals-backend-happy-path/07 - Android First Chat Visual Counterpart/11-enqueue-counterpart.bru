@@ -1,0 +1,31 @@
+meta {
+  name: 11 Enqueue Counterpart
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "latitude": -34.6037,
+    "longitude": -58.3816,
+    "accuracyMeters": 50
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.inQueue !== true) {
+    throw new Error("Expected counterpart to enter queue.");
+  }
+}

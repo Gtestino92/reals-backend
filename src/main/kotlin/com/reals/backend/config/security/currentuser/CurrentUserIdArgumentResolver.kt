@@ -13,7 +13,8 @@ import java.util.UUID
  * Resolves controller parameters annotated with @CurrentUserId by reading the
  * authenticated principal from the SecurityContext.
  *
- * Auth filters must set the principal as an internal user UUID string.
+ * Auth filters may set the principal as an internal user UUID string or a
+ * CurrentUserAuthContext.
  */
 @Component
 class CurrentUserIdArgumentResolver :
@@ -37,6 +38,10 @@ class CurrentUserIdArgumentResolver :
                 .authentication?.principal
                 ?: error("No authenticated principal found in SecurityContext")
 
-        return UUID.fromString(principal as String)
+        return when (principal) {
+            is CurrentUserAuthContext -> principal.userId
+            is String -> UUID.fromString(principal)
+            else -> error("Unsupported authenticated principal type: ${principal::class.qualifiedName}")
+        }
     }
 }

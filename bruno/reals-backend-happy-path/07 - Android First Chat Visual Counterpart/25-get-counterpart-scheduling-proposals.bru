@@ -1,0 +1,35 @@
+meta {
+  name: 25 Get Counterpart Scheduling Proposals
+  type: http
+  seq: 33
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/proposals
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body)) {
+    throw new Error("Expected scheduling proposals list.");
+  }
+  
+  const counterpartUserId = bru.getEnvVar("counterpartUserId");
+  if (counterpartUserId) {
+    const androidProposal = body.find((proposal) => proposal.userId !== counterpartUserId);
+    const counterpartProposal = body.find((proposal) => proposal.userId === counterpartUserId);
+  
+    if (androidProposal) {
+      bru.setEnvVar("proposalAId", androidProposal.id);
+    }
+    if (counterpartProposal) {
+      bru.setEnvVar("proposalBId", counterpartProposal.id);
+    }
+  }
+}

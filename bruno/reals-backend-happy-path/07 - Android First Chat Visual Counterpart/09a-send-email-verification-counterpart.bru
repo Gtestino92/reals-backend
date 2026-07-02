@@ -1,0 +1,35 @@
+meta {
+  name: 09a Send Email Verification Counterpart
+  type: http
+  seq: 12
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "requestType": "VERIFY_EMAIL",
+    "idToken": "{{firebase_counterpart_id_token}}"
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected Firebase verification email request to return 200 OK, got ${status}.`);
+  }
+  
+  const body = res.getBody();
+  const expectedEmail = bru.getEnvVar("firebase_counterpart_email");
+  if (body && body.email && body.email !== expectedEmail) {
+    throw new Error(`Expected verification email target ${expectedEmail}, got ${body.email}`);
+  }
+}

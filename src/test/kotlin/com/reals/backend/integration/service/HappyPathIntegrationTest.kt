@@ -12,7 +12,6 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -74,8 +73,19 @@ class HappyPathIntegrationTest : BaseIT() {
 
         val connection = connectionRepository.findByMatchId(match.id)
             ?: error("Connection was not created")
-        assertEquals(ConnectionState.SCHEDULING_PHASE, connection.state)
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
         assertNoMatchLocks(userA, userB)
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+        schedulingService.initializeNegotiation(connection.id)
+
+        assertEquals(ConnectionState.SCHEDULING_PHASE, connectionService.findByIdOrThrow(connection.id).state)
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userA, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(userB, EngagementType.CONNECTION))
 
@@ -108,20 +118,6 @@ class HappyPathIntegrationTest : BaseIT() {
             connectionId = connection.id,
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
-
-        ScheduledSecondChatStartJob(
-            negotiationRepository = negotiationRepository,
-            connectionService = connectionService,
-            chatService = chatService
-        ).run()
-
-        assertEquals(ConnectionState.SECOND_CHAT_AVAILABLE, connectionService.findByIdOrThrow(connection.id).state)
-
-        val availableSecondChat = chatRepository.findByConnectionIdAndChatType(
-            connection.id,
-            ChatType.SECOND_CHAT
-        ) ?: error("Second chat was not made available")
-        assertEquals(ChatStatus.AVAILABLE, availableSecondChat.status)
 
         val secondChat = chatService.findVisibleSecondChatOrThrow(connection.id, userA)
         assertEquals(ChatStatus.ACTIVE, secondChat.status)

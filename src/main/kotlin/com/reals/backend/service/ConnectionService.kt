@@ -1,9 +1,11 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
+import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
-import com.reals.backend.repository.UserRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -15,14 +17,24 @@ import java.util.*
 @Transactional
 class ConnectionService(
     private val connectionRepository: ConnectionRepository,
+    private val chatRepository: ChatRepository,
+    private val dismissalRepository: ConnectionHomeDismissalRepository,
+    private val negotiationRepository: ScheduleNegotiationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
+    private val homeStateInvalidationService: HomeStateInvalidationService,
 
-    @param:Value("\${engagement.max-active-connections:2}")
+    @param:Value($$"${engagement.max-active-connections:2}")
     private val maxActiveConnections: Int,
 
-    @param:Value("\${scheduling.negotiation-duration-minutes:2880}")
-    private val negotiationDurationMinutes: Long
+    @param:Value($$"${scheduling.negotiation-duration-minutes:2880}")
+    private val negotiationDurationMinutes: Long,
+
+    @param:Value($$"${scheduling.activation-delay-minutes:5}")
+    private val schedulingActivationDelayMinutes: Long,
+
+    @param:Value($$"${chat.second-chat.duration-minutes:120}")
+    private val secondChatDurationMinutes: Long
 
 ) {
 
@@ -50,43 +62,79 @@ class ConnectionService(
     }
 
     /**
-     * Creates a Connection after MatchState = VISUAL_APPROVED.
-     * Validates that neither user exceeds maxActiveConnections before creating
-     * Upgrades ActiveEngagementLock type from MATCH to CONNECTION.
+     * Creates an internal pending Connection after MatchState = VISUAL_APPROVED.
+     * The pending connection counts as active immediately by creating CONNECTION
+     * locks, while the actionable scheduling phase is activated later.
      */
     fun createFromMatch(match: Match): Connection {
 
-        connectionRepository.findByMatchId(match.id)?.let { return it }
-
-        userService.lockActiveUsersOrThrow(listOf(match.userAId, match.userBId),
-            "Cannot create connection: one or more users were not found")
-
-        checkConnectionLimit(match.userAId)
-        checkConnectionLimit(match.userBId)
+        connectionRepository.findByMatchId(match.id)?.let { existing ->
+            ensureConnectionLocks(existing)
+            return existing
+        }
+        val now = OffsetDateTime.now()
+        val schedulingAvailableAt = now.plusMinutes(schedulingActivationDelayMinutes)
 
         val connection = connectionRepository.save(
             Connection(
                 matchId = match.id,
                 userAId = match.userAId,
                 userBId = match.userBId,
-                schedulingExpiresAt = OffsetDateTime.now()
-                    .plusMinutes(negotiationDurationMinutes)
+                state = ConnectionState.SCHEDULING_PENDING,
+                schedulingAvailableAt = schedulingAvailableAt,
+                schedulingExpiresAt = schedulingAvailableAt.plusMinutes(negotiationDurationMinutes)
             )
         )
 
-        upgradeLock(
-            userId = match.userAId,
-            oldEngagementId = match.id,
-            newEngagementId = connection.id
-        )
-
-        upgradeLock(
-            userId = match.userBId,
-            oldEngagementId = match.id,
-            newEngagementId = connection.id
+        ensureConnectionLocks(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = connection.userAId,
+            userBId = connection.userBId,
+            reason = "connection_created"
         )
 
         return connection
+    }
+
+    /**
+     * Enables scheduling when the deferred availability time has arrived.
+     * Idempotent so a job retry can safely continue to negotiation initialization.
+     */
+    fun activateScheduling(connectionId: UUID): Connection {
+
+        val connection = findByIdOrThrow(connectionId)
+
+        if (connection.state == ConnectionState.SCHEDULING_PHASE) {
+            ensureConnectionLocks(connection)
+            return connection
+        }
+
+        check(connection.state == ConnectionState.SCHEDULING_PENDING) {
+            "Cannot activate scheduling: connection is in state ${connection.state}"
+        }
+
+        val now = OffsetDateTime.now()
+        val availableAt = checkNotNull(connection.schedulingAvailableAt) {
+            "Cannot activate scheduling: schedulingAvailableAt is not set"
+        }
+
+        check(!availableAt.isAfter(now)) {
+            "Cannot activate scheduling before $availableAt"
+        }
+
+        ensureConnectionLocks(connection)
+
+        connection.state = ConnectionState.SCHEDULING_PHASE
+        connection.schedulingExpiresAt = now.plusMinutes(negotiationDurationMinutes)
+        connection.updatedAt = now
+
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "scheduling_available"
+        )
+        return saved
     }
 
     private fun checkConnectionLimit(userId: UUID) {
@@ -110,18 +158,42 @@ class ConnectionService(
         }
     }
 
-    private fun upgradeLock(
-        userId: UUID,
-        oldEngagementId: UUID,
-        newEngagementId: UUID
-    ) {
+    private fun ensureConnectionLocks(connection: Connection) {
+        userService.lockActiveUsersOrThrow(
+            listOf(connection.userAId, connection.userBId),
+            "Cannot activate scheduling: one or more users were not found"
+        )
 
-        lockRepository.deleteByEngagementId(oldEngagementId)
+        ensureConnectionLock(
+            userId = connection.userAId,
+            connectionId = connection.id
+        )
+        ensureConnectionLock(
+            userId = connection.userBId,
+            connectionId = connection.id
+        )
+    }
+
+    private fun ensureConnectionLock(
+        userId: UUID,
+        connectionId: UUID
+    ) {
+        if (
+            lockRepository.existsByUserIdAndEngagementIdAndEngagementType(
+                userId = userId,
+                engagementId = connectionId,
+                engagementType = EngagementType.CONNECTION
+            )
+        ) {
+            return
+        }
+
+        checkConnectionLimit(userId)
 
         lockRepository.save(
             ActiveEngagementLock(
                 userId = userId,
-                engagementId = newEngagementId,
+                engagementId = connectionId,
                 engagementType = EngagementType.CONNECTION
             )
         )
@@ -146,7 +218,13 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT_SCHEDULED
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_scheduled"
+        )
+        return saved
     }
 
     /**
@@ -168,7 +246,13 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT_AVAILABLE
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_available"
+        )
+        return saved
     }
 
     /**
@@ -190,21 +274,28 @@ class ConnectionService(
         connection.state = ConnectionState.SECOND_CHAT
         connection.updatedAt = OffsetDateTime.now()
 
-        return connectionRepository.save(connection)
+        val saved = connectionRepository.save(connection)
+        homeStateInvalidationService.bumpBoth(
+            userAId = saved.userAId,
+            userBId = saved.userBId,
+            reason = "second_chat_entered"
+        )
+        return saved
     }
 
     /**
      * Closes a Connection and releases both user locks.
      */
-    fun closeConnection(connectionId: UUID) {
+    fun closeConnection(connectionId: UUID): Boolean {
 
         val connection = findByIdOrThrow(connectionId)
 
         if (connection.state == ConnectionState.CLOSED) {
-            return
+            return false
         }
 
         check(
+            connection.state == ConnectionState.SCHEDULING_PENDING ||
             connection.state == ConnectionState.SCHEDULING_PHASE ||
             connection.state == ConnectionState.SECOND_CHAT_SCHEDULED ||
             connection.state == ConnectionState.SECOND_CHAT_AVAILABLE ||
@@ -219,5 +310,89 @@ class ConnectionService(
         connectionRepository.save(connection)
 
         lockRepository.deleteByEngagementId(connection.id)
+        homeStateInvalidationService.bumpBoth(
+            userAId = connection.userAId,
+            userBId = connection.userBId,
+            reason = "connection_closed"
+        )
+
+        return true
+    }
+
+    fun dismissSecondChatFromHome(
+        connectionId: UUID,
+        userId: UUID
+    ): ConnectionHomeDismissal {
+        val connection =
+            findByIdForUserOrThrow(
+                connectionId = connectionId,
+                userId = userId
+            )
+
+        val existing =
+            dismissalRepository.findByUserIdAndConnectionId(
+                userId = userId,
+                connectionId = connectionId
+            )
+
+        if (existing != null) {
+            return existing
+        }
+
+        check(isSecondChatDismissible(connection)) {
+            "Second chat for connection $connectionId is still actionable"
+        }
+
+        val dismissal = dismissalRepository.save(
+            ConnectionHomeDismissal(
+                userId = userId,
+                connectionId = connectionId
+            )
+        )
+        homeStateInvalidationService.bump(
+            userId = userId,
+            reason = "connection_home_dismissed"
+        )
+        return dismissal
+    }
+
+    private fun isSecondChatDismissible(connection: Connection): Boolean {
+        if (connection.state == ConnectionState.CLOSED) {
+            return true
+        }
+
+        val now = OffsetDateTime.now()
+        val secondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId = connection.id,
+                chatType = ChatType.SECOND_CHAT
+            )
+
+        return when (connection.state) {
+            ConnectionState.SECOND_CHAT_SCHEDULED ->
+                secondChat == null &&
+                    negotiationRepository.findByConnectionId(connection.id)
+                        ?.confirmedDateTime
+                        ?.plusMinutes(secondChatDurationMinutes)
+                        ?.let { !it.isAfter(now) } == true
+
+            ConnectionState.SECOND_CHAT_AVAILABLE ->
+                secondChat != null &&
+                    secondChat.status == ChatStatus.AVAILABLE &&
+                    !secondChat.timeoutAt.isAfter(now)
+
+            ConnectionState.SECOND_CHAT ->
+                when (secondChat?.status) {
+                    ChatStatus.EXPIRED,
+                    ChatStatus.CLOSED -> true
+                    ChatStatus.AVAILABLE,
+                    ChatStatus.ACTIVE -> !secondChat.timeoutAt.isAfter(now)
+                    else -> false
+                }
+
+            ConnectionState.SCHEDULING_PENDING,
+            ConnectionState.SCHEDULING_PHASE,
+            ConnectionState.CLOSED -> false
+        }
     }
 }

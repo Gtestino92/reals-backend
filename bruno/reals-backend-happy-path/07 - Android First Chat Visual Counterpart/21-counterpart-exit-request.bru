@@ -1,0 +1,34 @@
+meta {
+  name: 21 Counterpart Exit Request
+  type: http
+  seq: 25
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/exit-requests
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "reason": "NO_LONGER_INTERESTED",
+    "details": null
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.type !== "MUTUAL_CANCEL") {
+    throw new Error(`Expected MUTUAL_CANCEL, got ${body.type}`);
+  }
+  if (body.status !== "PENDING") {
+    throw new Error(`Expected cancellation request PENDING, got ${body.status}`);
+  }
+  bru.setEnvVar("counterpartExitRequestId", body.id);
+}

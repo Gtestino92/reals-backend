@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.MatchmakingQueueEntry
+import com.reals.backend.domain.QueueStatus
 import com.reals.backend.repository.projection.MatchmakingCandidatePairProjection
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -16,6 +17,10 @@ interface MatchmakingQueueRepository :
     fun findByUserId(userId: UUID): MatchmakingQueueEntry?
 
     fun deleteByUserId(userId: UUID)
+
+    fun countByStatus(status: QueueStatus): Long
+
+    fun findFirstByStatusOrderByEnteredAtAsc(status: QueueStatus): MatchmakingQueueEntry?
 
     @Query(
         value = """
@@ -44,6 +49,29 @@ interface MatchmakingQueueRepository :
         WHERE qa.status = 'WAITING'
             AND ua.status = 'ACTIVE'
             AND ub.status = 'ACTIVE'
+            AND NOT EXISTS (
+                SELECT 1
+                FROM penalties p
+                WHERE p.user_id = qa.user_id
+                    AND p.active = true
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM penalties p
+                WHERE p.user_id = qb.user_id
+                    AND p.active = true
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM user_blocks ub
+                WHERE (
+                    ub.blocker_user_id = qa.user_id
+                    AND ub.blocked_user_id = qb.user_id
+                ) OR (
+                    ub.blocker_user_id = qb.user_id
+                    AND ub.blocked_user_id = qa.user_id
+                )
+            )
             AND pa.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
             AND pa.intention = pb.intention

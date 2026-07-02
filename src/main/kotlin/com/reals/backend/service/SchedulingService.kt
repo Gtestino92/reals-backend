@@ -1,11 +1,16 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainNotFoundException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
@@ -32,13 +37,30 @@ class SchedulingService(
 
     fun findNegotiationOrThrow(connectionId: UUID): ScheduleNegotiation {
         return negotiationRepository.findByConnectionId(connectionId)
-            ?: throw NoSuchElementException(
-                "ScheduleNegotiation not found for connection: $connectionId"
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.SCHEDULING_NEGOTIATION_NOT_FOUND,
+                message = "Scheduling negotiation was not found"
             )
     }
 
     fun findNegotiationOrNull(connectionId: UUID): ScheduleNegotiation? =
         negotiationRepository.findByConnectionId(connectionId)
+
+    /**
+     * Atomically activates scheduling and creates the negotiation row. This keeps
+     * the scheduler retry-safe if a previous run reached SCHEDULING_PHASE before
+     * negotiation initialization completed.
+     */
+    fun activateSchedulingAndInitializeNegotiation(connectionId: UUID): ScheduleNegotiation {
+        val connection =
+            connectionService.activateScheduling(
+                connectionId = connectionId
+            )
+
+        return initializeNegotiation(
+            connectionId = connection.id
+        )
+    }
 
     /**
      * Initializes the negotiation when a Connection enters SCHEDULING_PHASE.
@@ -47,6 +69,11 @@ class SchedulingService(
     fun initializeNegotiation(connectionId: UUID): ScheduleNegotiation {
 
         negotiationRepository.findByConnectionId(connectionId)?.let { return it }
+
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        if (connection.state != ConnectionState.SCHEDULING_PHASE) {
+            throw schedulingNotAvailable()
+        }
 
         return negotiationRepository.save(
             ScheduleNegotiation(
@@ -72,30 +99,34 @@ class SchedulingService(
 
         val negotiation = findNegotiationOrThrow(connectionId)
 
-        check(negotiation.status == NegotiationStatus.PENDING) {
-            "Cannot add proposal: negotiation is ${negotiation.status}"
+        if (negotiation.status != NegotiationStatus.PENDING) {
+            throw schedulingNotAvailable()
         }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
-        check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
-            "Cannot add proposal: scheduling phase for connection $connectionId has expired"
+        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+            throw schedulingExpired()
         }
 
         validateProposalSlots(proposedDateTimes)
 
-        check(
-            !proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+        if (
+            proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
                 connectionId,
                 userId,
                 negotiation.roundNumber
             )
         ) {
-            "User $userId has already submitted proposals for round ${negotiation.roundNumber}."
+            throw DomainConflictException(
+                code = DomainErrorCode.SCHEDULING_PROPOSALS_ALREADY_SUBMITTED,
+                message = "Scheduling proposals were already submitted for this round"
+            )
         }
 
         val proposals = proposedDateTimes.mapIndexed { index, proposedDateTime ->
@@ -196,18 +227,25 @@ class SchedulingService(
 
         val proposal = proposalRepository.findById(proposalId)
             .orElseThrow {
-                NoSuchElementException("Proposal not found: $proposalId")
+                DomainNotFoundException(
+                    code = DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE,
+                    message = "Scheduling proposal was not found"
+                )
             }
 
-        check(proposal.status == ProposalStatus.PENDING) {
-            "Proposal $proposalId is not PENDING (current: ${proposal.status})"
+        if (proposal.status != ProposalStatus.PENDING) {
+            throw proposalNotAvailable()
         }
 
-        check(proposal.userId != acceptorUserId) {
-            "User $acceptorUserId cannot accept their own proposal"
+        if (proposal.userId == acceptorUserId) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL,
+                message = "Users cannot accept their own scheduling proposal"
+            )
         }
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
             throw AccessDeniedException(
@@ -215,18 +253,18 @@ class SchedulingService(
             )
         }
 
-        check(OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
-            "Cannot accept proposal: scheduling phase for connection ${proposal.connectionId} has expired"
+        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+            throw schedulingExpired()
         }
 
         val negotiation = findNegotiationOrThrow(proposal.connectionId)
 
-        check(negotiation.status == NegotiationStatus.PENDING) {
-            "Cannot accept proposal: negotiation is ${negotiation.status}"
+        if (negotiation.status != NegotiationStatus.PENDING) {
+            throw proposalNotAvailable()
         }
 
-        check(proposal.roundNumber == negotiation.roundNumber) {
-            "Proposal $proposalId belongs to round ${proposal.roundNumber}, current round is ${negotiation.roundNumber}"
+        if (proposal.roundNumber != negotiation.roundNumber) {
+            throw proposalNotAvailable()
         }
 
         val pending =
@@ -260,14 +298,19 @@ class SchedulingService(
 
         val negotiation = findNegotiationOrThrow(connectionId)
 
-        check(negotiation.status == NegotiationStatus.PENDING) {
-            "Cannot reject round: negotiation is ${negotiation.status}"
+        if (negotiation.status != NegotiationStatus.PENDING) {
+            throw roundNotRejectable()
         }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
+        }
+
+        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+            throw schedulingExpired()
         }
 
         val currentRoundProposals =
@@ -282,11 +325,11 @@ class SchedulingService(
                 .map { it.userId }
                 .toSet()
 
-        check(
-            usersWithPendingProposals.contains(connection.userAId) &&
-                usersWithPendingProposals.contains(connection.userBId)
+        if (
+            !usersWithPendingProposals.contains(connection.userAId) ||
+            !usersWithPendingProposals.contains(connection.userBId)
         ) {
-            "Cannot reject round ${negotiation.roundNumber}: both users must submit proposals first"
+            throw roundNotRejectable()
         }
 
         currentRoundProposals
@@ -319,10 +362,13 @@ class SchedulingService(
      * Marks a PENDING negotiation as FAILED and closes its Connection.
      * Called by SchedulingNegotiationTimeoutJob when Connection.schedulingExpiresAt is past.
      */
-    fun expireNegotiation(connectionId: UUID) {
+    fun expireNegotiation(connectionId: UUID): Boolean {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        if (connection.state != ConnectionState.SCHEDULING_PHASE) {
+            return false
+        }
 
         val negotiation = findNegotiationOrNull(connectionId)
-
         if (negotiation != null && negotiation.status == NegotiationStatus.PENDING) {
             negotiation.status = NegotiationStatus.FAILED
             negotiation.updatedAt = OffsetDateTime.now()
@@ -330,7 +376,7 @@ class SchedulingService(
             negotiationRepository.save(negotiation)
         }
 
-        connectionService.closeConnection(connectionId)
+        return connectionService.closeConnection(connectionId)
     }
 
     // -------------------------------------------------------------------------
@@ -369,31 +415,67 @@ class SchedulingService(
         connectionService.transitionToSecondChatScheduled(connectionId)
     }
 
+    private fun requireSchedulingPhase(state: ConnectionState) {
+        if (state != ConnectionState.SCHEDULING_PHASE) {
+            throw schedulingNotAvailable()
+        }
+    }
+
     private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {
-        check(proposedDateTimes.size in 1..maxProposalsPerRound) {
-            "Proposal list must contain between 1 and $maxProposalsPerRound date/times"
+        if (proposedDateTimes.size !in 1..maxProposalsPerRound) {
+            throw invalidProposals()
         }
 
         val uniqueInstants = proposedDateTimes.map { it.toInstant() }.toSet()
 
-        check(uniqueInstants.size == proposedDateTimes.size) {
-            "Proposal list cannot contain duplicate date/times"
+        if (uniqueInstants.size != proposedDateTimes.size) {
+            throw invalidProposals()
         }
 
         proposedDateTimes.forEach { proposedDateTime ->
-            check(proposedDateTime.isAfter(OffsetDateTime.now())) {
-                "Proposed date/time must be in the future"
+            if (!proposedDateTime.isAfter(OffsetDateTime.now())) {
+                throw invalidProposals()
             }
 
-            check(
-                (proposedDateTime.minute == 0 || proposedDateTime.minute == 30) &&
-                    proposedDateTime.second == 0 &&
-                    proposedDateTime.nano == 0
+            if (
+                (proposedDateTime.minute != 0 && proposedDateTime.minute != 30) ||
+                proposedDateTime.second != 0 ||
+                proposedDateTime.nano != 0
             ) {
-                "Proposed date/time must be aligned to a half-hour boundary"
+                throw invalidProposals()
             }
         }
     }
+
+    private fun schedulingNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SCHEDULING_NOT_AVAILABLE,
+            message = "Scheduling is not available"
+        )
+
+    private fun schedulingExpired(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SCHEDULING_EXPIRED,
+            message = "Scheduling has expired"
+        )
+
+    private fun invalidProposals(): DomainBadRequestException =
+        DomainBadRequestException(
+            code = DomainErrorCode.SCHEDULING_INVALID_PROPOSALS,
+            message = "Scheduling proposals are invalid"
+        )
+
+    private fun proposalNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE,
+            message = "Scheduling proposal is not available"
+        )
+
+    private fun roundNotRejectable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SCHEDULING_ROUND_NOT_REJECTABLE,
+            message = "Scheduling round is not rejectable"
+        )
 
     private data class AgreedSlotCandidate(
         val proposalA: ScheduleProposal,

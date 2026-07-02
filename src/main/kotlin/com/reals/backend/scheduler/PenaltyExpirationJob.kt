@@ -17,22 +17,50 @@ class PenaltyExpirationJob(
         fixedDelayString =
             "\${scheduler.penalty-expiration-job.fixed-delay}"
     )
-    @SchedulerLock(name = "PenaltyExpirationJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT2M")
+    @SchedulerLock(name = "PenaltyExpirationJob", lockAtLeastFor = "PT30s", lockAtMostFor = "PT5M")
     fun run() {
+        processExpiredPenalties()
+    }
+
+    internal fun processExpiredPenalties(): JobRunSummary {
         val startedAt = System.nanoTime()
         log.debug("PenaltyExpirationJob triggered")
 
-        val expiredCount = penaltyService.expireOverduePenalties()
+        val expired = penaltyService.findExpiredActivePenalties()
+        var succeeded = 0
+        var skipped = 0
+        var failed = 0
+
+        expired.forEach { penalty ->
+            try {
+                if (penaltyService.expireOverduePenalty(penalty.id)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "PenaltyExpirationJob - failed to expire penalty={}",
+                    penalty.id,
+                    ex
+                )
+            }
+        }
+
+        val summary = JobRunSummary(
+            processed = expired.size,
+            succeeded = succeeded,
+            skipped = skipped,
+            failed = failed
+        )
 
         log.logJobSummary(
             jobName = "PenaltyExpirationJob",
-            summary = JobRunSummary(
-                processed = expiredCount,
-                succeeded = expiredCount,
-                skipped = 0,
-                failed = 0
-            ),
+            summary = summary,
             startedAt = startedAt
         )
+
+        return summary
     }
 }

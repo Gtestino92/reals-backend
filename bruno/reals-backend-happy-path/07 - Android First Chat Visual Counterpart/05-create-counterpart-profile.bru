@@ -1,0 +1,49 @@
+meta {
+  name: 05 Create Counterpart Profile
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:json {
+  {
+    "displayName": "Juls",
+    "birthDate": "1995-05-10",
+    "gender": "MALE",
+    "lookingForGender": "WOMEN",
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "country": "AR",
+    "bio": "Yo",
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  const body = res.getBody();
+  
+  if (status === 409 && body && body.code === "PROFILE_ALREADY_EXISTS") {
+    throw new Error("Counterpart profile already exists for this Firebase user. Use GET /api/me/profile to recover counterpartProfileId, or use a fresh firebase_counterpart_email.");
+  }
+  
+  if (!body || !body.id) {
+    throw new Error(
+      `Expected counterpart profile id. Got status ${status}, code ${body && body.code}, message ${body && body.message}. ` +
+      "If this is MALFORMED_REQUEST, check enum values: lookingForGender must be MEN, WOMEN, EVERYONE or OTHER."
+    );
+  }
+  bru.setEnvVar("counterpartProfileId", body.id);
+}

@@ -1,0 +1,32 @@
+meta {
+  name: 13 Counterpart Get Home
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/api/me/home
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  const pendingActions = body && body.pendingActions ? body.pendingActions : [];
+  if (!pendingActions[0]) {
+    throw new Error("Expected counterpart pending action in home response.");
+  }
+  
+  const action =
+    pendingActions.find((item) => item.type === "FIRST_CHAT" && item.matchId === bru.getEnvVar("counterpartMatchId")) ||
+    pendingActions.find((item) => item.type === "FIRST_CHAT") ||
+    pendingActions[0];
+  bru.setEnvVar("counterpartMatchId", action.matchId);
+  if (action.chatId) {
+    bru.setEnvVar("counterpartFirstChatId", action.chatId);
+  }
+}

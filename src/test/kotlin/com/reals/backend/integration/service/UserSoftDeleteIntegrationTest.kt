@@ -78,8 +78,8 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `delete user cancels available second chat and keeps historical chat visible`() {
-        val setup = createAvailableSecondChat()
+    fun `delete user cancels second chat and keeps historical chat visible`() {
+        val setup = createActiveSecondChat()
         val secondChat = chatRepository.findByConnectionIdAndChatType(
             connectionId = setup.connectionId,
             chatType = ChatType.SECOND_CHAT
@@ -186,6 +186,29 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
 
         val finalizedUser = userRepository.findById(user.id).orElseThrow()
         assertEquals(1, finalizedCount)
+        assertEquals(UserStatus.DELETED, finalizedUser.status)
+        assertEquals("deleted.${user.id}@deleted.reals.local", finalizedUser.email)
+        assertNull(finalizedUser.firebaseUid)
+        assertNull(finalizedUser.deletionFinalizesAt)
+        assertFalse(userService.finalizeRecoverableAccountDeletion(user.id))
+    }
+
+    @Test
+    fun `single account deletion finalization is idempotent`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-finalize-single-${UUID.randomUUID()}",
+            email = "finalize-single-${UUID.randomUUID()}@example.com"
+        )
+        userService.deleteUser(user.id)
+
+        val deletedUser = userRepository.findById(user.id).orElseThrow()
+        deletedUser.deletionFinalizesAt = OffsetDateTime.now().minusMinutes(1)
+        userRepository.saveAndFlush(deletedUser)
+
+        assertTrue(userService.finalizeRecoverableAccountDeletion(user.id))
+        assertFalse(userService.finalizeRecoverableAccountDeletion(user.id))
+
+        val finalizedUser = userRepository.findById(user.id).orElseThrow()
         assertEquals(UserStatus.DELETED, finalizedUser.status)
         assertEquals("deleted.${user.id}@deleted.reals.local", finalizedUser.email)
         assertNull(finalizedUser.firebaseUid)

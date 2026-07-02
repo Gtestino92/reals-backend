@@ -1,13 +1,16 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
-import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.validation.PlainText
+import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -21,32 +24,23 @@ import java.util.UUID
 
 data class UpdateProfileRequest(
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val displayName: String? = null,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val bio: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val city: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val country: String? = null,
 
     val intention: Intention? = null,
     val lookingForGender: LookingForGender? = null
-)
-
-data class ReplacePhotoRequest(
-    @field:NotBlank
-    @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://\\S+$")
-    val url: String,
-    val isPersonPhoto: Boolean? = null,
-    val isFullBody: Boolean? = null
 )
 
 data class UpdateMatchFiltersRequest(
@@ -63,10 +57,24 @@ data class UpdateMatchFiltersRequest(
     val maxDistanceKm: Int
 )
 
+data class ReorderProfilePhotosRequest(
+    @field:Valid
+    @field:Size(min = 1, max = 9)
+    val placements: List<PhotoPlacementRequest>
+)
+
+data class PhotoPlacementRequest(
+    val photoId: UUID,
+
+    @field:Min(1)
+    @field:Max(9)
+    val position: Int
+)
+
 data class CreateProfileRequest(
     @field:NotBlank
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val displayName: String,
 
     @field:Past
@@ -78,16 +86,16 @@ data class CreateProfileRequest(
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val city: String,
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val country: String,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val bio: String? = null,
 
     @field:Min(18)
@@ -103,19 +111,6 @@ data class CreateProfileRequest(
     val maxDistanceKm: Int
 )
 
-data class AddPhotoRequest(
-    @field:NotBlank
-    @field:Size(max = 512)
-    @field:Pattern(regexp = "^https://\\S+$")
-    val url: String,
-
-    @field:Min(1)
-    val position: Int,
-
-    val isPersonPhoto: Boolean? = null,
-    val isFullBody: Boolean? = null
-)
-
 data class ProfileResponse(
     val id: UUID,
     val userId: UUID,
@@ -123,6 +118,7 @@ data class ProfileResponse(
     val birthDate: LocalDate,
     val age: Int,
     val identityVerified: Boolean,
+    val identityVerificationStatus: IdentityVerificationStatus,
     val gender: Gender,
     val lookingForGender: LookingForGender,
     val intention: Intention,
@@ -148,6 +144,7 @@ data class ProfileResponse(
             birthDate = profile.birthDate,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             identityVerified = profile.identityVerified,
+            identityVerificationStatus = profile.identityVerificationStatus,
             gender = profile.gender,
             lookingForGender = profile.lookingForGender,
             intention = profile.intention,
@@ -166,25 +163,15 @@ data class ProfileResponse(
 }
 
 data class PhotoResponse(
-val id: UUID,
-val url: String,
-val position: Int,
-val isPersonPhoto: Boolean,
-val isFullBody: Boolean,
-val validationStatus: PhotoValidationStatus
+    val id: UUID,
+    val url: String,
+    val position: Int,
+    val isPersonPhoto: Boolean,
+    val isFullBody: Boolean,
+    val validationStatus: PhotoValidationStatus,
+    val moderationStatus: PhotoModerationStatus
 ) {
     companion object {
-        fun from(photo: ProfilePhoto): PhotoResponse {
-            return PhotoResponse(
-                id = photo.id,
-                url = photo.url,
-                position = photo.position,
-                isPersonPhoto = photo.isPersonPhoto,
-                isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
-            )
-        }
-
         fun from(
             photo: ProfilePhoto,
             url: String
@@ -195,7 +182,8 @@ val validationStatus: PhotoValidationStatus
                 position = photo.position,
                 isPersonPhoto = photo.isPersonPhoto,
                 isFullBody = photo.isFullBody,
-                validationStatus = photo.validationStatus
+                validationStatus = photo.validationStatus,
+                moderationStatus = photo.moderationStatus
             )
         }
     }
@@ -213,20 +201,33 @@ data class VisualProfileResponse(
     val displayName: String,
     val age: Int,
     val bio: String?,
-    val photos: List<PhotoResponse>
+    val photos: List<PhotoResponse>,
+    val myPersonalMessageSubmitted: Boolean,
+    val partnerPersonalMessageSubmitted: Boolean,
+    val partnerPersonalMessageRead: Boolean,
+    val decisionRequiresPartnerPersonalMessageRead: Boolean,
+    val visualExpiresAt: OffsetDateTime?
 ) {
     companion object {
         fun from(
             profile: Profile,
-            photos: List<ProfilePhoto>
+            photos: List<PhotoResponse>,
+            myPersonalMessageSubmitted: Boolean,
+            partnerPersonalMessageSubmitted: Boolean,
+            partnerPersonalMessageRead: Boolean,
+            decisionRequiresPartnerPersonalMessageRead: Boolean,
+            visualExpiresAt: OffsetDateTime?
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
-            photos = photos
-                .sortedBy { it.position }
-                .map { PhotoResponse.from(it) }
+            photos = photos.sortedBy { it.position },
+            myPersonalMessageSubmitted = myPersonalMessageSubmitted,
+            partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
+            partnerPersonalMessageRead = partnerPersonalMessageRead,
+            decisionRequiresPartnerPersonalMessageRead = decisionRequiresPartnerPersonalMessageRead,
+            visualExpiresAt = visualExpiresAt
         )
     }
 }

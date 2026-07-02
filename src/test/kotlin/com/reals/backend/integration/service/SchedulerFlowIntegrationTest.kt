@@ -1,30 +1,46 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.config.MatchmakingJobProperties
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.PushDeliveryStatus
+import com.reals.backend.domain.PushNotificationType
+import com.reals.backend.domain.PushPlatform
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.MatchmakingJob
 import com.reals.backend.scheduler.MatchExpirationJob
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
+import com.reals.backend.scheduler.SecondChatLifecycleJob
+import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
+import com.reals.backend.service.notification.SchedulingAvailableNotificationService
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class SchedulerFlowIntegrationTest : BaseIT() {
+
+    @Autowired
+    private lateinit var schedulingAvailableNotificationService: SchedulingAvailableNotificationService
 
     @Test
     fun `matchmaking job creates match and first chat from queued users`() {
@@ -46,7 +62,10 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         MatchmakingJob(
             matchmakingProcessorService = matchmakingProcessorService,
-            maxPairsPerRun = 5
+            properties = MatchmakingJobProperties(
+                fixedDelay = 60000,
+                maxPairsPerRun = 5
+            )
         ).run()
 
         val match =
@@ -100,6 +119,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         ChatTimeoutJob(chatService).run()
 
         assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.firstChatId).status)
+        assertEquals(ChatEndReason.ABSOLUTE_TIMEOUT, chatService.findByIdOrThrow(setup.firstChatId).endedReason)
         assertEquals(MatchState.EXPIRED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNoMatchLocks(setup.userAId, setup.userBId)
     }
@@ -168,7 +188,88 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `scheduled second chat job makes due second chat available before activation`() {
+    fun `scheduling activation job enables due pending connection`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+        assertNull(schedulingService.findNegotiationOrNull(connection.id))
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-job-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-job-token-b", PushPlatform.ANDROID)
+
+        SchedulingActivationJob(
+            connectionRepository = connectionRepository,
+            schedulingService = schedulingService,
+            schedulingAvailableNotificationService = schedulingAvailableNotificationService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        val deliveries =
+            pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+                notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
+                aggregateId = connection.id
+            )
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `scheduling activation job initializes missing negotiation for already activated connection`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNull(schedulingService.findNegotiationOrNull(connection.id))
+
+        SchedulingActivationJob(
+            connectionRepository = connectionRepository,
+            schedulingService = schedulingService,
+            schedulingAvailableNotificationService = schedulingAvailableNotificationService
+        ).run()
+
+        assertEquals(
+            ConnectionState.SCHEDULING_PHASE,
+            connectionRepository.findById(connection.id).orElseThrow().state
+        )
+        assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `get second chat materializes active chat when scheduled window is open`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
 
@@ -197,28 +298,11 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
 
-        ScheduledSecondChatStartJob(
-            negotiationRepository = negotiationRepository,
-            connectionService = connectionService,
-            chatService = chatService
-        ).run()
-
-        assertEquals(
-            ConnectionState.SECOND_CHAT_AVAILABLE,
-            connectionRepository.findById(setup.connectionId).orElseThrow().state
-        )
-        assertEquals(
-            ChatStatus.AVAILABLE,
-            chatRepository.findByConnectionIdAndChatType(
-                setup.connectionId,
-                ChatType.SECOND_CHAT
-            )?.status
-        )
         assertNull(
             chatRepository.findByConnectionIdAndChatType(
                 setup.connectionId,
                 ChatType.SECOND_CHAT
-            )?.activatedAt
+            )
         )
 
         val activeChat =
@@ -230,32 +314,121 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         assertEquals(ChatStatus.ACTIVE, activeChat.status)
         assertNotNull(activeChat.activatedAt)
         assertEquals(
+            activeChat.availableAt?.plusMinutes(120)?.toInstant(),
+            activeChat.timeoutAt.toInstant()
+        )
+        assertEquals(
             ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+
+        val repeated =
+            chatService.findVisibleSecondChatOrThrow(
+                setup.connectionId,
+                setup.userBId
+            )
+        assertEquals(activeChat.id, repeated.id)
+        assertEquals(
+            1,
+            chatRepository.findAll().count {
+                it.connectionId == setup.connectionId && it.chatType == ChatType.SECOND_CHAT
+            }
+        )
+    }
+
+    @Test
+    fun `get second chat fails before confirmed time without creating chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot
+        )
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTime = slot
+        )
+
+        val confirmedDateTime = OffsetDateTime.now().plusMinutes(1)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime
+        )
+
+        val error =
+            assertThrows(DomainConflictException::class.java) {
+                chatService.findVisibleSecondChatOrThrow(
+                    connectionId = setup.connectionId,
+                    userId = setup.userAId
+                )
+            }
+
+        assertEquals(DomainErrorCode.SECOND_CHAT_NOT_AVAILABLE_YET, error.code)
+        assertNull(
+            chatRepository.findByConnectionIdAndChatType(
+                setup.connectionId,
+                ChatType.SECOND_CHAT
+            )
+        )
+        assertEquals(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
     }
 
     @Test
-    fun `sending first message activates available second chat`() {
-        val setup = createAvailableSecondChat()
-        val availableChat = chatRepository.findByConnectionIdAndChatType(
-            setup.connectionId,
-            ChatType.SECOND_CHAT
-        ) ?: error("Second chat was not made available")
+    fun `get second chat fails after scheduled window expired without creating chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
 
-        assertEquals(ChatStatus.AVAILABLE, availableChat.status)
-        assertEquals(
-            ConnectionState.SECOND_CHAT_AVAILABLE,
-            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot
+        )
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTime = slot
         )
 
+        val confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = confirmedDateTime
+        )
+
+        val error =
+            assertThrows(DomainConflictException::class.java) {
+                chatService.findVisibleSecondChatOrThrow(
+                    connectionId = setup.connectionId,
+                    userId = setup.userAId
+                )
+            }
+
+        assertEquals(DomainErrorCode.SECOND_CHAT_EXPIRED, error.code)
+        assertNull(
+            chatRepository.findByConnectionIdAndChatType(
+                setup.connectionId,
+                ChatType.SECOND_CHAT
+            )
+        )
+    }
+
+    @Test
+    fun `sending first message keeps materialized second chat active`() {
+        val setup = createActiveSecondChat()
+
         chatService.sendMessage(
-            chatId = availableChat.id,
+            chatId = setup.secondChatId,
             senderId = setup.userAId,
             content = "Activo el segundo chat con el primer mensaje"
         )
 
-        val activeChat = chatService.findByIdOrThrow(availableChat.id)
+        val activeChat = chatService.findByIdOrThrow(setup.secondChatId)
         assertEquals(ChatStatus.ACTIVE, activeChat.status)
         assertNotNull(activeChat.activatedAt)
         assertEquals(
@@ -265,7 +438,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `expired second chat is not visible by connection`() {
+    fun `chat timeout job ignores active second chat`() {
         val setup = createActiveSecondChat()
 
         chatRepository.updateTimeoutAt(
@@ -275,17 +448,111 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         ChatTimeoutJob(chatService).runNowForDev()
 
-        assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.secondChatId).orElseThrow().status)
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+    }
+
+    @Test
+    fun `second chat lifecycle job expires active second chat to read only without closing connection`() {
+        val setup = createActiveSecondChat()
+        chatService.sendMessage(setup.secondChatId, setup.userAId, "Mensaje para conservar")
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+
+        secondChatLifecycleJob().runNowForDev()
+
+        val secondChat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        assertEquals(ChatStatus.EXPIRED, secondChat.status)
+        assertEquals(ChatEndReason.ABSOLUTE_TIMEOUT, secondChat.endedReason)
+        assertNotNull(secondChat.endedAt)
+        assertNotNull(secondChat.readOnlyUntil)
+        assertTrue(secondChat.readOnlyUntil!!.isAfter(OffsetDateTime.now()))
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+        assertEquals(1, chatService.getMessages(setup.secondChatId, setup.userAId).size)
+        val sendError = assertThrows(DomainConflictException::class.java) {
+            chatService.sendMessage(setup.secondChatId, setup.userAId, "No deberia enviarse")
+        }
+        assertEquals(DomainErrorCode.CHAT_EXPIRED, sendError.code)
+    }
+
+    @Test
+    fun `second chat lifecycle job closes read only second chat after retention`() {
+        val setup = createActiveSecondChat()
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        secondChatLifecycleJob().runNowForDev()
+
+        chatRepository.updateReadOnlyUntil(
+            chatId = setup.secondChatId,
+            readOnlyUntil = OffsetDateTime.now().minusSeconds(1)
+        )
+        secondChatLifecycleJob().runNowForDev()
+
+        val secondChat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        assertEquals(ChatStatus.CLOSED, secondChat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED, secondChat.endedReason)
         assertEquals(
             ConnectionState.CLOSED,
             connectionRepository.findById(setup.connectionId).orElseThrow().state
         )
-
-        kotlin.test.assertFailsWith<IllegalStateException> {
-            chatService.findVisibleSecondChatOrThrow(
-                connectionId = setup.connectionId,
-                userId = setup.userAId
-            )
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        val readError = assertThrows(DomainConflictException::class.java) {
+            chatService.getMessages(setup.secondChatId, setup.userAId)
         }
+        assertEquals(DomainErrorCode.CHAT_NOT_AVAILABLE, readError.code)
     }
+
+    @Test
+    fun `second chat lifecycle job closes expired scheduled window without chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot
+        )
+        schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            proposedDateTime = slot
+        )
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        )
+
+        secondChatLifecycleJob().runNowForDev()
+
+        assertEquals(
+            ConnectionState.CLOSED,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+        assertNull(
+            chatRepository.findByConnectionIdAndChatType(
+                setup.connectionId,
+                ChatType.SECOND_CHAT
+            )
+        )
+        assertNoConnectionLocks(setup.userAId, setup.userBId)
+    }
+
+    private fun secondChatLifecycleJob(): SecondChatLifecycleJob =
+        SecondChatLifecycleJob(
+            chatService = chatService,
+            negotiationRepository = negotiationRepository
+        )
 }

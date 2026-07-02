@@ -16,7 +16,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres")
+@Profile("local", "local-nodb", "local-postgres", "local-firebase")
 @RequestMapping("/api/local-dev/timeouts")
 class DevTimeoutController(
     private val chatRepository: ChatRepository,
@@ -39,6 +39,25 @@ class DevTimeoutController(
         return ResponseEntity.ok(
             DevTimeoutMutationResponse(
                 target = "chat",
+                id = chatId,
+                expiresAt = expiresAt
+            )
+        )
+    }
+
+    @PostMapping("/chats/{chatId}/read-only-expire-now")
+    @Transactional
+    fun expireChatReadOnlyNow(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val expiresAt = OffsetDateTime.now().minusSeconds(1)
+        requireUpdated(
+            updated = chatRepository.updateReadOnlyUntil(chatId, expiresAt),
+            message = "Chat not found: $chatId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "chat-read-only",
                 id = chatId,
                 expiresAt = expiresAt
             )
@@ -83,9 +102,28 @@ class DevTimeoutController(
         )
     }
 
-    @PostMapping("/connections/{connectionId}/second-chat-start-now")
+    @PostMapping("/connections/{connectionId}/scheduling-available-now")
     @Transactional
-    fun startSecondChatNow(
+    fun makeSchedulingAvailableNow(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val availableAt = OffsetDateTime.now().minusSeconds(1)
+        requireUpdated(
+            updated = connectionRepository.updateSchedulingAvailableAt(connectionId, availableAt),
+            message = "Connection not found: $connectionId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "connection-scheduling-availability",
+                id = connectionId,
+                expiresAt = availableAt
+            )
+        )
+    }
+
+    @PostMapping("/connections/{connectionId}/second-chat-available-now")
+    @Transactional
+    fun makeSecondChatAvailableNow(
         @PathVariable connectionId: UUID
     ): ResponseEntity<DevTimeoutMutationResponse> {
         val startsAt = OffsetDateTime.now().minusSeconds(1)

@@ -1,0 +1,42 @@
+meta {
+  name: 01 Sign Up Firebase Counterpart
+  type: http
+  seq: 2
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+params:query {
+  key: {{firebase_api_key}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_counterpart_email}}",
+    "password": "{{firebase_counterpart_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-up response with idToken, localId and email.");
+  }
+  
+  const expectedEmail = bru.getEnvVar("firebase_counterpart_email");
+  if (body.email !== expectedEmail) {
+    throw new Error(`Expected Firebase counterpart email ${expectedEmail}, got ${body.email}`);
+  }
+  
+  bru.setEnvVar("firebase_counterpart_id_token", body.idToken);
+  bru.setEnvVar("firebase_counterpart_uid", body.localId);
+}

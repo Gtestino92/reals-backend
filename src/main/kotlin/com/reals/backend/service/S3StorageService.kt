@@ -44,7 +44,6 @@ class S3StorageService(
             StoredObject(
                 bucket = properties.bucket,
                 key = key,
-                url = getReadUrl(key),
                 contentType = normalizedContentType,
                 sizeBytes = bytes.size.toLong()
             )
@@ -62,7 +61,7 @@ class S3StorageService(
 
             s3Client.deleteObject(request)
         } catch (ex: Exception) {
-            throw ObjectStorageException("Could not delete object from storage: $key", ex)
+            throw ObjectStorageException("Could not delete object from storage", ex)
         }
     }
 

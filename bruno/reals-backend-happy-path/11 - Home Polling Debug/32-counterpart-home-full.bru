@@ -1,0 +1,26 @@
+meta {
+  name: 32 Counterpart Home Full
+  type: http
+  seq: 32
+}
+
+get {
+  url: {{baseUrl}}/api/me/home
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.matchmaking || !body.activeInteractionsSummary || !Array.isArray(body.pendingActions) || !Array.isArray(body.nextSteps) || !Array.isArray(body.passiveNotices)) {
+    throw new Error("Expected full HomeResponse.");
+  }
+
+  bru.setEnvVar("counterpartHomeFullPendingActionsCount", String(body.pendingActions.length));
+  bru.setEnvVar("counterpartHomeFullNextStepsCount", String(body.nextSteps.length));
+  bru.setEnvVar("counterpartHomeFullPassiveNoticesCount", String(body.passiveNotices.length));
+}

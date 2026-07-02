@@ -19,6 +19,17 @@ enum class ChatStatus {
     FINISHED
 }
 
+enum class ChatEndReason {
+    MUTUAL_CANCEL,
+    UNILATERAL_CANCEL,
+    SAFETY_REPORT,
+    ABSOLUTE_TIMEOUT,
+    INACTIVITY_TIMEOUT,
+    SECOND_CHAT_READ_ONLY_EXPIRED,
+    USER_DELETED,
+    SYSTEM_CLOSED
+}
+
 @Entity
 @Table(
     name = "chats",
@@ -70,6 +81,13 @@ data class Chat(
 
     @Column(name = "ended_at")
     var endedAt: OffsetDateTime? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ended_reason")
+    var endedReason: ChatEndReason? = null,
+
+    @Column(name = "read_only_until")
+    var readOnlyUntil: OffsetDateTime? = null,
 
     @Column(name = "last_message_at")
     var lastMessageAt: OffsetDateTime? = null

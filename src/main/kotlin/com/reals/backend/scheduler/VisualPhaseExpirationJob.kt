@@ -1,5 +1,6 @@
 package com.reals.backend.scheduler
 
+import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.MatchService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -28,7 +29,7 @@ class VisualPhaseExpirationJob(
     @SchedulerLock(
         name = "VisualPhaseExpirationJob",
         lockAtLeastFor = "PT30S",
-        lockAtMostFor = "PT3M"
+        lockAtMostFor = "PT5M"
     )
     fun run() {
         val startedAt = System.nanoTime()
@@ -45,6 +46,17 @@ class VisualPhaseExpirationJob(
 
         expired.forEach { review ->
             try {
+                val match = matchService.findByIdOrThrow(review.matchId)
+                if (match.state != MatchState.VISUAL_PHASE) {
+                    skipped += 1
+                    log.debug(
+                        "VisualPhaseExpirationJob - skipped match={} because state={}",
+                        review.matchId,
+                        match.state
+                    )
+                    return@forEach
+                }
+
                 val changed = matchService.expireMatch(review.matchId)
                 if (changed) {
                     succeeded += 1

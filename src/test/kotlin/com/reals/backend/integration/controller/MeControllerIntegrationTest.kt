@@ -1,7 +1,11 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
@@ -10,8 +14,11 @@ import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class MeControllerIntegrationTest : ControllerIT() {
@@ -41,6 +48,29 @@ class MeControllerIntegrationTest : ControllerIT() {
         mockMvc.perform(
             post("/api/me/provision")
                 .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.email", equalTo(user.email)))
+    }
+
+    @Test
+    fun `provision me returns existing backend user from auth context principal`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-context-${UUID.randomUUID()}",
+            email = "existing-context-${UUID.randomUUID()}@example.com"
+        )
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(
+                    authenticatedWithContext(
+                        userId = user.id,
+                        firebaseUid = user.firebaseUid,
+                        email = user.email,
+                        emailVerified = false
+                    )
+                )
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
@@ -133,7 +163,33 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `home returns profile and queue state`() {
+    fun `register push token stores token for authenticated user`() {
+        val user = userService.createUser("push-token-controller-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            put("/api/me/push-tokens")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "token": "controller-fcm-token",
+                      "platform": "ANDROID"
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.registered", equalTo(true)))
+
+        val token = pushDeviceTokenRepository.findByToken("controller-fcm-token")
+            ?: error("Push token was not stored")
+        kotlin.test.assertEquals(user.id, token.userId)
+        kotlin.test.assertTrue(token.enabled)
+    }
+
+    @Test
+    fun `home returns profile and matchmaking state`() {
         val userId = createActiveProfile(
             email = "home-queue-${UUID.randomUUID()}@example.com",
             displayName = "Home Queue",
@@ -148,13 +204,91 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(true)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+            .andExpect(jsonPath("$.matchmaking.inQueue", equalTo(true)))
+            .andExpect(jsonPath("$.matchmaking.canSearch", equalTo(false)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
     }
 
     @Test
-    fun `home returns active first chat discovery data`() {
+    fun `full home clears dirty home status without changing version`() {
+        val userId = userService.createUser(
+            email = "home-clean-dirty-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_dirty_before_full_home"
+        )
+
+        kotlin.test.assertEquals(1, dirtyStatus.version)
+        kotlin.test.assertTrue(dirtyStatus.dirty)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+
+        val cleanStatus = homeStatusService.getOrCreateStatus(userId)
+        kotlin.test.assertEquals(dirtyStatus.version, cleanStatus.version)
+        kotlin.test.assertFalse(cleanStatus.dirty)
+    }
+
+    @Test
+    fun `home status endpoint returns dirty false after full home load`() {
+        val userId = userService.createUser(
+            email = "home-status-clean-after-full-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_status_after_full_home"
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            get("/api/me/home/status")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(dirtyStatus.version.toInt())))
+            .andExpect(jsonPath("$.dirty", equalTo(false)))
+            .andExpect(jsonPath("$.serverTime").exists())
+    }
+
+    @Test
+    fun `pending home does not clear dirty home status`() {
+        val userId = userService.createUser(
+            email = "home-pending-keeps-dirty-${UUID.randomUUID()}@example.com"
+        ).id
+        val dirtyStatus = homeStatusService.bump(
+            userId = userId,
+            reason = "test_pending_keeps_dirty"
+        )
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(dirtyStatus.version.toInt())))
+
+        val statusAfterPending = homeStatusService.getOrCreateStatus(userId)
+        kotlin.test.assertEquals(dirtyStatus.version, statusAfterPending.version)
+        kotlin.test.assertTrue(statusAfterPending.dirty)
+    }
+
+    @Test
+    fun `home returns pending FIRST_CHAT action`() {
         val setup = createMatchWithFirstChat()
 
         mockMvc.perform(
@@ -163,33 +297,375 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatches[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].matchState", equalTo("CHAT_ACTIVE")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatId", equalTo(setup.firstChatId.toString())))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatType", equalTo("FIRST_CHAT")))
-            .andExpect(jsonPath("$.activeMatches[0].firstChat.chatStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(0)))
+            .andExpect(jsonPath("$.matchmaking.inQueue", equalTo(false)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner.displayName", equalTo("Match B")))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
     }
 
     @Test
-    fun `home returns active connection discovery data`() {
-        val setup = createAvailableSecondChat()
+    fun `home pending returns lightweight pending data with current version`() {
+        val setup = createMatchWithFirstChat()
+        val status = homeStatusService.getOrCreateStatus(setup.userAId)
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(status.version.toInt())))
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.matchmaking").doesNotExist())
+            .andExpect(jsonPath("$.activeInteractionsSummary").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns pending VISUAL_REVIEW action`() {
+        val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
             get("/api/me/home")
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.profileStatus", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.queue.inQueue", equalTo(false)))
-            .andExpect(jsonPath("$.activeMatches.length()", equalTo(0)))
-            .andExpect(jsonPath("$.activeConnections.length()", equalTo(1)))
-            .andExpect(jsonPath("$.activeConnections[0].connectionId", equalTo(setup.connectionId.toString())))
-            .andExpect(jsonPath("$.activeConnections[0].matchId", equalTo(setup.matchId.toString())))
-            .andExpect(jsonPath("$.activeConnections[0].connectionState", equalTo("SECOND_CHAT_AVAILABLE")))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatType", equalTo("SECOND_CHAT")))
-            .andExpect(jsonPath("$.activeConnections[0].secondChat.chatStatus", equalTo("AVAILABLE")))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home hides expired visual phase match`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(
+            matchId = setup.matchId,
+            expiresAt = OffsetDateTime.now().minusMinutes(1)
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home hides visual review after current user decides but keeps it for partner`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(
+            matchId = setup.matchId,
+            userId = setup.userAId,
+            decision = VisualDecision.REJECTED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+    }
+
+    @Test
+    fun `home returns SCHEDULING_PREPARING passive notice for scheduling pending`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(1)))
+
+        kotlin.test.assertEquals(
+            1,
+            lockRepository.countByUserIdAndEngagementType(
+                setup.userAId,
+                EngagementType.CONNECTION
+            )
+        )
+    }
+
+    @Test
+    fun `home keeps scheduling pending in matchmaking connection capacity`() {
+        val userAId = createActiveProfile(
+            email = "home-capacity-a-${UUID.randomUUID()}@example.com",
+            displayName = "Home Capacity A",
+            gender = Gender.FEMALE,
+            lookingForGender = LookingForGender.MEN
+        )
+
+        repeat(2) { index ->
+            val userBId = createActiveProfile(
+                email = "home-capacity-b-$index-${UUID.randomUUID()}@example.com",
+                displayName = "Home Capacity B $index",
+                gender = Gender.MALE,
+                lookingForGender = LookingForGender.WOMEN
+            )
+            val match = matchService.createMatch(userAId, userBId)
+            chatService.startFirstChat(match.id)
+            chatService.recordChatDecision(match.id, userAId, ChatContinueDecision.APPROVED)
+            chatService.recordChatDecision(match.id, userBId, ChatContinueDecision.APPROVED)
+            visualReviewService.recordDecision(match.id, userAId, VisualDecision.APPROVED)
+            visualReviewService.recordDecision(match.id, userBId, VisualDecision.APPROVED)
+        }
+
+        kotlin.test.assertEquals(
+            2,
+            lockRepository.countByUserIdAndEngagementType(
+                userAId,
+                EngagementType.CONNECTION
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.matchmaking.canSearch", equalTo(false)))
+            .andExpect(
+                jsonPath(
+                    "$.matchmaking.blockedReason.code",
+                    equalTo("ACTIVE_CONNECTION_LIMIT_REACHED")
+                )
+            )
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(2)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(2)))
+    }
+
+    @Test
+    fun `home returns SCHEDULING next step only in scheduling phase`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SCHEDULING")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].partner.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat").doesNotExist())
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home returns SECOND_CHAT_SCHEDULED and materialized second chat next steps`() {
+        val scheduledSetup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userAId, scheduledSlot)
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userBId, scheduledSlot)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(scheduledSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_SCHEDULED")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(scheduledSetup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(scheduledSetup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus").doesNotExist())
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.availableAt",
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot))
+                )
+            )
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.expiresAt",
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot.plusMinutes(120)))
+                )
+            )
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+
+        val availableSetup = createActiveSecondChat()
+        val activeSecondChat = chatRepository.findByConnectionIdAndChatType(
+            availableSetup.connectionId,
+            ChatType.SECOND_CHAT
+        ) ?: error("Second chat was not created")
+        val availableAt = activeSecondChat.availableAt ?: error("Second chat availableAt was not set")
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(availableSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_AVAILABLE")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(availableSetup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(availableSetup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("ACTIVE")))
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.availableAt",
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(availableAt))
+                )
+            )
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.expiresAt",
+                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(activeSecondChat.timeoutAt))
+                )
+            )
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(availableSetup.userBId.toString())))
+    }
+
+    @Test
+    fun `home returns SECOND_CHAT_READ_ONLY after second chat writable window expires`() {
+        val setup = createActiveSecondChat()
+
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        chatService.expireSecondChatToReadOnly(setup.secondChatId)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_READ_ONLY")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId", equalTo(setup.secondChatId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("EXPIRED")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.expiresAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.readOnlyUntil").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
+    }
+
+    @Test
+    fun `home excludes expired scheduled second chat without chat`() {
+        val setup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot)
+
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home excludes closed matches and connections`() {
+        val matchSetup = createMatchWithFirstChat()
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = matchSetup.firstChatId,
+                requesterUserId = matchSetup.userAId
+            )
+        chatExitService.acceptMutualCancellation(
+            chatId = matchSetup.firstChatId,
+            requestId = exitRequest.id,
+            responderUserId = matchSetup.userBId
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(matchSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+
+        val connectionSetup = createActiveSecondChat()
+        val secondChatExitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = connectionSetup.secondChatId,
+                requesterUserId = connectionSetup.userAId
+            )
+        chatExitService.acceptMutualCancellation(
+            chatId = connectionSetup.secondChatId,
+            requestId = secondChatExitRequest.id,
+            responderUserId = connectionSetup.userBId
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(connectionSetup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
     }
 }

@@ -6,4 +6,4 @@ Current canonical user-flow documentation:
 
 - `docs/user-flow.md`
 
-Known pending decisions are tracked in `docs/technical-debt.md`.
+Known pending decisions are tracked in `docs/technical-debt-mvp.md`. and `docs/technical-debt-prod.md`

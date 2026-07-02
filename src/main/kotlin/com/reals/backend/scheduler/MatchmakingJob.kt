@@ -1,9 +1,9 @@
 package com.reals.backend.scheduler
 
-import com.reals.backend.service.MatchmakingProcessorService
+import com.reals.backend.config.MatchmakingJobProperties
+import com.reals.backend.service.matching.MatchmakingProcessorService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
@@ -16,9 +16,7 @@ import org.springframework.stereotype.Component
 @Component
 class MatchmakingJob(
     private val matchmakingProcessorService: MatchmakingProcessorService,
-
-    @param:Value("\${scheduler.matchmaking-job.max-pairs-per-run:5}")
-    private val maxPairsPerRun: Int
+    private val properties: MatchmakingJobProperties
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -31,12 +29,12 @@ class MatchmakingJob(
     )
     fun run() {
         val startedAt = System.nanoTime()
-        log.debug("MatchmakingJob - started maxPairsPerRun={}", maxPairsPerRun)
+        log.debug("MatchmakingJob - started maxPairsPerRun={}", properties.maxPairsPerRun)
 
         val result =
             try {
                 matchmakingProcessorService.process(
-                    maxPairsPerRun = maxPairsPerRun
+                    maxPairsPerRun = properties.maxPairsPerRun
                 )
             } catch (ex: RuntimeException) {
                 log.error("MatchmakingJob - failed", ex)

@@ -2,6 +2,7 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
+import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import jakarta.validation.Valid
@@ -29,7 +30,10 @@ class ChatController(
         )
 
         return ResponseEntity.ok(
-            ChatResponse.from(chat)
+            ChatResponse.from(
+                c = chat,
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
+            )
         )
     }
 
@@ -55,15 +59,30 @@ class ChatController(
     @GetMapping("/{chatId}/messages")
     fun getMessages(
         @CurrentUserId userId: UUID,
-        @PathVariable chatId: UUID
-    ): ResponseEntity<List<ChatMessageResponse>> {
+        @PathVariable chatId: UUID,
+        @RequestParam(required = false) after: UUID?,
+        @RequestParam(required = false) afterMessageId: UUID?
+    ): ResponseEntity<Any> {
+        val effectiveAfterMessageId = after ?: afterMessageId
+
+        if (effectiveAfterMessageId != null) {
+            val messages = chatService.getMessagesAfter(
+                chatId = chatId,
+                userId = userId,
+                afterMessageId = effectiveAfterMessageId
+            )
+
+            return ResponseEntity.ok<Any>(
+                ChatMessagesResponse.from(messages)
+            )
+        }
 
         val messages = chatService.getMessages(
             chatId = chatId,
             userId = userId
         )
 
-        return ResponseEntity.ok(
+        return ResponseEntity.ok<Any>(
             messages.map { ChatMessageResponse.from(it) }
         )
     }
@@ -75,16 +94,21 @@ class ChatController(
         @Valid
         @RequestBody request: ChatExitRequestCreateRequest
     ): ResponseEntity<ChatExitRequestResponse> {
-        val exitRequest =
-            chatExitService.requestMutualCancellation(
+        val result =
+            chatExitService.requestMutualCancellationWithResult(
                 chatId = chatId,
                 requesterUserId = userId,
                 reason = request.reason,
                 details = request.details
             )
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ChatExitRequestResponse.from(exitRequest))
+        val body = ChatExitRequestResponse.from(result.exitRequest)
+
+        return if (result.created) {
+            ResponseEntity.status(HttpStatus.CREATED).body(body)
+        } else {
+            ResponseEntity.ok(body)
+        }
     }
 
     @GetMapping("/{chatId}/exit-requests")
@@ -104,7 +128,7 @@ class ChatController(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.ok(
-            ChatExitOutcomeResponse.from(
+            chatExitOutcomeResponse(
                 chatExitService.acceptMutualCancellation(
                     chatId = chatId,
                     requestId = exitRequestId,
@@ -118,13 +142,29 @@ class ChatController(
         @PathVariable chatId: UUID,
         @PathVariable exitRequestId: UUID,
         @CurrentUserId userId: UUID
-    ): ResponseEntity<ChatExitRequestResponse> =
+    ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.ok(
-            ChatExitRequestResponse.from(
+            chatExitOutcomeResponse(
                 chatExitService.rejectMutualCancellation(
                     chatId = chatId,
                     requestId = exitRequestId,
                     responderUserId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{chatId}/exit-requests/{exitRequestId}/timeout")
+    fun timeoutMutualCancellation(
+        @PathVariable chatId: UUID,
+        @PathVariable exitRequestId: UUID,
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<ChatExitOutcomeResponse> =
+        ResponseEntity.ok(
+            chatExitOutcomeResponse(
+                chatExitService.timeoutMutualCancellation(
+                    chatId = chatId,
+                    requestId = exitRequestId,
+                    userId = userId
                 )
             )
         )
@@ -138,7 +178,7 @@ class ChatController(
     ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
             .body(
-                ChatExitOutcomeResponse.from(
+                chatExitOutcomeResponse(
                     chatExitService.cancelChatUnilaterally(
                         chatId = chatId,
                         userId = userId,
@@ -157,7 +197,7 @@ class ChatController(
     ): ResponseEntity<ChatExitOutcomeResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
             .body(
-                ChatExitOutcomeResponse.from(
+                chatExitOutcomeResponse(
                     chatExitService.cancelChatForSafety(
                         chatId = chatId,
                         reporterUserId = userId,
@@ -166,5 +206,11 @@ class ChatController(
                     )
                 )
             )
+
+    private fun chatExitOutcomeResponse(outcome: ChatExitOutcome): ChatExitOutcomeResponse =
+        ChatExitOutcomeResponse.from(
+            o = outcome,
+            inactivityExpiresAt = chatService.inactivityExpiresAt(outcome.chat)
+        )
 
 }

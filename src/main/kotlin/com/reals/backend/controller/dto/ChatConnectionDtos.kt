@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.*
+import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Pattern
@@ -20,11 +21,17 @@ data class ChatResponse(
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
-    val lastMessageAt: OffsetDateTime?
+    val readOnlyUntil: OffsetDateTime?,
+    val lastMessageAt: OffsetDateTime?,
+    val inactivityExpiresAt: OffsetDateTime?
 ) {
     companion object {
-        fun from(c: Chat) = ChatResponse(
+        fun from(
+            c: Chat,
+            inactivityExpiresAt: OffsetDateTime? = null
+        ) = ChatResponse(
             id = c.id,
             matchId = c.matchId,
             connectionId = c.connectionId,
@@ -34,8 +41,73 @@ data class ChatResponse(
             availableAt = c.availableAt,
             activatedAt = c.activatedAt,
             timeoutAt = c.timeoutAt,
+            expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
-            lastMessageAt = c.lastMessageAt
+            readOnlyUntil = c.readOnlyUntil,
+            lastMessageAt = c.lastMessageAt,
+            inactivityExpiresAt = inactivityExpiresAt
+        )
+    }
+}
+
+data class PartnerSummaryResponse(
+    val userId: UUID,
+    val profileId: UUID,
+    val displayName: String
+) {
+    companion object {
+        fun from(profile: Profile) = PartnerSummaryResponse(
+            userId = profile.userId,
+            profileId = profile.id,
+            displayName = profile.displayName
+        )
+    }
+}
+
+data class FirstChatResponse(
+    val id: UUID,
+    val matchId: UUID,
+    val connectionId: UUID?,
+    val chatType: ChatType,
+    val status: ChatStatus,
+    val startedAt: OffsetDateTime,
+    val availableAt: OffsetDateTime?,
+    val activatedAt: OffsetDateTime?,
+    val timeoutAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime,
+    val endedAt: OffsetDateTime?,
+    val readOnlyUntil: OffsetDateTime?,
+    val lastMessageAt: OffsetDateTime?,
+    val inactivityExpiresAt: OffsetDateTime?,
+    val partner: PartnerSummaryResponse,
+    val myDecision: ChatParticipantDecisionStatus,
+    val partnerDecision: ChatParticipantDecisionStatus
+) {
+    companion object {
+        fun from(
+            chat: Chat,
+            partner: Profile,
+            myDecision: ChatParticipantDecisionStatus,
+            partnerDecision: ChatParticipantDecisionStatus,
+            inactivityExpiresAt: OffsetDateTime?
+        ) = FirstChatResponse(
+            id = chat.id,
+            matchId = chat.matchId,
+            connectionId = chat.connectionId,
+            chatType = chat.chatType,
+            status = chat.status,
+            startedAt = chat.startedAt,
+            availableAt = chat.availableAt,
+            activatedAt = chat.activatedAt,
+            timeoutAt = chat.timeoutAt,
+            expiresAt = chat.timeoutAt,
+            endedAt = chat.endedAt,
+            readOnlyUntil = chat.readOnlyUntil,
+            lastMessageAt = chat.lastMessageAt,
+            inactivityExpiresAt = inactivityExpiresAt,
+            partner = PartnerSummaryResponse.from(partner),
+            myDecision = myDecision,
+            partnerDecision = partnerDecision
         )
     }
 }
@@ -45,7 +117,7 @@ data class ChatResponse(
 data class SendMessageRequest(
     @field:NotBlank
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val content: String
 )
 
@@ -53,7 +125,7 @@ data class ChatExitRequestCreateRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String? = null
 )
 
@@ -61,7 +133,7 @@ data class ChatCancellationRequest(
     val reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
 
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String? = null
 )
 
@@ -70,7 +142,7 @@ data class ChatSafetyCancellationRequest(
 
     @field:NotBlank
     @field:Size(max = 1000)
-    @field:Pattern(regexp = "^[^\\p{Cntrl}]*$")
+    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
     val details: String
 )
 
@@ -88,6 +160,24 @@ data class ChatMessageResponse(
             senderId = m.senderId,
             content = m.content,
             sentAt = m.sentAt
+        )
+    }
+}
+
+data class ChatMessagesResponse(
+    val messages: List<ChatMessageResponse>,
+    val hasMore: Boolean,
+    val serverTime: OffsetDateTime
+) {
+    companion object {
+        fun from(
+            messages: List<ChatMessage>,
+            hasMore: Boolean = false,
+            serverTime: OffsetDateTime = OffsetDateTime.now()
+        ) = ChatMessagesResponse(
+            messages = messages.map { ChatMessageResponse.from(it) },
+            hasMore = hasMore,
+            serverTime = serverTime
         )
     }
 }
@@ -129,9 +219,15 @@ data class ChatExitOutcomeResponse(
     val penalizedUserId: UUID?
 ) {
     companion object {
-        fun from(o: ChatExitOutcome) =
+        fun from(
+            o: ChatExitOutcome,
+            inactivityExpiresAt: OffsetDateTime? = null
+        ) =
             ChatExitOutcomeResponse(
-                chat = ChatResponse.from(o.chat),
+                chat = ChatResponse.from(
+                    c = o.chat,
+                    inactivityExpiresAt = inactivityExpiresAt
+                ),
                 exitRequest = ChatExitRequestResponse.from(o.exitRequest),
                 penaltyApplied = o.penaltyApplied,
                 penalizedUserId = o.penalizedUserId
@@ -145,6 +241,7 @@ data class ConnectionResponse(
     val userAId: UUID,
     val userBId: UUID,
     val state: ConnectionState,
+    val schedulingAvailableAt: OffsetDateTime?,
     val schedulingExpiresAt: OffsetDateTime,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
@@ -156,6 +253,7 @@ data class ConnectionResponse(
             userAId = c.userAId,
             userBId = c.userBId,
             state = c.state,
+            schedulingAvailableAt = c.schedulingAvailableAt,
             schedulingExpiresAt = c.schedulingExpiresAt,
             createdAt = c.createdAt,
             updatedAt = c.updatedAt
@@ -164,6 +262,10 @@ data class ConnectionResponse(
 }
 
 // — VisualReview personal messages
+
+data class ConnectionDismissalResponse(
+    val dismissed: Boolean
+)
 
 /**
  * The personal message the partner left for the requesting user.
@@ -215,6 +317,7 @@ data class NegotiationResponse(
     val roundNumber: Int,
     val status: NegotiationStatus,
     val confirmedDateTime: OffsetDateTime?,
+    val schedulingExpiresAt: OffsetDateTime,
     val chatId: UUID?,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime
@@ -222,6 +325,7 @@ data class NegotiationResponse(
     companion object {
         fun from(
             n: ScheduleNegotiation,
+            schedulingExpiresAt: OffsetDateTime,
             chatId: UUID? = null
         ) = NegotiationResponse(
             id = n.id,
@@ -229,6 +333,7 @@ data class NegotiationResponse(
             roundNumber = n.roundNumber,
             status = n.status,
             confirmedDateTime = n.confirmedDateTime,
+            schedulingExpiresAt = schedulingExpiresAt,
             chatId = chatId,
             createdAt = n.createdAt,
             updatedAt = n.updatedAt

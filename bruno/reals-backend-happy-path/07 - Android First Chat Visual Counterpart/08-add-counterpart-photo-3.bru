@@ -1,0 +1,20 @@
+meta {
+  name: 08 Add Counterpart Photo 3
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/photos
+  body: multipartForm
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:multipart-form {
+  position: 3
+  file: @file({{profile_photo_file_path}})
+}

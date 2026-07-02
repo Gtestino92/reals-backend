@@ -5,8 +5,10 @@ import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.InactivityCheckJob
 import com.reals.backend.scheduler.MatchExpirationJob
 import com.reals.backend.scheduler.PenaltyExpirationJob
+import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
+import com.reals.backend.scheduler.SecondChatLifecycleJob
+import com.reals.backend.scheduler.SecondChatReminderNotificationJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Profile
@@ -17,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres")
+@Profile("local", "local-nodb", "local-postgres", "local-firebase")
 @RequestMapping("/api/local-dev/jobs")
 class DevJobController(
     private val accountDeletionFinalizationJob: ObjectProvider<AccountDeletionFinalizationJob>,
@@ -25,8 +27,10 @@ class DevJobController(
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
     private val matchExpirationJob: ObjectProvider<MatchExpirationJob>,
     private val penaltyExpirationJob: ObjectProvider<PenaltyExpirationJob>,
+    private val schedulingActivationJob: ObjectProvider<SchedulingActivationJob>,
     private val schedulingNegotiationTimeoutJob: ObjectProvider<SchedulingNegotiationTimeoutJob>,
-    private val scheduledSecondChatStartJob: ObjectProvider<ScheduledSecondChatStartJob>,
+    private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
+    private val secondChatReminderNotificationJob: ObjectProvider<SecondChatReminderNotificationJob>,
     private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>
 ) {
 
@@ -66,10 +70,22 @@ class DevJobController(
             requireJob(schedulingNegotiationTimeoutJob, "SchedulingNegotiationTimeoutJob").run()
         }
 
-    @PostMapping("/scheduled-second-chat-start/run")
-    fun runScheduledSecondChatStart(): ResponseEntity<DevJobRunResponse> =
-        runJob("ScheduledSecondChatStartJob") {
-            requireJob(scheduledSecondChatStartJob, "ScheduledSecondChatStartJob").run()
+    @PostMapping("/scheduling-activation/run")
+    fun runSchedulingActivation(): ResponseEntity<DevJobRunResponse> =
+        runJob("SchedulingActivationJob") {
+            requireJob(schedulingActivationJob, "SchedulingActivationJob").run()
+        }
+
+    @PostMapping("/second-chat-lifecycle/run")
+    fun runSecondChatLifecycle(): ResponseEntity<DevJobRunResponse> =
+        runJob("SecondChatLifecycleJob") {
+            requireJob(secondChatLifecycleJob, "SecondChatLifecycleJob").runNowForDev()
+        }
+
+    @PostMapping("/second-chat-reminder/run")
+    fun runSecondChatReminder(): ResponseEntity<DevJobRunResponse> =
+        runJob("SecondChatReminderNotificationJob") {
+            requireJob(secondChatReminderNotificationJob, "SecondChatReminderNotificationJob").runNowForDev()
         }
 
     @PostMapping("/visual-phase-expiration/run")

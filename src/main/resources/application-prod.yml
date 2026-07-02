@@ -42,29 +42,37 @@ management:
       exposure:
         include: health,info
 
+backoffice:
+  admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
+
 scheduler:
   enabled: true
   matchmaking-job:
-    fixed-delay: 60000
-    max-pairs-per-run: 10
+    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:60000}
+    max-pairs-per-run: ${SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN:10}
   chat-timeout-job:
-    fixed-delay: 120000
+    fixed-delay: ${SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY:60000}
+  second-chat-lifecycle-job:
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY:120000}
+  second-chat-reminder-job:
+    # 60000 keeps reminder precision within a 1-minute window.
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY:60000}
   match-expiration-job:
-    fixed-delay: 300000
-    max-chat-duration: PT24H
+    fixed-delay: ${SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY:300000}
+    max-chat-duration: ${SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION:PT20M}
   inactivity-check-job:
-    fixed-delay: 180000
-    inactivity-threshold-minutes: 30
+    fixed-delay: ${SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY:60000}
+    inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
-    fixed-delay: 600000
+    fixed-delay: ${SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY:600000}
   visual-phase-expiration-job:
-    fixed-delay: 300000
+    fixed-delay: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY:300000}
   scheduling-timeout-job:
-    fixed-delay: 900000
-  scheduled-second-chat-start-job:
-    fixed-delay: 60000
+    fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:900000}
+  scheduling-activation-job:
+    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
   account-deletion-finalization-job:
-    fixed-delay: 3600000
+    fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}
 
 account:
   deletion:
@@ -77,16 +85,19 @@ matchmaking:
 
 chat:
   first-chat:
-    duration-minutes: 1440
+    duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
+    inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
     min-messages-per-user: 0
     min-messages-before-free-cancel: 0
   visual-phase:
     duration-minutes: 1440
   second-chat:
-    duration-minutes: 2880
+    duration-minutes: ${CHAT_SECOND_CHAT_DURATION_MINUTES:120}
+    read-only-retention-minutes: ${CHAT_SECOND_CHAT_READ_ONLY_RETENTION_MINUTES:1440}
     min-messages-before-free-cancel: 0
 
 scheduling:
+  activation-delay-minutes: ${SCHEDULING_ACTIVATION_DELAY_MINUTES:5}
   negotiation-duration-minutes: 2880
   max-rounds: 3
   max-proposals-per-round: 3
@@ -97,6 +108,10 @@ profile:
     required-count: 9
     min-person-photos: 3
     min-full-body-photos: 1
+  identity-verification:
+    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:${IDENTITY_VERIFICATION_PROVIDER:none}}
+    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
 
 engagement:
   max-active-matches: 5
@@ -109,16 +124,16 @@ firebase:
 
 storage:
   s3:
-    endpoint: ${S3_ENDPOINT}
-    presigned-url-endpoint: ${S3_PRESIGNED_URL_ENDPOINT:}
-    region: ${S3_REGION:sa-east-1}
-    bucket: ${S3_PROFILE_PHOTOS_BUCKET}
-    access-key-id: ${S3_ACCESS_KEY_ID}
-    secret-access-key: ${S3_SECRET_ACCESS_KEY}
-    public-base-url: ${S3_PUBLIC_BASE_URL:}
-    path-style-access-enabled: ${S3_PATH_STYLE_ACCESS_ENABLED:true}
-    signed-url-duration-minutes: ${S3_SIGNED_URL_DURATION_MINUTES:15}
-    read-url-mode: ${S3_READ_URL_MODE:PRESIGNED}
+    endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT}}
+    presigned-url-endpoint: ${STORAGE_S3_PRESIGNED_URL_ENDPOINT:${S3_PRESIGNED_URL_ENDPOINT:}}
+    region: ${STORAGE_S3_REGION:${S3_REGION:auto}}
+    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET}}
+    access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID}}
+    secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY}}
+    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:}}
+    path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
+    signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
+    read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
   profile-photos:
     max-size-bytes: ${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}
     allowed-content-types:
@@ -126,6 +141,8 @@ storage:
       - image/png
       - image/webp
 
-identity-verification:
-  provider: ${IDENTITY_VERIFICATION_PROVIDER:none}
-  api-key: ${IDENTITY_VERIFICATION_API_KEY:}
+notifications:
+  second-chat-reminder:
+    # Comma-separated lead times in minutes. Keep multiple values in descending
+    # order for readability, for example: 120,10. Values must be positive.
+    minutes-before: ${NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE:10}

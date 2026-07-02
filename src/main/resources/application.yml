@@ -36,26 +36,40 @@ management:
       exposure:
         include: health,info
 
+backoffice:
+  # Comma-separated email allowlist. Matching active local users receive ROLE_ADMIN.
+  admin-emails: ""
+
 scheduler:
   enabled: true
 
-  # Detects chat sessions exceeding max duration or inactivity timeout
-  # Runs every 2 minutes — fast response needed so users don't remain stuck
+  # Detects first chats exceeding their absolute timeout.
+  # Runs every minute so a 15-minute first chat does not remain open too long.
   chat-timeout-job:
+    fixed-delay: 60000
+
+  # Expires active second chats into read-only mode, then closes them after retention.
+  second-chat-lifecycle-job:
     fixed-delay: 120000
 
-  # Expires matches that have not progressed past CHAT_ACTIVE
-  # Runs every 5 minutes — less urgent than chat timeout
+  # Sends a privacy-safe reminder before a confirmed second-chat start time.
+  # Runs every minute so 10-minute reminders are picked up within a 1-minute window.
+  second-chat-reminder-job:
+    fixed-delay: 60000
+
+  # Expires matches that have not progressed past CHAT_ACTIVE.
+  # Safety net behind ChatTimeoutJob, not the primary first-chat timer.
   match-expiration-job:
     fixed-delay: 300000
+    max-chat-duration: PT20M
 
-  # Detects chat sessions with no messages within inactivity threshold
-  # Runs every 3 minutes — frequent enough to catch inactive sessions
+  # Detects first chats with no messages within the inactivity threshold.
+  # Runs every minute so short first-chat sessions can be abandoned promptly.
   inactivity-check-job:
-    fixed-delay: 180000
+    fixed-delay: 60000
 
-    # How long a session can have no messages before being considered inactive
-    inactivity-threshold-minutes: 30
+    # How long a first chat can have no messages before being considered inactive.
+    inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
 
   # Deactivates penalties whose expiresAt has passed
   # Runs every 10 minutes — penalties have hour-level granularity
@@ -71,15 +85,21 @@ scheduler:
   scheduling-timeout-job:
     fixed-delay: 900000
 
-  # Makes second chats available when their negotiated confirmedDateTime has arrived
-  # Runs every minute so users can enter the chat close to the agreed slot
-  scheduled-second-chat-start-job:
+  # Makes second chats available near their negotiated confirmedDateTime.
+  # Enables scheduling after visual approval once its deferred availability time arrives
+  scheduling-activation-job:
     fixed-delay: 60000
 
   # Finalizes recoverable account deletions after the recovery window expires.
   # Runs every hour because finalization is not user-facing urgent.
   account-deletion-finalization-job:
     fixed-delay: 3600000
+
+  # Processes queued users into first-chat matches. ShedLock keeps one active
+  # processor at a time across app instances.
+  matchmaking-job:
+    fixed-delay: 60000
+    max-pairs-per-run: 5
 
 account:
   deletion:
@@ -88,7 +108,8 @@ account:
 chat:
   # Maximum duration for the anonymous first chat between matched users
   first-chat:
-    duration-minutes: 1440 # 24 hours
+    duration-minutes: 15
+    inactivity-threshold-minutes: 5
 
     # Minimum number of messages a user must have sent before being allowed to approve
     # 0 = disabled (default). Enforce in production once UX is validated
@@ -102,13 +123,16 @@ chat:
   visual-phase:
     duration-minutes: 1440 # 24 hours
 
-  # Maximum duration for the second chat after visual approval
-  # Longer because users are already acquainted
+  # Maximum duration for the second chat after the agreed start time.
   second-chat:
-    duration-minutes: 2880 # 48 hours
+    duration-minutes: 120 # 2 hours
+    read-only-retention-minutes: 1440 # 24 hours
     min-messages-before-free-cancel: 0
 
 scheduling:
+  # MVP delay between mutual visual approval and making scheduling actionable
+  activation-delay-minutes: 5
+
   # Total time window (in minutes) for both users to agree on a meeting time
   # If not confirmed within this period, the negotiation is marked FAILED
   negotiation-duration-minutes: 2880 # 48 hours
@@ -133,6 +157,18 @@ profile:
     # Minimum full-body photos required
     min-full-body-photos: 1
 
+    require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:false}
+
+    moderation:
+      provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
+      fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
+      persist-rejected-photos: ${PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS:false}
+
+  identity-verification:
+    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:none}
+    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+
 engagement:
   # Maximum number of simultaneous active Matches a user can participate in
   # A match is active while its lock of type MATCH exists
@@ -141,6 +177,31 @@ engagement:
   # Maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
   max-active-connections: 2
+
+notifications:
+  second-chat-reminder:
+    # Comma-separated lead times in minutes. Keep multiple values in descending
+    # order for readability, for example: 120,10. Values must be positive.
+    minutes-before: 10
+
+security:
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    default-capacity: ${RATE_LIMIT_DEFAULT_CAPACITY:180}
+    default-refill-tokens: ${RATE_LIMIT_DEFAULT_REFILL_TOKENS:180}
+    default-refill-period-seconds: ${RATE_LIMIT_DEFAULT_REFILL_PERIOD_SECONDS:60}
+    provision-capacity: ${RATE_LIMIT_PROVISION_CAPACITY:10}
+    provision-refill-tokens: ${RATE_LIMIT_PROVISION_REFILL_TOKENS:10}
+    provision-refill-period-seconds: ${RATE_LIMIT_PROVISION_REFILL_PERIOD_SECONDS:60}
+    message-capacity: ${RATE_LIMIT_MESSAGE_CAPACITY:60}
+    message-refill-tokens: ${RATE_LIMIT_MESSAGE_REFILL_TOKENS:60}
+    message-refill-period-seconds: ${RATE_LIMIT_MESSAGE_REFILL_PERIOD_SECONDS:60}
+    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:30}
+    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:30}
+    profile-photo-refill-period-seconds: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_PERIOD_SECONDS:60}
+    safety-report-capacity: ${RATE_LIMIT_SAFETY_REPORT_CAPACITY:5}
+    safety-report-refill-tokens: ${RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS:5}
+    safety-report-refill-period-seconds: ${RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS:86400}
 
 info:
   app:

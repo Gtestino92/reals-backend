@@ -1,0 +1,25 @@
+meta {
+  name: 02 Android Get Me
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected authenticated user response with id.");
+  }
+
+  bru.setEnvVar("firebaseUserId", body.id);
+  bru.setEnvVar("androidUserId", body.id);
+}

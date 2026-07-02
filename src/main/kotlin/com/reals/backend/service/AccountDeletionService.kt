@@ -1,5 +1,8 @@
 package com.reals.backend.service
 
+import com.reals.backend.domain.AuditAggregateType
+import com.reals.backend.domain.AuditEventType
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
@@ -21,7 +24,9 @@ class AccountDeletionService(
     private val connectionRepository: ConnectionRepository,
     private val chatRepository: ChatRepository,
     private val scheduleNegotiationRepository: ScheduleNegotiationRepository,
-    private val activeEngagementLockRepository: ActiveEngagementLockRepository
+    private val activeEngagementLockRepository: ActiveEngagementLockRepository,
+    private val auditEventService: AuditEventService,
+    private val homeStateInvalidationService: HomeStateInvalidationService
 ) {
 
     fun closeActiveEngagementsForDeletedUser(
@@ -39,6 +44,7 @@ class AccountDeletionService(
         val connections = connectionRepository.findByParticipantIdAndStateIn(
             userId = userId,
             states = listOf(
+                ConnectionState.SCHEDULING_PENDING,
                 ConnectionState.SCHEDULING_PHASE,
                 ConnectionState.SECOND_CHAT_SCHEDULED,
                 ConnectionState.SECOND_CHAT_AVAILABLE,
@@ -50,6 +56,7 @@ class AccountDeletionService(
         val connectionIds = connections.map { it.id }
 
         closeVisibleChats(
+            userId = userId,
             matchIds = matchIds,
             connectionIds = connectionIds,
             now = now
@@ -80,9 +87,19 @@ class AccountDeletionService(
                 activeEngagementLockRepository.deleteByEngagementId(it.id)
             }
         }
+
+        homeStateInvalidationService.bumpUsers(
+            userIds = (
+                listOf(userId) +
+                    matches.flatMap { listOf(it.userAId, it.userBId) } +
+                    connections.flatMap { listOf(it.userAId, it.userBId) }
+                ).distinct(),
+            reason = "account_deletion_closed_engagements"
+        )
     }
 
     private fun closeVisibleChats(
+        userId: UUID,
         matchIds: List<UUID>,
         connectionIds: List<UUID>,
         now: OffsetDateTime
@@ -115,8 +132,24 @@ class AccountDeletionService(
         chats.forEach {
             it.status = ChatStatus.CANCELLED
             it.endedAt = now
+            it.endedReason = ChatEndReason.USER_DELETED
         }
         chatRepository.saveAll(chats)
+        chats.forEach { chat ->
+            auditEventService.record(
+                eventType = AuditEventType.CHAT_ENDED,
+                aggregateType = AuditAggregateType.CHAT,
+                aggregateId = chat.id,
+                actorUserId = userId,
+                metadata = mapOf(
+                    "chatType" to chat.chatType.name,
+                    "status" to chat.status.name,
+                    "endedReason" to ChatEndReason.USER_DELETED.name,
+                    "matchId" to chat.matchId,
+                    "connectionId" to chat.connectionId
+                )
+            )
+        }
     }
 
     private fun closeMatchForDeletedParticipant(

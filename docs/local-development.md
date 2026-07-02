@@ -37,6 +37,68 @@ Expected response:
 {"status":"ok"}
 ```
 
+## Testing From Another Device Or Network
+
+The local docs and Bruno collection default to `localhost`, which only works
+from the same machine that runs the backend. When another device needs to call
+the local backend, use an address that is reachable from that device.
+
+Same LAN or same Wi-Fi:
+
+```text
+http://<developer-machine-lan-ip>:8080
+```
+
+Example:
+
+```text
+http://192.168.0.5:8080
+```
+
+Then update the client base URL:
+
+- Bruno: set `baseUrl` in the ignored local environment file, for example
+  `bruno/reals-backend-happy-path/environments/local.bru`.
+- Android physical device: point the app's backend URL at the same LAN IP and
+  port.
+- Android Emulator on the same host: keep using emulator-specific host routing
+  such as `10.0.2.2` where documented below.
+
+Windows/macOS/Linux firewall rules must allow inbound traffic to the backend
+port. With Docker Compose, the backend is already published as `8080:8080`, so
+the host port is `8080`.
+
+Profile photo URLs need the same treatment. If the client renders photos from
+local MinIO, `S3_PRESIGNED_URL_ENDPOINT` must be reachable by that client:
+
+```text
+S3_PRESIGNED_URL_ENDPOINT=http://<developer-machine-lan-ip>:9000
+```
+
+If this stays as `http://localhost:9000`, another phone or computer will try to
+load MinIO from itself instead of from the backend developer machine. With
+Docker Compose, MinIO is already published as `9000:9000`.
+
+Different network or different router:
+
+- Prefer a VPN or a tunnel such as Cloudflare Tunnel/ngrok for short manual
+  testing.
+- Port forwarding can work, but it exposes local services to the internet and
+  should be temporary and tightly controlled.
+- Do not expose `local-nodb`, `local-postgres`, or other local-dev tooling to
+  the public internet. Those profiles expose test helpers such as
+  `/api/local-dev/**`.
+- If the backend needs to be reachable for repeated Android testing outside the
+  developer LAN, prefer a real shared `dev` deployment instead of a local
+  machine behind a router.
+
+Check reachability from the client network before debugging application logic:
+
+```http
+GET http://<reachable-host>:8080/api/ping
+GET http://<reachable-host>:8080/actuator/health/readiness
+```
+
 ## H2 Console
 
 URL:
@@ -239,10 +301,11 @@ S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 S3_READ_URL_MODE=PRESIGNED
 ```
 
-The backend uploads objects through the internal Docker hostname `minio`, but
-generates browser-facing presigned read URLs with `localhost`. Buckets remain
-private locally; frontend clients should render the returned `url` directly and
-must not persist it as a permanent object URL because it expires.
+The backend uploads objects through the internal Docker hostname `minio`, stores
+the object key in `profile_photos.storage_key`, and generates browser-facing
+presigned read URLs with `localhost` when returning photo responses. Buckets
+remain private locally; frontend clients should render the returned `url`
+directly and must not persist it as a permanent object URL because it expires.
 
 For Android Emulator rendering, `localhost` points to the emulator itself. Use a
 local runtime override instead:
@@ -270,10 +333,21 @@ Local profiles disable automatic scheduled execution:
 scheduler.enabled: false
 ```
 
-Use the dev endpoints for deterministic manual testing:
+Use the local auto-auth dev endpoints (`local`, `local-nodb`, `local-postgres`)
+for deterministic manual testing:
 
 ```http
 POST /api/local-dev/jobs/{job}/run
+```
+
+`/api/local-dev/**` endpoints are profile-gated local tooling and do not
+require a user bearer token. They are not exposed by the `dev` or `prod`
+profiles.
+
+The Bruno collection includes direct triggers under:
+
+```text
+bruno/reals-backend-happy-path/10 - Local Dev Jobs
 ```
 
 Local-only user provisioning for Bruno/dev flows is available at:
@@ -284,10 +358,43 @@ POST /api/local-dev/users
 
 This endpoint exists only on local dev-auto-auth profiles and is not part of the production API contract.
 
-For example:
+The local matchmaking processor endpoint is also exposed in `local-firebase`
+for Firebase/Android manual flows:
 
 ```http
-POST /api/local-dev/jobs/scheduled-second-chat-start/run
+POST /api/local-dev/matchmaking/process?maxPairsPerRun=10
+```
+
+Supported local job triggers:
+
+```http
+POST /api/local-dev/jobs/scheduling-activation/run
+POST /api/local-dev/jobs/second-chat-reminder/run
+POST /api/local-dev/jobs/second-chat-lifecycle/run
+POST /api/local-dev/jobs/chat-timeout/run
+POST /api/local-dev/jobs/visual-phase-expiration/run
+POST /api/local-dev/jobs/match-expiration/run
+POST /api/local-dev/jobs/scheduling-timeout/run
+POST /api/local-dev/jobs/inactivity-check/run
+POST /api/local-dev/jobs/penalty-expiration/run
+POST /api/local-dev/jobs/account-deletion-finalization/run
+```
+
+To move a confirmed second-chat time into the past for manual entry testing:
+
+```http
+POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now
+```
+
+Then call `GET /api/connections/{connectionId}/chat` as either participant to
+materialize and activate the second chat.
+
+Second-chat read-only lifecycle can be tested manually with:
+
+```http
+POST /api/local-dev/jobs/second-chat-lifecycle/run
+POST /api/local-dev/timeouts/chats/{chatId}/expire-now
+POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now
 ```
 
 Recoverable account deletion finalization can be triggered manually with:

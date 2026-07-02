@@ -53,3 +53,10 @@ enum class ChatContinueDecision {
     APPROVED,
     REJECTED
 }
+
+enum class ChatParticipantDecisionStatus {
+    PENDING,
+    APPROVED,
+    REJECTED,
+    ABANDONED
+}

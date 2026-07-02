@@ -1,0 +1,45 @@
+meta {
+  name: 00 Admin Firebase Sign In
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_admin_email}}",
+    "password": "{{firebase_admin_password}}",
+    "returnSecureToken": true
+  }
+}
+
+vars:pre-request {
+  firebase_admin_email: gtestino1992@gmail.com
+  firebase_admin_password: Federer92
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken) {
+    throw new Error("Expected Firebase idToken for admin sign-in.");
+  }
+  
+  bru.setEnvVar("firebase_admin_id_token", body.idToken);
+  
+  if (body.localId) {
+    bru.setEnvVar("firebase_admin_uid", body.localId);
+  }
+  
+  if (body.refreshToken) {
+    bru.setEnvVar("firebase_admin_refresh_token", body.refreshToken);
+  }
+}

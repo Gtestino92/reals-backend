@@ -1,0 +1,46 @@
+meta {
+  name: Firebase Sign In
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+params:query {
+  key: {{firebase_api_key}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_counterpart_email}}",
+    "password": "{{firebase_counterpart_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  if (res.status !== 200) {
+    throw new Error(`Expected Firebase sign in 200, got ${res.status}. Body: ${JSON.stringify(res.getBody())}`);
+  }
+  
+  const body = res.getBody();
+  
+  if (!body || !body.idToken) {
+    throw new Error("Expected Firebase response to include idToken.");
+  }
+  
+  bru.setEnvVar("firebaseIdToken", body.idToken);
+  bru.setEnvVar("firebaseRefreshToken", body.refreshToken);
+  bru.setEnvVar("firebaseLocalId", body.localId);
+  bru.setEnvVar("firebaseEmail", body.email);
+  
+  console.log("Firebase idToken saved to environment as firebaseIdToken.");
+}

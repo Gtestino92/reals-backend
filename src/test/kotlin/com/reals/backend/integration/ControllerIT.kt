@@ -2,6 +2,7 @@ package com.reals.backend.integration
 
 import com.reals.backend.config.security.authentication.FirebasePrincipal
 import com.reals.backend.config.security.SecurityRoles
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
@@ -28,6 +29,37 @@ abstract class ControllerIT : BaseIT() {
         SecurityMockMvcRequestPostProcessors.authentication(
             UsernamePasswordAuthenticationToken(
                 userId.toString(),
+                null,
+                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+            )
+        )
+
+    protected fun authenticatedAsAdmin(userId: UUID): RequestPostProcessor =
+        SecurityMockMvcRequestPostProcessors.authentication(
+            UsernamePasswordAuthenticationToken(
+                userId.toString(),
+                null,
+                listOf(
+                    SimpleGrantedAuthority(SecurityRoles.ROLE_USER),
+                    SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
+                )
+            )
+        )
+
+    protected fun authenticatedWithContext(
+        userId: UUID,
+        firebaseUid: String? = null,
+        email: String? = null,
+        emailVerified: Boolean
+    ): RequestPostProcessor =
+        SecurityMockMvcRequestPostProcessors.authentication(
+            UsernamePasswordAuthenticationToken(
+                CurrentUserAuthContext(
+                    userId = userId,
+                    firebaseUid = firebaseUid,
+                    email = email,
+                    emailVerified = emailVerified
+                ),
                 null,
                 listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
             )

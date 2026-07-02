@@ -2,35 +2,55 @@ package com.reals.backend.integration
 
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatStatus
-import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.AuditEventRepository
 import com.reals.backend.repository.ChatDecisionRepository
+import com.reals.backend.repository.ChatMessageRepository
+import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
+import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
+import com.reals.backend.repository.SafetyReportRepository
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.PushDeviceTokenRepository
+import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.repository.UserBlockRepository
+import com.reals.backend.repository.UserHomeStatusRepository
 import com.reals.backend.repository.VisualReviewRepository
-import com.reals.backend.scheduler.ScheduledSecondChatStartJob
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
-import com.reals.backend.service.MatchmakingProcessorService
-import com.reals.backend.service.MatchmakingService
+import com.reals.backend.service.AuditEventService
+import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingService
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.reports.SafetyReportService
+import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions
 import org.springframework.beans.factory.annotation.Autowired
@@ -53,6 +73,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var userService: UserService
+
+    @Autowired
+    protected lateinit var userBlockService: UserBlockService
 
     @Autowired
     protected lateinit var profileService: ProfileService
@@ -82,16 +105,43 @@ abstract class BaseIT {
     protected lateinit var schedulingService: SchedulingService
 
     @Autowired
+    protected lateinit var safetyReportService: SafetyReportService
+
+    @Autowired
+    protected lateinit var auditEventService: AuditEventService
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotService: SafetyReportEvidenceSnapshotService
+
+    @Autowired
+    protected lateinit var penaltyService: PenaltyService
+
+    @Autowired
+    protected lateinit var pushDeviceTokenService: PushDeviceTokenService
+
+    @Autowired
+    protected lateinit var homeStatusService: HomeStatusService
+
+    @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
 
     @Autowired
     protected lateinit var chatDecisionRepository: ChatDecisionRepository
 
     @Autowired
+    protected lateinit var chatExitRequestRepository: ChatExitRequestRepository
+
+    @Autowired
+    protected lateinit var chatMessageRepository: ChatMessageRepository
+
+    @Autowired
     protected lateinit var chatRepository: ChatRepository
 
     @Autowired
     protected lateinit var connectionRepository: ConnectionRepository
+
+    @Autowired
+    protected lateinit var connectionHomeDismissalRepository: ConnectionHomeDismissalRepository
 
     @Autowired
     protected lateinit var matchRepository: MatchRepository
@@ -109,13 +159,37 @@ abstract class BaseIT {
     protected lateinit var penaltyRepository: PenaltyRepository
 
     @Autowired
+    protected lateinit var auditEventRepository: AuditEventRepository
+
+    @Autowired
+    protected lateinit var safetyReportRepository: SafetyReportRepository
+
+    @Autowired
+    protected lateinit var safetyReportEvidenceSnapshotRepository: SafetyReportEvidenceSnapshotRepository
+
+    @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository
 
     @Autowired
     protected lateinit var userRepository: UserRepository
 
     @Autowired
+    protected lateinit var userBlockRepository: UserBlockRepository
+
+    @Autowired
+    protected lateinit var homeStatusRepository: UserHomeStatusRepository
+
+    @Autowired
     protected lateinit var profileRepository: ProfileRepository
+
+    @Autowired
+    protected lateinit var profilePhotoRepository: ProfilePhotoRepository
+
+    @Autowired
+    protected lateinit var pushDeviceTokenRepository: PushDeviceTokenRepository
+
+    @Autowired
+    protected lateinit var pushNotificationDeliveryRepository: PushNotificationDeliveryRepository
 
     protected fun createActiveProfile(
         email: String,
@@ -145,12 +219,18 @@ abstract class BaseIT {
         )
 
         repeat(4) { index ->
-            profileService.addPhoto(
-                profileId = profile.id,
-                url = "https://example.com/${profile.id}-${index + 1}.jpg",
-                position = index + 1,
-                isPersonPhoto = index == 0,
-                isFullBody = index == 0
+            profilePhotoRepository.save(
+                ProfilePhoto(
+                    profileId = profile.id,
+                    storageProvider = PhotoStorageProvider.S3,
+                    storageBucket = "reals-profile-photos-test",
+                    storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
+                    position = index + 1,
+                    isPersonPhoto = index == 0,
+                    isFullBody = index == 0,
+                    validationStatus = PhotoValidationStatus.VALIDATED,
+                    moderationStatus = PhotoModerationStatus.APPROVED
+                )
             )
         }
 
@@ -217,6 +297,13 @@ abstract class BaseIT {
         val connection = connectionRepository.findByMatchId(setup.matchId)
             ?: error("Connection was not created")
 
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        connectionService.activateScheduling(connection.id)
+        schedulingService.initializeNegotiation(connection.id)
+
         return ConnectionFixture(
             userAId = setup.userAId,
             userBId = setup.userBId,
@@ -225,7 +312,7 @@ abstract class BaseIT {
         )
     }
 
-    protected fun createAvailableSecondChat(): ConnectionFixture {
+    protected fun createScheduledSecondChatReadyToEnter(): ConnectionFixture {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
 
@@ -244,29 +331,17 @@ abstract class BaseIT {
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
 
-        ScheduledSecondChatStartJob(
-            negotiationRepository = negotiationRepository,
-            connectionService = connectionService,
-            chatService = chatService
-        ).run()
-
         return setup
     }
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
-        val setup = createAvailableSecondChat()
-        val secondChat =
-            chatRepository.findByConnectionIdAndChatType(
-                setup.connectionId,
-                ChatType.SECOND_CHAT
-            ) ?: error("Second chat was not made available")
-
-        chatService.findVisibleSecondChatOrThrow(
+        val setup = createScheduledSecondChatReadyToEnter()
+        val secondChat = chatService.findVisibleSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
 
-        Assertions.assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(secondChat.id).status)
+        Assertions.assertEquals(ChatStatus.ACTIVE, secondChat.status)
         Assertions.assertEquals(
             ConnectionState.SECOND_CHAT,
             connectionService.findByIdOrThrow(setup.connectionId).state

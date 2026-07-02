@@ -19,7 +19,8 @@ enum class ChatExitRequestType {
 enum class ChatExitRequestStatus {
     PENDING,
     ACCEPTED,
-    REJECTED
+    REJECTED,
+    TIMED_OUT
 }
 
 enum class ChatExitReason {
@@ -69,4 +70,9 @@ data class ChatExitRequest(
 
     @Column(name = "resolved_at")
     var resolvedAt: OffsetDateTime? = null
+)
+
+data class ChatExitRequestCreationResult(
+    val exitRequest: ChatExitRequest,
+    val created: Boolean
 )

@@ -28,6 +28,7 @@ class SecurityConfig(
         http
             // codeql[java/spring-disabled-csrf-protection]
             // Reals is a stateless API using Authorization bearer tokens, not cookie-based browser sessions.
+            // Revisit before adding cookie auth, form login, browser sessions, or browser-attached credentials.
             .csrf { it.disable() }
             .formLogin { it.disable() }
             .httpBasic { it.disable() }
@@ -69,10 +70,14 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/ping").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
+                    // Local-dev tooling controllers are profile-gated and do not run in dev/prod.
+                    // They execute system jobs, so requiring a user bearer token only adds local friction.
+                    .requestMatchers("/api/local-dev/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
+                    .requestMatchers("/api/admin/**").hasRole(SecurityRoles.ADMIN)
                     .requestMatchers("/api/**").hasRole(SecurityRoles.USER)
                     .anyRequest().denyAll()
             }

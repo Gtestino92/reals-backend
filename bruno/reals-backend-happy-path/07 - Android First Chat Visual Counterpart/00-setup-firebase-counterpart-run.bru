@@ -1,0 +1,48 @@
+meta {
+  name: 00 Setup Firebase Counterpart Run
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:8080
+}
+
+script:pre-request {
+  const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  clearEnvVars([
+    "counterpartRunId",
+    "firebase_counterpart_email",
+    "firebase_counterpart_id_token",
+    "firebase_counterpart_uid",
+    "counterpartUserId",
+    "counterpartProfileId",
+    "counterpartMatchId",
+    "counterpartFirstChatId",
+    "androidExitRequestId",
+    "counterpartExitRequestId",
+    "counterpartConnectionId"
+  ]);
+  
+  const runId = Date.now().toString();
+  bru.setEnvVar("counterpartRunId", runId);
+  if (!bru.getEnvVar("firebase_counterpart_email")) {
+    bru.setEnvVar("firebase_counterpart_email", `android.counterpart@example.com`);
+  }
+  if (!bru.getEnvVar("firebase_counterpart_password")) {
+    throw new Error("Set firebase_counterpart_password in ignored local.bru before running Firebase counterpart flows.");
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected ping response before Firebase counterpart setup.");
+  }
+}

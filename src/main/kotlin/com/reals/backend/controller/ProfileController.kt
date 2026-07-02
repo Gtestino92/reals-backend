@@ -1,14 +1,17 @@
 package com.reals.backend.controller
 
+import com.reals.backend.config.security.currentuser.CurrentUserAuth
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.config.security.currentuser.CurrentUserId
-import com.reals.backend.controller.dto.AddPhotoRequest
 import com.reals.backend.controller.dto.CreateProfileRequest
 import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.controller.dto.ProfileResponse
-import com.reals.backend.controller.dto.ReplacePhotoRequest
+import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
+import com.reals.backend.service.PhotoPlacement
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import jakarta.validation.Valid
@@ -116,9 +119,16 @@ class ProfileController(
 
     @PostMapping("/activation")
     fun activateMyProfile(
-        @CurrentUserId userId: UUID
+        @CurrentUserAuth authContext: CurrentUserAuthContext
     ): ResponseEntity<ProfileResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        if (!authContext.emailVerified) {
+            throw DomainConflictException(
+                code = DomainErrorCode.EMAIL_NOT_VERIFIED,
+                message = "Verificá tu email antes de activar el perfil."
+            )
+        }
+
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val activated = profileService.activateProfile(
             profileId = profile.id
@@ -180,39 +190,6 @@ class ProfileController(
     }
 
     /**
-     * Legacy endpoint.
-     *
-     * Adds a profile photo using an external URL.
-     * New production flow should use multipart upload instead.
-     */
-    @PostMapping(
-        "/photos",
-        consumes = [MediaType.APPLICATION_JSON_VALUE]
-    )
-    fun addPhoto(
-        @CurrentUserId userId: UUID,
-        @Valid
-        @RequestBody request: AddPhotoRequest
-    ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
-
-        val photo = profileService.addPhoto(
-            profileId = profile.id,
-            url = request.url,
-            position = request.position,
-            isPersonPhoto = request.isPersonPhoto,
-            isFullBody = request.isFullBody
-        )
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-            PhotoResponse.from(
-                photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
-            )
-        )
-    }
-
-    /**
      * Uploads a new profile photo file to object storage.
      *
      * Used when adding a new photo to an empty position.
@@ -266,6 +243,34 @@ class ProfileController(
         )
     }
 
+    @PutMapping("/photos/reorder")
+    fun reorderPhotos(
+        @CurrentUserId userId: UUID,
+        @Valid
+        @RequestBody request: ReorderProfilePhotosRequest
+    ): ResponseEntity<List<PhotoResponse>> {
+        val profile = findProfileForCurrentUserOrThrow(userId)
+
+        val photos = profileService.reorderPhotos(
+            profileId = profile.id,
+            placements = request.placements.map {
+                PhotoPlacement(
+                    photoId = it.photoId,
+                    position = it.position
+                )
+            }
+        )
+
+        return ResponseEntity.ok(
+            photos.map {
+                PhotoResponse.from(
+                    photo = it,
+                    url = profileService.resolvePhotoReadUrlForResponse(it)
+                )
+            }
+        )
+    }
+
     /**
      * Deletes an existing photo by photo id.
      *
@@ -290,43 +295,6 @@ class ProfileController(
             ProfileResponse.from(
                 profile = updated,
                 photoCount = photos.size
-            )
-        )
-    }
-
-    /**
-     * Legacy endpoint.
-     *
-     * Replaces a photo URL by position.
-     * Kept temporarily for the old frontend flow.
-     */
-    @PutMapping(
-        "/photos/position/{position}",
-        consumes = [MediaType.APPLICATION_JSON_VALUE]
-    )
-    fun replacePhotoByPosition(
-        @CurrentUserId userId: UUID,
-
-        @Min(1)
-        @PathVariable position: Int,
-
-        @Valid
-        @RequestBody request: ReplacePhotoRequest
-    ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
-
-        val photo = profileService.replacePhoto(
-            profileId = profile.id,
-            position = position,
-            url = request.url,
-            isPersonPhoto = request.isPersonPhoto,
-            isFullBody = request.isFullBody
-        )
-
-        return ResponseEntity.ok(
-            PhotoResponse.from(
-                photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
             )
         )
     }
