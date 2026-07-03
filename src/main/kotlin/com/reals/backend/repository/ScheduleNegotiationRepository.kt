@@ -77,6 +77,25 @@ interface ScheduleNegotiationRepository :
         )
     ): List<ScheduleNegotiation>
 
+    @Query(
+        """select n from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime <= :dueBefore"""
+    )
+    fun findConfirmedSecondChatNoShowDue(
+        @Param("dueBefore") dueBefore: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            ConnectionState.SECOND_CHAT
+        )
+    ): List<ScheduleNegotiation>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """update ScheduleNegotiation n
