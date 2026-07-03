@@ -78,6 +78,7 @@ Known scheduler jobs:
 - `InactivityCheckJob`
 - `MatchExpirationJob`
 - `PenaltyExpirationJob`
+- `UserReliabilityEventCleanupJob`
 - `SchedulingNegotiationTimeoutJob`
 - `SecondChatLifecycleJob`
 - `SecondChatReminderNotificationJob`
@@ -100,6 +101,10 @@ is `[10]` minutes and is configured through
 times already in the past are skipped. Delivery is deduplicated per user,
 notification type, connection id and lead time. The payload contains only
 `type`, `connectionId` and `availableAt`.
+
+`UserReliabilityEventCleanupJob` deletes expired internal reliability events
+after their scoring window ends. User reliability is feature-flagged off by
+default and recomputed from active events instead of a cache.
 
 Local auto-auth profiles expose `/api/local-dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/local-dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. The local matchmaking processor endpoint is also available in `local-firebase` for Android/Firebase manual flows. These endpoints are profile-gated and are not part of the cloud dev or production API.
 

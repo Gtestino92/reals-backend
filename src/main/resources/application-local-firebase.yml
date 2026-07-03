@@ -62,6 +62,8 @@ scheduler:
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: 600000
+  user-reliability-cleanup-job:
+    fixed-delay: 3600000
   visual-phase-expiration-job:
     fixed-delay: 300000
   scheduling-timeout-job:
@@ -81,6 +83,20 @@ matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+
+user-reliability:
+  enabled: true
+  base-score: 100
+  full-weight-days: 10
+  half-weight-days: 10
+  expiration-days: 20
+  first-chat:
+    min-participation-messages-per-user: 2
+    min-participation-minutes: 5
+  second-chat:
+    no-show-grace-minutes: 10
+  matchmaking:
+    max-modifier: 0.05
 
 firebase:
   service-account-path: ./secrets/reals-backend-firebase-credentials-dev.json

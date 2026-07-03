@@ -5,8 +5,10 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ScheduleProposal
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -24,6 +26,7 @@ class SchedulingService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val proposalRepository: ScheduleProposalRepository,
     private val connectionService: ConnectionService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
@@ -140,6 +143,13 @@ class SchedulingService(
         }
 
         val saved = proposalRepository.saveAll(proposals).toList()
+
+        userReliabilityScoreService.recordEvent(
+            userId = userId,
+            eventType = UserReliabilityEventType.SCHEDULING_SLOTS_PROPOSED_ON_TIME,
+            relatedMatchId = connection.matchId,
+            relatedConnectionId = connectionId
+        )
 
         tryAutoConfirmOverlap(connectionId)
 
@@ -370,6 +380,22 @@ class SchedulingService(
 
         val negotiation = findNegotiationOrNull(connectionId)
         if (negotiation != null && negotiation.status == NegotiationStatus.PENDING) {
+            val usersWithAnyProposal =
+                proposalRepository.findByConnectionId(connectionId)
+                    .map { it.userId }
+                    .toSet()
+
+            listOf(connection.userAId, connection.userBId)
+                .filter { it !in usersWithAnyProposal }
+                .forEach { userId ->
+                    userReliabilityScoreService.recordEvent(
+                        userId = userId,
+                        eventType = UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL,
+                        relatedMatchId = connection.matchId,
+                        relatedConnectionId = connectionId
+                    )
+                }
+
             negotiation.status = NegotiationStatus.FAILED
             negotiation.updatedAt = OffsetDateTime.now()
 

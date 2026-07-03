@@ -9,11 +9,11 @@ import com.reals.backend.controller.dto.ProfileResponse
 import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
-import com.reals.backend.service.PhotoPlacement
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.photo.PhotoPlacement
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus

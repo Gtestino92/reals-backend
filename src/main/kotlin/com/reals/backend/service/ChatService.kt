@@ -17,6 +17,7 @@ import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
@@ -27,6 +28,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.notification.VisualReviewNotificationService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
@@ -51,6 +53,7 @@ class ChatService(
     private val chatExitService: ChatExitService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -65,7 +68,10 @@ class ChatService(
     private val minMessagesPerUser: Int,
 
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
-    private val firstChatInactivityThresholdMinutes: Long
+    private val firstChatInactivityThresholdMinutes: Long,
+
+    @param:Value("\${user-reliability.second-chat.no-show-grace-minutes:10}")
+    private val secondChatNoShowGraceMinutes: Long
 ) {
 
     private companion object {
@@ -182,6 +188,8 @@ class ChatService(
         chat.lastMessageAt = message.sentAt
         chatRepository.save(chat)
 
+        recordSecondChatAttendanceIfWithinGrace(chat, message)
+
         return message
     }
 
@@ -278,6 +286,15 @@ class ChatService(
             chatRepository.save(chat)
             recordChatEnded(chat)
 
+            listOf(match.userAId, match.userBId).forEach { participantId ->
+                userReliabilityScoreService.recordEvent(
+                    userId = participantId,
+                    eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION,
+                    relatedMatchId = match.id,
+                    relatedChatId = chat.id
+                )
+            }
+
             matchService.transitionToVisualPhase(matchId)
             visualReviewService.initializeForMatch(matchId)
             visualReviewNotificationService.notifyVisualReviewAvailable(matchId)
@@ -317,7 +334,10 @@ class ChatService(
         recordChatEnded(chat)
 
         when (chat.chatType) {
-            ChatType.FIRST_CHAT -> matchService.expireMatch(chat.matchId)
+            ChatType.FIRST_CHAT -> {
+                recordFirstChatExpirationReliability(chat)
+                matchService.expireMatch(chat.matchId)
+            }
 
             ChatType.SECOND_CHAT -> {
                 if (finalStatus == ChatStatus.ABANDONED) {
@@ -333,6 +353,57 @@ class ChatService(
         }
 
         return true
+    }
+
+    fun evaluateSecondChatNoShows(now: OffsetDateTime = OffsetDateTime.now()): Int {
+        val dueNegotiations =
+            negotiationRepository.findConfirmedSecondChatNoShowDue(
+                dueBefore = now.minusMinutes(secondChatNoShowGraceMinutes)
+            )
+
+        var recorded = 0
+
+        dueNegotiations.forEach { negotiation ->
+            val connection = connectionService.findByIdOrThrow(negotiation.connectionId)
+            val confirmedDateTime = negotiation.confirmedDateTime ?: return@forEach
+            val graceEndsAt = confirmedDateTime.plusMinutes(secondChatNoShowGraceMinutes)
+            val secondChat =
+                chatRepository.findByConnectionIdAndChatType(
+                    connectionId = connection.id,
+                    chatType = ChatType.SECOND_CHAT
+                )
+
+            listOf(connection.userAId, connection.userBId).forEach { participantId ->
+                val sentWithinGrace =
+                    secondChat != null &&
+                        chatMessageRepository.countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
+                            chatSessionId = secondChat.id,
+                            senderId = participantId,
+                            sentAt = graceEndsAt
+                        ) > 0
+
+                val eventType =
+                    if (sentWithinGrace) {
+                        UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED
+                    } else {
+                        UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+                    }
+
+                val event =
+                    userReliabilityScoreService.recordEvent(
+                        userId = participantId,
+                        eventType = eventType,
+                        relatedMatchId = connection.matchId,
+                        relatedConnectionId = connection.id,
+                        relatedChatId = secondChat?.id
+                    )
+                if (event != null) {
+                    recorded += 1
+                }
+            }
+        }
+
+        return recorded
     }
 
     fun getMessages(
@@ -552,6 +623,52 @@ class ChatService(
                 "connectionId" to chat.connectionId
             )
         )
+    }
+
+    private fun recordSecondChatAttendanceIfWithinGrace(
+        chat: Chat,
+        message: ChatMessage
+    ) {
+        if (chat.chatType != ChatType.SECOND_CHAT) {
+            return
+        }
+
+        val connectionId = chat.connectionId ?: return
+        val availableAt = chat.availableAt ?: return
+        if (message.sentAt.isAfter(availableAt.plusMinutes(secondChatNoShowGraceMinutes))) {
+            return
+        }
+
+        userReliabilityScoreService.recordEvent(
+            userId = message.senderId,
+            eventType = UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED,
+            relatedMatchId = chat.matchId,
+            relatedConnectionId = connectionId,
+            relatedChatId = chat.id
+        )
+    }
+
+    private fun recordFirstChatExpirationReliability(chat: Chat) {
+        val match = matchService.findByIdOrThrow(chat.matchId)
+        val decision = chatDecisionRepository.findByChatId(chat.id)
+        val unresolvedUserIds =
+            buildList {
+                if (decision?.userADecision == null) {
+                    add(match.userAId)
+                }
+                if (decision?.userBDecision == null) {
+                    add(match.userBId)
+                }
+            }
+
+        unresolvedUserIds.forEach { userId ->
+            userReliabilityScoreService.recordEvent(
+                userId = userId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_EXPIRED_NO_DECISION,
+                relatedMatchId = match.id,
+                relatedChatId = chat.id
+            )
+        }
     }
 
     fun findActiveFirstChatOrThrow(matchId: UUID): Chat {

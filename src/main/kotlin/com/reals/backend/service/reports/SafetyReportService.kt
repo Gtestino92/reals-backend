@@ -13,6 +13,7 @@ import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.toSafetyReportReason
 import com.reals.backend.repository.ChatRepository
@@ -31,6 +32,7 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.validation.PlainText
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -55,7 +57,8 @@ class SafetyReportService(
     private val userBlockService: UserBlockService,
     private val auditEventService: AuditEventService,
     private val evidenceSnapshotService: SafetyReportEvidenceSnapshotService,
-    private val penaltyService: PenaltyService
+    private val penaltyService: PenaltyService,
+    private val userReliabilityScoreService: UserReliabilityScoreService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -265,6 +268,45 @@ class SafetyReportService(
             aggregateId = saved.id,
             actorUserId = adminUserId,
             targetUserId = saved.reportedUserId,
+            metadata = mapOf(
+                "source" to saved.source.name,
+                "previousStatus" to previousStatus.name,
+                "newStatus" to saved.status.name
+            )
+        )
+        return saved
+    }
+
+    fun dismissAbusiveOrUnjustifiedReport(
+        reportId: UUID,
+        adminUserId: UUID,
+        notes: String?
+    ): SafetyReport {
+        val report = getReport(reportId)
+        val previousStatus = report.status
+        validatePending(report)
+
+        report.status = SafetyReportStatus.DISMISSED_ABUSIVE_OR_UNJUSTIFIED
+        report.reviewedAt = OffsetDateTime.now()
+        report.reviewedByUserId = adminUserId
+        report.verdictNotes = normalizeNotes(notes)
+
+        val saved = safetyReportRepository.save(report)
+
+        saved.reporterUserId?.let { reporterUserId ->
+            userReliabilityScoreService.recordEvent(
+                userId = reporterUserId,
+                eventType = UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE,
+                relatedSafetyReportId = saved.id
+            )
+        }
+
+        auditEventService.record(
+            eventType = AuditEventType.SAFETY_REPORT_DISMISSED,
+            aggregateType = AuditAggregateType.SAFETY_REPORT,
+            aggregateId = saved.id,
+            actorUserId = adminUserId,
+            targetUserId = saved.reporterUserId,
             metadata = mapOf(
                 "source" to saved.source.name,
                 "previousStatus" to previousStatus.name,
