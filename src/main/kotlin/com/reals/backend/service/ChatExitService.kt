@@ -14,6 +14,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
@@ -23,6 +24,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.reports.SafetyReportService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -42,6 +44,7 @@ class ChatExitService(
     private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
     private val auditEventService: AuditEventService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
@@ -50,7 +53,13 @@ class ChatExitService(
     private val secondChatMinMessagesBeforeFreeCancel: Int,
 
     @param:Value("\${chat.exit-request.mutual-timeout-seconds:20}")
-    private val mutualCancellationTimeoutSeconds: Long
+    private val mutualCancellationTimeoutSeconds: Long,
+
+    @param:Value("\${user-reliability.first-chat.min-participation-messages-per-user:2}")
+    private val reliabilityMinParticipationMessagesPerUser: Int,
+
+    @param:Value("\${user-reliability.first-chat.min-participation-minutes:5}")
+    private val reliabilityMinParticipationMinutes: Long
 ) {
 
     private companion object {
@@ -149,6 +158,8 @@ class ChatExitService(
             actorUserId = responderUserId
         )
 
+        recordFirstChatMutualNoSparkClosure(chat)
+
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
@@ -226,6 +237,15 @@ class ChatExitService(
             actorUserId = userId
         )
 
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            userReliabilityScoreService.recordEvent(
+                userId = exitRequest.responderUserId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED,
+                relatedMatchId = chat.matchId,
+                relatedChatId = chat.id
+            )
+        }
+
         // Client-triggered mutual timeout means the pending request was not
         // answered in time. It is not a unilateral cancellation and must not
         // penalize the caller under future scoring semantics.
@@ -271,6 +291,12 @@ class ChatExitService(
             chat = chat,
             endedReason = ChatEndReason.UNILATERAL_CANCEL,
             actorUserId = userId
+        )
+
+        recordFirstChatUnilateralClosure(
+            chat = chat,
+            closingUserId = userId,
+            counterpartUserId = responderUserId
         )
 
         return ChatExitOutcome(
@@ -336,6 +362,71 @@ class ChatExitService(
             exitRequest = exitRequest,
             penaltyApplied = false,
             penalizedUserId = null
+        )
+    }
+
+    private fun recordFirstChatMutualNoSparkClosure(chat: Chat) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val match = matchService.findByIdOrThrow(chat.matchId)
+        listOf(match.userAId, match.userBId).forEach { userId ->
+            userReliabilityScoreService.recordEvent(
+                userId = userId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE,
+                relatedMatchId = match.id,
+                relatedChatId = chat.id
+            )
+        }
+    }
+
+    private fun recordFirstChatUnilateralClosure(
+        chat: Chat,
+        closingUserId: UUID,
+        counterpartUserId: UUID
+    ) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val now = OffsetDateTime.now()
+        val elapsedThresholdMet = !chat.startedAt.plusMinutes(reliabilityMinParticipationMinutes).isAfter(now)
+        val closingUserMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = closingUserId
+            )
+        val counterpartMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = counterpartUserId
+            )
+
+        if (elapsedThresholdMet && closingUserMessages > 0L && counterpartMessages == 0L) {
+            userReliabilityScoreService.recordEvent(
+                userId = counterpartUserId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_CLOSED_AFTER_COUNTERPARTY_INACTIVE,
+                relatedMatchId = chat.matchId,
+                relatedChatId = chat.id
+            )
+            return
+        }
+
+        val minimumParticipationMet =
+            elapsedThresholdMet &&
+                closingUserMessages >= reliabilityMinParticipationMessagesPerUser.toLong() &&
+                counterpartMessages >= reliabilityMinParticipationMessagesPerUser.toLong()
+
+        userReliabilityScoreService.recordEvent(
+            userId = closingUserId,
+            eventType = if (minimumParticipationMet) {
+                UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION
+            } else {
+                UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE
+            },
+            relatedMatchId = chat.matchId,
+            relatedChatId = chat.id
         )
     }
 

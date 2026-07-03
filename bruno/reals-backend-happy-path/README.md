@@ -24,6 +24,8 @@ The first request generates unique test emails and a future half-hour second-cha
 - `03 Alternate Outcomes`: valid business flows that do not end in a successful second chat.
 - `04 Timeout Outcomes`: local-only deadline and job-trigger flows for time-based outcomes.
 - `05 Firebase Auth`: optional Firebase smoke flow. Fill `firebase_api_key`, `firebase_email` and `firebase_password` in `environments/local.bru` before running it. `local.bru` is ignored by Git; never commit real Firebase values.
+- `10 Local Dev Jobs`: local-only manual triggers for periodic jobs, including user reliability cleanup.
+- `12 User Reliability Debug`: local/dev-only Firebase sign-in/provision setup and read requests for `GET /api/local-dev/user-reliability/{userId}`.
 
 ## Happy Path Covered Flow
 

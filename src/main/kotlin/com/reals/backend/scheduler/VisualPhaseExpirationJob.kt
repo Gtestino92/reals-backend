@@ -1,8 +1,7 @@
 package com.reals.backend.scheduler
 
-import com.reals.backend.domain.MatchState
 import com.reals.backend.repository.VisualReviewRepository
-import com.reals.backend.service.MatchService
+import com.reals.backend.service.VisualReviewService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -17,10 +16,8 @@ import java.time.OffsetDateTime
  */
 @Component
 class VisualPhaseExpirationJob(
-
     private val visualReviewRepository: VisualReviewRepository,
-    private val matchService: MatchService
-
+    private val visualReviewService: VisualReviewService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -46,18 +43,7 @@ class VisualPhaseExpirationJob(
 
         expired.forEach { review ->
             try {
-                val match = matchService.findByIdOrThrow(review.matchId)
-                if (match.state != MatchState.VISUAL_PHASE) {
-                    skipped += 1
-                    log.debug(
-                        "VisualPhaseExpirationJob - skipped match={} because state={}",
-                        review.matchId,
-                        match.state
-                    )
-                    return@forEach
-                }
-
-                val changed = matchService.expireMatch(review.matchId)
+                val changed = visualReviewService.expireVisualReview(review.matchId)
                 if (changed) {
                     succeeded += 1
                     log.info(
@@ -67,7 +53,7 @@ class VisualPhaseExpirationJob(
                 } else {
                     skipped += 1
                     log.debug(
-                        "VisualPhaseExpirationJob - skipped match={} because it was already expired",
+                        "VisualPhaseExpirationJob - skipped match={} because it was already expired or not due",
                         review.matchId
                     )
                 }

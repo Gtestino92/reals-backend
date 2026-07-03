@@ -40,6 +40,7 @@ Useful local helpers:
 - `POST /api/local-dev/jobs/scheduling-timeout/run`
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
 - `POST /api/local-dev/jobs/second-chat-lifecycle/run`
+- `POST /api/local-dev/jobs/user-reliability-cleanup/run`
 - `POST /api/local-dev/timeouts/chats/{chatId}/expire-now`
 - `POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now`
 - `POST /api/local-dev/timeouts/matches/{matchId}/visual-expire-now`

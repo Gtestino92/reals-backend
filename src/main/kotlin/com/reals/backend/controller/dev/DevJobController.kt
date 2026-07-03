@@ -9,6 +9,7 @@ import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
+import com.reals.backend.scheduler.UserReliabilityEventCleanupJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Profile
@@ -31,6 +32,7 @@ class DevJobController(
     private val schedulingNegotiationTimeoutJob: ObjectProvider<SchedulingNegotiationTimeoutJob>,
     private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
     private val secondChatReminderNotificationJob: ObjectProvider<SecondChatReminderNotificationJob>,
+    private val userReliabilityEventCleanupJob: ObjectProvider<UserReliabilityEventCleanupJob>,
     private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>
 ) {
 
@@ -86,6 +88,12 @@ class DevJobController(
     fun runSecondChatReminder(): ResponseEntity<DevJobRunResponse> =
         runJob("SecondChatReminderNotificationJob") {
             requireJob(secondChatReminderNotificationJob, "SecondChatReminderNotificationJob").runNowForDev()
+        }
+
+    @PostMapping("/user-reliability-cleanup/run")
+    fun runUserReliabilityCleanup(): ResponseEntity<DevJobRunResponse> =
+        runJob("UserReliabilityEventCleanupJob") {
+            requireJob(userReliabilityEventCleanupJob, "UserReliabilityEventCleanupJob").runNowForDev()
         }
 
     @PostMapping("/visual-phase-expiration/run")

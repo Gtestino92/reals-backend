@@ -1,0 +1,47 @@
+meta {
+  name: 10 Get Android Reliability Score
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/local-dev/user-reliability/{{androidUserId}}
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.userId !== bru.getEnvVar("androidUserId")) {
+    throw new Error("Expected reliability response for androidUserId.");
+  }
+  if (typeof body.enabled !== "boolean") {
+    throw new Error("Expected enabled flag in reliability response.");
+  }
+  if (typeof body.baseScore !== "number" || typeof body.weightedDelta !== "number" || typeof body.effectiveScore !== "number") {
+    throw new Error("Expected numeric score fields in reliability response.");
+  }
+  if (!Array.isArray(body.events)) {
+    throw new Error("Expected events array in reliability response.");
+  }
+  if (!body.enabled && (body.weightedDelta !== 0 || body.effectiveScore !== body.baseScore || body.events.length !== 0)) {
+    throw new Error("Expected neutral score and no events while user reliability is disabled.");
+  }
+  body.events.forEach((event) => {
+    if (!event.id || !event.eventType || !event.dimension) {
+      throw new Error("Expected event id, eventType and dimension.");
+    }
+    if (typeof event.delta !== "number" || typeof event.temporalWeight !== "number" || typeof event.effectiveDelta !== "number") {
+      throw new Error("Expected numeric event delta, temporalWeight and effectiveDelta.");
+    }
+    if (!event.occurredAt || !event.expiresAt) {
+      throw new Error("Expected event occurredAt and expiresAt.");
+    }
+    if (event.metadata === undefined) {
+      throw new Error("Expected event metadata field.");
+    }
+  });
+
+  bru.setEnvVar("reliabilityAndroidEffectiveScore", String(body.effectiveScore));
+  bru.setEnvVar("reliabilityAndroidEventCount", String(body.events.length));
+}

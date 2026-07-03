@@ -12,6 +12,7 @@ import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
 import com.reals.backend.service.photo.PhotoModerationResult
+import com.reals.backend.service.photo.PhotoPlacement
 import com.reals.backend.service.photo.ProfilePhotoModerationService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
@@ -22,11 +23,6 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
 import java.util.*
-
-data class PhotoPlacement(
-    val photoId: UUID,
-    val position: Int
-)
 
 @Service
 @Transactional
