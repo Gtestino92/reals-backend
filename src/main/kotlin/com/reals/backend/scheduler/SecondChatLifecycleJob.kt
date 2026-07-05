@@ -51,8 +51,9 @@ class SecondChatLifecycleJob(
         val timedOutAvailable = chatService.findTimedOutAvailableSecondChats()
         val timedOutActive = chatService.findTimedOutActiveSecondChats()
         val expiredReadOnly = chatService.findExpiredReadOnlySecondChats()
+        val noShowEventsRecorded = chatService.evaluateSecondChatNoShows(now)
 
-        var succeeded = 0
+        var succeeded = noShowEventsRecorded
         var skipped = 0
         var failed = 0
 
@@ -135,6 +136,7 @@ class SecondChatLifecycleJob(
             jobName = "SecondChatLifecycleJob",
             summary = JobRunSummary(
                 processed =
+                    noShowEventsRecorded +
                     expiredScheduledWithoutChat.size +
                         timedOutAvailable.size +
                         timedOutActive.size +

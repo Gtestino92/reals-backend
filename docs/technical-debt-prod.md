@@ -377,7 +377,7 @@ Important metrics:
 
 ---
 
-## 7. Matchmaking scalability
+## 7.1 Matchmaking scalability
 
 Risk:
 - Current matchmaking job is safe but serialized.
@@ -404,6 +404,110 @@ Future option:
 - Add concurrency tests for duplicate match prevention.
 
 ---
+
+## 7.2 UserReliabilityScore cache and production scaling
+
+`UserReliabilityScore` is initially computed from active `user_reliability_events`.
+
+This is acceptable for MVP/early dev because:
+
+* only recent events affect the score;
+* the active scoring window is short;
+* the expected number of reliability events per user is low;
+* the score is not user-visible;
+* the score does not require instant, event-by-event consistency.
+
+The current design should keep reliability events as the source of truth.
+
+```text
+effectiveScore = baseScore + weightedSum(activeReliabilityEvents)
+```
+
+Temporal weighting must be applied at calculation time. Event deltas should not be mutated when they move from full weight to half weight.
+
+Expected weighting model:
+
+```text
+0-9 days:
+  100% weight
+
+10-19 days:
+  50% weight
+
+20+ days:
+  expired
+```
+
+Expired reliability events may be deleted by a scheduled cleanup job because long-term operational audit should live outside the scoring table.
+
+### Future cache / materialized score
+
+If matchmaking starts evaluating large candidate pools or score calculation becomes a measurable bottleneck, add a cache or materialized score table.
+
+Suggested future table:
+
+```text
+user_reliability_score_cache
+  user_id
+  effective_score
+  calculated_at
+  valid_until
+```
+
+A simple TTL-based cache is acceptable. `UserReliabilityScore` does not require strict instant consistency. Small delays are acceptable because the score is used as a soft matchmaking modifier, not as a safety or access-control mechanism.
+
+Recommended behavior:
+
+```text
+if cache exists and valid_until > now:
+  use cached score
+
+else:
+  recompute score from active reliability events
+  upsert cache row
+```
+
+The cache must be reconstructable from `user_reliability_events`.
+
+### Cache invalidation rules
+
+A future cache implementation should consider these invalidation triggers:
+
+* new reliability event created;
+* reliability event cleanup job deletes expired events;
+* scoring configuration changes;
+* cache TTL expires.
+
+A minimal implementation may rely only on TTL-based lazy recomputation, as long as the resulting staleness is documented and bounded.
+
+Do not implement a cache that can remain stale indefinitely.
+
+### Matchmaking usage
+
+Matchmaking should avoid per-candidate N+1 score queries.
+
+Preferred MVP shape:
+
+```text
+getEffectiveScores(userIds: Set<UUID>): Map<UUID, Int>
+```
+
+This allows the matchmaking processor to fetch scores in batch for the current candidate pool.
+
+If a cache is added later, the same service boundary should remain stable so matchmaking does not need to know whether scores are computed from events or read from a cache.
+
+### Non-goals
+
+Do not use `UserReliabilityScore` cache for:
+
+* user-visible score display;
+* safety/moderation sanctions;
+* hard bans;
+* permanent user classification;
+* overriding core eligibility, blocks, locks, distance filters or compatibility constraints.
+
+The reliability score should remain a bounded, recoverable, short-memory matchmaking modifier.
+
 
 ## 8. Home and polling pressure
 

@@ -135,7 +135,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         VisualPhaseExpirationJob(
             visualReviewRepository = visualReviewRepository,
-            matchService = matchService
+            visualReviewService = visualReviewService
         ).run()
 
         assertEquals(MatchState.EXPIRED, matchService.findByIdOrThrow(setup.matchId).state)

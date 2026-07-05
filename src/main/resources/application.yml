@@ -76,6 +76,10 @@ scheduler:
   penalty-expiration-job:
     fixed-delay: 600000
 
+  # Deletes expired internal reliability events after their scoring window ends.
+  user-reliability-cleanup-job:
+    fixed-delay: ${SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY:3600000}
+
   # Runs every 5 minutes — same cadence as match-expiration-job
   visual-phase-expiration-job:
     fixed-delay: 300000
@@ -177,6 +181,20 @@ engagement:
   # Maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
   max-active-connections: 2
+
+user-reliability:
+  enabled: ${USER_RELIABILITY_ENABLED:false}
+  base-score: ${USER_RELIABILITY_BASE_SCORE:100}
+  full-weight-days: ${USER_RELIABILITY_FULL_WEIGHT_DAYS:10}
+  half-weight-days: ${USER_RELIABILITY_HALF_WEIGHT_DAYS:10}
+  expiration-days: ${USER_RELIABILITY_EXPIRATION_DAYS:20}
+  first-chat:
+    min-participation-messages-per-user: ${FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER:2}
+    min-participation-minutes: ${FIRST_CHAT_MIN_PARTICIPATION_MINUTES:5}
+  second-chat:
+    no-show-grace-minutes: ${SECOND_CHAT_NO_SHOW_GRACE_MINUTES:10}
+  matchmaking:
+    max-modifier: ${USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER:0.05}
 
 notifications:
   second-chat-reminder:

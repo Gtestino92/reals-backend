@@ -13,6 +13,7 @@ import java.util.UUID
 enum class SafetyReportStatus {
     PENDING,
     DISMISSED,
+    DISMISSED_ABUSIVE_OR_UNJUSTIFIED,
     CONFIRMED
 }
 

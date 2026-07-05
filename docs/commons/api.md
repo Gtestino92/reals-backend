@@ -195,6 +195,7 @@ All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated
 - `POST /api/admin/safety-reports`: create an admin safety report. `contextType=USER` creates a general report about the reported user with `contextId = reportedUserId` and no match/chat context. Contextual admin reports can reference chat, visual profile, personal message or profile photo contexts. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
 - `GET /api/admin/safety-reports/{reportId}`: fetch report detail, reduced reporter/reported user summaries, evidence snapshot, chat messages for review and associated penalty if one exists.
 - `POST /api/admin/safety-reports/{reportId}/dismissal`: dismiss a pending report. Body: `{ "notes": "optional notes" }`. Does not create a penalty.
+- `POST /api/admin/safety-reports/{reportId}/abusive-dismissal`: dismiss a pending report as abusive or unjustified. Body: `{ "notes": "optional notes" }`. Does not create a safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter.
 - `POST /api/admin/safety-reports/{reportId}/penalty`: confirm a pending report and apply a penalty to the reported user. Temporary body: `{ "type": "TEMPORARY_BAN", "durationHours": 24, "reason": "Harassment confirmed", "notes": "optional notes" }`. Permanent body: `{ "type": "PERMANENT_BAN", "reason": "Severe safety violation", "notes": "optional notes" }`.
 
 Temporary penalties require positive `durationHours`; permanent penalties reject `durationHours` and have `expiresAt = null`. Active penalties block matchmaking and remove the user from the queue if already queued. The penalty expiration job deactivates only expired temporary penalties.
@@ -232,6 +233,7 @@ These endpoints are profile-gated for local manual testing:
 - `POST /api/local-dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
 - `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
+- `GET /api/local-dev/user-reliability/{userId}`: inspect the internal user reliability score breakdown and active contributing events without mutating state.
 
 These local-dev endpoints execute system tooling and do not require a user
 bearer token. They are not available in `dev` or `prod`.
@@ -247,6 +249,7 @@ Supported local job triggers:
 - `POST /api/local-dev/jobs/scheduling-timeout/run`
 - `POST /api/local-dev/jobs/inactivity-check/run`
 - `POST /api/local-dev/jobs/penalty-expiration/run`
+- `POST /api/local-dev/jobs/user-reliability-cleanup/run`
 - `POST /api/local-dev/jobs/account-deletion-finalization/run`
 
 The second-chat confirmed time can be moved into the past for local testing with:

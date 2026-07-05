@@ -25,4 +25,10 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         chatSessionId: UUID,
         senderId: UUID
     ): Long
+
+    fun countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
+        chatSessionId: UUID,
+        senderId: UUID,
+        sentAt: OffsetDateTime
+    ): Long
 }

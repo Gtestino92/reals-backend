@@ -50,6 +50,15 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
+| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
+| `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
+| `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
+| `USER_RELIABILITY_HALF_WEIGHT_DAYS` | no | Number of days reliability events count at half weight after the full-weight window. Defaults to `10`. |
+| `USER_RELIABILITY_EXPIRATION_DAYS` | no | Event retention/scoring window before cleanup deletes reliability events. Defaults to `20`. |
+| `FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER` | no | Reliability-only first-chat minimum participation message threshold. Defaults to `2`. |
+| `FIRST_CHAT_MIN_PARTICIPATION_MINUTES` | no | Reliability-only first-chat minimum participation elapsed-time threshold. Defaults to `5`. |
+| `SECOND_CHAT_NO_SHOW_GRACE_MINUTES` | no | Grace window for second-chat attendance/no-show reliability events. Defaults to `10`. |
+| `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring when enabled. Defaults to `0.05`. |
 | `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `60000`. |
 | `SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN` | no | Dev/prod upper bound for pairs processed per matchmaking run. Defaults to `10`. |
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
@@ -60,6 +69,7 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for inactivity abandonment checks. Defaults to `60000`. |
 | `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES` | no | Legacy fallback for first-chat inactivity threshold. Prefer `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES`. |
 | `SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for expiring temporary penalties. Defaults to `600000`. |
+| `SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for deleting expired reliability events. Defaults to `3600000`. |
 | `SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for visual phase expiration. Defaults to `300000`. |
 | `SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for scheduling negotiation timeout cleanup. Defaults to `900000`. |
 | `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for enabling deferred scheduling. Defaults to `60000`. |
@@ -123,6 +133,7 @@ Dev and prod use the same MVP scheduler defaults:
 | `MatchExpirationJob` | `300000` ms, `PT20M` first-chat fallback | Safety net for stale matches that did not progress after first-chat timeout handling. |
 | `VisualPhaseExpirationJob` | `300000` ms | Expire visual reviews whose deadline passed. |
 | `PenaltyExpirationJob` | `600000` ms | Remove expired temporary penalties from active enforcement. |
+| `UserReliabilityEventCleanupJob` | `3600000` ms | Delete expired internal reliability events after their scoring window. |
 | `SchedulingNegotiationTimeoutJob` | `900000` ms | Close scheduling negotiations after their deadline. |
 | `AccountDeletionFinalizationJob` | `3600000` ms | Finalize deleted accounts after the recovery window. |
 

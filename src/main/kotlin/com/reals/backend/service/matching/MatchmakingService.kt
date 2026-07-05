@@ -8,6 +8,7 @@ import com.reals.backend.service.UserService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -25,6 +26,7 @@ class MatchmakingService(
     private val compatibilityScorer: CompatibilityScorer,
     private val searchLocationMatchFilter: SearchLocationMatchFilter,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -214,7 +216,16 @@ class MatchmakingService(
             return null
         }
 
-        val score = compatibilityScorer.score(profileA, profileB)
+        val compatibilityScore = compatibilityScorer.score(profileA, profileB)
+        val score =
+            if (userReliabilityScoreService.enabled) {
+                (compatibilityScore + userReliabilityScoreService.matchmakingModifierForPair(
+                    userAId = pair.userAId,
+                    userBId = pair.userBId
+                )).coerceIn(0.0, 1.0)
+            } else {
+                compatibilityScore
+            }
         if (score < minCompatibilityScore) {
             return null
         }

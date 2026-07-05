@@ -183,6 +183,8 @@ Safety-report chat closure creates:
 
 Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Dismissing a pending report stores review metadata and creates no penalty. Confirming a pending report creates either a temporary or permanent penalty for the reported user, links it through `sourceReportId`/`penaltyId`, removes the reported user from the matchmaking queue if present and blocks future enqueue while the penalty remains active.
 
+Admins can also dismiss a report as abusive or unjustified. That resolution creates no safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter. Pending reports, ordinary insufficient-evidence dismissals and confirmed reports against the reported user do not create reliability events.
+
 ## 10. Completion
 
 A connection eventually reaches `CLOSED`. Closure releases active connection locks, so users are no longer counted against the connection limit for that interaction.

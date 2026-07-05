@@ -34,6 +34,7 @@ import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.UserHomeStatusRepository
+import com.reals.backend.repository.UserReliabilityEventRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
@@ -52,6 +53,7 @@ import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import org.junit.jupiter.api.Assertions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -123,6 +125,9 @@ abstract class BaseIT {
     protected lateinit var homeStatusService: HomeStatusService
 
     @Autowired
+    protected lateinit var userReliabilityScoreService: UserReliabilityScoreService
+
+    @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
 
     @Autowired
@@ -178,6 +183,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var homeStatusRepository: UserHomeStatusRepository
+
+    @Autowired
+    protected lateinit var userReliabilityEventRepository: UserReliabilityEventRepository
 
     @Autowired
     protected lateinit var profileRepository: ProfileRepository

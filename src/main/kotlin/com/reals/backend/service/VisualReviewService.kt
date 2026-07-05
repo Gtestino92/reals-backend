@@ -4,6 +4,7 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -20,6 +21,7 @@ class VisualReviewService(
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
@@ -61,6 +63,37 @@ class VisualReviewService(
             reason = "visual_review_available"
         )
         return review
+    }
+
+    fun expireVisualReview(matchId: UUID): Boolean {
+        val match = matchService.findByIdOrThrow(matchId)
+        if (match.state != MatchState.VISUAL_PHASE) {
+            return false
+        }
+
+        val review = findByMatchIdOrThrow(matchId)
+        val now = OffsetDateTime.now()
+        val expiresAt = review.expiresAt
+        if (expiresAt == null || expiresAt.isAfter(now)) {
+            return false
+        }
+
+        if (review.userAVisualDecision == null) {
+            userReliabilityScoreService.recordEvent(
+                userId = match.userAId,
+                eventType = UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION,
+                relatedMatchId = match.id
+            )
+        }
+        if (review.userBVisualDecision == null) {
+            userReliabilityScoreService.recordEvent(
+                userId = match.userBId,
+                eventType = UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION,
+                relatedMatchId = match.id
+            )
+        }
+
+        return matchService.expireMatch(matchId)
     }
 
     fun recordDecision(

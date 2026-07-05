@@ -42,6 +42,8 @@ scheduler:
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: 3600000
+  user-reliability-cleanup-job:
+    fixed-delay: 3600000
   visual-phase-expiration-job:
     fixed-delay: 3600000
   scheduling-timeout-job:

@@ -98,6 +98,25 @@ class AdminSafetyReportController(
             )
         )
 
+    @PostMapping("/{reportId}/abusive-dismissal")
+    fun dismissAbusiveOrUnjustifiedReport(
+        @PathVariable reportId: UUID,
+        @CurrentUserId adminUserId: UUID,
+        @Valid
+        @RequestBody request: SafetyReportDismissRequest
+    ): ResponseEntity<SafetyReportAdminSummary> =
+        ResponseEntity.ok(
+            SafetyReportAdminSummary.from(
+                safetyReportService.getReportDetail(
+                    safetyReportService.dismissAbusiveOrUnjustifiedReport(
+                        reportId = reportId,
+                        adminUserId = adminUserId,
+                        notes = request.notes
+                    ).id
+                )
+            )
+        )
+
     @PostMapping("/{reportId}/penalty")
     fun confirmReportWithPenalty(
         @PathVariable reportId: UUID,
