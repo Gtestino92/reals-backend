@@ -36,6 +36,9 @@ management:
       exposure:
         include: health,info
 
+server:
+  port: ${PORT:8080}
+
 backoffice:
   # Comma-separated email allowlist. Matching active local users receive ROLE_ADMIN.
   admin-emails: ""
