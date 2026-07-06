@@ -111,6 +111,43 @@ class ChatControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `first chat guidance next request returns user scoped state over http`() {
+        val setup = createMatchWithFirstChat("guidance-http")
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("content" to "a".repeat(40))))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/guidance/next-request")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.question.id").exists())
+            .andExpect(jsonPath("$.question.text").exists())
+            .andExpect(jsonPath("$.questionOrdinal", equalTo(1)))
+            .andExpect(jsonPath("$.maxQuestions", equalTo(3)))
+            .andExpect(jsonPath("$.requiredCharacters", equalTo(40)))
+            .andExpect(jsonPath("$.canRequestNext", equalTo(false)))
+            .andExpect(jsonPath("$.myNextRequested", equalTo(true)))
+            .andExpect(jsonPath("$.completed", equalTo(false)))
+            .andExpect(jsonPath("$.partnerNextRequested").doesNotExist())
+            .andExpect(jsonPath("$.partnerCanRequestNext").doesNotExist())
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/chat")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.guidance.myNextRequested", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.partnerNextRequested").doesNotExist())
+    }
+
+    @Test
     fun `list messages afterMessageId alias returns only newer messages`() {
         val setup = createMatchWithFirstChat()
 
@@ -503,6 +540,50 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.code", equalTo("CHAT_MESSAGE_INVALID")))
     }
 
+    @Test
+    fun `chat message accepts multiline plain text`() {
+        val setup = createMatchWithFirstChat()
+        val body = mapOf(
+            "content" to "Primera línea\nSegunda línea"
+        )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath(
+                    "$.content",
+                    equalTo("Primera línea\nSegunda línea")
+                )
+            )
+    }
+
+    @Test
+    fun `chat message normalizes CRLF to LF`() {
+        val setup = createMatchWithFirstChat()
+        val body = mapOf(
+            "content" to "Primera línea\r\nSegunda línea"
+        )
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath(
+                    "$.content",
+                    equalTo("Primera línea\nSegunda línea")
+                )
+            )
+    }
+    
     private fun pendingMutualRequests(chatId: UUID) =
         chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(chatId)
             .filter {
