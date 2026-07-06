@@ -560,6 +560,24 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/chats/{chatId}/guidance/next-request:
+    post:
+      tags: [Chats]
+      summary: Request next first-chat guidance question
+      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          description: Current user-scoped first-chat guidance state after applying the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstChatGuidanceResponse'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/FirstChatGuidanceConflict'
   /api/chats/{chatId}/exit-requests:
     post:
       tags: [Chats]
@@ -1210,6 +1228,33 @@ components:
                 code: CHAT_EXPIRED
                 error: Conflict
                 message: Chat has expired
+    FirstChatGuidanceConflict:
+      description: First-chat guidance cannot be advanced in the current state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            participationRequired:
+              value:
+                code: FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED
+                error: Conflict
+                message: Minimum participation is required before requesting another question
+            alreadyRequested:
+              value:
+                code: FIRST_CHAT_GUIDANCE_NEXT_ALREADY_REQUESTED
+                error: Conflict
+                message: Next question has already been requested
+            completed:
+              value:
+                code: FIRST_CHAT_GUIDANCE_COMPLETED
+                error: Conflict
+                message: First-chat guidance is completed
+            chatNotAvailable:
+              value:
+                code: CHAT_NOT_AVAILABLE
+                error: Conflict
+                message: Chat is not available
     ChatDecisionConflict:
       description: First-chat continuation decision is not currently available.
       content:
@@ -1864,11 +1909,59 @@ components:
             partner: { $ref: '#/components/schemas/PartnerSummaryResponse' }
             myDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
             partnerDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
+            guidance:
+              allOf:
+                - $ref: '#/components/schemas/FirstChatGuidanceResponse'
+              nullable: true
+              description: Nullable for legacy first-chat rows created before guidance existed. New first chats initialize guidance.
+    FirstChatGuidanceQuestionResponse:
+      type: object
+      required: [id, text]
+      properties:
+        id: { type: string }
+        text: { type: string }
+    FirstChatGuidanceResponse:
+      type: object
+      required:
+        - question
+        - questionOrdinal
+        - maxQuestions
+        - requiredCharacters
+        - canRequestNext
+        - myNextRequested
+        - completed
+      properties:
+        question:
+          $ref: '#/components/schemas/FirstChatGuidanceQuestionResponse'
+        questionOrdinal:
+          type: integer
+          minimum: 1
+          maximum: 3
+        maxQuestions:
+          type: integer
+          example: 3
+        requiredCharacters:
+          type: integer
+          example: 40
+        canRequestNext:
+          type: boolean
+          description: Eligibility for the authenticated user only.
+        myNextRequested:
+          type: boolean
+          description: Whether the authenticated user has requested continuation for the current question.
+        completed:
+          type: boolean
+          description: True when the final configured guidance question is active. The final question remains returned as `question`, and no further next-request action is available.
     SendMessageRequest:
       type: object
       required: [content]
       properties:
-        content: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$'
+          description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
     ChatMessageResponse:
       type: object
       required: [id, chatSessionId, senderId, content, sentAt]

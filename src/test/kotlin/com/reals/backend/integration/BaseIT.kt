@@ -20,6 +20,7 @@ import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.FirstChatGuidanceRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
@@ -39,6 +40,8 @@ import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.FirstChatGuidanceService
+import com.reals.backend.service.FirstChatGuidedQuestionCatalog
 import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.AuditEventService
@@ -104,6 +107,12 @@ abstract class BaseIT {
     protected lateinit var connectionService: ConnectionService
 
     @Autowired
+    protected lateinit var firstChatGuidanceService: FirstChatGuidanceService
+
+    @Autowired
+    protected lateinit var firstChatGuidedQuestionCatalog: FirstChatGuidedQuestionCatalog
+
+    @Autowired
     protected lateinit var schedulingService: SchedulingService
 
     @Autowired
@@ -144,6 +153,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var connectionRepository: ConnectionRepository
+
+    @Autowired
+    protected lateinit var firstChatGuidanceRepository: FirstChatGuidanceRepository
 
     @Autowired
     protected lateinit var connectionHomeDismissalRepository: ConnectionHomeDismissalRepository

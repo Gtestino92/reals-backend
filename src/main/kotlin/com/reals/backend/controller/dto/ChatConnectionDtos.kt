@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.*
+import com.reals.backend.service.FirstChatGuidanceState
 import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
@@ -81,7 +82,8 @@ data class FirstChatResponse(
     val inactivityExpiresAt: OffsetDateTime?,
     val partner: PartnerSummaryResponse,
     val myDecision: ChatParticipantDecisionStatus,
-    val partnerDecision: ChatParticipantDecisionStatus
+    val partnerDecision: ChatParticipantDecisionStatus,
+    val guidance: FirstChatGuidanceResponse?
 ) {
     companion object {
         fun from(
@@ -89,7 +91,8 @@ data class FirstChatResponse(
             partner: Profile,
             myDecision: ChatParticipantDecisionStatus,
             partnerDecision: ChatParticipantDecisionStatus,
-            inactivityExpiresAt: OffsetDateTime?
+            inactivityExpiresAt: OffsetDateTime?,
+            guidance: FirstChatGuidanceResponse? = null
         ) = FirstChatResponse(
             id = chat.id,
             matchId = chat.matchId,
@@ -107,8 +110,40 @@ data class FirstChatResponse(
             inactivityExpiresAt = inactivityExpiresAt,
             partner = PartnerSummaryResponse.from(partner),
             myDecision = myDecision,
-            partnerDecision = partnerDecision
+            partnerDecision = partnerDecision,
+            guidance = guidance
         )
+    }
+}
+
+data class FirstChatGuidanceQuestionResponse(
+    val id: String,
+    val text: String
+)
+
+data class FirstChatGuidanceResponse(
+    val question: FirstChatGuidanceQuestionResponse,
+    val questionOrdinal: Int,
+    val maxQuestions: Int,
+    val requiredCharacters: Int,
+    val canRequestNext: Boolean,
+    val myNextRequested: Boolean,
+    val completed: Boolean
+) {
+    companion object {
+        fun from(state: FirstChatGuidanceState) =
+            FirstChatGuidanceResponse(
+                question = FirstChatGuidanceQuestionResponse(
+                    id = state.questionId,
+                    text = state.questionText
+                ),
+                questionOrdinal = state.questionOrdinal,
+                maxQuestions = state.maxQuestions,
+                requiredCharacters = state.requiredCharacters,
+                canRequestNext = state.canRequestNext,
+                myNextRequested = state.myNextRequested,
+                completed = state.completed
+            )
     }
 }
 

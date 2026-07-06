@@ -76,7 +76,11 @@ class MatchController(
                 partner = partnerProfile,
                 myDecision = decisions.myDecision,
                 partnerDecision = decisions.partnerDecision,
-                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat),
+                guidance = chatService.getFirstChatGuidanceState(
+                    chat = chat,
+                    userId = userId
+                )?.let { FirstChatGuidanceResponse.from(it) }
             )
         )
     }

@@ -54,6 +54,16 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))
             .andExpect(jsonPath("$.partnerDecision", equalTo("PENDING")))
+            .andExpect(jsonPath("$.guidance.question.id").exists())
+            .andExpect(jsonPath("$.guidance.question.text").exists())
+            .andExpect(jsonPath("$.guidance.questionOrdinal", equalTo(1)))
+            .andExpect(jsonPath("$.guidance.maxQuestions", equalTo(3)))
+            .andExpect(jsonPath("$.guidance.requiredCharacters", equalTo(40)))
+            .andExpect(jsonPath("$.guidance.canRequestNext", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.myNextRequested", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.completed", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.partnerNextRequested").doesNotExist())
+            .andExpect(jsonPath("$.guidance.partnerEligible").doesNotExist())
     }
 
     @Test

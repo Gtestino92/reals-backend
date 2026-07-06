@@ -11,6 +11,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `Match`
 - `Chat`
 - `ChatMessage`
+- `FirstChatGuidance`
 - `ChatDecision`
 - `ChatExitRequest`
 - `SafetyReport`
@@ -93,6 +94,7 @@ Push notifications:
 - A `Profile` has many `ProfilePhoto` records.
 - A `Match` has `userAId` and `userBId`.
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
+- `FirstChatGuidance` belongs to one `FIRST_CHAT` through a unique `chatId`. It stores the active question id/text snapshot, ordinal, activation timestamp, per-participant next-question request timestamps and optional completion timestamp. It does not store message counters or the full selected sequence.
 - `ChatDecision` belongs to a chat and match.
 - `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report chat closures.
 - `SafetyReport` is the moderation source of truth for reported safety incidents. It stores an explicit source, context type and context id; chat safety cancellation uses `CHAT` with the chat id, visual profile and personal message reports use the match id, profile photo reports use the photo id, and admin-only general user reports use `USER` with the reported user id.

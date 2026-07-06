@@ -123,6 +123,11 @@ chat:
     # Mutual cancellation and safety cancellation bypass this rule.
     min-messages-before-free-cancel: 0
 
+    guidance:
+      required-characters: 10
+      max-questions: 3
+      catalog: classpath:first-chat-guided-questions.es.json
+
   # Maximum duration for the visual phase
   visual-phase:
     duration-minutes: 1440 # 24 hours

@@ -109,3 +109,8 @@ profile:
     required-count: 4
     min-person-photos: 1
     min-full-body-photos: 1
+
+chat:
+  first-chat:
+    guidance:
+      required-characters: 10
