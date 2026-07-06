@@ -814,19 +814,20 @@ Future cleanup:
 
 ### 1.1 First-chat guided questions
 
-Decision pending:
-- Whether first-chat guided questions/conversation starters are required for MVP.
-- Whether the question set belongs fully to the frontend, fully to the backend, or backend-provided with frontend rendering.
+MVP decision implemented:
+- Guided questions are backend-owned for first chat.
+- The catalog is a static Spanish resource, not a database table or admin CRUD.
+- The active question is shared by both participants and persisted as an id/text snapshot.
+- The per-chat sequence is deterministic from chat id and catalog order. Reordering the static catalog may affect not-yet-selected future questions for active first chats; this is acceptable while first chats are short-lived.
+- Chat remains free-form. The backend does not semantically evaluate answers.
+- A participant needs 40 accumulated persisted characters during the active question interval before requesting another question. One long message can satisfy the threshold.
+- Advancement requires both participants to independently request it. Partner readiness/request state is not exposed.
+- The maximum is 3 questions. When both participants request continuation from the penultimate question and the final configured question becomes active, guidance completes immediately, no fourth question is selected, and the final question remains available as the final prompt.
+- Clients observe changes through existing first-chat polling. No analytics events are implemented yet.
 
-MVP recommendation:
-- Keep the first implementation simple.
-- Prefer backend-owned predefined question IDs/texts if questions affect product analytics or future experimentation.
-- Prefer frontend-owned static copy only if the set is temporary and not important for backend decisions.
-
-Acceptance criteria:
-- First chat can start with a predictable prompt or question.
-- Users can continue chatting without being blocked by the question mechanic.
-- The decision is documented so future chats do not fork behavior across app versions.
+Future work:
+- Curate the final Spanish question corpus.
+- Decide whether additional locales, analytics, experimentation or admin tooling are useful after MVP usage.
 
 
 ## 2. Backend MVP cleanup

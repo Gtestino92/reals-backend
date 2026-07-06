@@ -10,6 +10,7 @@ import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.validation.PlainText
+import com.reals.backend.validation.SingleLinePlainText
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -24,7 +25,7 @@ import java.util.UUID
 
 data class UpdateProfileRequest(
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val displayName: String? = null,
 
     @field:Size(max = 1000)
@@ -32,11 +33,11 @@ data class UpdateProfileRequest(
     val bio: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val city: String? = null,
 
     @field:Size(min = 1, max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val country: String? = null,
 
     val intention: Intention? = null,

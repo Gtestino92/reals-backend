@@ -56,6 +56,20 @@ class ChatController(
         )
     }
 
+    @PostMapping("/{chatId}/guidance/next-request")
+    fun requestNextGuidanceQuestion(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID
+    ): ResponseEntity<FirstChatGuidanceResponse> =
+        ResponseEntity.ok(
+            FirstChatGuidanceResponse.from(
+                chatService.requestFirstChatGuidanceNext(
+                    chatId = chatId,
+                    userId = userId
+                )
+            )
+        )
+
     @GetMapping("/{chatId}/messages")
     fun getMessages(
         @CurrentUserId userId: UUID,
