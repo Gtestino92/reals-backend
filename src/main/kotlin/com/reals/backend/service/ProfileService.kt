@@ -327,8 +327,7 @@ class ProfileService(
         displayName: String? = null,
         bio: String? = null,
         city: String? = null,
-        country: String? = null,
-        intention: Intention? = null
+        country: String? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -354,8 +353,6 @@ class ProfileService(
             profile.country = it
         }
 
-        intention?.let { profile.intention = it }
-
         profile.updatedAt = OffsetDateTime.now()
 
         return profileRepository.save(profile)
@@ -363,6 +360,7 @@ class ProfileService(
 
     fun updateDynamicMatchFilters(
         profileId: UUID,
+        intention: Intention,
         lookingForGenders: Set<Gender>,
         preferredMinAge: Int,
         preferredMaxAge: Int,
@@ -377,6 +375,7 @@ class ProfileService(
         )
         validateLookingForGenders(lookingForGenders)
 
+        profile.intention = intention
         profile.lookingForGenders.clear()
         profile.lookingForGenders.addAll(lookingForGenders)
         profile.preferredMinAge = preferredMinAge

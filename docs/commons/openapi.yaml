@@ -1710,13 +1710,11 @@ components:
         bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
         city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
         country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
-        intention:
-          allOf: [{ $ref: '#/components/schemas/Intention' }]
-          nullable: true
     UpdateMatchFiltersRequest:
       type: object
-      required: [lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [intention, lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
+        intention: { $ref: '#/components/schemas/Intention' }
         lookingForGenders:
           type: array
           minItems: 1

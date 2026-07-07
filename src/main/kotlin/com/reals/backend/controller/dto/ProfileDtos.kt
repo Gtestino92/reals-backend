@@ -37,12 +37,12 @@ data class UpdateProfileRequest(
 
     @field:Size(min = 1, max = 100)
     @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
-    val country: String? = null,
-
-    val intention: Intention? = null,
+    val country: String? = null
 )
 
 data class UpdateMatchFiltersRequest(
+    val intention: Intention,
+
     @field:Size(min = 1, max = 4)
     val lookingForGenders: Set<Gender>,
 
