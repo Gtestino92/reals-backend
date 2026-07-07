@@ -40,11 +40,12 @@ data class UpdateProfileRequest(
     val country: String? = null,
 
     val intention: Intention? = null,
-    @field:Size(min = 1, max = 4)
-    val lookingForGenders: Set<Gender>? = null
 )
 
 data class UpdateMatchFiltersRequest(
+    @field:Size(min = 1, max = 4)
+    val lookingForGenders: Set<Gender>,
+
     @field:Min(18)
     @field:Max(99)
     val preferredMinAge: Int,

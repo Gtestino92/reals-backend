@@ -328,8 +328,7 @@ class ProfileService(
         bio: String? = null,
         city: String? = null,
         country: String? = null,
-        intention: Intention? = null,
-        lookingForGenders: Set<Gender>? = null
+        intention: Intention? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -356,11 +355,6 @@ class ProfileService(
         }
 
         intention?.let { profile.intention = it }
-        lookingForGenders?.let {
-            validateLookingForGenders(it)
-            profile.lookingForGenders.clear()
-            profile.lookingForGenders.addAll(it)
-        }
 
         profile.updatedAt = OffsetDateTime.now()
 
@@ -369,6 +363,7 @@ class ProfileService(
 
     fun updateDynamicMatchFilters(
         profileId: UUID,
+        lookingForGenders: Set<Gender>,
         preferredMinAge: Int,
         preferredMaxAge: Int,
         maxDistanceKm: Int
@@ -380,7 +375,10 @@ class ProfileService(
             preferredMaxAge = preferredMaxAge,
             maxDistanceKm = maxDistanceKm
         )
+        validateLookingForGenders(lookingForGenders)
 
+        profile.lookingForGenders.clear()
+        profile.lookingForGenders.addAll(lookingForGenders)
         profile.preferredMinAge = preferredMinAge
         profile.preferredMaxAge = preferredMaxAge
         profile.maxDistanceKm = maxDistanceKm
