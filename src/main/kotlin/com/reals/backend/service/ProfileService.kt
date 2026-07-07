@@ -15,6 +15,7 @@ import com.reals.backend.service.photo.PhotoModerationResult
 import com.reals.backend.service.photo.PhotoPlacement
 import com.reals.backend.service.photo.ProfilePhotoModerationService
 import com.reals.backend.validation.PlainText
+import com.reals.backend.validation.SingleLinePlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
@@ -88,7 +89,7 @@ class ProfileService(
         displayName: String,
         birthDate: LocalDate,
         gender: Gender,
-        lookingForGender: LookingForGender,
+        lookingForGenders: Set<Gender>,
         intention: Intention,
         city: String,
         country: String,
@@ -105,7 +106,8 @@ class ProfileService(
         validateDisplayName(normalizedDisplayName)
         validateBirthDate(birthDate)
         validateLocation(normalizedCity, normalizedCountry)
-        normalizedBio?.let { validateText("Bio", it, BIO_MAX_LENGTH) }
+        validateLookingForGenders(lookingForGenders)
+        normalizedBio?.let { validateMultilineText("Bio", it, BIO_MAX_LENGTH) }
         validateDynamicMatchFilters(
             preferredMinAge = preferredMinAge,
             preferredMaxAge = preferredMaxAge,
@@ -125,7 +127,7 @@ class ProfileService(
             birthDate = birthDate,
             identityVerified = false,
             gender = gender,
-            lookingForGender = lookingForGender,
+            lookingForGenders = lookingForGenders.toMutableSet(),
             intention = intention,
             city = normalizedCity,
             country = normalizedCountry,
@@ -327,7 +329,7 @@ class ProfileService(
         city: String? = null,
         country: String? = null,
         intention: Intention? = null,
-        lookingForGender: LookingForGender? = null
+        lookingForGenders: Set<Gender>? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -339,22 +341,26 @@ class ProfileService(
 
         bio?.let {
             val normalizedBio = normalizeOptionalText(it)
-            normalizedBio?.let { value -> validateText("Bio", value, BIO_MAX_LENGTH) }
+            normalizedBio?.let { value -> validateMultilineText("Bio", value, BIO_MAX_LENGTH) }
             profile.bio = normalizedBio
         }
 
         city?.trim()?.let {
-            validateText("City", it, LOCATION_MAX_LENGTH)
+            validateSingleLineText("City", it, LOCATION_MAX_LENGTH)
             profile.city = it
         }
 
         country?.trim()?.let {
-            validateText("Country", it, LOCATION_MAX_LENGTH)
+            validateSingleLineText("Country", it, LOCATION_MAX_LENGTH)
             profile.country = it
         }
 
         intention?.let { profile.intention = it }
-        lookingForGender?.let { profile.lookingForGender = it }
+        lookingForGenders?.let {
+            validateLookingForGenders(it)
+            profile.lookingForGenders.clear()
+            profile.lookingForGenders.addAll(it)
+        }
 
         profile.updatedAt = OffsetDateTime.now()
 
@@ -648,7 +654,7 @@ class ProfileService(
             "Display name must be between $DISPLAY_NAME_MIN_LENGTH and $DISPLAY_NAME_MAX_LENGTH characters"
         }
 
-        PlainText.requireValid("Display name", displayName)
+        SingleLinePlainText.requireValid("Display name", displayName)
     }
 
     private fun validateBirthDate(birthDate: LocalDate) {
@@ -749,12 +755,28 @@ class ProfileService(
         city: String,
         country: String
     ) {
-        validateText("City", city, LOCATION_MAX_LENGTH)
-        validateText("Country", country, LOCATION_MAX_LENGTH)
+        validateSingleLineText("City", city, LOCATION_MAX_LENGTH)
+        validateSingleLineText("Country", country, LOCATION_MAX_LENGTH)
         // TODO: Validate country/city against a canonical cached location dataset.
     }
 
-    private fun validateText(
+    private fun validateSingleLineText(
+        fieldName: String,
+        value: String,
+        maxLength: Int
+    ) {
+        require(value.isNotBlank()) {
+            "$fieldName is required"
+        }
+
+        require(value.length <= maxLength) {
+            "$fieldName must be at most $maxLength characters"
+        }
+
+        SingleLinePlainText.requireValid(fieldName, value)
+    }
+
+    private fun validateMultilineText(
         fieldName: String,
         value: String,
         maxLength: Int
@@ -768,6 +790,16 @@ class ProfileService(
         }
 
         PlainText.requireValid(fieldName, value)
+    }
+
+    private fun validateLookingForGenders(lookingForGenders: Set<Gender>) {
+        require(lookingForGenders.isNotEmpty()) {
+            "Looking for genders must contain at least one gender"
+        }
+
+        require(lookingForGenders.size <= Gender.entries.size) {
+            "Looking for genders must contain at most ${Gender.entries.size} genders"
+        }
     }
 
     private fun validatePhotoUpload(

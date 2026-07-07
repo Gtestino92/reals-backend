@@ -232,7 +232,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
             email = "stranger-${UUID.randomUUID()}@example.com",
             displayName = "Stranger",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
 
         mockMvc.perform(

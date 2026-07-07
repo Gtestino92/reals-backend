@@ -1,7 +1,5 @@
 package com.reals.backend.service.matching
 
-import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.Profile
 import org.springframework.stereotype.Component
 import java.time.LocalDate
@@ -11,7 +9,7 @@ import java.time.Period
  * Basic rule-based compatibility evaluator.
  *
  * Criteria applied (all must pass):
- * 1. Gender mutual match: each user's gender satisfies the other's LookingForGender.
+ * 1. Gender mutual match: each user's gender is present in the other's preference set.
  * 2. Same intention: no point matching DATE with FRIENDSHIP.
  * 3. Dynamic age filters: each user's age must satisfy the other's preferred age range.
  *
@@ -27,8 +25,8 @@ import java.time.Period
 class BasicCompatibilityEvaluator : CompatibilityEvaluator {
 
     override fun compatible(profileA: Profile, profileB: Profile): Boolean {
-        if (!genderMatchOk(profileA.gender, profileB.lookingForGender)) return false
-        if (!genderMatchOk(profileB.gender, profileA.lookingForGender)) return false
+        if (profileA.gender !in profileB.lookingForGenders) return false
+        if (profileB.gender !in profileA.lookingForGenders) return false
         if (profileA.intention != profileB.intention) return false
 
         val today = LocalDate.now()
@@ -36,18 +34,6 @@ class BasicCompatibilityEvaluator : CompatibilityEvaluator {
         if (!agePreferenceOk(viewer = profileB, candidate = profileA, today = today)) return false
         return true
     }
-
-    private fun genderMatchOk(
-        gender: Gender,
-        lookingFor: LookingForGender
-    ): Boolean =
-        when (lookingFor) {
-            LookingForGender.EVERYONE -> true
-            LookingForGender.MEN -> gender == Gender.MALE
-            LookingForGender.WOMEN -> gender == Gender.FEMALE
-            LookingForGender.OTHER ->
-                gender == Gender.NON_BINARY || gender == Gender.OTHER
-        }
 
     private fun agePreferenceOk(
         viewer: Profile,

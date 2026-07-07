@@ -2,7 +2,6 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoModerationStatus
@@ -65,25 +64,25 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             email = "postgres-concurrency-female-a@example.com",
             displayName = "Female A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         ).also(::enqueueForMatchmaking)
         createActiveProfile(
             email = "postgres-concurrency-male-a@example.com",
             displayName = "Male A",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         ).also(::enqueueForMatchmaking)
         createActiveProfile(
             email = "postgres-concurrency-female-b@example.com",
             displayName = "Female B",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         ).also(::enqueueForMatchmaking)
         createActiveProfile(
             email = "postgres-concurrency-male-b@example.com",
             displayName = "Male B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         ).also(::enqueueForMatchmaking)
 
         val results = processConcurrently(workerCount = 2)
@@ -144,7 +143,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         email: String,
         displayName: String,
         gender: Gender,
-        lookingForGender: LookingForGender
+        lookingForGenders: Set<Gender>
     ): UUID {
         val user = userService.createUser(email)
         val profile = profileService.createProfile(
@@ -152,7 +151,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             displayName = displayName,
             birthDate = LocalDate.of(1995, 1, 1),
             gender = gender,
-            lookingForGender = lookingForGender,
+            lookingForGenders = lookingForGenders,
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",

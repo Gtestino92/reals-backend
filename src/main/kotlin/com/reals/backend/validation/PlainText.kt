@@ -10,7 +10,7 @@ object PlainText {
         fieldName: String,
         value: String
     ) {
-        require(value.none { it.isISOControl() || it == '<' || it == '>' }) {
+        require(value.none { (it.isISOControl() && it != '\n' && it != '\r') || it == '<' || it == '>' }) {
             "$fieldName $MESSAGE"
         }
     }

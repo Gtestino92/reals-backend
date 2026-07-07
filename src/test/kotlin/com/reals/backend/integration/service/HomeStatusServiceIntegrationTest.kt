@@ -1,7 +1,6 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.BaseIT
 import org.junit.jupiter.api.Test
 import java.util.UUID
@@ -66,7 +65,7 @@ class HomeStatusServiceIntegrationTest : BaseIT() {
             email = "home-status-enqueue-${UUID.randomUUID()}@example.com",
             displayName = "Home Status Enqueue",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val before = homeStatusService.getOrCreateStatus(userId).version
 

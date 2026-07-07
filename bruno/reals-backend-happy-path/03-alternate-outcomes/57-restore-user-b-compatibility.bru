@@ -17,13 +17,13 @@ headers {
 
 body:json {
   {
-    "lookingForGender": "WOMEN"
+    "lookingForGenders": ["FEMALE"]
   }
 }
 
 script:post-response {
   const body = res.getBody();
-  if (body.lookingForGender !== "WOMEN") {
-    throw new Error(`Expected user B lookingForGender WOMEN, got ${body.lookingForGender}`);
+  if (JSON.stringify(body.lookingForGenders) !== JSON.stringify(["FEMALE"])) {
+    throw new Error(`Expected user B lookingForGenders [FEMALE], got ${body.lookingForGenders}`);
   }
 }
