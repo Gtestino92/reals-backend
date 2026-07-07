@@ -1,12 +1,12 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.Penalty
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -23,7 +23,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             email = "queue-location-${UUID.randomUUID()}@example.com",
             displayName = "Queue Location",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         mockMvc.perform(
@@ -51,7 +51,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             email = "queue-location-refresh-http-${UUID.randomUUID()}@example.com",
             displayName = "Queue Location Refresh HTTP",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         mockMvc.perform(
@@ -107,7 +107,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             email = "queue-location-invalid-${UUID.randomUUID()}@example.com",
             displayName = "Queue Location Invalid",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         mockMvc.perform(
@@ -150,7 +150,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             displayName = "Draft Queue Profile",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
@@ -175,7 +175,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
             email = "queue-active-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Queue Active Penalty",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         penaltyRepository.save(
             Penalty(
@@ -193,6 +193,75 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("ACTIVE_PENALTY")))
+    }
+
+    @Test
+    fun `matchmaking accepts mutual gender preference sets`() {
+        val userA = createActiveProfile(
+            email = "queue-compatible-a-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible A",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE, Gender.NON_BINARY)
+        )
+        val userB = createActiveProfile(
+            email = "queue-compatible-b-${UUID.randomUUID()}@example.com",
+            displayName = "Compatible B",
+            gender = Gender.NON_BINARY,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(1, result.matchesCreated)
+        org.junit.jupiter.api.Assertions.assertTrue(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `matchmaking rejects when candidate gender is not accepted`() {
+        val userA = createActiveProfile(
+            email = "queue-candidate-not-accepted-a-${UUID.randomUUID()}@example.com",
+            displayName = "Candidate Not Accepted A",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        val userB = createActiveProfile(
+            email = "queue-candidate-not-accepted-b-${UUID.randomUUID()}@example.com",
+            displayName = "Candidate Not Accepted B",
+            gender = Gender.NON_BINARY,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(0, result.matchesCreated)
+        assertFalse(matchExistsForUsers(userA, userB))
+    }
+
+    @Test
+    fun `matchmaking requires gender compatibility to be mutual`() {
+        val userA = createActiveProfile(
+            email = "queue-not-mutual-a-${UUID.randomUUID()}@example.com",
+            displayName = "Not Mutual A",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.NON_BINARY)
+        )
+        val userB = createActiveProfile(
+            email = "queue-not-mutual-b-${UUID.randomUUID()}@example.com",
+            displayName = "Not Mutual B",
+            gender = Gender.NON_BINARY,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(0, result.matchesCreated)
+        assertFalse(matchExistsForUsers(userA, userB))
     }
 
     private fun validQueueBody(): String =

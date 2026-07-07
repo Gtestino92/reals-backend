@@ -13,13 +13,6 @@ enum class Gender {
     OTHER
 }
 
-enum class LookingForGender {
-    MEN,
-    WOMEN,
-    EVERYONE,
-    OTHER
-}
-
 enum class Intention {
     DATE,
     FRIENDSHIP,
@@ -71,9 +64,14 @@ data class Profile(
     @Column(name = "gender", nullable = false)
     var gender: Gender,
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+        name = "profile_looking_for_genders",
+        joinColumns = [JoinColumn(name = "profile_id")]
+    )
     @Enumerated(EnumType.STRING)
-    @Column(name = "looking_for_gender", nullable = false)
-    var lookingForGender: LookingForGender,
+    @Column(name = "gender", nullable = false)
+    var lookingForGenders: MutableSet<Gender> = mutableSetOf(),
 
     @Enumerated(EnumType.STRING)
     @Column(name = "intention", nullable = false)

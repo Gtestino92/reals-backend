@@ -30,7 +30,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             email = "admin-user-report-${UUID.randomUUID()}@example.com",
             displayName = "Reported User",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
         val admin = userService.createUser("admin-create-user-report-${UUID.randomUUID()}@example.com")
 
@@ -191,7 +191,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             email = "admin-invalid-stranger-${UUID.randomUUID()}@example.com",
             displayName = "Stranger",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
 
         mockMvc.perform(

@@ -2,7 +2,6 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
@@ -216,7 +215,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             email = "active-reorder-${UUID.randomUUID()}@example.com",
             displayName = "Active Reorder",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId) ?: error("Profile not found")
         val photos = profileService.getPhotos(profile.id)
@@ -293,7 +292,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             displayName = "Photo Reorder",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",

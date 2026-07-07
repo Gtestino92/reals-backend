@@ -1684,36 +1684,46 @@ components:
         displayName: { type: string }
     CreateProfileRequest:
       type: object
-      required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [displayName, birthDate, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
         birthDate: { type: string, format: date }
         gender: { $ref: '#/components/schemas/Gender' }
-        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
-        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
+        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
     UpdateProfileRequest:
       type: object
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
+        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
+        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
         intention:
           allOf: [{ $ref: '#/components/schemas/Intention' }]
           nullable: true
-        lookingForGender:
-          allOf: [{ $ref: '#/components/schemas/LookingForGender' }]
-          nullable: true
     UpdateMatchFiltersRequest:
       type: object
-      required: [preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
@@ -1735,6 +1745,12 @@ components:
     ReorderProfilePhotosRequest:
       type: object
       required: [placements]
+      example:
+        placements:
+          - photoId: 11111111-1111-1111-1111-111111111111
+            position: 1
+          - photoId: 22222222-2222-2222-2222-222222222222
+            position: 4
       properties:
         placements:
           type: array
@@ -1755,7 +1771,7 @@ components:
           description: Final user-facing position. Holes across the set are allowed.
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
@@ -1765,7 +1781,13 @@ components:
         identityVerified: { type: boolean }
         identityVerificationStatus: { $ref: '#/components/schemas/IdentityVerificationStatus' }
         gender: { $ref: '#/components/schemas/Gender' }
-        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
         city: { type: string }
         country: { type: string }
@@ -2210,9 +2232,6 @@ components:
     Gender:
       type: string
       enum: [MALE, FEMALE, NON_BINARY, OTHER]
-    LookingForGender:
-      type: string
-      enum: [MEN, WOMEN, EVERYONE, OTHER]
     Intention:
       type: string
       enum: [DATE, FRIENDSHIP, CASUAL]
