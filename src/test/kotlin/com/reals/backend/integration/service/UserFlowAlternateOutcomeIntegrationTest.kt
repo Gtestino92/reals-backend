@@ -6,7 +6,6 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
@@ -63,13 +62,13 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "incompatible-a-${UUID.randomUUID()}@example.com",
             displayName = "Incompatible A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
         val userB = createActiveProfile(
             email = "incompatible-b-${UUID.randomUUID()}@example.com",
             displayName = "Incompatible B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         enqueueForMatchmaking(userA)
@@ -86,13 +85,13 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "blocked-candidate-a-${UUID.randomUUID()}@example.com",
             displayName = "Blocked Candidate A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "blocked-candidate-b-${UUID.randomUUID()}@example.com",
             displayName = "Blocked Candidate B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         userBlockService.blockUser(
@@ -120,13 +119,13 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "blocked-match-a-${UUID.randomUUID()}@example.com",
             displayName = "Blocked Match A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "blocked-match-b-${UUID.randomUUID()}@example.com",
             displayName = "Blocked Match B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         userBlockService.blockUser(
@@ -149,19 +148,19 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "compatible-skip-a-${UUID.randomUUID()}@example.com",
             displayName = "Compatible Skip A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
         val incompatibleUser = createActiveProfile(
             email = "compatible-skip-b-${UUID.randomUUID()}@example.com",
             displayName = "Compatible Skip B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
         val userC = createActiveProfile(
             email = "compatible-skip-c-${UUID.randomUUID()}@example.com",
             displayName = "Compatible Skip C",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         enqueueForMatchmaking(userA)
@@ -180,7 +179,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "age-filter-a-${UUID.randomUUID()}@example.com",
             displayName = "Age Filter A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             preferredMinAge = 30,
             preferredMaxAge = 40
         )
@@ -188,14 +187,14 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "age-filter-b-${UUID.randomUUID()}@example.com",
             displayName = "Age Filter B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN,
+            lookingForGenders = setOf(Gender.FEMALE),
             birthDate = LocalDate.now().minusYears(25)
         )
         val acceptedByA = createActiveProfile(
             email = "age-filter-c-${UUID.randomUUID()}@example.com",
             displayName = "Age Filter C",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN,
+            lookingForGenders = setOf(Gender.FEMALE),
             birthDate = LocalDate.now().minusYears(35)
         )
 
@@ -227,21 +226,21 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "distance-filter-a-${UUID.randomUUID()}@example.com",
             displayName = "Distance Filter A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             maxDistanceKm = 10
         )
         val tooFarForA = createActiveProfile(
             email = "distance-filter-b-${UUID.randomUUID()}@example.com",
             displayName = "Distance Filter B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN,
+            lookingForGenders = setOf(Gender.FEMALE),
             maxDistanceKm = 10
         )
         val nearA = createActiveProfile(
             email = "distance-filter-c-${UUID.randomUUID()}@example.com",
             displayName = "Distance Filter C",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN,
+            lookingForGenders = setOf(Gender.FEMALE),
             maxDistanceKm = 10
         )
 
@@ -269,7 +268,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             email = "queue-location-refresh-${UUID.randomUUID()}@example.com",
             displayName = "Queue Location Refresh",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         enqueueForMatchmaking(user)
@@ -301,7 +300,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
                     email = "bounded-candidate-$index-${UUID.randomUUID()}@example.com",
                     displayName = "Bounded Candidate $index",
                     gender = Gender.FEMALE,
-                    lookingForGender = LookingForGender.WOMEN
+                    lookingForGenders = setOf(Gender.FEMALE)
                 )
             }
 
@@ -326,7 +325,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
                     email = "fifo-candidate-$index-${UUID.randomUUID()}@example.com",
                     displayName = "Fifo Candidate $index",
                     gender = Gender.FEMALE,
-                    lookingForGender = LookingForGender.WOMEN
+                    lookingForGenders = setOf(Gender.FEMALE)
                 )
             }
 

@@ -56,7 +56,7 @@ class ProfileController(
             displayName = request.displayName,
             birthDate = request.birthDate,
             gender = request.gender,
-            lookingForGender = request.lookingForGender,
+            lookingForGenders = request.lookingForGenders,
             intention = request.intention,
             city = request.city,
             country = request.country,
@@ -103,8 +103,7 @@ class ProfileController(
             bio = request.bio,
             city = request.city,
             country = request.country,
-            intention = request.intention,
-            lookingForGender = request.lookingForGender
+            intention = request.intention
         )
 
         val photos = profileService.getPhotos(updated.id)
@@ -154,6 +153,7 @@ class ProfileController(
 
         val updated = profileService.updateDynamicMatchFilters(
             profileId = profile.id,
+            lookingForGenders = request.lookingForGenders,
             preferredMinAge = request.preferredMinAge,
             preferredMaxAge = request.preferredMaxAge,
             maxDistanceKm = request.maxDistanceKm

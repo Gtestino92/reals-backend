@@ -3,7 +3,6 @@ package com.reals.backend.controller.dto
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
@@ -41,10 +40,12 @@ data class UpdateProfileRequest(
     val country: String? = null,
 
     val intention: Intention? = null,
-    val lookingForGender: LookingForGender? = null
 )
 
 data class UpdateMatchFiltersRequest(
+    @field:Size(min = 1, max = 4)
+    val lookingForGenders: Set<Gender>,
+
     @field:Min(18)
     @field:Max(99)
     val preferredMinAge: Int,
@@ -75,24 +76,25 @@ data class PhotoPlacementRequest(
 data class CreateProfileRequest(
     @field:NotBlank
     @field:Size(min = 2, max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val displayName: String,
 
     @field:Past
     val birthDate: LocalDate,
 
     val gender: Gender,
-    val lookingForGender: LookingForGender,
+    @field:Size(min = 1, max = 4)
+    val lookingForGenders: Set<Gender>,
     val intention: Intention,
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val city: String,
 
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
+    @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
     val country: String,
 
     @field:Size(max = 1000)
@@ -121,7 +123,7 @@ data class ProfileResponse(
     val identityVerified: Boolean,
     val identityVerificationStatus: IdentityVerificationStatus,
     val gender: Gender,
-    val lookingForGender: LookingForGender,
+    val lookingForGenders: Set<Gender>,
     val intention: Intention,
     val city: String,
     val country: String,
@@ -147,7 +149,7 @@ data class ProfileResponse(
             identityVerified = profile.identityVerified,
             identityVerificationStatus = profile.identityVerificationStatus,
             gender = profile.gender,
-            lookingForGender = profile.lookingForGender,
+            lookingForGenders = profile.lookingForGenders.toSet(),
             intention = profile.intention,
             city = profile.city,
             country = profile.country,

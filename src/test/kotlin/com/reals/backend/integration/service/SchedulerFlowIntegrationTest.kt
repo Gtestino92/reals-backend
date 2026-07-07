@@ -7,7 +7,6 @@ import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.PushDeliveryStatus
@@ -48,13 +47,13 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             email = "matchmaking-job-a-${UUID.randomUUID()}@example.com",
             displayName = "Job A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "matchmaking-job-b-${UUID.randomUUID()}@example.com",
             displayName = "Job B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         enqueueForMatchmaking(userA)

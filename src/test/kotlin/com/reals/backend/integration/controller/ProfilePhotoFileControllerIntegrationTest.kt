@@ -2,7 +2,6 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
@@ -334,7 +333,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             displayName = "Photo File",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",

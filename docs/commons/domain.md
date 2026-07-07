@@ -31,7 +31,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 Profile:
 
 - `Gender`: `MALE`, `FEMALE`, `NON_BINARY`, `OTHER`
-- `LookingForGender`: `MEN`, `WOMEN`, `EVERYONE`, `OTHER`
+- `lookingForGenders`: non-empty set of `Gender` values representing which genders the user wants to meet.
 - `Intention`: `DATE`, `FRIENDSHIP`, `CASUAL`
 - `ProfileStatus`: `DRAFT`, `ACTIVE`, `INACTIVE`
 - `IdentityVerificationStatus`: `NOT_STARTED`, `PENDING`, `VERIFIED`, `REJECTED`, `NEEDS_REVIEW`

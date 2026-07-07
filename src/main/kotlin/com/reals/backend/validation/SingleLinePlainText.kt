@@ -6,4 +6,13 @@ object SingleLinePlainText {
 
     const val MESSAGE: String =
         "must be single-line plain text and cannot contain markup characters"
+
+    fun requireValid(
+        fieldName: String,
+        value: String
+    ) {
+        require(value.none { it.isISOControl() || it == '\u2028' || it == '\u2029' || it == '<' || it == '>' }) {
+            "$fieldName $MESSAGE"
+        }
+    }
 }

@@ -3,7 +3,6 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.ActiveEngagementLock
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasKey
@@ -23,7 +22,7 @@ class AdminDiagnosticsControllerIntegrationTest : ControllerIT() {
             email = "diagnostics-queued-${UUID.randomUUID()}@example.com",
             displayName = "Diagnostics Queued",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         enqueueForMatchmaking(queuedUser)
 

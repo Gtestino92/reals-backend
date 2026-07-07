@@ -3,7 +3,6 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.BaseIT
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -20,7 +19,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "identity-audit-${UUID.randomUUID()}@example.com",
             displayName = "Identity Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
 
@@ -45,7 +44,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             displayName = "Activation Audit",
             birthDate = java.time.LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = com.reals.backend.domain.Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
@@ -89,7 +88,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "photo-delete-audit-${UUID.randomUUID()}@example.com",
             displayName = "Photo Delete Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
         val photo = profilePhotoRepository.findByProfileId(profile.id).first()
@@ -114,7 +113,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "account-audit-${UUID.randomUUID()}@example.com",
             displayName = "Account Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         userService.deleteUser(userId)
@@ -148,7 +147,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "penalty-audit-${UUID.randomUUID()}@example.com",
             displayName = "Penalty Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         val penalty = penaltyService.createTemporaryPenalty(
