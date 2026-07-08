@@ -4,7 +4,6 @@ import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
@@ -194,7 +193,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             email = "home-queue-${UUID.randomUUID()}@example.com",
             displayName = "Home Queue",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         enqueueForMatchmaking(userId)
 
@@ -437,7 +436,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             email = "home-capacity-a-${UUID.randomUUID()}@example.com",
             displayName = "Home Capacity A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         repeat(2) { index ->
@@ -445,7 +444,7 @@ class MeControllerIntegrationTest : ControllerIT() {
                 email = "home-capacity-b-$index-${UUID.randomUUID()}@example.com",
                 displayName = "Home Capacity B $index",
                 gender = Gender.MALE,
-                lookingForGender = LookingForGender.WOMEN
+                lookingForGenders = setOf(Gender.FEMALE)
             )
             val match = matchService.createMatch(userAId, userBId)
             chatService.startFirstChat(match.id)

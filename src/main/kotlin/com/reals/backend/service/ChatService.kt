@@ -51,6 +51,7 @@ class ChatService(
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
+    private val firstChatGuidanceService: FirstChatGuidanceService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
@@ -110,6 +111,10 @@ class ChatService(
                 startedAt = now,
                 timeoutAt = now.plusMinutes(firstChatDurationMinutes)
             )
+        )
+        firstChatGuidanceService.initializeForFirstChat(
+            chat = chat,
+            now = now
         )
         homeStateInvalidationService.bumpBoth(
             userAId = match.userAId,
@@ -414,6 +419,34 @@ class ChatService(
         validateChatParticipant(chat, userId)
         validateChatReadable(chat)
         return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
+    }
+
+    fun getFirstChatGuidanceState(
+        chat: Chat,
+        userId: UUID
+    ): FirstChatGuidanceState? =
+        firstChatGuidanceService.findStateForUser(
+            chat = chat,
+            userId = userId
+        )
+
+    fun requestFirstChatGuidanceNext(
+        chatId: UUID,
+        userId: UUID
+    ): FirstChatGuidanceState {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, userId)
+
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            throw chatNotAvailable()
+        }
+
+        validateActiveChatWindow(chat)
+
+        return firstChatGuidanceService.requestNext(
+            chat = chat,
+            userId = userId
+        )
     }
 
     fun getMessagesAfter(
@@ -935,7 +968,10 @@ class ChatService(
     }
 
     private fun normalizeMessageContent(content: String): String {
-        val normalized = content.trim()
+        val normalized = content
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .trim()
 
         if (normalized.isBlank()) {
             throw invalidChatMessage()
@@ -945,7 +981,13 @@ class ChatService(
             throw invalidChatMessage()
         }
 
-        if (normalized.any { it.isISOControl() || it == '<' || it == '>' }) {
+        if (
+            normalized.any {
+                (it.isISOControl() && it != '\n') ||
+                        it == '<' ||
+                        it == '>'
+            }
+        ) {
             throw invalidChatMessage()
         }
 

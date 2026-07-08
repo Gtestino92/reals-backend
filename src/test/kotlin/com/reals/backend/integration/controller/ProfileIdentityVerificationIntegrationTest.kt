@@ -3,7 +3,6 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.identity.IdentityVerificationProvider
 import com.reals.backend.service.identity.IdentityVerificationRequest
@@ -79,7 +78,7 @@ class ProfileIdentityVerificationIntegrationTest : ControllerIT() {
             displayName = "Identity Provider",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",

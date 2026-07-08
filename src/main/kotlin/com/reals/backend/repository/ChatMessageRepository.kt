@@ -2,6 +2,8 @@ package com.reals.backend.repository
 
 import com.reals.backend.domain.ChatMessage
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -30,5 +32,21 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         chatSessionId: UUID,
         senderId: UUID,
         sentAt: OffsetDateTime
+    ): Long
+
+    @Query(
+        value = """
+            select coalesce(sum(length(content)), 0)
+            from chat_messages
+            where chat_session_id = :chatId
+              and sender_id = :senderId
+              and sent_at >= :sentAt
+        """,
+        nativeQuery = true
+    )
+    fun sumContentLengthByChatSenderSince(
+        @Param("chatId") chatId: UUID,
+        @Param("senderId") senderId: UUID,
+        @Param("sentAt") sentAt: OffsetDateTime
     ): Long
 }

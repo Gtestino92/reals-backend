@@ -91,6 +91,8 @@ chat:
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
     min-messages-per-user: 0
     min-messages-before-free-cancel: 0
+    guidance:
+      required-characters: 30
   visual-phase:
     duration-minutes: 1440
   second-chat:

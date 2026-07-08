@@ -3,7 +3,6 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.StoredObject
@@ -43,7 +42,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             displayName = "Draft",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.OTHER,
-            lookingForGender = LookingForGender.EVERYONE,
+            lookingForGenders = Gender.entries.toSet(),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
@@ -67,7 +66,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             email = "active-add-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Add Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
@@ -97,7 +96,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             email = "active-replace-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Replace Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
@@ -128,7 +127,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             email = "active-delete-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Delete Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
@@ -148,13 +147,13 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             email = "photo-owner-${UUID.randomUUID()}@example.com",
             displayName = "Photo Owner",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val otherUserId = createActiveProfile(
             email = "photo-other-${UUID.randomUUID()}@example.com",
             displayName = "Photo Other",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
         val ownerProfile = profileService.findByUserId(ownerUserId)
             ?: error("Owner profile was not created")
@@ -181,7 +180,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             displayName = "Draft Queue",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",

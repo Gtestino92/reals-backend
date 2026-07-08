@@ -73,6 +73,10 @@ chat:
     inactivity-threshold-minutes: 5
     min-messages-per-user: 0
     min-messages-before-free-cancel: 1
+    guidance:
+      required-characters: 40
+      max-questions: 3
+      catalog: classpath:first-chat-guided-questions.es.json
   visual-phase:
     duration-minutes: 1440
   second-chat:

@@ -128,7 +128,7 @@ these values as text, not HTML.
 - `GET /api/me/profile`: get authenticated user's profile.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo upload/replacement/deletion or match-filter configuration.
-- `PUT /api/me/profile/match-filters`: replace dynamic matchmaking filters. Body: `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
+- `PUT /api/me/profile/match-filters`: replace matchmaking preferences. Body: `intention`, `lookingForGenders`, `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
 - `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
@@ -162,7 +162,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 ## Matches
 
 - `GET /api/matches/{matchId}`: fetch match details and linked connection id if present. Includes `visualExpiresAt` when a visual review deadline exists for the match.
-- `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt` and `inactivityExpiresAt`.
+- `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt` and nullable `guidance` metadata. New first chats initialize guidance; legacy rows may return `guidance = null`.
 - `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later. Includes partner photos with freshly generated read URLs, `visualExpiresAt` and `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
@@ -174,6 +174,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `GET /api/chats/{chatId}`: fetch chat. First-chat responses include `inactivityExpiresAt`; second-chat responses return `inactivityExpiresAt = null`.
 - `POST /api/chats/{chatId}/messages`: send message as authenticated user. First-chat sends after absolute timeout are rejected with `CHAT_EXPIRED`; sends after inactivity timeout are rejected with `CHAT_ABANDONED`.
 - `GET /api/chats/{chatId}/messages`: list messages as an authenticated chat participant. With no cursor, returns the legacy array. With `after={messageId}` or `afterMessageId={messageId}`, returns `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
+- `POST /api/chats/{chatId}/guidance/next-request`: request the next first-chat guided question for the authenticated participant. No body is required. It returns the current user-scoped guidance state after the request.
 - `POST /api/chats/{chatId}/exit-requests`: request mutual cancellation. Returns `201 Created` when a new pending request is created. If the same requester repeats the call while their pending mutual request still exists, returns `200 OK` with the existing request and does not overwrite `reason` or `details`. If the partner already has a pending mutual request for the chat, returns `409 Conflict`.
 - `GET /api/chats/{chatId}/exit-requests`: list exit requests visible to a participant.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/acceptance`: accept mutual cancellation and close the chat without penalty.
@@ -181,6 +182,18 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout`: resolve an unanswered mutual cancellation after the configured timeout and close the chat. If the requester calls this because the responder did not answer in time, the requester must not be penalized; future scoring is pending.
 - `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
 - `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Requires non-blank `details`, closes the chat, creates an internal `SafetyReport` in `PENDING` status, creates a directional user block from reporter to reported and returns `penaltyApplied=false`. Matchmaking treats that block as a bidirectional exclusion. Reporting does not automatically penalize the reported participant; penalties are applied only after admin/backoffice review.
+
+First-chat guidance is backend-owned for MVP:
+
+- The question catalog is a static Spanish resource loaded from `first-chat-guided-questions.es.json`.
+- Each first chat has one active question shared by both participants.
+- The sequence is deterministic from the chat id and catalog order; changing or reordering the catalog may affect not-yet-selected future questions for an already-active first chat, but the active question id/text are persisted as a snapshot.
+- Chat remains free-form. The backend does not semantically evaluate whether a user answered the prompt.
+- A participant must have sent at least `chat.first-chat.guidance.required-characters` persisted characters, default `40`, since the current question was activated before requesting another question. One long message can satisfy the threshold; multiple messages accumulate.
+- Advancement requires both participants to independently request the next question. The API exposes only `myNextRequested`, `canRequestNext`, `completed`, current question, ordinal, `maxQuestions` and `requiredCharacters`; it does not expose partner readiness, partner request timestamp or partner character count.
+- Maximum questions per first chat is `chat.first-chat.guidance.max-questions`, default `3`. When both participants request continuation from the penultimate question and the final configured question becomes active, guidance completes immediately. No question 4 is selected, and the final question remains available as the final prompt with `completed = true`, `canRequestNext = false` and `myNextRequested = false`.
+- Compatibility behavior: if an existing guidance row is already at the final configured ordinal with `completedAt = null`, the backend treats it as completed and normalizes `completedAt` plus clears request timestamps when the row is read or mutated.
+- Question changes are observed through the existing first-chat polling response. There are no guidance chat messages, push notifications, Home actions, reliability events or analytics events.
 
 ## Safety Reports
 
@@ -319,5 +332,8 @@ Selected stable frontend-facing domain codes:
 - `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.
 - `CHAT_EXPIRED`: chat action was attempted after the absolute chat deadline.
 - `CHAT_ABANDONED`: first-chat action was attempted after the inactivity deadline.
+- `FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED`: the requester has not yet sent enough persisted characters during the current first-chat guidance question interval.
+- `FIRST_CHAT_GUIDANCE_NEXT_ALREADY_REQUESTED`: the requester already requested continuation for the current first-chat guidance question.
+- `FIRST_CHAT_GUIDANCE_COMPLETED`: first-chat guidance already reached the active final configured question.
 - `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
 - `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.

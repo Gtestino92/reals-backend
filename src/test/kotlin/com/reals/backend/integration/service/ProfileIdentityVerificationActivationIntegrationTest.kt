@@ -3,7 +3,6 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
@@ -62,7 +61,7 @@ class ProfileIdentityVerificationActivationIntegrationTest : BaseIT() {
             displayName = "Identity Activation",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
