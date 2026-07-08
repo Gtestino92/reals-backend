@@ -37,9 +37,29 @@ data class UpdateProfileRequest(
 
     @field:Size(min = 1, max = 100)
     @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
+    val country: String? = null
+)
+
+data class UpdateMatchFiltersRequest(
+
     val country: String? = null,
 
-    val intention: Intention? = null,
+    val intention: Intention,
+  
+    @field:Size(min = 1, max = 4)
+    val lookingForGenders: Set<Gender>,
+
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMinAge: Int,
+
+    @field:Min(18)
+    @field:Max(99)
+    val preferredMaxAge: Int,
+
+    @field:Min(1)
+    @field:Max(1000)
+    val maxDistanceKm: Int
 )
 
 data class UpdateMatchFiltersRequest(

@@ -102,6 +102,7 @@ class ProfileController(
             displayName = request.displayName,
             bio = request.bio,
             city = request.city,
+            country = request.country
             country = request.country,
             intention = request.intention
         )
@@ -153,6 +154,7 @@ class ProfileController(
 
         val updated = profileService.updateDynamicMatchFilters(
             profileId = profile.id,
+            intention = request.intention,
             lookingForGenders = request.lookingForGenders,
             preferredMinAge = request.preferredMinAge,
             preferredMaxAge = request.preferredMaxAge,
