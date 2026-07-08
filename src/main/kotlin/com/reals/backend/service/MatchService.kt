@@ -4,8 +4,6 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
-import com.reals.backend.service.exception.DomainConflictException
-import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -57,7 +55,7 @@ class MatchService(
 
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
-        checkNotBlockedPair(
+        userBlockService.requirePairNotBlocked(
             userAId = userAId,
             userBId = userBId
         )
@@ -108,18 +106,6 @@ class MatchService(
         }
     }
 
-    private fun checkNotBlockedPair(
-        userAId: UUID,
-        userBId: UUID
-    ) {
-        if (userBlockService.isBlockedPair(userAId, userBId)) {
-            throw DomainConflictException(
-                code = DomainErrorCode.USER_PAIR_BLOCKED,
-                message = "Cannot create match between users with an existing block"
-            )
-        }
-    }
-
     private fun validateParticipant(
         match: Match,
         userId: UUID
@@ -147,6 +133,7 @@ class MatchService(
     fun transitionToVisualPhase(matchId: UUID): Match {
 
         val match = findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         if (match.state == MatchState.VISUAL_PHASE) {
             return match
@@ -176,6 +163,7 @@ class MatchService(
     fun approveVisualPhase(matchId: UUID): Match {
 
         val match = findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         if (match.state == MatchState.VISUAL_APPROVED) {
             return match

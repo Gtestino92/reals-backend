@@ -239,3 +239,7 @@ Hard filtering is first applied in the matchmaking queue query. The query filter
 Advanced criteria such as affinity tags or probabilistic scoring are not implemented.
 
 The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.
+
+## User blocks
+
+`UserBlock` persists a durable directional action while product exclusion is pair-wide. Block creation preserves the first source, is idempotent and pair-serialized, and has no automatic expiration or unblock operation. Every command contains stale active state across all matches and connections for the pair. Manual blocks create no report, penalty, reliability event, visual decision, or chat exit request.

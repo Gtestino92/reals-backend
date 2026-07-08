@@ -27,7 +27,7 @@ import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.PenaltyService
-import com.reals.backend.service.UserBlockService
+import com.reals.backend.service.UserBlockCommandService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -54,7 +54,7 @@ class SafetyReportService(
     private val visualReviewRepository: VisualReviewRepository,
     private val penaltyRepository: PenaltyRepository,
     private val userRepository: UserRepository,
-    private val userBlockService: UserBlockService,
+    private val userBlockCommandService: UserBlockCommandService,
     private val auditEventService: AuditEventService,
     private val evidenceSnapshotService: SafetyReportEvidenceSnapshotService,
     private val penaltyService: PenaltyService,
@@ -125,7 +125,7 @@ class SafetyReportService(
         )
 
         if (existing != null) {
-            userBlockService.blockUser(
+            userBlockCommandService.blockUserAndContain(
                 blockerUserId = reporterUserId,
                 blockedUserId = context.reportedUserId,
                 source = UserBlockSource.SAFETY_REPORT,
@@ -155,7 +155,7 @@ class SafetyReportService(
 
         captureEvidenceAndAuditReportCreated(report, actorUserId = reporterUserId)
 
-        userBlockService.blockUser(
+        userBlockCommandService.blockUserAndContain(
             blockerUserId = reporterUserId,
             blockedUserId = context.reportedUserId,
             source = UserBlockSource.SAFETY_REPORT,

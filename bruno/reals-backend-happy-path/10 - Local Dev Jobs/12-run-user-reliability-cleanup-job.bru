@@ -1,7 +1,7 @@
 meta {
   name: 12 Run User Reliability Cleanup Job
   type: http
-  seq: 12
+  seq: 15
 }
 
 post {
@@ -15,4 +15,3 @@ script:post-response {
     throw new Error("Expected UserReliabilityEventCleanupJob to run.");
   }
 }
-

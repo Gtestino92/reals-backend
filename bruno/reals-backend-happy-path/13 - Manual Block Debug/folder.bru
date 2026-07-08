@@ -1,0 +1,24 @@
+meta {
+  name: 13 - Manual Block Debug
+  seq: 14
+}
+
+docs {
+  Manual/debug requests for BACK-3 manual block containment.
+  
+  Typical local flow:
+  1. Run "01-happy-path" through request 20 "Get First Chat" to create a match and an active first chat.
+  2. Optionally run requests 21 and 22 to exchange first-chat messages.
+  3. Run "01 User A Block Match During Active First Chat" from this folder.
+  
+  The request uses:
+  - {{matchId}} from matchmaking.
+  - {{userAId}} as the authenticated blocker through X-Dev-User-Id.
+  
+  Expected behavior:
+  - First run returns 201 Created with source MANUAL.
+  - Replay returns 200 OK with the same block id.
+  - The active first chat is cancelled with USER_BLOCK and the match is rejected by backend containment.
+  
+  This folder is intentionally separate from the main happy path because executing the block command stops the pair from progressing further.
+}

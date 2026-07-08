@@ -53,6 +53,7 @@ import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.UserBlockCommandService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
@@ -80,6 +81,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var userBlockService: UserBlockService
+
+    @Autowired
+    protected lateinit var userBlockCommandService: UserBlockCommandService
 
     @Autowired
     protected lateinit var profileService: ProfileService

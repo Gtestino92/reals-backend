@@ -1,6 +1,6 @@
 meta {
   name: 07 - Android First Chat Visual Counterpart
-  seq: 7
+  seq: 8
 }
 
 docs {
@@ -21,7 +21,7 @@ docs {
   6. Scheduling scenario B: Android sends slots from the app, then run 26b to submit counterpart slots with an overlap and auto-confirm the negotiation.
   7. Scheduling scenario C: Android sends slots from the app, then run 26c to submit counterpart slots without overlap, run 29 to reject the current round, then refresh with 24 and 25.
   8. Scheduling scenario D: Android sends slots from the app, run 25 to capture proposalAId, then run 28 to accept that Android proposal from the counterpart.
-
+  
   Scheduling date variables:
   - Set secondChatDateTime to the Android-proposed instant when testing overlap or manual acceptance.
   - Set counterpartSecondChatDateTime/counterpartSecondChatDateTimeLater to future half-hour aligned instants for the generic counterpart submit request.
