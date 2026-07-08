@@ -4,6 +4,7 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.EnqueueMatchmakingRequest
 import com.reals.backend.controller.dto.QueueStatusResponse
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.matching.MatchmakingService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
@@ -14,7 +15,8 @@ import java.util.*
 @RequestMapping("/api/matchmaking")
 class MatchmakingController(
     private val matchmakingService: MatchmakingService,
-    private val queueRepository: MatchmakingQueueRepository
+    private val queueRepository: MatchmakingQueueRepository,
+    private val legalComplianceService: LegalComplianceService
 ) {
 
     /**
@@ -27,6 +29,8 @@ class MatchmakingController(
         @Valid
         @RequestBody request: EnqueueMatchmakingRequest
     ): ResponseEntity<QueueStatusResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         matchmakingService.enqueue(
             userId = userId,
             latitude = request.latitude,

@@ -9,6 +9,7 @@ import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.ScheduleProposalResponse
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.SchedulingService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -21,7 +22,8 @@ import java.util.*
 class ConnectionController(
     private val connectionService: ConnectionService,
     private val chatService: ChatService,
-    private val schedulingService: SchedulingService
+    private val schedulingService: SchedulingService,
+    private val legalComplianceService: LegalComplianceService
 
 ) {
 
@@ -102,6 +104,7 @@ class ConnectionController(
         @Valid
         @RequestBody request: AddProposalRequest
     ): ResponseEntity<List<ScheduleProposalResponse>> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val proposals = schedulingService.addProposals(
             connectionId = connectionId,
@@ -147,6 +150,7 @@ class ConnectionController(
         @PathVariable proposalId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val negotiation = schedulingService.acceptProposal(
             proposalId = proposalId,
@@ -173,6 +177,7 @@ class ConnectionController(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val negotiation = schedulingService.rejectCurrentRound(
             connectionId = connectionId,

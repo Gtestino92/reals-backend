@@ -9,6 +9,7 @@ import com.reals.backend.controller.dto.ProfileResponse
 import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
+import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -38,7 +39,8 @@ import java.util.UUID
 @RequestMapping("/api/me/profile")
 @Validated
 class ProfileController(
-    private val profileService: ProfileService
+    private val profileService: ProfileService,
+    private val legalComplianceService: LegalComplianceService
 ) {
 
     /**
@@ -51,6 +53,8 @@ class ProfileController(
         @Valid
         @RequestBody request: CreateProfileRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = profileService.createProfile(
             userId = userId,
             displayName = request.displayName,
@@ -95,6 +99,8 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateProfileRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateProfile(
@@ -126,6 +132,8 @@ class ProfileController(
             )
         }
 
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
+
         val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val activated = profileService.activateProfile(
@@ -148,6 +156,8 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateMatchFiltersRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateDynamicMatchFilters(
@@ -173,6 +183,8 @@ class ProfileController(
     fun verifyMyIdentity(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val verified = profileService.verifyIdentity(
@@ -209,6 +221,8 @@ class ProfileController(
         @Min(1)
         position: Int
     ): ResponseEntity<PhotoResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.uploadPhoto(
@@ -249,6 +263,8 @@ class ProfileController(
         @Valid
         @RequestBody request: ReorderProfilePhotosRequest
     ): ResponseEntity<List<PhotoResponse>> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photos = profileService.reorderPhotos(
@@ -317,6 +333,8 @@ class ProfileController(
         @RequestPart("file")
         file: MultipartFile
     ): ResponseEntity<PhotoResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val photo = profileService.replacePhoto(

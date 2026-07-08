@@ -11,6 +11,7 @@ import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -18,6 +19,18 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 import kotlin.test.assertEquals
 
+@TestPropertySource(
+    properties = [
+        "legal.documents[0].type=TERMS_OF_USE",
+        "legal.documents[0].version=2026-07-01-test",
+        "legal.documents[0].url=https://example.test/terms",
+        "legal.documents[0].required-action=ACCEPTED",
+        "legal.documents[1].type=PRIVACY_NOTICE",
+        "legal.documents[1].version=2026-07-01-test",
+        "legal.documents[1].url=https://example.test/privacy",
+        "legal.documents[1].required-action=ACKNOWLEDGED"
+    ]
+)
 class LegalDocumentControllerIntegrationTest : ControllerIT() {
 
     @Autowired

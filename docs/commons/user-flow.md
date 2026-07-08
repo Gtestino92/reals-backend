@@ -8,6 +8,25 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+Legal compliance is backend-authoritative for protected participation/content
+writes. After provisioning, clients can call `GET /api/me/legal-status`; when
+`requirementsSatisfied=false`, they should show the current legal requirements,
+use `GET /api/legal/documents/current` for URL metadata as needed, submit the
+required factual actions with `POST /api/me/legal-document-actions`, and refresh
+legal status. The Android client may route based on this status, but backend
+protected operations are the enforcement boundary.
+
+Any protected backend request may return `409 LEGAL_ACTION_REQUIRED`. For
+future Android clients, that stable code means refresh legal status and route to
+the legal requirements UI. Legal state is not part of Home and is not modeled as
+a Home pending action.
+
+Reads, legal endpoints, account deletion/reactivation, chat exit/cancellation
+and safety/reporting flows remain available without current legal compliance.
+`APPROVED` first-chat and visual decisions require compliance; `REJECTED`
+decisions remain available. Scheduling proposal submission, proposal acceptance
+and scheduling-round rejection require compliance.
+
 ## 2. Matchmaking Queue
 
 Users enter the queue through:

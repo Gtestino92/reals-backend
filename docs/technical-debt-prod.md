@@ -808,6 +808,25 @@ Future cleanup:
 - Prefer service implementation and these docs as current source of truth.
 - Remove or update comments once behavior stabilizes.
 
+---
+
+## 18. BACK-7 — Immutable legal document publication and historical evidence
+
+Deferred pre-production debt.
+
+Before configuring real production legal documents:
+
+- define ownership and hosting of legal document publication;
+- ensure every configured type/version maps to exact stable published content;
+- do not modify published versions retroactively;
+- publish substantive changes as a new version and new URL;
+- preserve historical document URLs;
+- decide, after legal/compliance review, whether operational immutable publishing is sufficient or persisted content hashes/snapshots are required.
+
+Do not add URL-shape validation as a substitute for content immutability. A URL
+naming convention can help operators organize published documents, but it is not
+a technical guarantee that remote content is immutable.
+
 
 ## clean up pre-mvp
 
