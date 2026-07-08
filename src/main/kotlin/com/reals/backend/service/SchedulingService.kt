@@ -102,13 +102,15 @@ class SchedulingService(
         proposedDateTimes: List<OffsetDateTime>
     ): List<ScheduleProposal> {
 
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+
         val negotiation = findNegotiationOrThrow(connectionId)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
             throw schedulingNotAvailable()
         }
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
         requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
