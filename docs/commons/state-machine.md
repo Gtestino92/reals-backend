@@ -121,3 +121,12 @@ requester under future scoring semantics.
 - Account deletion closes active visible chats, rejects in-progress match phases, closes active connections, fails pending scheduling negotiations, deletes the deleted user's locks and moves the profile back to `DRAFT` while preserving historical rows. Reactivation restores the user account only; it does not reopen prior engagements.
 
 State transitions and lock changes should stay coupled in service methods.
+
+## Block containment
+
+- `CHAT_ACTIVE -> CHAT_REJECTED`; an active first chat becomes `CANCELLED / USER_BLOCK`.
+- `VISUAL_PHASE -> VISUAL_REJECTED`; visual decisions are unchanged.
+- Every active Connection state transitions to `CLOSED`.
+- An `AVAILABLE` or `ACTIVE` second chat becomes `CANCELLED / USER_BLOCK`; terminal chat history is unchanged.
+
+Existing rejection and closure operations release locks. Positive transitions are guarded by pair-wide `USER_PAIR_BLOCKED`; cleanup, rejection, exit, safety, and read paths remain available.

@@ -5,6 +5,7 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -52,6 +53,38 @@ class UserBlockServiceIntegrationTest : BaseIT() {
                         it.aggregateId == first.id
                 }
         )
+    }
+
+    @Test
+    fun `result reports creation once and preserves first source`() {
+        val blocker = userService.createUser("block-result-a-${UUID.randomUUID()}@example.com")
+        val blocked = userService.createUser("block-result-b-${UUID.randomUUID()}@example.com")
+
+        val first = userBlockService.blockUserWithResult(
+            blocker.id, blocked.id, UserBlockSource.SAFETY_REPORT, UUID.randomUUID()
+        )
+        val replay = userBlockService.blockUserWithResult(
+            blocker.id, blocked.id, UserBlockSource.MANUAL
+        )
+
+        assertTrue(first.created)
+        assertFalse(replay.created)
+        assertEquals(first.block.id, replay.block.id)
+        assertEquals(UserBlockSource.SAFETY_REPORT, replay.block.source)
+    }
+
+    @Test
+    fun `central pair guard uses generic blocked conflict`() {
+        val userA = userService.createUser("block-guard-a-${UUID.randomUUID()}@example.com")
+        val userB = userService.createUser("block-guard-b-${UUID.randomUUID()}@example.com")
+        userBlockService.blockUser(userB.id, userA.id, UserBlockSource.MANUAL)
+
+        val exception = assertThrows<DomainConflictException> {
+            userBlockService.requirePairNotBlocked(userA.id, userB.id)
+        }
+
+        assertEquals(DomainErrorCode.USER_PAIR_BLOCKED, exception.code)
+        assertEquals("Interaction is not available for this user pair", exception.message)
     }
 
     @Test

@@ -22,6 +22,7 @@ class ConnectionService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
+    private val userBlockService: UserBlockService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value($$"${engagement.max-active-connections:2}")
@@ -67,6 +68,7 @@ class ConnectionService(
      * locks, while the actionable scheduling phase is activated later.
      */
     fun createFromMatch(match: Match): Connection {
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         connectionRepository.findByMatchId(match.id)?.let { existing ->
             ensureConnectionLocks(existing)
@@ -103,6 +105,7 @@ class ConnectionService(
     fun activateScheduling(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SCHEDULING_PHASE) {
             ensureConnectionLocks(connection)
@@ -206,6 +209,7 @@ class ConnectionService(
     fun transitionToSecondChatScheduled(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
             return connection
@@ -234,6 +238,7 @@ class ConnectionService(
     fun transitionToSecondChatAvailable(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
             return connection
@@ -262,6 +267,7 @@ class ConnectionService(
     fun transitionToSecondChat(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT) {
             return connection

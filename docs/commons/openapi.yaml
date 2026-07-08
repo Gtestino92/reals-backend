@@ -1031,6 +1031,27 @@ paths:
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
         '409':
           $ref: '#/components/responses/SchedulingRoundRejectionConflict'
+  /api/matches/{matchId}/block:
+    post:
+      summary: Durably block the other participant in a match
+      description: Creates a directional MANUAL block and immediately contains active interactions for the pair. No request body is required.
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: A new directional block was created
+        '200':
+          description: The same directional block already existed
+        '403':
+          description: The authenticated user is not a match participant
+        '409':
+          description: Interaction conflict, including USER_PAIR_BLOCKED
+
 components:
   securitySchemes:
     bearerAuth:

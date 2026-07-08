@@ -230,3 +230,7 @@ Admins can also dismiss a report as abusive or unjustified. That resolution crea
 ## 10. Completion
 
 A connection eventually reaches `CLOSED`. Closure releases active connection locks, so users are no longer counted against the connection limit for that interaction.
+
+## 11. Manual block
+
+A participant may submit `POST /api/matches/{matchId}/block`; the backend resolves the counterpart without exposing their user id. The block immediately excludes the pair and contains every active match or connection. Positive progression then returns `USER_PAIR_BLOCKED`, while reads, rejection, exit, cancellation, and safety remain available. Android must present definitive-action confirmation before submission; Android UI and unblock are not part of this backend MVP.

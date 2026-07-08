@@ -22,6 +22,7 @@ class VisualReviewService(
     private val connectionService: ConnectionService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val userBlockService: UserBlockService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long
@@ -43,6 +44,7 @@ class VisualReviewService(
 
     fun initializeForMatch(matchId: UUID): VisualReview {
         val match = matchService.findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         val existing = visualReviewRepository.findByMatchId(matchId)
 
@@ -106,6 +108,9 @@ class VisualReviewService(
             matchId = matchId,
             userId = userId
         )
+        if (decision == VisualDecision.APPROVED) {
+            userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
+        }
         val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
             ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
 
@@ -178,6 +183,7 @@ class VisualReviewService(
         val normalizedMessage = normalizePersonalMessage(message)
 
         val match = matchService.findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
         val review = findByMatchIdOrThrow(matchId)
 
         check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {

@@ -55,6 +55,7 @@ class ChatService(
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val userBlockService: UserBlockService,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -103,6 +104,7 @@ class ChatService(
     fun startFirstChat(matchId: UUID): Chat {
         val now = OffsetDateTime.now()
         val match = matchService.findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         val chat = chatRepository.save(
             Chat(
@@ -139,6 +141,8 @@ class ChatService(
         availableAt: OffsetDateTime,
         activatedAt: OffsetDateTime = OffsetDateTime.now()
     ): Chat {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         chatRepository
             .findByConnectionIdAndChatType(connectionId, ChatType.SECOND_CHAT)
             ?.let { return it }
@@ -155,7 +159,6 @@ class ChatService(
                 timeoutAt = availableAt.plusMinutes(secondChatDurationMinutes)
             )
         )
-        val connection = connectionService.findByIdOrThrow(connectionId)
         homeStateInvalidationService.bumpBoth(
             userAId = connection.userAId,
             userBId = connection.userBId,
@@ -171,9 +174,11 @@ class ChatService(
     ): ChatMessage {
         val normalizedContent = normalizeMessageContent(content)
 
+        val initialChat = findByIdOrThrow(chatId)
+        requireChatPairNotBlocked(initialChat)
         val chat =
             activateAvailableSecondChatIfNeeded(
-                chat = findByIdOrThrow(chatId),
+                chat = initialChat,
                 userId = senderId
             )
 
@@ -204,6 +209,9 @@ class ChatService(
         decision: ChatContinueDecision
     ) {
         val match = matchService.findByIdOrThrow(matchId)
+        if (decision == ChatContinueDecision.APPROVED) {
+            userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
+        }
 
         if (match.state != MatchState.CHAT_ACTIVE) {
             throw chatDecisionNotAvailable()
@@ -435,6 +443,7 @@ class ChatService(
         userId: UUID
     ): FirstChatGuidanceState {
         val chat = findByIdOrThrow(chatId)
+        requireChatPairNotBlocked(chat)
         validateChatParticipant(chat, userId)
 
         if (chat.chatType != ChatType.FIRST_CHAT) {
@@ -964,6 +973,16 @@ class ChatService(
 
         if (userId != match.userAId && userId != match.userBId) {
             throw AccessDeniedException("User $userId does not belong to match ${chat.matchId}")
+        }
+    }
+
+    private fun requireChatPairNotBlocked(chat: Chat) {
+        val pair = chat.connectionId?.let { connectionService.findByIdOrThrow(it) }
+        if (pair != null) {
+            userBlockService.requirePairNotBlocked(pair.userAId, pair.userBId)
+        } else {
+            val match = matchService.findByIdOrThrow(chat.matchId)
+            userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
         }
     }
 
