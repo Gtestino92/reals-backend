@@ -207,7 +207,7 @@ paths:
     get:
       tags: [Legal]
       summary: Get current user's legal document status
-      description: Returns status for current configured document versions only. BACK-1 is informational and does not enforce product access.
+      description: Returns authoritative status for current configured document versions only. Empty legal catalogs are satisfied. Historical actions remain persisted but do not satisfy newer configured versions.
       responses:
         '200':
           description: Current user's legal document status
@@ -303,7 +303,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Profile cannot be activated, including EMAIL_NOT_VERIFIED when the current Firebase token has not verified email.
+          description: Profile cannot be activated, including EMAIL_NOT_VERIFIED when the current Firebase token has not verified email. Protected activation may also return LEGAL_ACTION_REQUIRED.
           content:
             application/json:
               schema:
@@ -314,6 +314,11 @@ paths:
                     code: EMAIL_NOT_VERIFIED
                     error: Conflict
                     message: Verificá tu email antes de activar el perfil.
+                legalActionRequired:
+                  value:
+                    code: LEGAL_ACTION_REQUIRED
+                    error: Conflict
+                    message: Current legal document actions are required before continuing
   /api/me/profile/match-filters:
     put:
       tags: [Profiles]
@@ -501,6 +506,7 @@ paths:
     post:
       tags: [Matches]
       summary: Submit first-chat continuation decision
+      description: APPROVED requires current legal requirements to be satisfied. REJECTED remains available without legal compliance.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -518,6 +524,7 @@ paths:
     post:
       tags: [Matches]
       summary: Submit visual decision
+      description: APPROVED requires current legal requirements to be satisfied. REJECTED remains available without legal compliance. Partner personal messages, when present, must still be read before any visual decision.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -1014,6 +1021,7 @@ paths:
     post:
       tags: [Connections]
       summary: Explicitly reject current scheduling round
+      description: Rejects the current scheduling round and opens the next round when allowed; this progression action requires current legal requirements to be satisfied.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
@@ -1260,11 +1268,17 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
-      description: Domain conflict or invalid state transition
+      description: Domain conflict or invalid state transition. Protected participation/content writes may also return stable code `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
     ChatMessageInvalid:
       description: Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`.
       content:
@@ -1286,12 +1300,17 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable.
+      description: Chat is not currently readable or writable. Active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             chatNotAvailable:
               value:
                 code: CHAT_NOT_AVAILABLE
@@ -1303,12 +1322,17 @@ components:
                 error: Conflict
                 message: Chat has expired
     FirstChatGuidanceConflict:
-      description: First-chat guidance cannot be advanced in the current state.
+      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             participationRequired:
               value:
                 code: FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED
@@ -1330,12 +1354,17 @@ components:
                 error: Conflict
                 message: Chat is not available
     ChatDecisionConflict:
-      description: First-chat continuation decision is not currently available.
+      description: First-chat continuation decision is not currently available. APPROVED may also return `LEGAL_ACTION_REQUIRED`; REJECTED remains available without legal compliance.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             decisionNotAvailable:
               value:
                 code: CHAT_DECISION_NOT_AVAILABLE
@@ -1450,12 +1479,17 @@ components:
             error: Not Found
             message: Scheduling proposal was not found
     SchedulingProposalSubmissionConflict:
-      description: Scheduling proposal submission is not currently available.
+      description: Scheduling proposal submission is not currently available. Submitting scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE
@@ -1472,12 +1506,17 @@ components:
                 error: Conflict
                 message: Scheduling proposals were already submitted for this round
     SchedulingProposalAcceptanceConflict:
-      description: Scheduling proposal cannot be accepted in the current flow state.
+      description: Scheduling proposal cannot be accepted in the current flow state. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE
@@ -1499,12 +1538,17 @@ components:
                 error: Conflict
                 message: Users cannot accept their own scheduling proposal
     SchedulingRoundRejectionConflict:
-      description: Scheduling round cannot be rejected in the current flow state.
+      description: Scheduling round cannot be rejected in the current flow state. Rejecting the current scheduling round may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE

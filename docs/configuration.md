@@ -91,8 +91,29 @@ Supported document types are `TERMS_OF_USE`, `PRIVACY_NOTICE` and
 `COMMUNITY_GUIDELINES`. Supported factual actions are `ACCEPTED` and
 `ACKNOWLEDGED`. The default catalog is empty. The application fails fast if the
 configured list contains duplicate document types, blank versions or blank URLs.
-BACK-1 uses this catalog for the legal endpoints only and does not enforce
-product access.
+The current legal document catalog plus persisted user legal document actions
+are the authoritative source for the legal compliance gate. Protected
+participation/content writes may be rejected with `LEGAL_ACTION_REQUIRED` when
+current configured requirements are not satisfied. An empty configured catalog
+is naturally satisfied.
+
+Each configured legal document URL must identify the exact published content
+associated with that document type and version. Published legal document
+versions must not be modified retroactively. Substantive content changes require
+a new document version and should publish a new URL identifying the new version.
+Historical legal document URLs should remain available so the content associated
+with previously-recorded actions can still be identified. Configured production
+URLs should point to stable, externally hosted legal document resources
+appropriate for the platform and compliance requirements.
+
+A versioned URL such as `https://reals.example/legal/privacy/2026-08-01` is an
+example publication pattern, not a backend validation rule or a technical proof
+of immutability.
+
+The current backend does not fetch configured legal document URLs, hash remote
+legal document content, snapshot remote legal document content, or technically
+enforce remote content immutability. URL/content immutability is currently an
+operational publication responsibility.
 
 Sensitive runtime secrets:
 

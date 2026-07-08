@@ -5,6 +5,7 @@ import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
+import com.reals.backend.service.LegalComplianceService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -15,7 +16,8 @@ import java.util.*
 @RequestMapping("/api/chats")
 class ChatController(
     private val chatService: ChatService,
-    private val chatExitService: ChatExitService
+    private val chatExitService: ChatExitService,
+    private val legalComplianceService: LegalComplianceService
 ) {
 
     @GetMapping("/{chatId}")
@@ -44,6 +46,7 @@ class ChatController(
         @Valid
         @RequestBody request: SendMessageRequest
     ): ResponseEntity<ChatMessageResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val message = chatService.sendMessage(
             chatId = chatId,
@@ -60,8 +63,10 @@ class ChatController(
     fun requestNextGuidanceQuestion(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID
-    ): ResponseEntity<FirstChatGuidanceResponse> =
-        ResponseEntity.ok(
+    ): ResponseEntity<FirstChatGuidanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return ResponseEntity.ok(
             FirstChatGuidanceResponse.from(
                 chatService.requestFirstChatGuidanceNext(
                     chatId = chatId,
@@ -69,6 +74,7 @@ class ChatController(
                 )
             )
         )
+    }
 
     @GetMapping("/{chatId}/messages")
     fun getMessages(
