@@ -14,6 +14,7 @@ tags:
   - name: Health
   - name: Me
   - name: Profiles
+  - name: Legal
   - name: Matchmaking
   - name: Matches
   - name: Chats
@@ -189,6 +190,73 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/legal/documents/current:
+    get:
+      tags: [Legal]
+      summary: List current configured legal documents
+      description: Public informational catalog. An empty configured catalog returns an empty documents array.
+      security: []
+      responses:
+        '200':
+          description: Current configured legal documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentLegalDocumentsResponse'
+  /api/me/legal-status:
+    get:
+      tags: [Legal]
+      summary: Get current user's legal document status
+      description: Returns status for current configured document versions only. BACK-1 is informational and does not enforce product access.
+      responses:
+        '200':
+          description: Current user's legal document status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/me/legal-document-actions:
+    post:
+      tags: [Legal]
+      summary: Record a factual legal document action
+      description: Records that the authenticated user performed the configured required action for the current configured document version. Identical replays are idempotent.
+      requestBody:
+        $ref: '#/components/requestBodies/RecordLegalDocumentAction'
+      responses:
+        '200':
+          description: Existing identical action record returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocumentActionResponse'
+        '201':
+          description: New factual action record created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocumentActionResponse'
+        '400':
+          description: Malformed request or requested action does not match the configured required action. Stable code for wrong action: `LEGAL_DOCUMENT_ACTION_INVALID`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Requested document type has no current configured document. Stable code: `LEGAL_DOCUMENT_NOT_FOUND`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Requested version is not the current configured version. Stable code: `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -1112,6 +1180,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AddProposalRequest'
+    RecordLegalDocumentAction:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordLegalDocumentActionRequest'
   responses:
     Profile:
       description: Profile
@@ -1494,6 +1568,62 @@ components:
       required: [registered]
       properties:
         registered: { type: boolean, example: true }
+    CurrentLegalDocumentsResponse:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrentLegalDocumentResponse'
+    CurrentLegalDocumentResponse:
+      type: object
+      required: [type, version, url, requiredAction]
+      properties:
+        type: { $ref: '#/components/schemas/LegalDocumentType' }
+        version: { type: string }
+        url: { type: string }
+        requiredAction: { $ref: '#/components/schemas/LegalDocumentAction' }
+    LegalStatusResponse:
+      type: object
+      required: [requirementsSatisfied, documents]
+      properties:
+        requirementsSatisfied:
+          type: boolean
+          description: True only when every current configured document version has the configured required action recorded.
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/LegalDocumentStatusResponse'
+    LegalDocumentStatusResponse:
+      type: object
+      required: [type, version, requiredAction, recordedAction, actedAt, satisfied]
+      properties:
+        type: { $ref: '#/components/schemas/LegalDocumentType' }
+        version: { type: string }
+        requiredAction: { $ref: '#/components/schemas/LegalDocumentAction' }
+        recordedAction:
+          allOf:
+            - $ref: '#/components/schemas/LegalDocumentAction'
+          nullable: true
+        actedAt: { type: string, format: date-time, nullable: true }
+        satisfied: { type: boolean }
+    RecordLegalDocumentActionRequest:
+      type: object
+      required: [documentType, documentVersion, action]
+      properties:
+        documentType: { $ref: '#/components/schemas/LegalDocumentType' }
+        documentVersion: { type: string }
+        action: { $ref: '#/components/schemas/LegalDocumentAction' }
+    LegalDocumentActionResponse:
+      type: object
+      required: [id, documentType, documentVersion, action, actedAt]
+      properties:
+        id: { type: string, format: uuid }
+        documentType: { $ref: '#/components/schemas/LegalDocumentType' }
+        documentVersion: { type: string }
+        action: { $ref: '#/components/schemas/LegalDocumentAction' }
+        actedAt: { type: string, format: date-time }
     HomeResponse:
       type: object
       required: [matchmaking, activeInteractionsSummary, pendingActions, nextSteps, passiveNotices]
@@ -2242,6 +2372,12 @@ components:
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]
+    LegalDocumentType:
+      type: string
+      enum: [TERMS_OF_USE, PRIVACY_NOTICE, COMMUNITY_GUIDELINES]
+    LegalDocumentAction:
+      type: string
+      enum: [ACCEPTED, ACKNOWLEDGED]
     PhotoStorageProvider:
       type: string
       enum: [S3]

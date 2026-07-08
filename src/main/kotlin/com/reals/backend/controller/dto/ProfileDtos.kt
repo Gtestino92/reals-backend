@@ -41,9 +41,6 @@ data class UpdateProfileRequest(
 )
 
 data class UpdateMatchFiltersRequest(
-    
-    val country: String? = null,
-
     val intention: Intention,
   
     @field:Size(min = 1, max = 4)

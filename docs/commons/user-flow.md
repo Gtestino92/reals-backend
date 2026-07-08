@@ -61,9 +61,10 @@ The Spanish question catalog is a static resource, and each first chat derives a
 deterministic sequence from the chat id and catalog order. One active question is
 shared by both participants and persisted as an id/text snapshot when activated.
 Users can chat freely; the backend does not semantically evaluate answers. A
-participant can request another question only after sending at least 40
-accumulated persisted characters during the current question interval. One long
-message can satisfy this threshold. The question advances only after both
+participant can request another question only after sending at least the
+configured `chat.first-chat.guidance.required-characters` threshold during the
+current question interval. One long message can satisfy this threshold. The
+question advances only after both
 participants independently request it, and partner readiness/request state is not
 exposed. A first chat has at most 3 questions. When both users request
 continuation from the penultimate question and the final configured question
