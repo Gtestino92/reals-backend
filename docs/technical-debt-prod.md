@@ -207,11 +207,12 @@ Production work:
 ### 4.2 User blocking and objectionable content controls
 
 Current state:
-- The manual user-facing backend block command is implemented; Android UI is not.
-- Report-created blocks and pair-wide matchmaking exclusion are implemented.
+- The manual user-facing backend block command and Android manual-block UI are implemented.
+- Android presents definitive-action confirmation before manual block submission.
+- Reporting and blocking remain separate user actions.
+- Report-created and manual blocks enforce pair-wide matchmaking exclusion.
 - Active-interaction containment and a central positive-progression guard are implemented.
-- Blocks are durable and there is no unblock endpoint in the current MVP.
-- Android must present explicit definitive-action confirmation before manual block submission.
+- Blocks are durable and there is no unblock endpoint or UI in the current MVP.
 
 Future work:
 - Define future unblock policy and admin correction behavior.
@@ -881,6 +882,31 @@ required action
 The current recommendation is not to store legal document HTML in PostgreSQL, Android resources, MinIO/profile-media storage, or the backend application JAR.
 
 This publication model is a candidate operational direction, not yet implemented production infrastructure and not a substitute for the remaining BACK-7 legal/compliance review about historical evidence, hashes or content snapshots.
+
+---
+
+## 19. BACK-0 / BACK-4 — Data inventory and account-deletion cleanup
+
+Implemented:
+
+- The authoritative backend data inventory and retention matrix is in `docs/data-retention.md`.
+- Account deletion atomically deletes ephemeral matchmaking, engagement-lock, push-token, push-delivery, connection Home-dismissal and deleted-user Home-status state.
+- Active interaction is contained while historical lifecycle and content rows remain.
+- Recovery-window behavior for profile, media metadata/objects, messages, safety, anti-abuse, legal and audit data is documented.
+- Current post-window finalization replaces/releases local account identifiers. It is not complete account erasure.
+
+Remaining policy and implementation work:
+
+- post-recovery purge or anonymization of profiles and lifecycle rows;
+- profile-photo object deletion after finalization;
+- chat-message and personal-message retention;
+- block, penalty and reliability-event treatment after final deletion without overriding existing expiry behavior;
+- safety-report/evidence, audit and legal-action retention periods and anonymization;
+- Firebase Auth external-user deletion/finalization, because current finalization only clears the local Firebase UID;
+- database/object-store backup retention and restore handling;
+- application log, metric, cache and rate-limit state retention.
+
+No retention periods are selected by BACK-0/BACK-4. These items require separate product, privacy, legal, security and infrastructure decisions.
 
 
 ## clean up pre-mvp
