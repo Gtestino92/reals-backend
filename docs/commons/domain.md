@@ -220,10 +220,13 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - `DELETE /api/me` moves the user to `DELETED` and sets `deletedAt` plus `deletionFinalizesAt`.
 - The account remains recoverable until `deletionFinalizesAt`.
 - During the recovery window, the email and Firebase UID remain reserved and cannot provision a new account.
-- Deletion closes active matches/connections and releases engagement locks. Reactivation does not reopen previous engagements.
-- Deletion moves the profile back to `DRAFT` while preserving profile data and photos.
+- Deletion immediately removes ephemeral operational state: matchmaking queue rows, engagement locks, push device tokens, push-delivery records, connection Home dismissals and the deleted user's Home-status projection.
+- Deletion contains active Matches, Chats, Connections and scheduling negotiations but retains their historical lifecycle and content rows. Counterpart Home invalidations remain. Reactivation does not reopen previous engagements.
+- Deletion moves the profile back to `DRAFT` while preserving profile data, photo metadata and profile-photo storage objects during recovery.
 - `POST /api/me/reactivation` restores the user to `ACTIVE` only while the recovery window is still open. The profile remains `DRAFT` and must be activated again before matchmaking.
-- The account-deletion finalization job anonymizes the email and releases the Firebase UID after the recovery window expires.
+- Reactivation does not restore deleted queue, lock, push, Home-dismissal or Home-status state. Home status is recreated through its normal missing-row behavior when needed, and a current FCM token can be registered again.
+- The account-deletion finalization job replaces the local email and releases the local Firebase UID after the recovery window expires. This is local identifier finalization, not a complete data purge.
+- Post-recovery retention, purge and anonymization policy is tracked in `docs/data-retention.md`.
 
 ## Match Filtering And Compatibility
 

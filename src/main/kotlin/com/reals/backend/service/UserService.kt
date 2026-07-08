@@ -5,8 +5,6 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
-import com.reals.backend.repository.ActiveEngagementLockRepository
-import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
@@ -26,9 +24,8 @@ import java.util.*
 class UserService(
     private val userRepository: UserRepository,
     private val profileRepository: ProfileRepository,
-    private val matchmakingQueueRepository: MatchmakingQueueRepository,
-    private val activeEngagementLockRepository: ActiveEngagementLockRepository,
     private val accountDeletionService: AccountDeletionService,
+    private val accountDeletionImmediateCleanupService: AccountDeletionImmediateCleanupService,
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
@@ -150,8 +147,6 @@ class UserService(
             now = now
         )
 
-        matchmakingQueueRepository.deleteByUserId(userId)
-        activeEngagementLockRepository.deleteByUserId(userId)
         moveProfileToDraft(userId = userId, now = now)
 
         val updatedRows = userRepository.softDeleteActiveById(
@@ -175,6 +170,7 @@ class UserService(
             userId = userId,
             reason = "account_deleted"
         )
+        accountDeletionImmediateCleanupService.deleteEphemeralOperationalData(userId)
     }
 
     fun reactivateUser(userId: UUID): User {
@@ -215,10 +211,6 @@ class UserService(
             aggregateType = AuditAggregateType.USER,
             aggregateId = saved.id,
             actorUserId = saved.id
-        )
-        homeStateInvalidationService.bump(
-            userId = saved.id,
-            reason = "account_reactivated"
         )
         return saved
     }

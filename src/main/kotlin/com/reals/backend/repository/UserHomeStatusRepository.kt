@@ -11,6 +11,10 @@ import java.util.UUID
 interface UserHomeStatusRepository : JpaRepository<UserHomeStatus, UUID> {
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from UserHomeStatus s where s.userId = :userId")
+    fun deleteByUserId(@Param("userId") userId: UUID): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """
         update UserHomeStatus s
