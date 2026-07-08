@@ -102,9 +102,7 @@ class ProfileController(
             displayName = request.displayName,
             bio = request.bio,
             city = request.city,
-            country = request.country
             country = request.country,
-            intention = request.intention
         )
 
         val photos = profileService.getPhotos(updated.id)
