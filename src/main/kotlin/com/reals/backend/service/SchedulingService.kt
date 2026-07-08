@@ -27,6 +27,7 @@ class SchedulingService(
     private val proposalRepository: ScheduleProposalRepository,
     private val connectionService: ConnectionService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val userBlockService: UserBlockService,
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
@@ -74,6 +75,7 @@ class SchedulingService(
         negotiationRepository.findByConnectionId(connectionId)?.let { return it }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         if (connection.state != ConnectionState.SCHEDULING_PHASE) {
             throw schedulingNotAvailable()
         }
@@ -100,13 +102,15 @@ class SchedulingService(
         proposedDateTimes: List<OffsetDateTime>
     ): List<ScheduleProposal> {
 
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+
         val negotiation = findNegotiationOrThrow(connectionId)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
             throw schedulingNotAvailable()
         }
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
         requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
@@ -255,6 +259,7 @@ class SchedulingService(
         }
 
         val connection = connectionService.findByIdOrThrow(proposal.connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
 
         if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
@@ -313,6 +318,7 @@ class SchedulingService(
         }
 
         val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
@@ -419,6 +425,8 @@ class SchedulingService(
         negotiation: ScheduleNegotiation,
         connectionId: UUID
     ) {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         accepted.forEach { it.status = ProposalStatus.ACCEPTED }
 

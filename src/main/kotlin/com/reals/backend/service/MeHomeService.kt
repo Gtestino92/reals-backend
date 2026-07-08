@@ -55,6 +55,7 @@ class MeHomeService(
     private val chatDecisionRepository: ChatDecisionRepository,
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
     private val homeStatusService: HomeStatusService,
+    private val userBlockService: UserBlockService,
 
     @param:Value("\${chat.second-chat.duration-minutes:120}")
     private val secondChatDurationMinutes: Long
@@ -66,6 +67,7 @@ class MeHomeService(
         val inQueue = queueRepository.existsByUserId(userId)
 
         val now = OffsetDateTime.now()
+        val blockedCounterpartIds = userBlockService.findBlockedCounterpartUserIds(userId)
 
         val candidateMatches = matchRepository
             .findByParticipantIdAndStateIn(
@@ -74,7 +76,7 @@ class MeHomeService(
                     MatchState.CHAT_ACTIVE,
                     MatchState.VISUAL_PHASE,
                 ),
-            )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
 
         val visualReviewByMatchId = candidateMatches
             .filter { it.state == MatchState.VISUAL_PHASE }
@@ -129,7 +131,7 @@ class MeHomeService(
                     ConnectionState.SECOND_CHAT_AVAILABLE,
                     ConnectionState.SECOND_CHAT
                 )
-            )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
             .sortedByDescending { it.updatedAt }
 
         val dismissedConnectionIds =
@@ -157,7 +159,8 @@ class MeHomeService(
                     ConnectionState.SECOND_CHAT_AVAILABLE,
                     ConnectionState.SECOND_CHAT
                 )
-            ).filter { it.id !in dismissedConnectionIds }
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
+            .filter { it.id !in dismissedConnectionIds }
 
         val pendingSchedulingConnectionCount =
             activeConnectionsForSummary.count {
@@ -264,6 +267,7 @@ class MeHomeService(
     fun getPendingHomeState(userId: UUID): HomePendingStateResponse {
         val now = OffsetDateTime.now()
         val status = homeStatusService.getOrCreateStatus(userId = userId)
+        val blockedCounterpartIds = userBlockService.findBlockedCounterpartUserIds(userId)
 
         val candidateMatches = matchRepository
             .findByParticipantIdAndStateIn(
@@ -272,7 +276,7 @@ class MeHomeService(
                     MatchState.CHAT_ACTIVE,
                     MatchState.VISUAL_PHASE,
                 ),
-            )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
 
         val visualReviewByMatchId = candidateMatches
             .filter { it.state == MatchState.VISUAL_PHASE }
@@ -319,7 +323,8 @@ class MeHomeService(
                 }
 
         val visibleConnections = visibleConnectionsForPending(
-            userId = userId
+            userId = userId,
+            blockedCounterpartIds = blockedCounterpartIds
         )
 
         val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
@@ -349,7 +354,7 @@ class MeHomeService(
             .findByParticipantIdAndStateIn(
                 userId = userId,
                 states = listOf(ConnectionState.SCHEDULING_PENDING)
-            )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
             .size
 
         return HomePendingStateResponse(
@@ -595,7 +600,8 @@ class MeHomeService(
     }
 
     private fun visibleConnectionsForPending(
-        userId: UUID
+        userId: UUID,
+        blockedCounterpartIds: Set<UUID>
     ): List<Connection> {
         val activeConnections = connectionRepository
             .findByParticipantIdAndStateIn(
@@ -606,7 +612,7 @@ class MeHomeService(
                     ConnectionState.SECOND_CHAT_AVAILABLE,
                     ConnectionState.SECOND_CHAT
                 )
-            )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
             .sortedByDescending { it.updatedAt }
 
         val dismissedConnectionIds =
@@ -706,4 +712,10 @@ class MeHomeService(
             emptyList()
         }
 }
+
+private fun Match.counterpartIdFor(userId: UUID): UUID =
+    if (userAId == userId) userBId else userAId
+
+private fun Connection.counterpartIdFor(userId: UUID): UUID =
+    if (userAId == userId) userBId else userAId
 

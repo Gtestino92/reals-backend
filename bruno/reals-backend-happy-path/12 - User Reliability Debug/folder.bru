@@ -1,16 +1,16 @@
 meta {
   name: 12 - User Reliability Debug
-  seq: 12
+  seq: 13
 }
 
 docs {
   Local/dev-only read endpoints for inspecting UserReliabilityScore while testing reliability events manually.
-
+  
   Run 00 through 06 first. This mirrors the Android/counterpart Firebase setup used by flow 07: sign in, provision through /api/me/provision, then read /api/me to populate androidUserId and counterpartUserId.
-
+  
   To inspect a user created by a different flow, set reliabilityUserId manually and run "12 Get Custom User Reliability".
-
+  
   The endpoint is available only in local Spring profiles and returns a neutral score with an empty event list when user-reliability.enabled=false.
-
+  
   These requests are read-only and do not create, recalculate, delete or mutate reliability events.
 }

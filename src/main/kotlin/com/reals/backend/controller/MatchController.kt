@@ -4,6 +4,7 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.VisualDecision
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
@@ -20,8 +21,29 @@ class MatchController(
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
     private val profileService: ProfileService,
+    private val userBlockCommandService: UserBlockCommandService,
     private val legalComplianceService: LegalComplianceService
 ) {
+
+    @PostMapping("/{matchId}/block")
+    fun blockMatchParticipant(
+        @CurrentUserId userId: UUID,
+        @PathVariable matchId: UUID
+    ): ResponseEntity<UserBlockResponse> {
+        val match = matchService.findByIdForUserOrThrow(matchId, userId)
+        val counterpartId = if (match.userAId == userId) match.userBId else match.userAId
+        val result = userBlockCommandService.blockUserAndContain(
+            blockerUserId = userId,
+            blockedUserId = counterpartId,
+            source = UserBlockSource.MANUAL
+        )
+        val response = UserBlockResponse.from(result.block)
+        return if (result.created) {
+            ResponseEntity.status(201).body(response)
+        } else {
+            ResponseEntity.ok(response)
+        }
+    }
 
     @GetMapping("/{matchId}")
     fun getMatch(

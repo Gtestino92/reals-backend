@@ -1,6 +1,8 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatEndReason
+import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportSource
@@ -125,7 +127,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `creates chat report without closing chat`() {
+    fun `creates chat report and contains active chat`() {
         val setup = createMatchWithFirstChat()
 
         mockMvc.perform(
@@ -146,7 +148,12 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.contextType", equalTo("CHAT")))
             .andExpect(jsonPath("$.contextId", equalTo(setup.firstChatId.toString())))
 
-        assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.firstChatId).orElseThrow().status)
+        val chat = chatRepository.findById(setup.firstChatId).orElseThrow()
+        assertEquals(ChatStatus.CANCELLED, chat.status)
+        assertEquals(ChatEndReason.USER_BLOCK, chat.endedReason)
+
+        val match = matchRepository.findById(setup.matchId).orElseThrow()
+        assertEquals(MatchState.CHAT_REJECTED, match.state)
     }
 
     @Test

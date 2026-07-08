@@ -56,6 +56,20 @@ interface ConnectionRepository :
         @Param("states") states: Collection<ConnectionState>
     ): List<Connection>
 
+    @Query(
+        """
+        select c from Connection c
+        where ((c.userAId = :userAId and c.userBId = :userBId)
+            or (c.userAId = :userBId and c.userBId = :userAId))
+          and c.state in :states
+        """
+    )
+    fun findBetweenUsersAndStateIn(
+        @Param("userAId") userAId: UUID,
+        @Param("userBId") userBId: UUID,
+        @Param("states") states: Collection<ConnectionState>
+    ): List<Connection>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Connection c set c.schedulingExpiresAt = :expiresAt where c.id = :connectionId")
     fun updateSchedulingExpiresAt(

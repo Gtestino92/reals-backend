@@ -206,9 +206,15 @@ Production work:
 
 ### 4.2 User blocking and objectionable content controls
 
+Current state:
+- The manual user-facing backend block command is implemented; Android UI is not.
+- Report-created blocks and pair-wide matchmaking exclusion are implemented.
+- Active-interaction containment and a central positive-progression guard are implemented.
+- Blocks are durable and there is no unblock endpoint in the current MVP.
+- Android must present explicit definitive-action confirmation before manual block submission.
+
 Future work:
-- Clear user-facing block/report actions.
-- User-facing manual block and unblock behavior.
+- Define future unblock policy and admin correction behavior.
 - Explicit policy for objectionable profile photos and messages.
 - Internal tooling to remove content and sanction users.
 - Define and implement future `SYSTEM` safety report sources if automated detection creates reports.
@@ -826,6 +832,55 @@ Before configuring real production legal documents:
 Do not add URL-shape validation as a substitute for content immutability. A URL
 naming convention can help operators organize published documents, but it is not
 a technical guarantee that remote content is immutable.
+
+### Candidate publication model
+
+Current recommended pre-production direction:
+
+* keep legal document source files in a dedicated repository, tentatively `Gtestino92/reals-legal`;
+* publish each legal document version as immutable static HTML;
+* use a version-specific public URL for each published document;
+* keep previously-published document versions and historical URLs available;
+* use Git history as the source history for legal document publication;
+* use static hosting, with Firebase Hosting as the current preferred candidate because Reals already uses Firebase operationally;
+* use the default hosting domain during early environments if useful, and move production legal documents to a stable dedicated domain such as `legal.reals.app` when production domain ownership and hosting are defined.
+
+Example publication layout:
+
+```text
+public/
+  legal/
+    terms/
+      2026-08-01/
+        index.html
+    privacy/
+      2026-08-01/
+        index.html
+    community-guidelines/
+      2026-08-01/
+        index.html
+```
+
+Example production URL shape:
+
+```text
+https://legal.reals.app/legal/terms/2026-08-01/
+https://legal.reals.app/legal/privacy/2026-08-01/
+https://legal.reals.app/legal/community-guidelines/2026-08-01/
+```
+
+The backend legal catalog should continue to store only the current document metadata and required factual action:
+
+```text
+document type
+document version
+public document URL
+required action
+```
+
+The current recommendation is not to store legal document HTML in PostgreSQL, Android resources, MinIO/profile-media storage, or the backend application JAR.
+
+This publication model is a candidate operational direction, not yet implemented production infrastructure and not a substitute for the remaining BACK-7 legal/compliance review about historical evidence, hashes or content snapshots.
 
 
 ## clean up pre-mvp

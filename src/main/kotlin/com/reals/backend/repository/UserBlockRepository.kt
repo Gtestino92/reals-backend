@@ -17,6 +17,10 @@ interface UserBlockRepository : JpaRepository<UserBlock, UUID> {
         blockedUserId: UUID
     ): Boolean
 
+    fun findByBlockerUserId(blockerUserId: UUID): List<UserBlock>
+
+    fun findByBlockedUserId(blockedUserId: UUID): List<UserBlock>
+
     @Query(
         """
         select case when count(ub) > 0 then true else false end

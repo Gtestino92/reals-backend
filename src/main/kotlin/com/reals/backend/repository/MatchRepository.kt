@@ -26,4 +26,18 @@ interface MatchRepository :
         @Param("userId") userId: UUID,
         @Param("states") states: Collection<MatchState>
     ): List<Match>
+
+    @Query(
+        """
+        select m from Match m
+        where ((m.userAId = :userAId and m.userBId = :userBId)
+            or (m.userAId = :userBId and m.userBId = :userAId))
+          and m.state in :states
+        """
+    )
+    fun findBetweenUsersAndStateIn(
+        @Param("userAId") userAId: UUID,
+        @Param("userBId") userBId: UUID,
+        @Param("states") states: Collection<MatchState>
+    ): List<Match>
 }

@@ -1,24 +1,24 @@
 meta {
   name: 11 - Home Polling Debug
-  seq: 11
+  seq: 12
 }
 
 docs {
   Requests for debugging the reduced Home polling flow under local-firebase.
-
+  
   Use these to compare:
   - GET /api/me/home/status: cheap persisted version + dirty flag.
   - GET /api/me/home/pending: lightweight actionable state, no partner summaries.
   - GET /api/me/home: full Home source of truth.
-
+  
   Android/current-user requests use firebase_id_token.
   Counterpart requests use firebase_counterpart_id_token.
-
+  
   Typical Android debug flow:
   1. Run 00-02 here to sign in/provision the Android Firebase user.
   2. Use the app to perform the action under test.
   3. Run 10-12 here to compare status, pending and full Home.
-
+  
   For counterpart-driven states, first run the setup part of
   "07 - Android First Chat Visual Counterpart" through request 12 to create,
   provision, profile, enqueue and match the counterpart against the Android user.

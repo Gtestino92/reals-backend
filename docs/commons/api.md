@@ -370,3 +370,7 @@ Selected stable frontend-facing domain codes:
 - `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`: requested legal document version is not the current configured version.
 - `LEGAL_DOCUMENT_ACTION_INVALID`: requested action does not match the configured required action.
 - `LEGAL_ACTION_REQUIRED`: protected participation/content write requires current legal document actions before continuing.
+
+## Manual blocking
+
+`POST /api/matches/{matchId}/block` requires no body and returns block `id`, `source`, and `createdAt`: `201 Created` for a new directional block and `200 OK` for an idempotent replay. Manual blocking creates no report, penalty, or reliability event. A block in either direction excludes the pair and causes positive progression to fail with `409 USER_PAIR_BLOCKED`. Reads, rejection, exit, cancellation, and safety paths remain available. There is no unblock endpoint in the current MVP.
