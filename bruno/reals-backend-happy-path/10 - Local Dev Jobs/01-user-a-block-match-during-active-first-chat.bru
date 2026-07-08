@@ -1,0 +1,42 @@
+meta {
+  name: 01 User A Block Match During Active First Chat
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{matchId}}/block
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 201 && status !== 200) {
+    throw new Error(`Expected 201 Created or 200 OK for manual block, got ${status}.`);
+  }
+  
+  const body = res.getBody();
+  if (!body || !body.id || body.source !== "MANUAL" || !body.createdAt) {
+    throw new Error(`Expected UserBlockResponse with id, source MANUAL and createdAt. Got: ${JSON.stringify(body)}`);
+  }
+  
+  const forbiddenFields = ["blockerUserId", "blockedUserId", "firebaseUid", "email"];
+  const exposedFields = forbiddenFields.filter((field) => Object.prototype.hasOwnProperty.call(body, field));
+  if (exposedFields.length > 0) {
+    throw new Error(`Manual block response exposed forbidden fields: ${exposedFields.join(", ")}.`);
+  }
+  
+  const previousBlockId = bru.getEnvVar("manualBlockId");
+  if (status === 200 && previousBlockId && body.id !== previousBlockId) {
+    throw new Error(`Expected idempotent replay to return block ${previousBlockId}, got ${body.id}.`);
+  }
+  
+  bru.setEnvVar("manualBlockId", body.id);
+  bru.setEnvVar("manualBlockSource", body.source);
+  bru.setEnvVar("manualBlockCreatedAt", body.createdAt);
+}
