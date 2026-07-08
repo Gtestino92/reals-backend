@@ -45,4 +45,17 @@ class FirebaseTokenFilterTest {
 
         assertEquals(401, response.status)
     }
+
+    @Test
+    fun `public legal document catalog passes without authorization header`() {
+        val response = MockHttpServletResponse()
+
+        filter.doFilter(
+            MockHttpServletRequest("GET", "/api/legal/documents/current"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+    }
 }

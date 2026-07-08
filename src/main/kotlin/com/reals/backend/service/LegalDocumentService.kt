@@ -8,11 +8,11 @@ import com.reals.backend.domain.LegalDocumentAction
 import com.reals.backend.domain.LegalDocumentType
 import com.reals.backend.domain.UserLegalDocumentAction
 import com.reals.backend.repository.UserLegalDocumentActionRepository
+import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -21,6 +21,7 @@ import java.util.UUID
 class LegalDocumentService(
     private val properties: LegalDocumentProperties,
     private val actionRepository: UserLegalDocumentActionRepository,
+    private val userRepository: UserRepository,
     private val auditEventService: AuditEventService
 ) {
 
@@ -89,6 +90,14 @@ class LegalDocumentService(
             )
         }
 
+        val lockedUsers = userRepository.findAllByIdForUpdate(listOf(userId))
+        if (lockedUsers.none { it.id == userId }) {
+            throw DomainNotFoundException(
+                code = DomainErrorCode.USER_NOT_FOUND,
+                message = "User was not found"
+            )
+        }
+
         actionRepository.findByUserIdAndDocumentTypeAndDocumentVersion(
             userId = userId,
             documentType = documentType,
@@ -98,39 +107,28 @@ class LegalDocumentService(
             return RecordActionResult(action = existing, created = false)
         }
 
-        return try {
-            val recorded = actionRepository.saveAndFlush(
-                UserLegalDocumentAction(
-                    userId = userId,
-                    documentType = documentType,
-                    documentVersion = documentVersion,
-                    action = action
-                )
-            )
-
-            auditEventService.record(
-                eventType = AuditEventType.LEGAL_DOCUMENT_ACTION_RECORDED,
-                aggregateType = AuditAggregateType.USER,
-                aggregateId = userId,
-                actorUserId = userId,
-                metadata = mapOf(
-                    "documentType" to documentType.name,
-                    "documentVersion" to documentVersion,
-                    "action" to action.name
-                )
-            )
-
-            RecordActionResult(action = recorded, created = true)
-        } catch (ex: DataIntegrityViolationException) {
-            val existing = actionRepository.findByUserIdAndDocumentTypeAndDocumentVersion(
+        val recorded = actionRepository.saveAndFlush(
+            UserLegalDocumentAction(
                 userId = userId,
                 documentType = documentType,
-                documentVersion = documentVersion
-            ) ?: throw ex
+                documentVersion = documentVersion,
+                action = action
+            )
+        )
 
-            validateExistingAction(existing, action)
-            RecordActionResult(action = existing, created = false)
-        }
+        auditEventService.record(
+            eventType = AuditEventType.LEGAL_DOCUMENT_ACTION_RECORDED,
+            aggregateType = AuditAggregateType.USER,
+            aggregateId = userId,
+            actorUserId = userId,
+            metadata = mapOf(
+                "documentType" to documentType.name,
+                "documentVersion" to documentVersion,
+                "action" to action.name
+            )
+        )
+
+        return RecordActionResult(action = recorded, created = true)
     }
 
     private fun currentDocumentOrThrow(documentType: LegalDocumentType): LegalDocumentDefinition =
