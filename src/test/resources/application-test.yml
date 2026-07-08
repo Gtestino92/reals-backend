@@ -100,17 +100,6 @@ engagement:
   max-active-matches: 5
   max-active-connections: 2
 
-legal:
-  documents:
-    - type: TERMS_OF_USE
-      version: "2026-07-01-test"
-      url: "https://example.test/terms"
-      required-action: ACCEPTED
-    - type: PRIVACY_NOTICE
-      version: "2026-07-01-test"
-      url: "https://example.test/privacy"
-      required-action: ACKNOWLEDGED
-
 security:
   rate-limit:
     enabled: false

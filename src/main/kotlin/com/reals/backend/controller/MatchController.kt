@@ -2,6 +2,8 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
@@ -17,7 +19,8 @@ class MatchController(
     private val chatService: ChatService,
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
-    private val profileService: ProfileService
+    private val profileService: ProfileService,
+    private val legalComplianceService: LegalComplianceService
 ) {
 
     @GetMapping("/{matchId}")
@@ -156,6 +159,10 @@ class MatchController(
         @Valid
         @RequestBody request: ChatDecisionRequest
     ): ResponseEntity<MatchResponse> {
+        if (request.decision == ChatContinueDecision.APPROVED) {
+            legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        }
+
         chatService.recordChatDecision(
             matchId = matchId,
             userId = userId,
@@ -190,6 +197,10 @@ class MatchController(
         @Valid
         @RequestBody request: VisualDecisionRequest
     ): ResponseEntity<MatchResponse> {
+        if (request.decision == VisualDecision.APPROVED) {
+            legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        }
+
         visualReviewService.recordDecision(
             matchId = matchId,
             userId = userId,
@@ -221,6 +232,7 @@ class MatchController(
         @Valid
         @RequestBody request: PersonalMessageRequest
     ): ResponseEntity<Void> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         visualReviewService.recordPersonalMessage(
             matchId = matchId,
