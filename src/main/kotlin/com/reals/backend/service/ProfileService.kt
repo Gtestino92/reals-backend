@@ -328,6 +328,8 @@ class ProfileService(
         bio: String? = null,
         city: String? = null,
         country: String? = null
+        country: String? = null,
+        intention: Intention? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -352,6 +354,8 @@ class ProfileService(
             validateSingleLineText("Country", it, LOCATION_MAX_LENGTH)
             profile.country = it
         }
+
+        intention?.let { profile.intention = it }
 
         profile.updatedAt = OffsetDateTime.now()
 

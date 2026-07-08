@@ -1714,7 +1714,6 @@ components:
       type: object
       required: [intention, lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
-        intention: { $ref: '#/components/schemas/Intention' }
         lookingForGenders:
           type: array
           minItems: 1
