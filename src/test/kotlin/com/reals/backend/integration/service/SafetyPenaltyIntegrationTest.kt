@@ -1,7 +1,6 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.integration.BaseIT
@@ -26,13 +25,13 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             email = "temporary-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Temporary Penalty",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val permanentUser = createActiveProfile(
             email = "permanent-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Permanent Penalty",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         val temporaryPenalty = penaltyService.createTemporaryPenalty(
@@ -64,7 +63,7 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             email = "idempotent-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Idempotent Penalty",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val penalty = penaltyService.createTemporaryPenalty(
             userId = user,
@@ -87,7 +86,7 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             email = "stale-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Stale Penalty",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val penalty = penaltyRepository.saveAndFlush(
             Penalty(
@@ -136,7 +135,7 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             email = "queue-removed-by-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Queue Removed By Penalty",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         enqueueForMatchmaking(user)
@@ -160,13 +159,13 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             email = "penalty-query-a-${UUID.randomUUID()}@example.com",
             displayName = "Penalty Query A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "penalty-query-b-${UUID.randomUUID()}@example.com",
             displayName = "Penalty Query B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         enqueueForMatchmaking(userA)

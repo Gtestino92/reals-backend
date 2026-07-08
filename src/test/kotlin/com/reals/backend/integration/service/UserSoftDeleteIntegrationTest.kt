@@ -105,7 +105,7 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "soft-delete-queued@example.com",
             displayName = "Queued Delete",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
         enqueueForMatchmaking(userId)
 
@@ -120,7 +120,7 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "soft-delete-profile-${UUID.randomUUID()}@example.com",
             displayName = "Profile Delete",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
         val photosBeforeDelete = profileService.getPhotos(profile.id)
@@ -138,7 +138,7 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "reactivate-${UUID.randomUUID()}@example.com",
             displayName = "Reactivate",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
 
         userService.deleteUser(userId)

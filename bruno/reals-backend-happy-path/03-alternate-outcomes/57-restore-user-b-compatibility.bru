@@ -4,8 +4,8 @@ meta {
   seq: 57
 }
 
-patch {
-  url: {{baseUrl}}/api/me/profile
+put {
+  url: {{baseUrl}}/api/me/profile/match-filters
   body: json
   auth: none
 }
@@ -17,13 +17,17 @@ headers {
 
 body:json {
   {
-    "lookingForGender": "WOMEN"
+    "intention": "DATE",
+    "lookingForGenders": ["FEMALE"],
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
   }
 }
 
 script:post-response {
   const body = res.getBody();
-  if (body.lookingForGender !== "WOMEN") {
-    throw new Error(`Expected user B lookingForGender WOMEN, got ${body.lookingForGender}`);
+  if (JSON.stringify(body.lookingForGenders) !== JSON.stringify(["FEMALE"])) {
+    throw new Error(`Expected user B lookingForGenders [FEMALE], got ${body.lookingForGenders}`);
   }
 }

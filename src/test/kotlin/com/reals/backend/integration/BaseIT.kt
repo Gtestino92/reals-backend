@@ -6,7 +6,6 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
@@ -215,7 +214,7 @@ abstract class BaseIT {
         email: String,
         displayName: String,
         gender: Gender,
-        lookingForGender: LookingForGender,
+        lookingForGenders: Set<Gender>,
         intention: Intention = Intention.DATE,
         birthDate: LocalDate = LocalDate.of(1995, 1, 1),
         preferredMinAge: Int = 18,
@@ -228,7 +227,7 @@ abstract class BaseIT {
             displayName = displayName,
             birthDate = birthDate,
             gender = gender,
-            lookingForGender = lookingForGender,
+            lookingForGenders = lookingForGenders,
             intention = intention,
             city = "Buenos Aires",
             country = "AR",
@@ -279,13 +278,13 @@ abstract class BaseIT {
             email = "$emailPrefix-a-${UUID.randomUUID()}@example.com",
             displayName = "Match A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "$emailPrefix-b-${UUID.randomUUID()}@example.com",
             displayName = "Match B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         val match = matchService.createMatch(userA, userB)

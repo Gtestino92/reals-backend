@@ -20,7 +20,7 @@ body:json {
     "displayName": "Juls",
     "birthDate": "1995-05-10",
     "gender": "MALE",
-    "lookingForGender": "WOMEN",
+    "lookingForGenders": ["FEMALE"],
     "intention": "DATE",
     "city": "Buenos Aires",
     "country": "AR",
@@ -42,7 +42,7 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error(
       `Expected counterpart profile id. Got status ${status}, code ${body && body.code}, message ${body && body.message}. ` +
-      "If this is MALFORMED_REQUEST, check enum values: lookingForGender must be MEN, WOMEN, EVERYONE or OTHER."
+      "If this is MALFORMED_REQUEST, check enum values: lookingForGenders must contain Gender values such as MALE, FEMALE, NON_BINARY or OTHER."
     );
   }
   bru.setEnvVar("counterpartProfileId", body.id);

@@ -17,6 +17,8 @@ headers {
 
 body:json {
   {
+    "intention": "DATE",
+    "lookingForGenders": ["MALE"],
     "preferredMinAge": 18,
     "preferredMaxAge": 99,
     "maxDistanceKm": 50
@@ -28,7 +30,13 @@ script:post-response {
   if (res.getStatus() !== 200) {
     throw new Error(`Expected 200 OK, got ${res.getStatus()}`);
   }
-  if (body.preferredMinAge !== 18 || body.preferredMaxAge !== 99 || body.maxDistanceKm !== 50) {
+  if (
+    JSON.stringify(body.lookingForGenders) !== JSON.stringify(["MALE"]) ||
+    body.intention !== "DATE" ||
+    body.preferredMinAge !== 18 ||
+    body.preferredMaxAge !== 99 ||
+    body.maxDistanceKm !== 50
+  ) {
     throw new Error("Expected dynamic match filters to be replaced again.");
   }
 }

@@ -75,17 +75,17 @@ interface MatchmakingQueueRepository :
             AND pa.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
             AND pa.intention = pb.intention
-            AND (
-                pb.looking_for_gender = 'EVERYONE'
-                OR (pb.looking_for_gender = 'MEN' AND pa.gender = 'MALE')
-                OR (pb.looking_for_gender = 'WOMEN' AND pa.gender = 'FEMALE')
-                OR (pb.looking_for_gender = 'OTHER' AND pa.gender IN ('NON_BINARY', 'OTHER'))
+            AND EXISTS (
+                SELECT 1
+                FROM profile_looking_for_genders pfg_b
+                WHERE pfg_b.profile_id = pb.id
+                    AND pfg_b.gender = pa.gender
             )
-            AND (
-                pa.looking_for_gender = 'EVERYONE'
-                OR (pa.looking_for_gender = 'MEN' AND pb.gender = 'MALE')
-                OR (pa.looking_for_gender = 'WOMEN' AND pb.gender = 'FEMALE')
-                OR (pa.looking_for_gender = 'OTHER' AND pb.gender IN ('NON_BINARY', 'OTHER'))
+            AND EXISTS (
+                SELECT 1
+                FROM profile_looking_for_genders pfg_a
+                WHERE pfg_a.profile_id = pa.id
+                    AND pfg_a.gender = pb.gender
             )
             AND (
                 EXTRACT(YEAR FROM CAST(:today AS DATE)) - EXTRACT(YEAR FROM pb.birth_date) -
