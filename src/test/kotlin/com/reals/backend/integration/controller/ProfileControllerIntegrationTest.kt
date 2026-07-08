@@ -154,7 +154,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `update profile target genders replaces existing set`() {
+    fun `update match filters target genders replaces existing set`() {
         val user = userService.createUser("profile-replace-genders-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
             userId = user.id,
@@ -171,17 +171,31 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
 
         mockMvc.perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+            put("/api/me/profile/match-filters")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
-                .content(jsonBody(mapOf("lookingForGenders" to listOf(Gender.OTHER.name))))
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "intention" to Intention.FRIENDSHIP.name,
+                            "lookingForGenders" to listOf(Gender.OTHER.name),
+                            "preferredMinAge" to 21,
+                            "preferredMaxAge" to 45,
+                            "maxDistanceKm" to 75
+                        )
+                    )
+                )
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.intention", equalTo("FRIENDSHIP")))
             .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("OTHER")))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(21)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(45)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
     }
 
     @Test
-    fun `update profile rejects empty target gender set`() {
+    fun `update match filters rejects empty target gender set`() {
         val user = userService.createUser("profile-update-empty-genders-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
             userId = user.id,
@@ -198,10 +212,20 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
 
         mockMvc.perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+            put("/api/me/profile/match-filters")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
-                .content(jsonBody(mapOf("lookingForGenders" to emptyList<String>())))
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "intention" to Intention.DATE.name,
+                            "lookingForGenders" to emptyList<String>(),
+                            "preferredMinAge" to 18,
+                            "preferredMaxAge" to 99,
+                            "maxDistanceKm" to 50
+                        )
+                    )
+                )
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
@@ -397,6 +421,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .content(
                     """
                     {
+                      "intention": "FRIENDSHIP",
+                      "lookingForGenders": ["MALE", "FEMALE"],
                       "preferredMinAge": 30,
                       "preferredMaxAge": 38,
                       "maxDistanceKm": 25
@@ -405,6 +431,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 )
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.intention", equalTo("FRIENDSHIP")))
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE", "FEMALE")))
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(38)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(25)))
@@ -571,6 +599,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .content(
                     """
                     {
+                      "intention": "DATE",
+                      "lookingForGenders": ["MALE"],
                       "preferredMinAge": 40,
                       "preferredMaxAge": 30,
                       "maxDistanceKm": 50
