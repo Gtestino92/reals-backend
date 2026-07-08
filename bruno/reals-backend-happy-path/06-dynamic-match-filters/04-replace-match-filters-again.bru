@@ -17,6 +17,7 @@ headers {
 
 body:json {
   {
+    "intention": "DATE",
     "lookingForGenders": ["MALE"],
     "preferredMinAge": 18,
     "preferredMaxAge": 99,
@@ -31,6 +32,7 @@ script:post-response {
   }
   if (
     JSON.stringify(body.lookingForGenders) !== JSON.stringify(["MALE"]) ||
+    body.intention !== "DATE" ||
     body.preferredMinAge !== 18 ||
     body.preferredMaxAge !== 99 ||
     body.maxDistanceKm !== 50
