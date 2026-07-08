@@ -17,6 +17,16 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 - `PUT /api/me/push-tokens`: register or refresh the authenticated user's Android FCM device token. Body: `{ "token": "...", "platform": "ANDROID" }`. Returns `{ "registered": true }`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
+- `GET /api/legal/documents/current`: public endpoint that returns the current configured legal document catalog. It may return an empty `documents` array.
+- `GET /api/me/legal-status`: authenticated informational status for current configured legal document versions only.
+- `POST /api/me/legal-document-actions`: authenticated factual record that the current user performed `ACCEPTED` or `ACKNOWLEDGED` for a configured legal document type/version. Returns `201 Created` for a new row and `200 OK` for an identical replay.
+
+Legal document support in BACK-1 records factual user actions only:
+`User X performed action Y for legal document type Z, version V, at time T`.
+The source of truth is `user_legal_document_actions`. `AuditEvent` is secondary
+operational evidence and stores only document type, version and action metadata.
+BACK-1 does not enforce product access for profile, matchmaking, chat, photos or
+other product endpoints.
 
 For first-chat navigation, `GET /api/me/home` exposes a
 `pendingActions[]` item with `type = FIRST_CHAT` only while the match remains in
@@ -167,7 +177,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
 - `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
-- `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before visual approval.
+- `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before any visual decision.
 
 ## Chats
 
@@ -189,7 +199,7 @@ First-chat guidance is backend-owned for MVP:
 - Each first chat has one active question shared by both participants.
 - The sequence is deterministic from the chat id and catalog order; changing or reordering the catalog may affect not-yet-selected future questions for an already-active first chat, but the active question id/text are persisted as a snapshot.
 - Chat remains free-form. The backend does not semantically evaluate whether a user answered the prompt.
-- A participant must have sent at least `chat.first-chat.guidance.required-characters` persisted characters, default `40`, since the current question was activated before requesting another question. One long message can satisfy the threshold; multiple messages accumulate.
+- A participant must have sent at least `chat.first-chat.guidance.required-characters` persisted characters since the current question was activated before requesting another question. One long message can satisfy the threshold; multiple messages accumulate.
 - Advancement requires both participants to independently request the next question. The API exposes only `myNextRequested`, `canRequestNext`, `completed`, current question, ordinal, `maxQuestions` and `requiredCharacters`; it does not expose partner readiness, partner request timestamp or partner character count.
 - Maximum questions per first chat is `chat.first-chat.guidance.max-questions`, default `3`. When both participants request continuation from the penultimate question and the final configured question becomes active, guidance completes immediately. No question 4 is selected, and the final question remains available as the final prompt with `completed = true`, `canRequestNext = false` and `myNextRequested = false`.
 - Compatibility behavior: if an existing guidance row is already at the final configured ordinal with `completedAt = null`, the backend treats it as completed and normalizes `completedAt` plus clears request timestamps when the row is read or mutated.
@@ -337,3 +347,6 @@ Selected stable frontend-facing domain codes:
 - `FIRST_CHAT_GUIDANCE_COMPLETED`: first-chat guidance already reached the active final configured question.
 - `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
 - `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.
+- `LEGAL_DOCUMENT_NOT_FOUND`: requested legal document type has no current configured document.
+- `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`: requested legal document version is not the current configured version.
+- `LEGAL_DOCUMENT_ACTION_INVALID`: requested action does not match the configured required action.

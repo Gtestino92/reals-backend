@@ -76,6 +76,24 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
 
+Legal document configuration:
+
+```yaml
+legal:
+  documents:
+    - type: TERMS_OF_USE
+      version: "<operator-defined-version>"
+      url: "<operator-defined-url>"
+      required-action: ACCEPTED
+```
+
+Supported document types are `TERMS_OF_USE`, `PRIVACY_NOTICE` and
+`COMMUNITY_GUIDELINES`. Supported factual actions are `ACCEPTED` and
+`ACKNOWLEDGED`. The default catalog is empty. The application fails fast if the
+configured list contains duplicate document types, blank versions or blank URLs.
+BACK-1 uses this catalog for the legal endpoints only and does not enforce
+product access.
+
 Sensitive runtime secrets:
 
 | Variable | Required | Notes |

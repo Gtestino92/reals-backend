@@ -25,6 +25,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `ActiveEngagementLock`
 - `PushDeviceToken`
 - `PushNotificationDelivery`
+- `UserLegalDocumentAction`
 
 ## Main Enums
 
@@ -51,8 +52,10 @@ Matching and chat:
 - `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
 - `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`, `USER`
 - `SafetyReportSource`: `USER`, `ADMIN`, `SYSTEM`
-- `AuditEventType`: `SAFETY_REPORT_CREATED`, `SAFETY_REPORT_DISMISSED`, `SAFETY_REPORT_CONFIRMED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`
+- `AuditEventType`: `SAFETY_REPORT_CREATED`, `SAFETY_REPORT_DISMISSED`, `SAFETY_REPORT_CONFIRMED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`, `LEGAL_DOCUMENT_ACTION_RECORDED`
 - `AuditAggregateType`: `USER`, `PROFILE`, `PROFILE_PHOTO`, `CHAT`, `MATCH`, `CONNECTION`, `SAFETY_REPORT`, `USER_BLOCK`, `PENALTY`
+- `LegalDocumentType`: `TERMS_OF_USE`, `PRIVACY_NOTICE`, `COMMUNITY_GUIDELINES`
+- `LegalDocumentAction`: `ACCEPTED`, `ACKNOWLEDGED`
 - `PhotoValidationStatus`: `PENDING`, `VALIDATED`, `FAILED`
 - `PhotoModerationStatus`: `PENDING`, `APPROVED`, `REJECTED`, `NEEDS_REVIEW`
 - `PenaltyType`: `TEMPORARY_BAN`, `PERMANENT_BAN`
@@ -109,6 +112,26 @@ Push notifications:
 - `ActiveEngagementLock` logically belongs to a user and either a match or connection.
 - `PushDeviceToken` belongs to a user and stores an enabled FCM device token.
 - `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id. For `SCHEDULING_AVAILABLE`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each.
+- `UserLegalDocumentAction` is an append-oriented factual record that a user performed a configured action for a legal document type/version at a backend-generated timestamp. It stores `userId`, `documentType`, `documentVersion`, `action` and `actedAt`; it does not store document text or document URLs.
+
+## Legal Documents
+
+Legal document configuration defines the current document catalog under
+`legal.documents`. Each configured current document has a `type`, `version`,
+`url` and `required-action`. Runtime configuration may use an empty catalog.
+
+`user_legal_document_actions` is the source of truth for factual user actions.
+Rows are idempotent per `user_id + document_type + document_version`. Historical
+actions remain persisted but satisfy status only for the same current configured
+version and required action.
+
+Audit events with `LEGAL_DOCUMENT_ACTION_RECORDED` are secondary operational
+evidence for newly-created rows only. They use `USER` aggregate and factual
+metadata: document type, document version and action.
+
+BACK-1 is informational. It does not add legal fields to `User`, does not add a
+user status, and does not enforce access to profile, matchmaking, chat, photos
+or other product endpoints.
 
 ## Active Engagement Locks
 
