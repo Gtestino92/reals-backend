@@ -10,6 +10,7 @@ import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.identity.FirebaseExternalAccountService
+import com.reals.backend.service.identity.ExternalAccountDeletionResult
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -227,12 +228,40 @@ class UserService(
     fun finalizeRecoverableAccountDeletion(
         userId: UUID,
         now: OffsetDateTime = OffsetDateTime.now()
-    ): Boolean =
-        userRepository.finalizeDeletedUser(
-            userId = userId,
-            finalizedEmail = "deleted.$userId@deleted.reals.local",
-            now = now
-        ) == 1
+    ): Boolean {
+        val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
+            ?: return false
+        val deletionFinalizesAt = user.deletionFinalizesAt
+
+        if (
+            user.status != UserStatus.DELETED ||
+            deletionFinalizesAt == null ||
+            now.isBefore(deletionFinalizesAt)
+        ) {
+            return false
+        }
+
+        user.firebaseUid?.let { firebaseUid ->
+            when (firebaseExternalAccountService.deleteAccountIfPresent(firebaseUid)) {
+                ExternalAccountDeletionResult.DELETED,
+                ExternalAccountDeletionResult.ALREADY_ABSENT,
+                ExternalAccountDeletionResult.NOT_CONFIGURED -> Unit
+            }
+        }
+
+        user.email = "deleted.$userId@deleted.reals.local"
+        user.firebaseUid = null
+        user.deletionFinalizesAt = null
+        user.updatedAt = now
+        userRepository.save(user)
+        auditEventService.record(
+            eventType = AuditEventType.ACCOUNT_DELETION_FINALIZED,
+            aggregateType = AuditAggregateType.USER,
+            aggregateId = userId,
+            actorUserId = null
+        )
+        return true
+    }
 
     fun finalizeRecoverableAccountDeletions(now: OffsetDateTime = OffsetDateTime.now()): Int =
         findRecoverableAccountDeletionCandidates(now = now).count { user ->

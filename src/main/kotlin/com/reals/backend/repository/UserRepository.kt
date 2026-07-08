@@ -41,27 +41,6 @@ interface UserRepository : JpaRepository<User, UUID> {
         @Param("updatedAt") updatedAt: OffsetDateTime = deletedAt,
     ): Int
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(
-        """
-    UPDATE User u
-    SET u.email = :finalizedEmail,
-        u.firebaseUid = null,
-        u.deletionFinalizesAt = null,
-        u.updatedAt = :updatedAt
-    WHERE u.id = :userId
-      AND u.status = :deletedStatus
-      AND u.deletionFinalizesAt <= :now
-    """
-    )
-    fun finalizeDeletedUser(
-        @Param("userId") userId: UUID,
-        @Param("finalizedEmail") finalizedEmail: String,
-        @Param("now") now: OffsetDateTime,
-        @Param("updatedAt") updatedAt: OffsetDateTime = now,
-        @Param("deletedStatus") deletedStatus: UserStatus = UserStatus.DELETED,
-    ): Int
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id in :ids order by u.id")
     fun findAllByIdForUpdate(
