@@ -184,6 +184,8 @@ Future work:
 
 Current state:
 - Safety cancellation/report can record a report and apply a penalty.
+- BACK-5 explicit child-safety concern reporting is implemented. `CHILD_SAFETY_CONCERN` is supported by direct safety reports and chat safety cancellation, remains `PENDING`, and receives derived (non-persisted) priority ordering while pending.
+- BACK-5 preserves existing user-created block/containment behavior and does not automatically penalize or ban the reported user; penalties still require explicit admin confirmation.
 - User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
 - User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
 - Admin-created reports can be general `USER` context reports or contextual reports. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
@@ -203,6 +205,7 @@ Production work:
 - Request context enrichment for audit events, including request id and hashed IP/user-agent if needed.
 - Additional admin filters/pagination if report volume grows.
 - Decide when admin-created reports should optionally create blocks or other containment actions.
+- Broader child-safety moderation remains deferred: automated detection, image/content moderation, age estimation, provider escalation, a dedicated specialist workflow, legal/regulatory reporting procedures, external-authority reporting procedures, and CSAM/CSAE scanning or classification.
 
 ### 4.2 User blocking and objectionable content controls
 
@@ -820,69 +823,34 @@ Future cleanup:
 
 ## 18. BACK-7 — Immutable legal document publication and historical evidence
 
-Deferred pre-production debt.
+Backend historical-content-identity implementation is present:
 
-Before configuring real production legal documents:
+- canonical versioned legal source layout under `legal-documents/`;
+- exact-byte SHA-256 identity for `document.html`;
+- configured current document `content-sha256`;
+- startup canonical-file/hash verification from bundled classpath resources;
+- server-side persistence of content SHA-256 with new legal actions;
+- hash-aware legal requirement satisfaction;
+- no client-supplied hash;
+- no full HTML snapshot in PostgreSQL.
 
-- define ownership and hosting of legal document publication;
-- ensure every configured type/version maps to exact stable published content;
-- do not modify published versions retroactively;
-- publish substantive changes as a new version and new URL;
-- preserve historical document URLs;
-- decide, after legal/compliance review, whether operational immutable publishing is sufficient or persisted content hashes/snapshots are required.
+The selected source-of-truth location is
+`Gtestino92/reals-backend/legal-documents/`. Do not reintroduce a separate
+`reals-legal` repository as the preferred design.
+
+Remaining production publication/legal operational work:
+
+- legally reviewed production document content;
+- public static hosting/publication target;
+- stable production legal domain;
+- pipeline/process that publishes exact canonical file bytes without HTML transformation;
+- preservation and availability of historical public URLs.
 
 Do not add URL-shape validation as a substitute for content immutability. A URL
 naming convention can help operators organize published documents, but it is not
-a technical guarantee that remote content is immutable.
-
-### Candidate publication model
-
-Current recommended pre-production direction:
-
-* keep legal document source files in a dedicated repository, tentatively `Gtestino92/reals-legal`;
-* publish each legal document version as immutable static HTML;
-* use a version-specific public URL for each published document;
-* keep previously-published document versions and historical URLs available;
-* use Git history as the source history for legal document publication;
-* use static hosting, with Firebase Hosting as the current preferred candidate because Reals already uses Firebase operationally;
-* use the default hosting domain during early environments if useful, and move production legal documents to a stable dedicated domain such as `legal.reals.app` when production domain ownership and hosting are defined.
-
-Example publication layout:
-
-```text
-public/
-  legal/
-    terms/
-      2026-08-01/
-        index.html
-    privacy/
-      2026-08-01/
-        index.html
-    community-guidelines/
-      2026-08-01/
-        index.html
-```
-
-Example production URL shape:
-
-```text
-https://legal.reals.app/legal/terms/2026-08-01/
-https://legal.reals.app/legal/privacy/2026-08-01/
-https://legal.reals.app/legal/community-guidelines/2026-08-01/
-```
-
-The backend legal catalog should continue to store only the current document metadata and required factual action:
-
-```text
-document type
-document version
-public document URL
-required action
-```
-
-The current recommendation is not to store legal document HTML in PostgreSQL, Android resources, MinIO/profile-media storage, or the backend application JAR.
-
-This publication model is a candidate operational direction, not yet implemented production infrastructure and not a substitute for the remaining BACK-7 legal/compliance review about historical evidence, hashes or content snapshots.
+a technical guarantee that remote content is immutable. The backend verifies the
+bundled canonical file bytes against the configured SHA-256; it does not fetch
+or hash the remote URL.
 
 ---
 

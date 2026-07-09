@@ -16,6 +16,7 @@ import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.toSafetyReportReason
+import com.reals.backend.domain.priorityReview
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ProfilePhotoRepository
@@ -227,6 +228,10 @@ class SafetyReportService(
             .filter { source == null || it.source == source }
             .filter { reportedUserId == null || it.reportedUserId == reportedUserId }
             .filter { reporterUserId == null || it.reporterUserId == reporterUserId }
+            .sortedWith(
+                compareByDescending<SafetyReport> { it.priorityReview }
+                    .thenByDescending { it.createdAt }
+            )
             .take(100)
             .map { buildReportDetail(it, includeMessages = false, includePenalty = false) }
             .toList()

@@ -4,7 +4,9 @@ import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
+import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
@@ -20,9 +22,59 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `pending child safety reports are prioritized and reviewed reports are not`() {
+        val reported = userService.createUser("priority-reported-${UUID.randomUUID()}@example.com")
+        val reporter = userService.createUser("priority-reporter-${UUID.randomUUID()}@example.com")
+        val admin = userService.createUser("priority-admin-${UUID.randomUUID()}@example.com")
+        val now = OffsetDateTime.now()
+        val childReport = safetyReportRepository.save(
+            SafetyReport(
+                reporterUserId = reporter.id,
+                reportedUserId = reported.id,
+                contextType = SafetyReportContextType.USER,
+                contextId = reported.id,
+                reason = SafetyReportReason.CHILD_SAFETY_CONCERN,
+                details = "Child-safety concern",
+                createdAt = now.minusDays(1)
+            )
+        )
+        val normalReport = safetyReportRepository.save(
+            SafetyReport(
+                reporterUserId = reporter.id,
+                reportedUserId = reported.id,
+                contextType = SafetyReportContextType.USER,
+                contextId = UUID.randomUUID(),
+                reason = SafetyReportReason.HARASSMENT,
+                details = "Newer standard concern",
+                createdAt = now
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/admin/safety-reports/pending")
+                .with(authenticatedAsAdmin(admin.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id", equalTo(childReport.id.toString())))
+            .andExpect(jsonPath("$[0].priorityReview", equalTo(true)))
+            .andExpect(jsonPath("$[1].id", equalTo(normalReport.id.toString())))
+            .andExpect(jsonPath("$[1].priorityReview", equalTo(false)))
+
+        safetyReportService.dismissReport(childReport.id, admin.id, "Reviewed")
+
+        mockMvc.perform(
+            get("/api/admin/safety-reports/${childReport.id}")
+                .with(authenticatedAsAdmin(admin.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.report.priorityReview", equalTo(false)))
+    }
 
     @Test
     fun `admin can create general user report without reporter`() {

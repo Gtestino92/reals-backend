@@ -82,38 +82,76 @@ Legal document configuration:
 legal:
   documents:
     - type: TERMS_OF_USE
-      version: "<operator-defined-version>"
-      url: "<operator-defined-url>"
+      version: "2026-08-01"
+      url: "https://legal.reals.app/legal/terms/2026-08-01/"
+      content-sha256: "<64-lowercase-hex-sha256>"
       required-action: ACCEPTED
 ```
 
 Supported document types are `TERMS_OF_USE`, `PRIVACY_NOTICE` and
 `COMMUNITY_GUIDELINES`. Supported factual actions are `ACCEPTED` and
 `ACKNOWLEDGED`. The default catalog is empty. The application fails fast if the
-configured list contains duplicate document types, blank versions or blank URLs.
+configured list contains duplicate document types, blank versions, unsafe
+version path values, blank URLs, blank content hashes, or a `content-sha256`
+that is not exactly 64 lowercase hexadecimal characters.
+
+The configured legal document must have a canonical bundled HTML file at:
+
+```text
+legal-documents/<type-slug>/<version>/document.html
+```
+
+Type slugs are:
+
+```text
+TERMS_OF_USE          -> terms
+PRIVACY_NOTICE        -> privacy
+COMMUNITY_GUIDELINES  -> community-guidelines
+```
+
+At startup, the backend reads the exact canonical file bytes from the classpath,
+calculates SHA-256, and compares it with the configured `content-sha256`.
+Startup fails if the canonical file is missing or if the calculated hash differs
+from configuration. The backend does not fetch, hash, or validate the configured
+public URL; the URL remains publication metadata.
+
+The SHA-256 is byte-exact. Do not trim, normalize line endings, parse HTML,
+serialize HTML, hash rendered text, or hash the URL. Line-ending, whitespace and
+indentation changes all change the hash. Operators can calculate hashes with:
+
+```bash
+sha256sum legal-documents/terms/2026-08-01/document.html
+```
+
+```powershell
+(Get-FileHash -Algorithm SHA256 legal-documents/terms/2026-08-01/document.html).Hash.ToLower()
+```
+
 The current legal document catalog plus persisted user legal document actions
 are the authoritative source for the legal compliance gate. Protected
 participation/content writes may be rejected with `LEGAL_ACTION_REQUIRED` when
 current configured requirements are not satisfied. An empty configured catalog
 is naturally satisfied.
 
-Each configured legal document URL must identify the exact published content
-associated with that document type and version. Published legal document
-versions must not be modified retroactively. Substantive content changes require
-a new document version and should publish a new URL identifying the new version.
-Historical legal document URLs should remain available so the content associated
-with previously-recorded actions can still be identified. Configured production
-URLs should point to stable, externally hosted legal document resources
-appropriate for the platform and compliance requirements.
+Each configured legal document URL should identify the exact published content
+associated with that document type, version, and SHA-256. Published legal
+document versions must not be modified retroactively. Substantive content
+changes require new content, a new version directory, a new SHA-256, and a new
+current catalog configuration. Historical legal document URLs should remain
+available so the content associated with previously-recorded actions can still
+be identified. Configured production URLs should point to stable, externally
+hosted legal document resources appropriate for the platform and compliance
+requirements. The publication process must copy the exact canonical
+`document.html` bytes without HTML transformation.
 
 A versioned URL such as `https://reals.example/legal/privacy/2026-08-01` is an
 example publication pattern, not a backend validation rule or a technical proof
 of immutability.
 
 The current backend does not fetch configured legal document URLs, hash remote
-legal document content, snapshot remote legal document content, or technically
-enforce remote content immutability. URL/content immutability is currently an
-operational publication responsibility.
+legal document content, snapshot remote legal document content, or store legal
+HTML in PostgreSQL. Public URL preservation and exact-byte publication remain
+operational publication responsibilities.
 
 Sensitive runtime secrets:
 

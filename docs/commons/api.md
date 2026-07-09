@@ -1,7 +1,7 @@
 # API
 
 This file summarizes the current controller surface for human readers.
-The formal OpenAPI contract lives in `docs/openapi.yaml`.
+The formal OpenAPI contract lives in `openapi.yaml`.
 
 ## Health
 
@@ -22,18 +22,29 @@ The formal OpenAPI contract lives in `docs/openapi.yaml`.
 - `POST /api/me/legal-document-actions`: authenticated factual record that the current user performed `ACCEPTED` or `ACKNOWLEDGED` for a configured legal document type/version. Returns `201 Created` for a new row and `200 OK` for an identical replay.
 
 Legal document support records factual user actions:
-`User X performed action Y for legal document type Z, version V, at time T`.
+`User X performed action Y for legal document type Z, version V, content
+SHA-256 H, at time T`.
 The source of truth is `user_legal_document_actions`. `AuditEvent` is secondary
-operational evidence and stores only document type, version and action metadata.
+operational evidence and stores only document type, version, content SHA-256 and
+action metadata.
 The compliance source of truth is the current `legal.documents` catalog plus
 `user_legal_document_actions`.
+
+Clients do not submit or choose legal content hashes. `POST
+/api/me/legal-document-actions` keeps the request body as document type,
+document version and action only. When recording a new action, the backend
+resolves the current configured legal document and copies its canonical
+`content-sha256` server-side. Current user-facing legal responses do not expose
+the persisted content hash.
 
 Protected participation/content writes are backend-gated by current legal
 status and may return `409 LEGAL_ACTION_REQUIRED`. The generic error does not
 list missing documents; clients should call `GET /api/me/legal-status` for the
 authoritative detailed status and `GET /api/legal/documents/current` for URL
 metadata. An empty legal catalog means requirements are satisfied. Historical
-actions stay persisted but do not satisfy a newer configured version.
+actions stay persisted but do not satisfy a newer configured version. Legacy
+actions without a stored content SHA-256 and historical actions with a different
+content SHA-256 also do not satisfy the current configured document.
 
 The gate applies to profile creation/editing/activation/match filters/identity
 verification/photo upload/photo reorder/photo replacement, entering
@@ -210,7 +221,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/rejection`: reject mutual cancellation and close the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
 - `POST /api/chats/{chatId}/exit-requests/{exitRequestId}/timeout`: resolve an unanswered mutual cancellation after the configured timeout and close the chat. If the requester calls this because the responder did not answer in time, the requester must not be penalized; future scoring is pending.
 - `POST /api/chats/{chatId}/cancellations`: unilateral cancellation. Applies penalty policy.
-- `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Requires non-blank `details`, closes the chat, creates an internal `SafetyReport` in `PENDING` status, creates a directional user block from reporter to reported and returns `penaltyApplied=false`. Matchmaking treats that block as a bidirectional exclusion. Reporting does not automatically penalize the reported participant; penalties are applied only after admin/backoffice review.
+- `POST /api/chats/{chatId}/safety-cancellations`: safety/report cancellation. Requires non-blank `details`, closes the chat, creates an internal `SafetyReport` in `PENDING` status, creates a directional user block from reporter to reported and returns `penaltyApplied=false`. `ChatExitReason.CHILD_SAFETY_CONCERN` maps explicitly to `SafetyReportReason.CHILD_SAFETY_CONCERN`. Matchmaking treats that block as a bidirectional exclusion. Reporting does not automatically penalize or ban the reported participant; penalties are applied only after admin/backoffice review.
 
 First-chat guidance is backend-owned for MVP:
 
@@ -227,13 +238,14 @@ First-chat guidance is backend-owned for MVP:
 ## Safety Reports
 
 - `POST /api/safety/reports`: create a user safety report without necessarily closing an active chat. Supported contexts are `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE` and `PROFILE_PHOTO`. The backend validates that the authenticated reporter and reported user are the two participants in the referenced chat or visual-phase match; `PROFILE_PHOTO` also requires the reported photo to belong to the matched partner. Duplicate reports for the same reporter, reported user, context type and context id return `200 OK` with the existing report; new reports return `201 Created`. Every report creates or reuses a directional `UserBlock` from reporter to reported, and matchmaking treats any block between two users as a bidirectional exclusion.
+- `CHILD_SAFETY_CONCERN` is accepted by direct user reports, chat safety cancellations and admin-created reports. It records a broad concern as a normal `PENDING` report; it does not establish a violation and does not automatically create a penalty or ban. Existing user-created block and active-interaction containment behavior is unchanged.
 - User-facing report creation uses the safety-report-specific rate-limit rule under `security.rate-limit.safety-report-*`.
 
 ## Admin Safety Reports
 
 All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated users receive this role only when they exist locally as active users and their email is listed in `backoffice.admin-emails`.
 
-- `GET /api/admin/safety-reports?status=PENDING&source=USER&reportedUserId=...&reporterUserId=...`: list safety reports. `status` defaults to `PENDING`; other filters are optional. Summary DTOs omit report details, verdict notes, raw email and Firebase UID.
+- `GET /api/admin/safety-reports?status=PENDING&source=USER&reportedUserId=...&reporterUserId=...`: list safety reports. `status` defaults to `PENDING`; other filters are optional. Summary DTOs omit report details, verdict notes, raw email and Firebase UID. They include non-null, read-only `priorityReview`, derived as `status == PENDING && reason == CHILD_SAFETY_CONCERN` and never persisted. After filtering, results are ordered by `priorityReview DESC`, then `createdAt DESC`, before the 100-result limit.
 - `POST /api/admin/safety-reports`: create an admin safety report. `contextType=USER` creates a general report about the reported user with `contextId = reportedUserId` and no match/chat context. Contextual admin reports can reference chat, visual profile, personal message or profile photo contexts. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
 - `GET /api/admin/safety-reports/{reportId}`: fetch report detail, reduced reporter/reported user summaries, evidence snapshot, chat messages for review and associated penalty if one exists.
 - `POST /api/admin/safety-reports/{reportId}/dismissal`: dismiss a pending report. Body: `{ "notes": "optional notes" }`. Does not create a penalty.

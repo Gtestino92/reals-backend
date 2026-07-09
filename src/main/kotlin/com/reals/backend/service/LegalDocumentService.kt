@@ -52,7 +52,9 @@ class LegalDocumentService(
 
         val documentStatuses = currentDocuments().map { document ->
             val recorded = recordedByCurrentDocument[document.type to document.version]
-            val satisfied = recorded != null && recorded.action == document.requiredAction
+            val satisfied = recorded != null &&
+                recorded.action == document.requiredAction &&
+                recorded.documentContentSha256 == document.contentSha256
 
             LegalDocumentStatus(
                 document = document,
@@ -103,7 +105,11 @@ class LegalDocumentService(
             documentType = documentType,
             documentVersion = documentVersion
         )?.let { existing ->
-            validateExistingAction(existing, action)
+            validateExistingAction(
+                existing = existing,
+                requestedAction = action,
+                currentContentSha256 = document.contentSha256
+            )
             return RecordActionResult(action = existing, created = false)
         }
 
@@ -112,6 +118,7 @@ class LegalDocumentService(
                 userId = userId,
                 documentType = documentType,
                 documentVersion = documentVersion,
+                documentContentSha256 = document.contentSha256,
                 action = action
             )
         )
@@ -124,6 +131,7 @@ class LegalDocumentService(
             metadata = mapOf(
                 "documentType" to documentType.name,
                 "documentVersion" to documentVersion,
+                "documentContentSha256" to recorded.documentContentSha256,
                 "action" to action.name
             )
         )
@@ -140,12 +148,29 @@ class LegalDocumentService(
 
     private fun validateExistingAction(
         existing: UserLegalDocumentAction,
-        requestedAction: LegalDocumentAction
+        requestedAction: LegalDocumentAction,
+        currentContentSha256: String
     ) {
         if (existing.action != requestedAction) {
             throw DomainConflictException(
                 code = DomainErrorCode.LEGAL_DOCUMENT_VERSION_NOT_CURRENT,
                 message = "Existing legal document action differs from requested action"
+            )
+        }
+
+        val existingContentSha256 = existing.documentContentSha256
+            ?: throw IllegalStateException(
+                "Existing legal document action for userId=${existing.userId}, " +
+                    "documentType=${existing.documentType}, documentVersion=${existing.documentVersion} " +
+                    "has no documentContentSha256. Configure a new legal document version for BACK-7 rollout."
+            )
+
+        if (existingContentSha256 != currentContentSha256) {
+            throw IllegalStateException(
+                "Existing legal document action for userId=${existing.userId}, " +
+                    "documentType=${existing.documentType}, documentVersion=${existing.documentVersion} " +
+                    "has documentContentSha256=$existingContentSha256 but current configuration has " +
+                    "contentSha256=$currentContentSha256. Publish and configure a new legal document version."
             )
         }
     }
