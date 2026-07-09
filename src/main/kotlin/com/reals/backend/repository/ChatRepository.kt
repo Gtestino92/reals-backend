@@ -42,6 +42,23 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         statuses: Collection<ChatStatus>
     ): List<Chat>
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update Chat c
+        set c.status = 'ACTIVE',
+            c.startedAt = :activatedAt,
+            c.activatedAt = :activatedAt
+        where c.id = :chatId
+          and c.chatType = 'SECOND_CHAT'
+          and c.status = 'AVAILABLE'
+        """
+    )
+    fun activateAvailableSecondChat(
+        @Param("chatId") chatId: UUID,
+        @Param("activatedAt") activatedAt: OffsetDateTime
+    ): Int
+
     @Query(
         "select c from Chat c where c.status = 'ACTIVE' and c.chatType = 'FIRST_CHAT' and c.timeoutAt <= :now"
     )
