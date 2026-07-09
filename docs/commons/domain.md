@@ -225,7 +225,9 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Deletion moves the profile back to `DRAFT` while preserving profile data, photo metadata and profile-photo storage objects during recovery.
 - `POST /api/me/reactivation` restores the user to `ACTIVE` only while the recovery window is still open. The profile remains `DRAFT` and must be activated again before matchmaking.
 - Reactivation does not restore deleted queue, lock, push, Home-dismissal or Home-status state. Home status is recreated through its normal missing-row behavior when needed, and a current FCM token can be registered again.
-- The account-deletion finalization job replaces the local email and releases the local Firebase UID after the recovery window expires. This is local identifier finalization, not a complete data purge.
+- The Firebase Auth identity and local Firebase UID remain linked throughout recovery so ownership authentication and reactivation continue to work.
+- After recovery expires, finalization locks and revalidates the user, then deletes or confirms absence of the Firebase Auth identity before replacing the local email and releasing the local Firebase UID.
+- Finalization coordinates external identity deletion and local identifier release; it remains distinct from a broader product-data purge.
 - Post-recovery retention, purge and anonymization policy is tracked in `docs/data-retention.md`.
 
 ## Match Filtering And Compatibility
