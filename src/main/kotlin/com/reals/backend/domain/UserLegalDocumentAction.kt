@@ -45,6 +45,9 @@ data class UserLegalDocumentAction(
     @Column(name = "document_version", nullable = false)
     var documentVersion: String,
 
+    @Column(name = "document_content_sha256", length = 64)
+    var documentContentSha256: String? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false)
     var action: LegalDocumentAction,
