@@ -184,6 +184,8 @@ Future work:
 
 Current state:
 - Safety cancellation/report can record a report and apply a penalty.
+- BACK-5 explicit child-safety concern reporting is implemented. `CHILD_SAFETY_CONCERN` is supported by direct safety reports and chat safety cancellation, remains `PENDING`, and receives derived (non-persisted) priority ordering while pending.
+- BACK-5 preserves existing user-created block/containment behavior and does not automatically penalize or ban the reported user; penalties still require explicit admin confirmation.
 - User-created reports can target chat, visual profile, personal message and profile-photo contexts when the backend can validate a real interaction.
 - User-created reports automatically create a directional user block, and matchmaking treats a block in either direction as a bidirectional exclusion.
 - Admin-created reports can be general `USER` context reports or contextual reports. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
@@ -203,6 +205,7 @@ Production work:
 - Request context enrichment for audit events, including request id and hashed IP/user-agent if needed.
 - Additional admin filters/pagination if report volume grows.
 - Decide when admin-created reports should optionally create blocks or other containment actions.
+- Broader child-safety moderation remains deferred: automated detection, image/content moderation, age estimation, provider escalation, a dedicated specialist workflow, legal/regulatory reporting procedures, external-authority reporting procedures, and CSAM/CSAE scanning or classification.
 
 ### 4.2 User blocking and objectionable content controls
 

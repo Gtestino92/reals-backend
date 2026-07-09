@@ -10,6 +10,7 @@ import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.domain.priorityReview
 import com.reals.backend.service.reports.SafetyReportDetail
 import com.reals.backend.service.reports.SafetyReportUserCounters
 import com.reals.backend.validation.PlainText
@@ -69,6 +70,7 @@ data class SafetyReportAdminSummary(
     val connectionId: UUID?,
     val reason: SafetyReportReason,
     val status: SafetyReportStatus,
+    val priorityReview: Boolean,
     val createdAt: OffsetDateTime,
     val reviewedAt: OffsetDateTime?,
     val createdByAdminUserId: UUID?,
@@ -91,6 +93,7 @@ data class SafetyReportAdminSummary(
                 connectionId = detail.report.connectionId,
                 reason = detail.report.reason,
                 status = detail.report.status,
+                priorityReview = detail.report.priorityReview,
                 createdAt = detail.report.createdAt,
                 reviewedAt = detail.report.reviewedAt,
                 createdByAdminUserId = detail.report.createdByAdminUserId,

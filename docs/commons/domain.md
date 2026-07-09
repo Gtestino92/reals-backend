@@ -47,12 +47,12 @@ Matching and chat:
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
 - `ChatExitRequestStatus`: `PENDING`, `ACCEPTED`, `REJECTED`, `TIMED_OUT`
-- `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
+- `ChatExitReason`: `NO_LONGER_INTERESTED`, `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `CHILD_SAFETY_CONCERN`, `OTHER`
 - `SafetyReportStatus`: `PENDING`, `DISMISSED`, `DISMISSED_ABUSIVE_OR_UNJUSTIFIED`, `CONFIRMED`
-- `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `OTHER`
+- `SafetyReportReason`: `INAPPROPRIATE_BEHAVIOR`, `HARASSMENT`, `CHILD_SAFETY_CONCERN`, `OTHER`
 - `SafetyReportContextType`: `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE`, `PROFILE_PHOTO`, `USER`
 - `SafetyReportSource`: `USER`, `ADMIN`, `SYSTEM`
-- `AuditEventType`: `SAFETY_REPORT_CREATED`, `SAFETY_REPORT_DISMISSED`, `SAFETY_REPORT_CONFIRMED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`, `LEGAL_DOCUMENT_ACTION_RECORDED`
+- `AuditEventType`: `SAFETY_REPORT_CREATED`, `SAFETY_REPORT_DISMISSED`, `SAFETY_REPORT_CONFIRMED`, `USER_BLOCK_CREATED`, `CHAT_ENDED`, `PROFILE_PHOTO_UPLOADED`, `PROFILE_PHOTO_REPLACED`, `PROFILE_PHOTO_DELETED`, `PROFILE_PHOTOS_REORDERED`, `PROFILE_ACTIVATED`, `PHOTO_MODERATION_UPDATED`, `IDENTITY_VERIFICATION_UPDATED`, `ACCOUNT_DELETION_REQUESTED`, `ACCOUNT_DELETION_FINALIZED`, `ACCOUNT_REACTIVATED`, `PENALTY_APPLIED`, `LEGAL_DOCUMENT_ACTION_RECORDED`
 - `AuditAggregateType`: `USER`, `PROFILE`, `PROFILE_PHOTO`, `CHAT`, `MATCH`, `CONNECTION`, `SAFETY_REPORT`, `USER_BLOCK`, `PENALTY`
 - `LegalDocumentType`: `TERMS_OF_USE`, `PRIVACY_NOTICE`, `COMMUNITY_GUIDELINES`
 - `LegalDocumentAction`: `ACCEPTED`, `ACKNOWLEDGED`
@@ -173,7 +173,11 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Timed-out mutual cancellation currently has no penalty. It is not a unilateral cancellation; if the requester resolves the timeout because the responder did not answer in time, the requester must not be penalized.
 - Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
 - Safety cancellation closes the chat as `CANCELLED`, records `ChatEndReason.SAFETY_REPORT`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
+- Chat safety cancellation maps `ChatExitReason.CHILD_SAFETY_CONCERN` to `SafetyReportReason.CHILD_SAFETY_CONCERN`. The reason does not itself apply an automatic penalty or ban.
 - Safety cancellation automatically creates a directional `UserBlock` from reporter to reported. Matchmaking excludes the pair in both directions even though only one block row is stored.
+- `CHILD_SAFETY_CONCERN` is a broad reported concern, not a confirmed finding. Direct reports and chat safety cancellations using it create a normal `PENDING` report and retain the same block and containment behavior as other user-created reports.
+- `SafetyReport.priorityReview` is derived as `true` only while the report is `PENDING` and its reason is `CHILD_SAFETY_CONCERN`; it is not persisted. Admin lists sort this priority first and then `createdAt` descending before applying the 100-result limit.
+- No penalty or ban follows from `CHILD_SAFETY_CONCERN` alone. A safety penalty still requires explicit admin confirmation through the existing report penalty path.
 - General user safety reports outside chat cancellation validate a real chat or visual-review interaction and create the same directional block without closing any chat. Duplicate reports for the same reporter, reported user, context type and context id return the existing report.
 - User-created reports always have `source = USER`, a non-null reporter and create or reuse a directional block from reporter to reported.
 - Admin-created reports have `source = ADMIN`, `createdByAdminUserId`, and may have no user reporter. They do not auto-block, auto-close chats or auto-apply penalties in the creation path.

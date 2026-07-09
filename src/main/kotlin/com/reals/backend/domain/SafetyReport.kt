@@ -20,6 +20,7 @@ enum class SafetyReportStatus {
 enum class SafetyReportReason {
     INAPPROPRIATE_BEHAVIOR,
     HARASSMENT,
+    CHILD_SAFETY_CONCERN,
     OTHER
 }
 
@@ -104,10 +105,15 @@ data class SafetyReport(
     var penaltyId: UUID? = null
 )
 
+val SafetyReport.priorityReview: Boolean
+    get() = status == SafetyReportStatus.PENDING &&
+        reason == SafetyReportReason.CHILD_SAFETY_CONCERN
+
 fun ChatExitReason.toSafetyReportReason(): SafetyReportReason =
     when (this) {
         ChatExitReason.INAPPROPRIATE_BEHAVIOR -> SafetyReportReason.INAPPROPRIATE_BEHAVIOR
         ChatExitReason.HARASSMENT -> SafetyReportReason.HARASSMENT
+        ChatExitReason.CHILD_SAFETY_CONCERN -> SafetyReportReason.CHILD_SAFETY_CONCERN
         ChatExitReason.NO_LONGER_INTERESTED,
         ChatExitReason.OTHER -> SafetyReportReason.OTHER
     }

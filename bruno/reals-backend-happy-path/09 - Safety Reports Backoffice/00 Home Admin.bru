@@ -4,7 +4,7 @@ meta {
   seq: 2
 }
 
-post {
+get {
   url: {{baseUrl}}/api/me/home
   body: none
   auth: none
@@ -12,20 +12,4 @@ post {
 
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
-}
-
-script:post-response {
-  const body = res.getBody();
-  
-  if (!Array.isArray(body)) {
-    throw new Error("Expected an array of safety reports.");
-  }
-  
-  if (body.length > 0) {
-    const first = body[0];
-    bru.setEnvVar("safetyReportId", first.id);
-    bru.setEnvVar("reportedUserId", first.reportedUserId);
-    bru.setEnvVar("reporterUserId", first.reporterUserId);
-    bru.setEnvVar("safetyReportStatus", first.status);
-  }
 }

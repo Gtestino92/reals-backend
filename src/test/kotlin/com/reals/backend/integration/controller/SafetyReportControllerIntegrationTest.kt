@@ -11,6 +11,7 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -139,6 +140,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
                         reportedUserId = setup.userBId,
                         contextType = SafetyReportContextType.CHAT,
                         chatId = setup.firstChatId,
+                        reason = SafetyReportReason.CHILD_SAFETY_CONCERN,
                         details = "Chat content was unsafe"
                     )
                 )
@@ -151,6 +153,17 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         val chat = chatRepository.findById(setup.firstChatId).orElseThrow()
         assertEquals(ChatStatus.CANCELLED, chat.status)
         assertEquals(ChatEndReason.USER_BLOCK, chat.endedReason)
+
+        val report = safetyReportRepository.findAll().single()
+        assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
+        assertEquals(com.reals.backend.domain.SafetyReportStatus.PENDING, report.status)
+        assertNotNull(
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+                blockerUserId = setup.userAId,
+                blockedUserId = setup.userBId
+            )
+        )
+        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
 
         val match = matchRepository.findById(setup.matchId).orElseThrow()
         assertEquals(MatchState.CHAT_REJECTED, match.state)
