@@ -8,6 +8,19 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+Profile trust-provider shortcuts are execution-profile aware. Outside `prod`,
+provider `none` preserves MVP compatibility for local/dev/test flows: identity
+verification may return `VERIFIED`, photo moderation may return `APPROVED`, and
+technical photo validation may produce `isPersonPhoto=true`,
+`isFullBody=true` and `validationStatus=VALIDATED`. In `prod`, provider `none`
+does not create positive trust facts: identity verification returns
+`409 IDENTITY_VERIFICATION_NOT_CONFIGURED`, photo moderation persists
+`NEEDS_REVIEW`, and technical photo validation alone persists
+`false`/`false`/`PENDING`. Successful image decoding is not semantic
+person/full-body validation. Production activation defaults to requiring
+moderation approval in addition to the existing validated/person/full-body photo
+counts.
+
 Legal compliance is backend-authoritative for protected participation/content
 writes. After provisioning, clients can call `GET /api/me/legal-status`; when
 `requirementsSatisfied=false`, they should show the current legal requirements,
