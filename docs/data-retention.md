@@ -42,7 +42,7 @@ The classifications used below are: `IMMEDIATE_DELETE`, `IMMEDIATE_TERMINATE_RET
 | Push device tokens | PostgreSQL `push_device_tokens` | `user_id`; globally unique FCM registration token | Device-routing credential, platform, enabled/last-seen timestamps | Push delivery | Ephemeral operational state | All rows, including disabled rows, are bulk-deleted | Absent; user may register a current token again | Already absent | `IMMEDIATE_DELETE` | None for account deletion; Firebase/FCM provider-side artifacts are external policy |
 | Push notification deliveries | PostgreSQL `push_notification_deliveries` | `user_id`, notification type, aggregate ID | Send/deduplication status, provider message ID and error text | Operational push sending and deduplication | Operational record, not lifecycle/audit source of truth | All rows are bulk-deleted | Absent; never restored | Already absent | `IMMEDIATE_DELETE` | None for local account deletion; provider-side retention is external policy |
 | User Home status | PostgreSQL `user_home_status` | primary key `user_id` | Projection version, dirty flag, update time | Polling/invalidation projection | Derived and recreatable | Deleted after all required account/engagement Home invalidations | Absent; reactivation does not restore it; `HomeStatusService.getOrCreateStatus` creates a fresh row when needed | Already absent unless later recreated by active use | `IMMEDIATE_DELETE` | None for account deletion |
-| User legal-document actions | PostgreSQL `user_legal_document_actions` | `user_id` | Document type/version, action, timestamp | Record application-level acceptance/acknowledgement action | Source of truth for the recorded action, but not immutable document content | Not deleted | Retained; legal satisfiability behavior is unchanged | Unchanged by finalization | `RETAIN_LEGAL_EVIDENCE` | `FINAL_PURGE_POLICY_PENDING`; BACK-7 separately covers immutable publication/content evidence |
+| User legal-document actions | PostgreSQL `user_legal_document_actions` | `user_id` | Document type/version, nullable document content SHA-256, action, timestamp | Record application-level acceptance/acknowledgement action and backend historical content identity when available | Source of truth for the recorded action and, for new BACK-7 rows, the canonical content SHA-256; pre-BACK-7 rows may be unanchored with null hash | Not deleted | Retained; legal satisfiability requires current type, version, action and content SHA-256 | Unchanged by finalization | `RETAIN_LEGAL_EVIDENCE` | `FINAL_PURGE_POLICY_PENDING`; production legal publication and retention/anonymization policy remain separate decisions |
 
 ## External and operational artifacts
 
@@ -85,7 +85,7 @@ No retention duration is selected here. Separate product, privacy, legal, securi
 - penalty and reliability-event retention after final deletion without overriding existing expiry behavior
 - safety-report and evidence retention/anonymization periods
 - audit retention/anonymization
-- legal-action retention and BACK-7 immutable-document publication evidence
+- legal-action retention and production legal-document publication evidence
 - Firebase Auth external-user deletion/finalization and provider-managed token state
 - FCM provider artifacts
 - database and object-storage backup retention and restore handling
