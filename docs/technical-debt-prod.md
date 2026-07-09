@@ -728,10 +728,11 @@ Core product metrics:
 
 Risk:
 - Auth verification and local user lookup happen on many API requests, especially with polling.
+- The current `FirebaseTokenFilter` uses `verifyIdToken(token, true)`, so revocation checking occurs on protected requests and may add Firebase/network verification cost.
 
 Before scale:
-- Confirm Firebase token verification does not perform unnecessary remote calls per request.
-- Monitor auth filter latency.
+- Measure auth-filter latency and the cost of revocation verification under expected request volume.
+- Do not remove revocation checking casually: deletion/session invalidation relies on rejected revoked tokens.
 - Monitor 401/403 rates by reason.
 - Avoid Android refresh loops.
 - Consider short-lived caching of local user/session metadata if DB reads become excessive.
@@ -893,7 +894,9 @@ Implemented:
 - Account deletion atomically deletes ephemeral matchmaking, engagement-lock, push-token, push-delivery, connection Home-dismissal and deleted-user Home-status state.
 - Active interaction is contained while historical lifecycle and content rows remain.
 - Recovery-window behavior for profile, media metadata/objects, messages, safety, anti-abuse, legal and audit data is documented.
-- Current post-window finalization replaces/releases local account identifiers. It is not complete account erasure.
+- Firebase Auth external-user deletion/finalization is implemented: the identity is retained during recovery, and finalization deletes or confirms absence of the Firebase user before releasing the local Firebase UID.
+- External deletion failures keep local finalization pending and retryable.
+- Current post-window finalization is not a complete product-data purge.
 
 Remaining policy and implementation work:
 
@@ -902,11 +905,33 @@ Remaining policy and implementation work:
 - chat-message and personal-message retention;
 - block, penalty and reliability-event treatment after final deletion without overriding existing expiry behavior;
 - safety-report/evidence, audit and legal-action retention periods and anonymization;
-- Firebase Auth external-user deletion/finalization, because current finalization only clears the local Firebase UID;
 - database/object-store backup retention and restore handling;
 - application log, metric, cache and rate-limit state retention.
 
 No retention periods are selected by BACK-0/BACK-4. These items require separate product, privacy, legal, security and infrastructure decisions.
+
+## 20. Google Play account-deletion web resource and Data safety disclosure
+
+**DEFERRED / REQUIRED BEFORE GOOGLE PLAY PRODUCTION DISTRIBUTION**
+
+Current state:
+
+- Android has an in-app account-deletion path.
+- The backend has a recoverable deletion and finalization lifecycle.
+- Reals does not yet have a public web resource where a user can request account deletion without reinstalling or opening the Android app.
+
+Before Google Play production distribution:
+
+- Publish a functional public web resource for account-deletion requests.
+- Prominently expose the account-deletion request path.
+- Reference Reals or the production developer name used in the Play listing.
+- Allow the user to initiate the deletion request without being redirected to the Android app or required to reinstall it.
+- Decide the minimum identity-verification/support flow for web deletion requests.
+- Disclose the account/data deletion URL in the Play Console Data safety form.
+- Align public deletion copy with the 30-day recovery window and the actual retention policy.
+- Clearly describe retained safety, fraud-prevention, regulatory, audit or legal-evidence data once those retention policies are finalized.
+
+This section documents a production requirement only. It does not add a public endpoint, unauthenticated deletion API or email-based deletion request flow.
 
 
 ## clean up pre-mvp
