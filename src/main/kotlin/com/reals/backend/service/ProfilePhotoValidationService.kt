@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.s3.ProfilePhotoStorageProperties
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
@@ -12,7 +13,8 @@ import javax.imageio.ImageIO
 
 @Service
 class ProfilePhotoValidationService(
-    private val properties: ProfilePhotoStorageProperties
+    private val properties: ProfilePhotoStorageProperties,
+    private val environmentExposurePolicy: EnvironmentExposurePolicy
 ) {
 
     fun validateUploadedPhoto(
@@ -25,11 +27,15 @@ class ProfilePhotoValidationService(
             bytes = bytes
         )
 
-        /*
-         * Temporary MVP shortcut for multipart uploads:
-         * VALIDATED only means the binary passed technical upload validation.
-         * It does not mean real moderation or semantic photo validation happened.
-         */
+        if (environmentExposurePolicy.isProduction()) {
+            return ProfilePhotoValidationResult(
+                isPersonPhoto = false,
+                isFullBody = false,
+                status = PhotoValidationStatus.PENDING
+            )
+        }
+
+        // Temporary MVP shortcut for non-production compatibility only.
         return ProfilePhotoValidationResult(
             isPersonPhoto = true,
             isFullBody = true,

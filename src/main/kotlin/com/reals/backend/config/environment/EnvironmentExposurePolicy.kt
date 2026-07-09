@@ -43,8 +43,12 @@ class EnvironmentExposurePolicy private constructor(
     fun h2ConsoleAllowed(): Boolean =
         activeExecutionProfiles() == setOf(LOCAL_NODB_PROFILE)
 
+    fun isProduction(): Boolean =
+        activeExecutionProfiles() == setOf(PROD_PROFILE)
+
     companion object {
         const val LOCAL_NODB_PROFILE = "local-nodb"
+        const val PROD_PROFILE = "prod"
 
         val LOCAL_EXECUTION_PROFILES = setOf(
             LOCAL_NODB_PROFILE,
@@ -54,7 +58,7 @@ class EnvironmentExposurePolicy private constructor(
 
         val EXECUTION_PROFILES = LOCAL_EXECUTION_PROFILES + setOf(
             "dev",
-            "prod",
+            PROD_PROFILE,
             "test"
         )
 
