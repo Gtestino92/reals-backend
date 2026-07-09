@@ -2297,7 +2297,7 @@ components:
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string }
         status: { $ref: '#/components/schemas/SafetyReportStatus' }
-        priorityReview: { type: boolean }
+        priorityReview: { type: boolean, readOnly: true }
         createdAt: { type: string, format: date-time }
         reviewedAt: { type: string, format: date-time, nullable: true }
         reviewedByUserId: { type: string, format: uuid, nullable: true }
