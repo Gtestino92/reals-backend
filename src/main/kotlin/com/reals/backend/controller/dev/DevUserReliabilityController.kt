@@ -14,7 +14,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres", "local-firebase")
+@Profile("local-nodb", "local-postgres", "local-firebase")
 @RequestMapping("/api/local-dev/user-reliability")
 class DevUserReliabilityController(
     private val userService: UserService,

@@ -4,12 +4,38 @@ Production and shared development profiles should receive environment-specific v
 
 ## Profiles
 
-- `local-firebase`: default local profile, Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
+- `local-firebase`: local Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
 - `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
+
+Exactly one execution profile from this set must be active:
+
+```text
+local-nodb
+local-postgres
+local-firebase
+dev
+prod
+test
+```
+
+The shared `application.yml` does not set a default execution profile. Local
+Docker selects `local-firebase` explicitly, and shared deployments must set
+`SPRING_PROFILES_ACTIVE` to `dev` or `prod`. Startup fails when no execution
+profile is active or when more than one execution profile is active, for example
+`prod,local-firebase` or `dev,prod`. Auxiliary profiles are allowed as long as
+they do not add a second execution profile.
+
+`/api/local-dev/**` is local tooling only. It remains unauthenticated in
+`local-nodb`, `local-postgres` and `local-firebase`, and Spring Security
+explicitly denies it in `dev`, `prod` and `test` even if a handler is
+accidentally registered.
+
+The H2 console is accessible only with `local-nodb`; Spring Security explicitly
+denies `/h2-console/**` for every other execution profile.
 
 ## Placeholder Reference
 

@@ -6,9 +6,9 @@ import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.integration.ControllerIT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 class UserReliabilityDisabledIntegrationTest : ControllerIT() {
 
@@ -49,11 +49,16 @@ class UserReliabilityDisabledIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `local dev reliability endpoint is not registered in test profile`() {
+    fun `local dev reliability endpoint cannot execute in test profile`() {
         val user = userService.createUser("debug-endpoint-absent-${java.util.UUID.randomUUID()}@example.com")
 
         mockMvc.perform(get("/api/local-dev/user-reliability/${user.id}"))
-            .andExpect(status().isNotFound)
+            .andExpect { result ->
+                assertTrue(
+                    result.response.status in setOf(401, 403, 404),
+                    "Expected local-dev endpoint to be unusable in test profile"
+                )
+            }
     }
 
     @Test
