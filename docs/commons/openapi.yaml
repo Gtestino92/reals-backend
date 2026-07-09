@@ -2284,7 +2284,7 @@ components:
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
     AdminSafetyReportResponse:
       type: object
-      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, createdAt]
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, priorityReview, createdAt]
       properties:
         id: { type: string, format: uuid }
         reporterUserId: { type: string, format: uuid }
@@ -2297,6 +2297,7 @@ components:
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string }
         status: { $ref: '#/components/schemas/SafetyReportStatus' }
+        priorityReview: { type: boolean, readOnly: true }
         createdAt: { type: string, format: date-time }
         reviewedAt: { type: string, format: date-time, nullable: true }
         reviewedByUserId: { type: string, format: uuid, nullable: true }
@@ -2487,13 +2488,13 @@ components:
       enum: [PENDING, ACCEPTED, REJECTED, TIMED_OUT]
     ChatExitReason:
       type: string
-      enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+      enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, CHILD_SAFETY_CONCERN, OTHER]
     SafetyReportStatus:
       type: string
       enum: [PENDING, DISMISSED, CONFIRMED]
     SafetyReportReason:
       type: string
-      enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+      enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, CHILD_SAFETY_CONCERN, OTHER]
     SafetyReportContextType:
       type: string
       enum: [CHAT, VISUAL_PROFILE, PERSONAL_MESSAGE, PROFILE_PHOTO]

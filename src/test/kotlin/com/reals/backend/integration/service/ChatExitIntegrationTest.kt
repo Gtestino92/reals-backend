@@ -373,14 +373,15 @@ class ChatExitIntegrationTest : BaseIT() {
             chatExitService.cancelChatForSafety(
                 chatId = setup.firstChatId,
                 reporterUserId = setup.userAId,
-                reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-                details = "Reported inappropriate behavior"
+                reason = ChatExitReason.CHILD_SAFETY_CONCERN,
+                details = "Reported child-safety concern"
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
         assertEquals(ChatEndReason.SAFETY_REPORT, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.SAFETY_REPORT, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
+        assertEquals(ChatExitReason.CHILD_SAFETY_CONCERN, outcome.exitRequest.reason)
         assertFalse(outcome.penaltyApplied)
         assertNull(outcome.penalizedUserId)
         assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
@@ -388,9 +389,9 @@ class ChatExitIntegrationTest : BaseIT() {
 
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportStatus.PENDING, report.status)
-        assertEquals(SafetyReportReason.INAPPROPRIATE_BEHAVIOR, report.reason)
+        assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
         assertEquals(SafetyReportSource.USER, report.source)
-        assertEquals("Reported inappropriate behavior", report.details)
+        assertEquals("Reported child-safety concern", report.details)
         assertEquals(setup.userAId, report.reporterUserId)
         assertEquals(setup.userBId, report.reportedUserId)
         assertEquals(setup.firstChatId, report.chatId)
@@ -441,9 +442,9 @@ class ChatExitIntegrationTest : BaseIT() {
 
         assertEquals("CHAT", metadata.get("contextType").asString())
         assertEquals(setup.firstChatId.toString(), metadata.get("contextId").asString())
-        assertEquals("INAPPROPRIATE_BEHAVIOR", metadata.get("reason").asString())
+        assertEquals("CHILD_SAFETY_CONCERN", metadata.get("reason").asString())
         assertEquals("PENDING", metadata.get("status").asString())
-        assertFalse(reportAudit.metadataJson!!.contains("Reported inappropriate behavior"))
+        assertFalse(reportAudit.metadataJson!!.contains("Reported child-safety concern"))
         val chatEndedAudit = auditEventRepository.findAll()
             .single {
                 it.eventType == AuditEventType.CHAT_ENDED &&

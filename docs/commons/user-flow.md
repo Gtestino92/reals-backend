@@ -112,7 +112,7 @@ Each user can approve continuation, request mutual cancellation or cancel explic
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
 - Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
 - Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
-- Safety cancellation cancels the chat, records `ChatEndReason.SAFETY_REPORT`, exempts the reporter, creates a pending `SafetyReport` and creates a directional block from reporter to reported. It does not penalize the reported participant until admin/backoffice review confirms the report.
+- Safety cancellation cancels the chat, records `ChatEndReason.SAFETY_REPORT`, exempts the reporter, creates a pending `SafetyReport` and creates a directional block from reporter to reported. `CHILD_SAFETY_CONCERN` is preserved explicitly from the accepted exit request to the report reason. It is a reported concern, not a confirmed violation, and does not penalize the reported participant until admin/backoffice review confirms the report.
 
 Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
 
@@ -224,6 +224,8 @@ Safety-report chat closure creates:
 - a directional `UserBlock` from reporter to reported; matchmaking treats any block between two users as a bidirectional rematch exclusion.
 
 Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Dismissing a pending report stores review metadata and creates no penalty. Confirming a pending report creates either a temporary or permanent penalty for the reported user, links it through `sourceReportId`/`penaltyId`, removes the reported user from the matchmaking queue if present and blocks future enqueue while the penalty remains active.
+
+Pending reports with reason `CHILD_SAFETY_CONCERN` receive derived priority review: admin lists order them before other reports, then order by creation time descending. Priority is not persisted and becomes false after review. Direct user reports retain the existing directional block and active-interaction containment behavior; no penalty or ban is automatic from this reason.
 
 Admins can also dismiss a report as abusive or unjustified. That resolution creates no safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter. Pending reports, ordinary insufficient-evidence dismissals and confirmed reports against the reported user do not create reliability events.
 

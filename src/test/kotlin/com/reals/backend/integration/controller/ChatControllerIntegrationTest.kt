@@ -6,10 +6,13 @@ import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -19,6 +22,36 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 class ChatControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `child safety cancellation is accepted over http without penalty`() {
+        val setup = createMatchWithFirstChat()
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/safety-cancellations")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "reason": "CHILD_SAFETY_CONCERN",
+                      "details": "Reported child-safety concern"
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
+            .andExpect(jsonPath("$.exitRequest.type", equalTo(ChatExitRequestType.SAFETY_REPORT.name)))
+            .andExpect(jsonPath("$.exitRequest.status", equalTo(ChatExitRequestStatus.ACCEPTED.name)))
+            .andExpect(jsonPath("$.exitRequest.reason", equalTo(ChatExitReason.CHILD_SAFETY_CONCERN.name)))
+            .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+
+        val report = safetyReportRepository.findAll().single()
+        assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
+        assertEquals(SafetyReportStatus.PENDING, report.status)
+        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+    }
 
     @Test
     fun `get chat includes first chat inactivity deadline and updates after message`() {
