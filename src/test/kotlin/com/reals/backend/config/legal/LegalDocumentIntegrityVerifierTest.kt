@@ -14,7 +14,7 @@ class LegalDocumentIntegrityVerifierTest {
         verifier(
             document(
                 version = "2026-07-01-test",
-                contentSha256 = "ff9fe114707d5bc600e3e7be9f48060f6507215784d6b6357f89317c0b965405"
+                contentSha256 = "78829bddbdbf5f73c35af82b61cc1ae3c81ecac78853a18e007450c0e1a858f3"
             )
         ).verifyCurrentDocuments()
     }
@@ -52,7 +52,7 @@ class LegalDocumentIntegrityVerifierTest {
         assertTrue(exception.message?.contains("expectedSha256=${"0".repeat(64)}") == true)
         assertTrue(
             exception.message?.contains(
-                "actualSha256=ff9fe114707d5bc600e3e7be9f48060f6507215784d6b6357f89317c0b965405"
+                "actualSha256=78829bddbdbf5f73c35af82b61cc1ae3c81ecac78853a18e007450c0e1a858f3"
             ) == true
         )
     }

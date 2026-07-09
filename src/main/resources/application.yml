@@ -11,10 +11,6 @@ spring:
     exclude:
       - org.springframework.boot.actuate.autoconfigure.metrics.cache.CacheMetricsAutoConfiguration
 
-  profiles:
-    active: local-firebase
-    #active: local-nodb
-
   jpa:
     open-in-view: false
 

@@ -2,14 +2,17 @@
 
 ## Spring Profile
 
-The default active profile is:
+There is no shared default active profile. Choose exactly one execution profile
+when starting the app locally:
 
 ```text
+local-nodb
+local-postgres
 local-firebase
 ```
 
-This profile uses real Firebase ID tokens and, in the current Docker-oriented
-local setup, a PostgreSQL database:
+`local-firebase` uses real Firebase ID tokens and, in the current
+Docker-oriented local setup, a PostgreSQL database:
 
 ```text
 jdbc:postgresql://postgres:5432/reals
@@ -101,13 +104,16 @@ GET http://<reachable-host>:8080/actuator/health/readiness
 
 ## H2 Console
 
+The H2 console is only exposed by the `local-nodb` execution profile.
+
 URL:
 
 ```text
 http://localhost:8080/h2-console
 ```
 
-The H2 console is enabled through `spring.h2.console.*` in the local H2 profiles.
+The H2 console is enabled through `spring.h2.console.*` in `local-nodb`. Spring
+Security explicitly denies `/h2-console/**` in every other execution profile.
 Use `local-nodb` when you specifically want the H2 file database path.
 
 Connection:
@@ -333,16 +339,16 @@ Local profiles disable automatic scheduled execution:
 scheduler.enabled: false
 ```
 
-Use the local auto-auth dev endpoints (`local`, `local-nodb`, `local-postgres`)
-for deterministic manual testing:
+Use the local dev endpoints for deterministic manual testing:
 
 ```http
 POST /api/local-dev/jobs/{job}/run
 ```
 
 `/api/local-dev/**` endpoints are profile-gated local tooling and do not
-require a user bearer token. They are not exposed by the `dev` or `prod`
-profiles.
+require a user bearer token in `local-nodb`, `local-postgres` or
+`local-firebase`. Spring Security explicitly denies them in `dev`, `prod` and
+`test`, even if a local-dev controller is accidentally registered.
 
 The Bruno collection includes direct triggers under:
 
@@ -356,7 +362,7 @@ Local-only user provisioning for Bruno/dev flows is available at:
 POST /api/local-dev/users
 ```
 
-This endpoint exists only on local dev-auto-auth profiles and is not part of the production API contract.
+This endpoint exists only on local execution profiles and is not part of the production API contract.
 
 The local matchmaking processor endpoint is also exposed in `local-firebase`
 for Firebase/Android manual flows:
