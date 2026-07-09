@@ -1289,7 +1289,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
-      description: Domain conflict or invalid state transition. Protected participation/content writes may also return stable code `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
+      description: Domain conflict or invalid state transition. Only operations protected by the legal gate may also return stable code `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing; reuse of this response by another operation does not make that operation legal-gated.
       content:
         application/json:
           schema:

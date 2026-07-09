@@ -1,7 +1,7 @@
 # API
 
 This file summarizes the current controller surface for human readers.
-The formal OpenAPI contract lives in `docs/openapi.yaml`.
+The formal OpenAPI contract lives in `openapi.yaml`.
 
 ## Health
 
