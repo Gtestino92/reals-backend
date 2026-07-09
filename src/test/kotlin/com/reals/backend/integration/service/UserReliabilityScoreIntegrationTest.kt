@@ -7,6 +7,7 @@ import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.UserReliabilityDimension
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
@@ -133,6 +134,71 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
         assertNoEvent(setup.userAId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION)
         assertSingleEvent(setup.userBId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION, -2)
+    }
+
+    @Test
+    fun `visual personal message submission creates participation event for submitting user`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Me gustaria seguir conversando")
+
+        val event = events(setup.userAId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED).single()
+        assertEquals(UserReliabilityDimension.ConversationParticipationScore, event.dimension)
+        assertEquals(1, event.delta)
+        assertEquals(setup.matchId, event.relatedMatchId)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED)
+
+        val breakdownEvent = userReliabilityScoreService
+            .scoreBreakdown(setup.userAId)
+            .events
+            .single { it.event.eventType == UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED }
+        assertEquals(1, breakdownEvent.event.delta)
+        assertEquals(1.0, breakdownEvent.temporalWeight)
+        assertEquals(1.0, breakdownEvent.effectiveDelta)
+    }
+
+    @Test
+    fun `both users can independently receive visual personal message participation event`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Mensaje A")
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED, 1)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED, 1)
+        assertEquals(
+            2,
+            userReliabilityEventRepository.findAll().count {
+                it.eventType == UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED &&
+                    it.relatedMatchId == setup.matchId
+            }
+        )
+    }
+
+    @Test
+    fun `failed visual personal message submission creates no participation event`() {
+        val setup = createMatchInVisualPhase()
+
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+            visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "   ")
+        }
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED)
+    }
+
+    @Test
+    fun `duplicate visual personal message submission does not create second participation event`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Primer mensaje")
+
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Segundo mensaje")
+        }
+
+        assertEquals("Primer mensaje", visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageA)
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED, 1)
     }
 
     @Test

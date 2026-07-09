@@ -30,6 +30,7 @@ enum class UserReliabilityEventType(
     FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED(UserReliabilityDimension.ResponsivenessScore, -2),
     FIRST_CHAT_EXPIRED_NO_DECISION(UserReliabilityDimension.ResponsivenessScore, -3),
     VISUAL_REVIEW_EXPIRED_NO_DECISION(UserReliabilityDimension.ResponsivenessScore, -2),
+    VISUAL_PERSONAL_MESSAGE_SUBMITTED(UserReliabilityDimension.ConversationParticipationScore, 1),
     SCHEDULING_SLOTS_PROPOSED_ON_TIME(UserReliabilityDimension.SchedulingCommitmentScore, 1),
     SCHEDULING_EXPIRED_NO_PROPOSAL(UserReliabilityDimension.SchedulingCommitmentScore, -3),
     SECOND_CHAT_CONFIRMED_ATTENDED(UserReliabilityDimension.SchedulingCommitmentScore, 4),

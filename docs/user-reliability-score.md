@@ -64,13 +64,14 @@ Dimensional scores are not exposed to users.
 | `FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED` | user who ignored the request | `ResponsivenessScore` | `-2` |
 | `FIRST_CHAT_EXPIRED_NO_DECISION` | unresolved user | `ResponsivenessScore` | `-3` |
 | `VISUAL_REVIEW_EXPIRED_NO_DECISION` | unresolved user | `ResponsivenessScore` | `-2` |
+| `VISUAL_PERSONAL_MESSAGE_SUBMITTED` | submitting user | `ConversationParticipationScore` | `+1` |
 | `SCHEDULING_SLOTS_PROPOSED_ON_TIME` | proposing user | `SchedulingCommitmentScore` | `+1` |
 | `SCHEDULING_EXPIRED_NO_PROPOSAL` | user with no proposal on the connection | `SchedulingCommitmentScore` | `-3` |
 | `SECOND_CHAT_CONFIRMED_ATTENDED` | user with a message inside the grace window | `SchedulingCommitmentScore` | `+4` |
 | `SECOND_CHAT_NO_SHOW` | user with no message inside the grace window | `SchedulingCommitmentScore` | `-10` |
 | `SAFETY_REPORT_DETERMINED_ABUSIVE` | abusive/unjustified reporter | `ResolutionQualityScore` | `-8` |
 
-No reliability events are created for visual approval, visual rejection, visual decisions made on time, creating a safety report, pending safety reports, ordinary insufficient-evidence dismissals, or confirmed safety reports against the reported user.
+No reliability events are created for visual approval, visual rejection, visual decisions made on time, reading a partner personal message, creating a safety report, pending safety reports, ordinary insufficient-evidence dismissals, or confirmed safety reports against the reported user.
 
 ## First Chat Mapping
 
@@ -98,6 +99,12 @@ Future work: the UI may hide non-safety close options during the first configure
 ## Visual Review
 
 Visual approval and rejection do not affect reliability. If the visual review expires, unresolved users receive `VISUAL_REVIEW_EXPIRED_NO_DECISION`.
+
+A successful optional personal-message submission records
+`VISUAL_PERSONAL_MESSAGE_SUBMITTED` once per user per match. This is a small
+`+1` participation incentive for making the optional personal-message effort.
+Reading the partner personal message does not create a positive reliability
+event.
 
 ## Scheduling And Second Chat
 
