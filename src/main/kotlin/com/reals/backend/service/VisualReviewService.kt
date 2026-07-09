@@ -218,6 +218,11 @@ class VisualReviewService(
 
         review.updatedAt = OffsetDateTime.now()
         visualReviewRepository.save(review)
+        userReliabilityScoreService.recordEvent(
+            userId = userId,
+            eventType = UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED,
+            relatedMatchId = match.id
+        )
     }
 
     fun getPartnerMessage(
