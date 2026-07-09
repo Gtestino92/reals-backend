@@ -12,6 +12,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -DskipTests dependency:go-offline
 
 COPY src src
+COPY legal-documents legal-documents
 
 RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -DskipTests package

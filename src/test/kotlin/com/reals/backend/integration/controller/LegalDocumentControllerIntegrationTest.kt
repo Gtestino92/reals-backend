@@ -24,14 +24,18 @@ import kotlin.test.assertEquals
         "legal.documents[0].type=TERMS_OF_USE",
         "legal.documents[0].version=2026-07-01-test",
         "legal.documents[0].url=https://example.test/terms",
+        "legal.documents[0].content-sha256=ff9fe114707d5bc600e3e7be9f48060f6507215784d6b6357f89317c0b965405",
         "legal.documents[0].required-action=ACCEPTED",
         "legal.documents[1].type=PRIVACY_NOTICE",
         "legal.documents[1].version=2026-07-01-test",
         "legal.documents[1].url=https://example.test/privacy",
+        "legal.documents[1].content-sha256=d71901f8357a8d5923eef8c174f8c0eef90cbcbbc581b20cc926a74da6c4fe0c",
         "legal.documents[1].required-action=ACKNOWLEDGED"
     ]
 )
 class LegalDocumentControllerIntegrationTest : ControllerIT() {
+
+    private val termsContentSha256 = "ff9fe114707d5bc600e3e7be9f48060f6507215784d6b6357f89317c0b965405"
 
     @Autowired
     private lateinit var legalDocumentActionRepository: UserLegalDocumentActionRepository
@@ -45,10 +49,12 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.documents[0].version", equalTo("2026-07-01-test")))
             .andExpect(jsonPath("$.documents[0].url", equalTo("https://example.test/terms")))
             .andExpect(jsonPath("$.documents[0].requiredAction", equalTo("ACCEPTED")))
+            .andExpect(jsonPath("$.documents[0].contentSha256").doesNotExist())
             .andExpect(jsonPath("$.documents[1].type", equalTo("PRIVACY_NOTICE")))
             .andExpect(jsonPath("$.documents[1].version", equalTo("2026-07-01-test")))
             .andExpect(jsonPath("$.documents[1].url", equalTo("https://example.test/privacy")))
             .andExpect(jsonPath("$.documents[1].requiredAction", equalTo("ACKNOWLEDGED")))
+            .andExpect(jsonPath("$.documents[1].contentSha256").doesNotExist())
     }
 
     @Test
@@ -87,6 +93,8 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.action", equalTo("ACCEPTED")))
             .andExpect(jsonPath("$.actedAt", notNullValue()))
             .andExpect(jsonPath("$.userId").doesNotExist())
+            .andExpect(jsonPath("$.documentContentSha256").doesNotExist())
+            .andExpect(jsonPath("$.contentSha256").doesNotExist())
 
         val storedAction = legalDocumentActionRepository
             .findByUserIdAndDocumentTypeAndDocumentVersion(
@@ -96,6 +104,7 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
             )
             ?: error("Legal document action was not stored")
         assertEquals(user.id, storedAction.userId)
+        assertEquals(termsContentSha256, storedAction.documentContentSha256)
 
         mockMvc.perform(
             get("/api/me/legal-status")
@@ -106,6 +115,8 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.documents[0].recordedAction", equalTo("ACCEPTED")))
             .andExpect(jsonPath("$.documents[0].actedAt", notNullValue()))
             .andExpect(jsonPath("$.documents[0].satisfied", equalTo(true)))
+            .andExpect(jsonPath("$.documents[0].documentContentSha256").doesNotExist())
+            .andExpect(jsonPath("$.documents[0].contentSha256").doesNotExist())
             .andExpect(jsonPath("$.documents[1].satisfied", equalTo(false)))
     }
 
@@ -117,6 +128,7 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
                 userId = user.id,
                 documentType = LegalDocumentType.TERMS_OF_USE,
                 documentVersion = "2026-06-01-test",
+                documentContentSha256 = termsContentSha256,
                 action = LegalDocumentAction.ACCEPTED
             )
         )
@@ -128,6 +140,49 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.documents[0].version", equalTo("2026-07-01-test")))
             .andExpect(jsonPath("$.documents[0].recordedAction").doesNotExist())
+            .andExpect(jsonPath("$.documents[0].satisfied", equalTo(false)))
+    }
+
+    @Test
+    fun `legacy legal document action without content hash does not satisfy current document`() {
+        val user = userService.createUser("legal-legacy-hash-${UUID.randomUUID()}@example.com")
+        legalDocumentActionRepository.save(
+            UserLegalDocumentAction(
+                userId = user.id,
+                documentType = LegalDocumentType.TERMS_OF_USE,
+                documentVersion = "2026-07-01-test",
+                action = LegalDocumentAction.ACCEPTED
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/me/legal-status")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.documents[0].recordedAction", equalTo("ACCEPTED")))
+            .andExpect(jsonPath("$.documents[0].satisfied", equalTo(false)))
+    }
+
+    @Test
+    fun `legal document action with different content hash does not satisfy current document`() {
+        val user = userService.createUser("legal-different-hash-${UUID.randomUUID()}@example.com")
+        legalDocumentActionRepository.save(
+            UserLegalDocumentAction(
+                userId = user.id,
+                documentType = LegalDocumentType.TERMS_OF_USE,
+                documentVersion = "2026-07-01-test",
+                documentContentSha256 = "0".repeat(64),
+                action = LegalDocumentAction.ACCEPTED
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/me/legal-status")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.documents[0].recordedAction", equalTo("ACCEPTED")))
             .andExpect(jsonPath("$.documents[0].satisfied", equalTo(false)))
     }
 
@@ -179,6 +234,57 @@ class LegalDocumentControllerIntegrationTest : ControllerIT() {
         kotlin.test.assertTrue(auditEvent.metadataJson?.contains("TERMS_OF_USE") == true)
         kotlin.test.assertTrue(auditEvent.metadataJson?.contains("2026-07-01-test") == true)
         kotlin.test.assertTrue(auditEvent.metadataJson?.contains("ACCEPTED") == true)
+        kotlin.test.assertTrue(auditEvent.metadataJson?.contains(termsContentSha256) == true)
+    }
+
+    @Test
+    fun `same type and version with different historical content hash fails without rewriting action`() {
+        val user = userService.createUser("legal-hash-invariant-${UUID.randomUUID()}@example.com")
+        val historicalActedAt = java.time.OffsetDateTime.parse("2026-07-01T00:00:00Z")
+        val historicalHash = "0".repeat(64)
+        val existing = legalDocumentActionRepository.saveAndFlush(
+            UserLegalDocumentAction(
+                userId = user.id,
+                documentType = LegalDocumentType.TERMS_OF_USE,
+                documentVersion = "2026-07-01-test",
+                documentContentSha256 = historicalHash,
+                action = LegalDocumentAction.ACCEPTED,
+                actedAt = historicalActedAt
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/me/legal-document-actions")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "documentType": "TERMS_OF_USE",
+                      "documentVersion": "2026-07-01-test",
+                      "action": "ACCEPTED"
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+
+        val stored = legalDocumentActionRepository.findById(existing.id).orElseThrow()
+        assertEquals(historicalHash, stored.documentContentSha256)
+        assertEquals(historicalActedAt, stored.actedAt)
+        assertEquals(
+            1,
+            legalDocumentActionRepository.findByUserId(user.id)
+                .count { it.documentType == LegalDocumentType.TERMS_OF_USE && it.documentVersion == "2026-07-01-test" }
+        )
+        assertEquals(
+            0,
+            auditEventRepository.findAll().count {
+                it.eventType == AuditEventType.LEGAL_DOCUMENT_ACTION_RECORDED &&
+                    it.aggregateId == user.id
+            }
+        )
     }
 
     @Test
