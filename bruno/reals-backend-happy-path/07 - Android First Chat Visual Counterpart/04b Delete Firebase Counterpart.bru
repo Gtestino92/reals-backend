@@ -1,0 +1,15 @@
+meta {
+  name: 04b Delete Firebase Counterpart
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
