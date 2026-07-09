@@ -2,7 +2,9 @@ package com.reals.backend.repository
 
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -14,6 +16,12 @@ interface ConnectionRepository :
 
     fun findByMatchId(
         matchId: UUID
+    ): Connection?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Connection c where c.id = :connectionId")
+    fun findByIdForUpdate(
+        @Param("connectionId") connectionId: UUID
     ): Connection?
 
     fun findByStateAndSchedulingExpiresAtBefore(
@@ -82,5 +90,25 @@ interface ConnectionRepository :
     fun updateSchedulingAvailableAt(
         @Param("connectionId") connectionId: UUID,
         @Param("availableAt") availableAt: OffsetDateTime
+    ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update Connection c
+        set c.state = :targetState,
+            c.updatedAt = :updatedAt
+        where c.id = :connectionId
+          and c.state in :allowedStates
+        """
+    )
+    fun transitionToSecondChatIfAllowed(
+        @Param("connectionId") connectionId: UUID,
+        @Param("updatedAt") updatedAt: OffsetDateTime,
+        @Param("targetState") targetState: ConnectionState = ConnectionState.SECOND_CHAT,
+        @Param("allowedStates") allowedStates: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE
+        )
     ): Int
 }
