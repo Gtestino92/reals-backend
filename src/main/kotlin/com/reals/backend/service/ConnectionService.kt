@@ -46,6 +46,10 @@ class ConnectionService(
             }
     }
 
+    fun lockByIdOrThrow(connectionId: UUID): Connection =
+        connectionRepository.findByIdForUpdate(connectionId)
+            ?: throw NoSuchElementException("Connection not found: $connectionId")
+
     fun findByIdForUserOrThrow(
         connectionId: UUID,
         userId: UUID
@@ -287,6 +291,51 @@ class ConnectionService(
             reason = "second_chat_entered"
         )
         return saved
+    }
+
+    fun transitionToSecondChatIdempotent(connectionId: UUID): Connection {
+        val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+
+        check(
+            connection.state == ConnectionState.SECOND_CHAT_SCHEDULED ||
+                connection.state == ConnectionState.SECOND_CHAT_AVAILABLE ||
+                connection.state == ConnectionState.SECOND_CHAT
+        ) {
+            "Cannot transition to SECOND_CHAT: connection is in state ${connection.state}"
+        }
+
+        if (connection.state == ConnectionState.SECOND_CHAT) {
+            return connection
+        }
+
+        val previousState = connection.state
+        val transitioned = connectionRepository.transitionToSecondChatIfAllowed(
+            connectionId = connectionId,
+            updatedAt = OffsetDateTime.now()
+        )
+        val updated = findByIdOrThrow(connectionId)
+
+        check(updated.state == ConnectionState.SECOND_CHAT) {
+            "Cannot transition to SECOND_CHAT: connection is in state ${updated.state}"
+        }
+
+        if (transitioned == 1) {
+            if (previousState == ConnectionState.SECOND_CHAT_SCHEDULED) {
+                homeStateInvalidationService.bumpBoth(
+                    userAId = updated.userAId,
+                    userBId = updated.userBId,
+                    reason = "second_chat_available"
+                )
+            }
+            homeStateInvalidationService.bumpBoth(
+                userAId = updated.userAId,
+                userBId = updated.userBId,
+                reason = "second_chat_entered"
+            )
+        }
+
+        return updated
     }
 
     /**

@@ -11,13 +11,25 @@ import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.OffsetDateTime
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class ConnectionControllerIntegrationTest : ControllerIT() {
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     @Test
     fun `submit proposal list returns created proposals`() {
@@ -163,6 +175,100 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `get second chat repeated sequential calls return same chat over http`() {
+        val setup = createScheduledSecondChatReadyToEnter()
+
+        val first =
+            objectMapper.readTree(
+                mockMvc.perform(
+                    get("/api/connections/${setup.connectionId}/chat")
+                        .with(authenticatedAs(setup.userAId))
+                )
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            )
+
+        val second =
+            objectMapper.readTree(
+                mockMvc.perform(
+                    get("/api/connections/${setup.connectionId}/chat")
+                        .with(authenticatedAs(setup.userBId))
+                )
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            )
+
+        assertEquals(first["id"].asString(), second["id"].asString())
+        assertEquals(
+            1,
+            chatRepository.findAll().count {
+                it.connectionId == setup.connectionId && it.chatType == ChatType.SECOND_CHAT
+            }
+        )
+        assertEquals(
+            ConnectionState.SECOND_CHAT,
+            connectionRepository.findById(setup.connectionId).orElseThrow().state
+        )
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `concurrent get second chat requests return same chat over http`() {
+        val setup =
+            TransactionTemplate(transactionManager).execute {
+                createScheduledSecondChatReadyToEnter()
+            }
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val futures =
+                listOf(setup.userAId, setup.userBId).map { userId ->
+                    executor.submit(
+                        Callable {
+                            start.await()
+                            mockMvc.perform(
+                                get("/api/connections/${setup.connectionId}/chat")
+                                    .with(authenticatedAs(userId))
+                            )
+                                .andExpect(status().isOk)
+                                .andReturn()
+                                .response
+                                .contentAsString
+                        }
+                    )
+                }
+
+            start.countDown()
+
+            val chatIds =
+                futures.map {
+                    objectMapper.readTree(
+                        it.get(15, TimeUnit.SECONDS)
+                    )["id"].asString()
+                }
+
+            assertEquals(1, chatIds.toSet().size)
+            assertEquals(
+                1,
+                chatRepository.findAll().count {
+                    it.connectionId == setup.connectionId && it.chatType == ChatType.SECOND_CHAT
+                }
+            )
+            assertEquals(
+                ConnectionState.SECOND_CHAT,
+                connectionRepository.findById(setup.connectionId).orElseThrow().state
+            )
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `get second chat before available time returns conflict`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
@@ -180,6 +286,23 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_NOT_AVAILABLE_YET")))
+
+        assertEquals(
+            null,
+            chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)
+        )
+    }
+
+    @Test
+    fun `get second chat in invalid connection state returns conflict`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/chat")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_NOT_AVAILABLE")))
 
         assertEquals(
             null,
