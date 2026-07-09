@@ -1,5 +1,6 @@
 package com.reals.backend.config.security
 
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.DevAutoAuthFilter
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
 import jakarta.servlet.http.HttpServletResponse
@@ -17,6 +18,7 @@ import org.springframework.security.web.header.writers.frameoptions.XFrameOption
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
+    private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val devAutoAuthFilter: DevAutoAuthFilter?,
     private val firebaseTokenFilter: FirebaseTokenFilter?
 ) {
@@ -69,13 +71,23 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/ping").permitAll()
-                    .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/legal/documents/current").permitAll()
-                    // Local-dev tooling controllers are profile-gated and do not run in dev/prod.
-                    // They execute system jobs, so requiring a user bearer token only adds local friction.
-                    .requestMatchers("/api/local-dev/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
-                    .requestMatchers("/h2-console/**").permitAll()
+
+                if (environmentExposurePolicy.localDevEndpointsAllowed()) {
+                    // Local tooling executes system jobs; bearer auth only adds local friction.
+                    auth.requestMatchers("/api/local-dev/**").permitAll()
+                } else {
+                    auth.requestMatchers("/api/local-dev/**").denyAll()
+                }
+
+                if (environmentExposurePolicy.h2ConsoleAllowed()) {
+                    auth.requestMatchers("/h2-console/**").permitAll()
+                } else {
+                    auth.requestMatchers("/h2-console/**").denyAll()
+                }
+
+                auth
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
                     .requestMatchers("/api/admin/**").hasRole(SecurityRoles.ADMIN)

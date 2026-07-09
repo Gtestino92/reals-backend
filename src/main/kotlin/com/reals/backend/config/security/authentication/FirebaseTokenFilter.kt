@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.authentication
 
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
@@ -22,6 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 @Profile("local-firebase", "dev", "prod")
 class FirebaseTokenFilter(
+    private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val userService: UserService,
     @param:Value("\${backoffice.admin-emails:}")
     private val adminEmailsProperty: String = ""
@@ -45,8 +47,10 @@ class FirebaseTokenFilter(
                 request.method.equals("GET", ignoreCase = true) &&
                     path == "/api/legal/documents/current"
             ) ||
-            path.startsWith("/api/auth/") ||
-            path.startsWith("/api/local-dev/") ||
+            (
+                environmentExposurePolicy.localDevEndpointsAllowed() &&
+                    path.startsWith("/api/local-dev/")
+            ) ||
             path == "/actuator/health" ||
             path.startsWith("/actuator/health/") ||
             path == "/actuator/info" ||
