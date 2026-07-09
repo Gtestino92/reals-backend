@@ -22,18 +22,29 @@ The formal OpenAPI contract lives in `openapi.yaml`.
 - `POST /api/me/legal-document-actions`: authenticated factual record that the current user performed `ACCEPTED` or `ACKNOWLEDGED` for a configured legal document type/version. Returns `201 Created` for a new row and `200 OK` for an identical replay.
 
 Legal document support records factual user actions:
-`User X performed action Y for legal document type Z, version V, at time T`.
+`User X performed action Y for legal document type Z, version V, content
+SHA-256 H, at time T`.
 The source of truth is `user_legal_document_actions`. `AuditEvent` is secondary
-operational evidence and stores only document type, version and action metadata.
+operational evidence and stores only document type, version, content SHA-256 and
+action metadata.
 The compliance source of truth is the current `legal.documents` catalog plus
 `user_legal_document_actions`.
+
+Clients do not submit or choose legal content hashes. `POST
+/api/me/legal-document-actions` keeps the request body as document type,
+document version and action only. When recording a new action, the backend
+resolves the current configured legal document and copies its canonical
+`content-sha256` server-side. Current user-facing legal responses do not expose
+the persisted content hash.
 
 Protected participation/content writes are backend-gated by current legal
 status and may return `409 LEGAL_ACTION_REQUIRED`. The generic error does not
 list missing documents; clients should call `GET /api/me/legal-status` for the
 authoritative detailed status and `GET /api/legal/documents/current` for URL
 metadata. An empty legal catalog means requirements are satisfied. Historical
-actions stay persisted but do not satisfy a newer configured version.
+actions stay persisted but do not satisfy a newer configured version. Legacy
+actions without a stored content SHA-256 and historical actions with a different
+content SHA-256 also do not satisfy the current configured document.
 
 The gate applies to profile creation/editing/activation/match filters/identity
 verification/photo upload/photo reorder/photo replacement, entering
