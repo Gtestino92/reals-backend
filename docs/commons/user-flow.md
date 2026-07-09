@@ -128,7 +128,10 @@ Each user submits one `VisualDecision`.
 
 Personal messages are stored on `VisualReview`. Current behavior allows reading
 the partner message during visual review once it exists, and requires reading it
-before deciding if the partner already submitted one.
+before deciding if the partner already submitted one. A successful optional
+personal-message submission also records a small backend-internal reliability
+participation event when user reliability is enabled. The message remains
+optional, and reading the partner message does not create a reliability event.
 
 Match and visual-profile responses expose `visualExpiresAt` so clients can warn
 before the visual phase expires. New visual decisions after that deadline are

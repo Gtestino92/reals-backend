@@ -2,6 +2,7 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.controller.dev.DevUserReliabilityController
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.integration.ControllerIT
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -20,6 +21,25 @@ class UserReliabilityDisabledIntegrationTest : ControllerIT() {
 
         assertFalse(userReliabilityScoreService.enabled)
         assertEquals(0, userReliabilityEventRepository.count())
+    }
+
+    @Test
+    fun `feature flag disabled allows visual personal message without reliability event`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Mensaje sin reliability")
+
+        assertEquals(
+            "Mensaje sin reliability",
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageA
+        )
+        assertFalse(userReliabilityScoreService.enabled)
+        assertEquals(
+            0,
+            userReliabilityEventRepository.findAll().count {
+                it.eventType == UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED
+            }
+        )
     }
 
     @Test
