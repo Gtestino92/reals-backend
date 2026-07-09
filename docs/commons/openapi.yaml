@@ -338,14 +338,29 @@ paths:
     post:
       tags: [Profiles]
       summary: Run identity verification for the profile
-      description: Current provider none marks the profile VERIFIED for MVP/local compatibility and does not represent real external identity or age verification.
+      description: With provider none outside prod, the MVP compatibility path may mark the profile VERIFIED and does not represent real external identity or age verification. With provider none in prod, verification is unavailable and no VERIFIED state is persisted.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Domain conflict. In prod with provider none, stable code `IDENTITY_VERIFICATION_NOT_CONFIGURED` is returned. This endpoint may also return `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                identityVerificationNotConfigured:
+                  value:
+                    code: IDENTITY_VERIFICATION_NOT_CONFIGURED
+                    error: Conflict
+                    message: Identity verification is not configured
+                legalActionRequired:
+                  value:
+                    code: LEGAL_ACTION_REQUIRED
+                    error: Conflict
+                    message: Current legal document actions are required before continuing
   /api/me/profile/photos:
     post:
       tags: [Profiles]
@@ -2005,10 +2020,10 @@ components:
         isFullBody: { type: boolean }
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
-          description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
+          description: Technical and semantic photo-validation status. Outside prod, the MVP shortcut may return VALIDATED after technical validation. In prod, technical validation alone returns PENDING and does not establish person/full-body semantics.
         moderationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
-          description: Content moderation status. With provider none, APPROVED is a permissive MVP result and does not represent external safety review.
+          description: Content moderation status. With provider none outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW.
     VisualProfileResponse:
       type: object
       required:

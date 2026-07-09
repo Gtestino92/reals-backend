@@ -63,11 +63,11 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo moderation provider. Defaults to `none`, which approves without external review. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo moderation provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP `APPROVED` shortcut; in `prod`, `none` returns `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
-| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` for MVP/local compatibility. |
-| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`, which marks profiles verified without external review for MVP/local compatibility. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
+| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
+| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
 | `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
@@ -258,10 +258,28 @@ recalculates the actionable deadline from the activation time.
 provider abstraction exists so a real identity-verification integration can be
 added later without changing profile creation flow. Identity verification is
 invoked explicitly through `POST /api/me/profile/identity-verification`; profile
-creation does not call the provider. With `provider=none`, profiles are marked
+creation does not call the provider.
+
+With `provider=none` outside `prod`, profiles are marked
 `identityVerificationStatus=VERIFIED` and `identityVerified=true` for MVP/local
-compatibility only; this does not represent real external identity or age
-verification.
+compatibility only. This does not represent real external identity, document,
+liveness, age or fraud verification.
+
+With `provider=none` in `prod`, the endpoint fails with
+`409 IDENTITY_VERIFICATION_NOT_CONFIGURED` and no `VERIFIED` state is persisted.
+Identity verification remains optional for activation unless
+`profile.identity-verification.require-for-activation=true`.
+
+Profile photo validation and moderation are also profile-aware. Outside `prod`,
+the MVP compatibility shortcuts preserve `true`/`true`/`VALIDATED` semantic
+photo validation and `APPROVED` moderation when moderation provider is `none`.
+In `prod`, successful technical image validation alone returns
+`isPersonPhoto=false`, `isFullBody=false` and `validationStatus=PENDING`; `none`
+moderation returns `NEEDS_REVIEW`. Successful file decoding and dimension checks
+are not semantic person/full-body validation. `application-prod.yml` defaults
+`profile.photos.require-moderation-approval-for-activation` to `true`, while
+preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
+override.
 
 `IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
 empty until that provider is implemented.

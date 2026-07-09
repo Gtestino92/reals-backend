@@ -169,7 +169,7 @@ these values as text, not HTML.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo upload/replacement/deletion or match-filter configuration.
 - `PUT /api/me/profile/match-filters`: replace matchmaking preferences. Body: `intention`, `lookingForGenders`, `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
-- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
+- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent real external identity or age verification. With provider `none` in `prod`, verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
@@ -184,10 +184,18 @@ responses when needed instead of persisting URLs permanently.
 
 Photo upload validation has two separate fields. `validationStatus` is the
 blocking technical upload result for file type, size, decoding and dimensions.
-`moderationStatus` is the content-moderation result. The current default
-provider is `none`, which permissively returns `APPROVED` and does not represent
-an external safety, person or full-body review. Production can later require
-`moderationStatus = APPROVED` for activation with
+Successful technical image validation is not semantic person/full-body
+validation. Outside `prod`, the temporary MVP shortcut still returns
+`isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
+`prod`, technical validation alone returns `isPersonPhoto=false`,
+`isFullBody=false` and `validationStatus=PENDING` until real semantic analysis
+exists.
+
+`moderationStatus` is the content-moderation result. With provider `none`
+outside `prod`, the MVP compatibility path returns `APPROVED` without external
+review. With provider `none` in `prod`, uploads may proceed but persist
+`NEEDS_REVIEW`. Production defaults to requiring `moderationStatus=APPROVED`
+for activation through
 `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
 
 ## Matchmaking

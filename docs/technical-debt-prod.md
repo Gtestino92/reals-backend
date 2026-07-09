@@ -85,7 +85,8 @@ Current state:
 - `Profile.identityVerificationStatus` is the richer persisted verification state.
 - Identity verification endpoint exists.
 - Provider abstraction exists.
-- Current `none` provider returns `VERIFIED` for MVP/local compatibility only; it is not real external identity or age verification.
+- Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not real external identity or age verification.
+- In `prod`, provider `none` fails explicitly with `IDENTITY_VERIFICATION_NOT_CONFIGURED` and does not persist `VERIFIED`.
 
 Production decision:
 - Identity verification is separate from profile photos.
@@ -94,6 +95,7 @@ Production decision:
 
 Future implementation:
 - Choose identity verification provider or internal verification flow.
+- Define the identity verification product requirement.
 - Define required inputs:
   - selfie;
   - liveness check;
@@ -118,10 +120,18 @@ Future implementation:
 
 ### 3.1 Future upload lifecycle
 
-MVP shortcut:
-- `validationStatus` now means technical upload validation only.
-- `moderationStatus` is separate and currently uses provider `none`, which returns `APPROVED` without external review.
-- Production can enable `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`, but a real provider is still pending.
+Implemented production fail-safe compatibility:
+- identity provider `none` does not create `VERIFIED` in `prod`;
+- photo moderation provider `none` does not create `APPROVED` in `prod`;
+- technical photo validation does not create person/full-body semantic facts in `prod`;
+- production activation defaults to requiring `APPROVED` moderation.
+
+Current shortcut split:
+- Outside `prod`, `validationStatus=VALIDATED`, `isPersonPhoto=true` and `isFullBody=true` are preserved for MVP/local/dev/test compatibility after technical upload validation.
+- In `prod`, technical upload validation alone leaves photos as `validationStatus=PENDING`, `isPersonPhoto=false` and `isFullBody=false`.
+- Outside `prod`, moderation provider `none` returns `APPROVED` for compatibility.
+- In `prod`, moderation provider `none` returns `NEEDS_REVIEW`.
+- A real semantic-analysis provider and real content-moderation provider are still pending.
 
 Production target:
 1. User uploads a photo.
@@ -155,6 +165,8 @@ Preferred long-term direction:
 
 Future work:
 - Add admin ability to hide/reject/remove photos.
+- Implement real photo semantic analysis for person/full-body requirements.
+- Implement real photo content moderation.
 - Add external automatic image moderation for:
   - nudity;
   - explicit sexual content;
@@ -163,7 +175,14 @@ Future work:
   - minors/underage risk;
   - other prohibited content.
 - Add person detection, full-body detection and face/person consistency if product requirements need them.
+- Define asynchronous callbacks/webhooks if required.
+- Define manual review flows.
+- Define provider artifact privacy/retention.
 - Define whether rejected photos are deleted, hidden, quarantined or retained for audit.
+
+Historical production data limitation:
+- The backend does not persist enough historical provider/analyzer identity to safely determine which old positive rows came from MVP shortcuts and which could theoretically come from another implementation.
+- Before meaningful production traffic, any existing prod data created while the MVP none/semantic shortcuts were active must be inventoried and either deleted, reset or revalidated according to an explicit operator decision.
 
 ### 3.4 Media storage production work
 

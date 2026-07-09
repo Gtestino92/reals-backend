@@ -7,6 +7,7 @@ import com.reals.backend.service.identity.IdentityVerificationProvider
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.LocalDate
@@ -41,10 +42,35 @@ class IdentityVerificationServiceTest {
         assertEquals(DomainErrorCode.IDENTITY_VERIFICATION_PROVIDER_ERROR, exception.code)
     }
 
+    @Test
+    fun `domain exceptions from provider are propagated when fail on provider error is disabled`() {
+        val domainException = DomainConflictException(
+            code = DomainErrorCode.IDENTITY_VERIFICATION_NOT_CONFIGURED,
+            message = "Identity verification is not configured"
+        )
+        val service = IdentityVerificationService(
+            provider = domainThrowingProvider(domainException),
+            failOnProviderError = false
+        )
+
+        val exception = assertThrows<DomainConflictException> {
+            service.verify(request())
+        }
+
+        assertSame(domainException, exception)
+        assertEquals(DomainErrorCode.IDENTITY_VERIFICATION_NOT_CONFIGURED, exception.code)
+    }
+
     private fun throwingProvider(): IdentityVerificationProvider =
         object : IdentityVerificationProvider {
             override fun verify(request: IdentityVerificationRequest) =
                 throw RuntimeException("provider unavailable")
+        }
+
+    private fun domainThrowingProvider(exception: DomainConflictException): IdentityVerificationProvider =
+        object : IdentityVerificationProvider {
+            override fun verify(request: IdentityVerificationRequest) =
+                throw exception
         }
 
     private fun request(): IdentityVerificationRequest =
