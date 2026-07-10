@@ -79,7 +79,7 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_HATE_REVIEW_THRESHOLD` | no | Reals hate/extremism review score threshold. Defaults to `0.50`. |
 | `PROFILE_PHOTO_HATE_REJECT_THRESHOLD` | no | Reals hate/extremism reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
 | `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
-| `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Production override for `profile.photos.min-full-body-photos`. Production defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/dev/test defaults remain unchanged. |
+| `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Dev/prod override for `profile.photos.min-full-body-photos`. `dev` defaults to `1`; `prod` defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/test defaults remain unchanged. |
 | `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
 | `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
@@ -329,11 +329,14 @@ photo is `APPROVED`. The existing admin profile-photo review queue resolves
 reports, safety reports, blocks, penalties, bans or account lifecycle changes,
 and raw provider scores/request IDs are not persisted yet.
 
-Production also temporarily defaults `profile.photos.min-full-body-photos` to
-`0` through `${PROFILE_MIN_FULL_BODY_PHOTOS:0}`. The `isFullBody` domain/API
-field and configurable requirement remain in place; the production default is
-lowered only because there is not yet a real full-body semantic detector. A
-future provider can restore the production minimum to `1`.
+Dev defaults `profile.photos.min-full-body-photos` to `1`, but shared
+dev/staging-like deployments can set `PROFILE_MIN_FULL_BODY_PHOTOS=0` when
+using Sightengine. Production temporarily defaults the same property to `0`
+through `${PROFILE_MIN_FULL_BODY_PHOTOS:0}`. The `isFullBody` domain/API field
+and configurable requirement remain in place; the production default is lowered
+because there is not yet a real full-body semantic detector and Sightengine
+analysis always leaves `isFullBody=false`. A future provider can restore the
+production minimum to `1`.
 
 `IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
 empty until that provider is implemented.
