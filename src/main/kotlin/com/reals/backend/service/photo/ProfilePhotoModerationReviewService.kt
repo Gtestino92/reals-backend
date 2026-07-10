@@ -62,6 +62,7 @@ class ProfilePhotoModerationReviewService(
     fun resolve(
         photoId: UUID,
         adminUserId: UUID,
+        expectedPhotoVersion: Long,
         decision: AdminPhotoModerationDecision,
         notes: String?
     ): AdminProfilePhotoModerationReview {
@@ -70,6 +71,10 @@ class ProfilePhotoModerationReviewService(
                 code = DomainErrorCode.PROFILE_PHOTO_NOT_FOUND,
                 message = "Profile photo not found"
             )
+
+        if (photo.version != expectedPhotoVersion) {
+            throw reviewNotAvailable()
+        }
 
         if (photo.moderationStatus != PhotoModerationStatus.NEEDS_REVIEW) {
             throw reviewNotAvailable()

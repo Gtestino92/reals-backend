@@ -39,6 +39,7 @@ class ProfilePhotoModerationReviewServiceTest {
                 service.resolve(
                     photoId = photo.id,
                     adminUserId = UUID.randomUUID(),
+                    expectedPhotoVersion = photo.version,
                     decision = AdminPhotoModerationDecision.APPROVED,
                     notes = "Review"
                 )

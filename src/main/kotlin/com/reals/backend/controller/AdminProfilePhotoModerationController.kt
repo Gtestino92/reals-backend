@@ -39,6 +39,7 @@ class AdminProfilePhotoModerationController(
                 profilePhotoModerationReviewService.resolve(
                     photoId = photoId,
                     adminUserId = adminUserId,
+                    expectedPhotoVersion = requireNotNull(request.expectedPhotoVersion),
                     decision = requireNotNull(request.decision),
                     notes = request.normalizedNotes()
                 )

@@ -10,6 +10,7 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
+import jakarta.persistence.EntityManager
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasKey
 import org.hamcrest.Matchers.not
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -31,6 +33,9 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
 
     @MockitoBean
     private lateinit var storageService: S3StorageService
+
+    @Autowired
+    private lateinit var entityManager: EntityManager
 
     @Test
     fun `review queue only returns needs review photos without storage or user secrets`() {
@@ -61,6 +66,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$[0].displayName", equalTo("Review Filter")))
             .andExpect(jsonPath("$[0].position", equalTo(4)))
             .andExpect(jsonPath("$[0].readUrl", equalTo(readUrl(needsReview.storageKey))))
+            .andExpect(jsonPath("$[0].photoVersion", equalTo(needsReview.version.toInt())))
             .andExpect(jsonPath("$[0].validationStatus", equalTo("VALIDATED")))
             .andExpect(jsonPath("$[0].moderationStatus", equalTo("NEEDS_REVIEW")))
             .andExpect(jsonPath("$[0].isPersonPhoto", equalTo(true)))
@@ -124,7 +130,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAsAdmin(admin.id))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$").isEmpty)
+            .andExpect(jsonPath("$").isEmpty())
     }
 
     @Test
@@ -143,7 +149,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             post("/api/admin/profile-photos/${photo.id}/moderation")
                 .with(authenticatedAs(user.id))
                 .contentType(jsonContentType)
-                .content("""{"decision":"APPROVED"}""")
+                .content("""{"expectedPhotoVersion":${photo.version},"decision":"APPROVED"}""")
         )
             .andExpect(status().isForbidden)
     }
@@ -167,7 +173,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             post("/api/admin/profile-photos/${photo.id}/moderation")
                 .with(authenticatedAsAdmin(admin.id))
                 .contentType(jsonContentType)
-                .content("""{"decision":"APPROVED","notes":"Reviewed manually"}""")
+                .content("""{"expectedPhotoVersion":${photo.version},"decision":"APPROVED","notes":"Reviewed manually"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoId", equalTo(photo.id.toString())))
@@ -219,7 +225,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             post("/api/admin/profile-photos/${photo.id}/moderation")
                 .with(authenticatedAsAdmin(admin.id))
                 .contentType(jsonContentType)
-                .content("""{"decision":"REJECTED","notes":"Explicit content"}""")
+                .content("""{"expectedPhotoVersion":${photo.version},"decision":"REJECTED","notes":"Explicit content"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.moderationStatus", equalTo("REJECTED")))
@@ -248,15 +254,16 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             post("/api/admin/profile-photos/${photo.id}/moderation")
                 .with(authenticatedAsAdmin(admin.id))
                 .contentType(jsonContentType)
-                .content("""{"decision":"APPROVED"}""")
+                .content("""{"expectedPhotoVersion":${photo.version},"decision":"APPROVED"}""")
         )
             .andExpect(status().isOk)
 
+        val resolvedVersion = profilePhotoRepository.findById(photo.id).orElseThrow().version
         mockMvc.perform(
             post("/api/admin/profile-photos/${photo.id}/moderation")
                 .with(authenticatedAsAdmin(admin.id))
                 .contentType(jsonContentType)
-                .content("""{"decision":"APPROVED"}""")
+                .content("""{"expectedPhotoVersion":$resolvedVersion,"decision":"APPROVED"}""")
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE")))
@@ -271,6 +278,56 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
                     it.aggregateId == photo.id
             }
         )
+    }
+
+    @Test
+    fun `stale review snapshot is rejected without changing moderation status or auditing`() {
+        stubReadUrls()
+        val fixture = createDraftProfile("stale-review")
+        val photo = savePhoto(fixture.profileId, 1, PhotoModerationStatus.NEEDS_REVIEW)
+        val reviewedVersion = photo.version
+        val admin = userService.createUser("admin-photo-stale-${UUID.randomUUID()}@example.com")
+
+        val current = profilePhotoRepository.findById(photo.id).orElseThrow()
+        current.storageKey = "users/${fixture.userId}/profile-photos/replaced.jpg"
+        current.moderationStatus = PhotoModerationStatus.NEEDS_REVIEW
+        profilePhotoRepository.saveAndFlush(current)
+        entityManager.clear()
+
+        mockMvc.perform(
+            post("/api/admin/profile-photos/${photo.id}/moderation")
+                .with(authenticatedAsAdmin(admin.id))
+                .contentType(jsonContentType)
+                .content("""{"expectedPhotoVersion":$reviewedVersion,"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE")))
+
+        val updated = profilePhotoRepository.findById(photo.id).orElseThrow()
+        assertEquals(PhotoModerationStatus.NEEDS_REVIEW, updated.moderationStatus)
+        assertEquals(
+            0,
+            auditEventRepository.findAll().count {
+                it.eventType == AuditEventType.PHOTO_MODERATION_UPDATED &&
+                    it.aggregateType == AuditAggregateType.PROFILE_PHOTO &&
+                    it.aggregateId == photo.id
+            }
+        )
+    }
+
+    @Test
+    fun `missing expected photo version is rejected as bad request`() {
+        val fixture = createDraftProfile("missing-version")
+        val photo = savePhoto(fixture.profileId, 1, PhotoModerationStatus.NEEDS_REVIEW)
+        val admin = userService.createUser("admin-photo-missing-version-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            post("/api/admin/profile-photos/${photo.id}/moderation")
+                .with(authenticatedAsAdmin(admin.id))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isBadRequest)
     }
 
     private fun createDraftProfile(prefix: String): ProfileFixture {

@@ -18,6 +18,7 @@ data class AdminProfilePhotoModerationReviewResponse(
     val displayName: String,
     val position: Int,
     val readUrl: String,
+    val photoVersion: Long,
     val validationStatus: PhotoValidationStatus,
     val moderationStatus: PhotoModerationStatus,
     val isPersonPhoto: Boolean,
@@ -33,6 +34,7 @@ data class AdminProfilePhotoModerationReviewResponse(
                 displayName = review.profile.displayName,
                 position = review.photo.position,
                 readUrl = review.readUrl,
+                photoVersion = review.photo.version,
                 validationStatus = review.photo.validationStatus,
                 moderationStatus = review.photo.moderationStatus,
                 isPersonPhoto = review.photo.isPersonPhoto,
@@ -43,6 +45,9 @@ data class AdminProfilePhotoModerationReviewResponse(
 }
 
 data class AdminPhotoModerationResolutionRequest(
+    @field:NotNull
+    val expectedPhotoVersion: Long?,
+
     @field:NotNull
     val decision: AdminPhotoModerationDecision?,
 
