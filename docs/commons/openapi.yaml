@@ -13,6 +13,7 @@ security:
 tags:
   - name: Health
   - name: Me
+  - name: Reference
   - name: Profiles
   - name: Legal
   - name: Matchmaking
@@ -257,6 +258,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/reference/countries:
+    get:
+      tags: [Reference]
+      summary: List canonical countries
+      description: Authenticated reference-data endpoint. Returns the complete immutable in-memory country catalog built once from the Java runtime ISO country list, with Spanish display names. Clients should use `code` as the submitted and persisted profile `countryCode`; city remains free text.
+      responses:
+        '200':
+          description: Canonical country reference list ordered by Spanish display name, with code as tie-breaker
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountryReferenceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -1952,7 +1971,7 @@ components:
         displayName: { type: string }
     CreateProfileRequest:
       type: object
-      required: [displayName, birthDate, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [displayName, birthDate, gender, lookingForGenders, intention, city, countryCode, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
         displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
         birthDate: { type: string, format: date }
@@ -1965,8 +1984,18 @@ components:
           items:
             $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          description: ISO 3166-1 alpha-2 country code. Input is trimmed and normalized to uppercase; display names are not accepted. Clients should obtain allowed values from `GET /api/reference/countries`.
         bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
@@ -1976,8 +2005,20 @@ components:
       properties:
         displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
         bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          nullable: true
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          nullable: true
+          description: Optional ISO 3166-1 alpha-2 country code. Null preserves the existing country code; non-null input is trimmed, uppercased and validated.
     UpdateMatchFiltersRequest:
       type: object
       required: [intention, lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
@@ -2037,7 +2078,7 @@ components:
           description: Final user-facing position. Holes across the set are allowed.
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, authenticityVerified, authenticityVerificationStatus, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, authenticityVerified, authenticityVerificationStatus, gender, lookingForGenders, intention, city, countryCode, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
@@ -2055,8 +2096,15 @@ components:
           items:
             $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string }
-        country: { type: string }
+        city:
+          type: string
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Canonical uppercase ISO 3166-1 alpha-2 country code.
         bio: { type: string, nullable: true }
         preferredMinAge: { type: integer }
         preferredMaxAge: { type: integer }
@@ -2065,6 +2113,19 @@ components:
         photoCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    CountryReferenceResponse:
+      type: object
+      required: [code, displayName]
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Canonical uppercase ISO 3166-1 alpha-2 country code to submit as profile `countryCode`.
+        displayName:
+          type: string
+          description: Spanish country display name from the Java runtime locale data.
     PhotoResponse:
       type: object
       required: [id, url, position, isPersonPhoto, isFullBody, validationStatus, moderationStatus]

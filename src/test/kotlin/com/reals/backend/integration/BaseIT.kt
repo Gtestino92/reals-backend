@@ -234,7 +234,7 @@ abstract class BaseIT {
             lookingForGenders = lookingForGenders,
             intention = intention,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             bio = "Integration test profile",
             preferredMinAge = preferredMinAge,
             preferredMaxAge = preferredMaxAge,

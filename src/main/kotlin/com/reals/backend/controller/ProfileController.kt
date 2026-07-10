@@ -63,7 +63,7 @@ class ProfileController(
             lookingForGenders = request.lookingForGenders,
             intention = request.intention,
             city = request.city,
-            country = request.country,
+            countryCode = request.countryCode,
             bio = request.bio,
             preferredMinAge = request.preferredMinAge,
             preferredMaxAge = request.preferredMaxAge,
@@ -108,7 +108,7 @@ class ProfileController(
             displayName = request.displayName,
             bio = request.bio,
             city = request.city,
-            country = request.country,
+            countryCode = request.countryCode,
         )
 
         val photos = profileService.getPhotos(updated.id)

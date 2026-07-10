@@ -17,7 +17,7 @@ import java.time.Period
  * of these filters.
  *
  * Criteria NOT yet applied (future work):
- * - Geographic proximity: requires canonical coordinates/geohash, not free-text city/country.
+ * - Geographic proximity: requires queue search coordinates, not descriptive profile city/countryCode.
  * - Interests/affinities: tag overlap score. Requires an interests field on Profile.
  * - Probabilistic scoring: replace or enrich BasicCompatibilityScorer.
  */

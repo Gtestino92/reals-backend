@@ -37,7 +37,7 @@ class ProfileServiceTest {
             lookingForGenders = mutableSetOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             authenticityVerificationStatus = ProfileAuthenticityVerificationStatus.NOT_STARTED,
             authenticityVerified = false,
             updatedAt = OffsetDateTime.parse("2026-07-09T12:00:00Z")
@@ -83,6 +83,7 @@ class ProfileServiceTest {
             profilePhotoStorageProperties = ProfilePhotoStorageProperties(),
             auditEventService = auditEventService,
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
+            countryReferenceService = CountryReferenceService(),
             maxPhotoCount = 9,
             requiredPhotoCount = 9,
             minPersonPhotos = 3,
