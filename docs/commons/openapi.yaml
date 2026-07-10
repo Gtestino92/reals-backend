@@ -334,28 +334,28 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-  /api/me/profile/identity-verification:
+  /api/me/profile/authenticity-verification:
     post:
       tags: [Profiles]
-      summary: Run identity verification for the profile
-      description: With provider none outside prod, the MVP compatibility path may mark the profile VERIFIED and does not represent real external identity or age verification. With provider none in prod, verification is unavailable and no VERIFIED state is persisted.
+      summary: Run profile authenticity verification for the profile
+      description: Profile Authenticity Verification is not legal identity verification. With provider none outside prod, the MVP compatibility path may mark the profile VERIFIED without liveness or face comparison. With provider none in prod, verification is unavailable and no VERIFIED state is persisted. The current synchronous provider abstraction is not the final liveness/session API.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Domain conflict. In prod with provider none, stable code `IDENTITY_VERIFICATION_NOT_CONFIGURED` is returned. This endpoint may also return `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
+          description: Domain conflict. In prod with provider none, stable code `AUTHENTICITY_VERIFICATION_NOT_CONFIGURED` is returned. This endpoint may also return `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                identityVerificationNotConfigured:
+                authenticityVerificationNotConfigured:
                   value:
-                    code: IDENTITY_VERIFICATION_NOT_CONFIGURED
+                    code: AUTHENTICITY_VERIFICATION_NOT_CONFIGURED
                     error: Conflict
-                    message: Identity verification is not configured
+                    message: Profile authenticity verification is not configured
                 legalActionRequired:
                   value:
                     code: LEGAL_ACTION_REQUIRED
@@ -2037,15 +2037,15 @@ components:
           description: Final user-facing position. Holes across the set are allowed.
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, authenticityVerified, authenticityVerificationStatus, gender, lookingForGenders, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         displayName: { type: string }
         birthDate: { type: string, format: date }
         age: { type: integer }
-        identityVerified: { type: boolean }
-        identityVerificationStatus: { $ref: '#/components/schemas/IdentityVerificationStatus' }
+        authenticityVerified: { type: boolean }
+        authenticityVerificationStatus: { $ref: '#/components/schemas/ProfileAuthenticityVerificationStatus' }
         gender: { $ref: '#/components/schemas/Gender' }
         lookingForGenders:
           type: array
@@ -2539,9 +2539,9 @@ components:
     ProfileStatus:
       type: string
       enum: [DRAFT, ACTIVE, INACTIVE]
-    IdentityVerificationStatus:
+    ProfileAuthenticityVerificationStatus:
       type: string
-      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW]
+      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW, STALE]
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]

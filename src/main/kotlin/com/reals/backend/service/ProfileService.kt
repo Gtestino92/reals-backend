@@ -9,8 +9,9 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
-import com.reals.backend.service.identity.IdentityVerificationRequest
-import com.reals.backend.service.identity.IdentityVerificationService
+import com.reals.backend.service.authenticity.ProfileAuthenticityPhotoCandidate
+import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationRequest
+import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationService
 import com.reals.backend.service.photo.ProfilePhotoAnalysisDecision
 import com.reals.backend.service.photo.PhotoPlacement
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
@@ -32,7 +33,7 @@ class ProfileService(
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
     private val profilePhotoAnalysisService: ProfilePhotoAnalysisService,
-    private val identityVerificationService: IdentityVerificationService,
+    private val profileAuthenticityVerificationService: ProfileAuthenticityVerificationService,
     private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
     private val auditEventService: AuditEventService,
@@ -56,8 +57,8 @@ class ProfileService(
     @param:Value("\${profile.photos.require-moderation-approval-for-activation:false}")
     private val requireModerationApprovalForActivation: Boolean,
 
-    @param:Value("\${profile.identity-verification.require-for-activation:false}")
-    private val requireIdentityVerificationForActivation: Boolean
+    @param:Value("\${profile.authenticity-verification.require-for-activation:false}")
+    private val requireAuthenticityVerificationForActivation: Boolean
 ) {
 
     private companion object {
@@ -125,7 +126,7 @@ class ProfileService(
             userId = userId,
             displayName = normalizedDisplayName,
             birthDate = birthDate,
-            identityVerified = false,
+            authenticityVerified = false,
             gender = gender,
             lookingForGenders = lookingForGenders.toMutableSet(),
             intention = intention,
@@ -146,34 +147,40 @@ class ProfileService(
         return saved
     }
 
-    fun verifyIdentity(profileId: UUID): Profile {
+    fun verifyProfileAuthenticity(profileId: UUID): Profile {
         val profile = findByIdOrThrow(profileId)
-        val oldStatus = profile.identityVerificationStatus
+        val oldStatus = profile.authenticityVerificationStatus
+        val personPhotos = profilePhotoRepository.findByProfileId(profile.id)
+            .filter {
+                it.validationStatus == PhotoValidationStatus.VALIDATED &&
+                    it.isPersonPhoto
+            }
+            .sortedBy { it.position }
+            .map {
+                ProfileAuthenticityPhotoCandidate(
+                    photoId = it.id,
+                    photoVersion = it.version,
+                    storageKey = it.storageKey
+                )
+            }
 
-        val identityVerification = identityVerificationService.verify(
-            IdentityVerificationRequest(
+        val authenticityVerification = profileAuthenticityVerificationService.verify(
+            ProfileAuthenticityVerificationRequest(
                 userId = profile.userId,
                 profileId = profile.id,
-                displayName = profile.displayName,
-                birthDate = profile.birthDate
+                personPhotos = personPhotos
             )
         )
 
-        profile.identityVerificationStatus = identityVerification.status
-        profile.identityVerified = identityVerification.status == IdentityVerificationStatus.VERIFIED
+        profile.authenticityVerificationStatus = authenticityVerification.status
+        profile.authenticityVerified =
+            authenticityVerification.status == ProfileAuthenticityVerificationStatus.VERIFIED
         profile.updatedAt = OffsetDateTime.now()
 
         val saved = profileRepository.save(profile)
-        auditEventService.record(
-            eventType = AuditEventType.IDENTITY_VERIFICATION_UPDATED,
-            aggregateType = AuditAggregateType.PROFILE,
-            aggregateId = saved.id,
-            actorUserId = saved.userId,
-            metadata = mapOf(
-                "oldStatus" to oldStatus.name,
-                "newStatus" to saved.identityVerificationStatus.name,
-                "identityVerified" to saved.identityVerified
-            )
+        recordProfileAuthenticityVerificationUpdated(
+            profile = saved,
+            oldStatus = oldStatus
         )
         return saved
     }
@@ -194,7 +201,7 @@ class ProfileService(
         }
 
         validatePhotosOrThrow(profileId)
-        validateIdentityVerificationForActivation(profile)
+        validateAuthenticityVerificationForActivation(profile)
 
         profile.status = ProfileStatus.ACTIVE
         profile.updatedAt = OffsetDateTime.now()
@@ -410,6 +417,8 @@ class ProfileService(
             storageService.delete(storageKey)
         }
 
+        val authenticityOldStatus = profile.authenticityVerificationStatus
+        val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
         val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
         profile.updatedAt = OffsetDateTime.now()
@@ -427,6 +436,13 @@ class ProfileService(
                 "moderationStatus" to existing.moderationStatus.name
             )
         )
+        if (authenticityInvalidated) {
+            recordProfileAuthenticityVerificationUpdated(
+                profile = savedProfile,
+                oldStatus = authenticityOldStatus,
+                reason = "PROFILE_PHOTO_MUTATED"
+            )
+        }
         if (movedToDraft) {
             homeStateInvalidationService.bump(
                 userId = savedProfile.userId,
@@ -502,6 +518,8 @@ class ProfileService(
                 storageService.delete(oldStorageKey)
             }
 
+            val authenticityOldStatus = profile.authenticityVerificationStatus
+            val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
             val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
             auditEventService.record(
@@ -511,6 +529,13 @@ class ProfileService(
                 actorUserId = profile.userId,
                 metadata = photoAuditMetadata(saved)
             )
+            if (authenticityInvalidated) {
+                recordProfileAuthenticityVerificationUpdated(
+                    profile = profile,
+                    oldStatus = authenticityOldStatus,
+                    reason = "PROFILE_PHOTO_MUTATED"
+                )
+            }
             if (movedToDraft) {
                 homeStateInvalidationService.bump(
                     userId = profile.userId,
@@ -592,6 +617,8 @@ class ProfileService(
                 )
             )
 
+            val authenticityOldStatus = profile.authenticityVerificationStatus
+            val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
             val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
             auditEventService.record(
@@ -601,6 +628,13 @@ class ProfileService(
                 actorUserId = profile.userId,
                 metadata = photoAuditMetadata(photo)
             )
+            if (authenticityInvalidated) {
+                recordProfileAuthenticityVerificationUpdated(
+                    profile = profile,
+                    oldStatus = authenticityOldStatus,
+                    reason = "PROFILE_PHOTO_MUTATED"
+                )
+            }
             if (movedToDraft) {
                 homeStateInvalidationService.bump(
                     userId = profile.userId,
@@ -632,6 +666,48 @@ class ProfileService(
             return true
         }
         return false
+    }
+
+    private fun invalidateProfileAuthenticityAfterPhotoMutation(profile: Profile): Boolean {
+        val oldStatus = profile.authenticityVerificationStatus
+        val newStatus = when (oldStatus) {
+            ProfileAuthenticityVerificationStatus.NOT_STARTED -> ProfileAuthenticityVerificationStatus.NOT_STARTED
+            ProfileAuthenticityVerificationStatus.STALE -> ProfileAuthenticityVerificationStatus.STALE
+            ProfileAuthenticityVerificationStatus.PENDING,
+            ProfileAuthenticityVerificationStatus.VERIFIED,
+            ProfileAuthenticityVerificationStatus.REJECTED,
+            ProfileAuthenticityVerificationStatus.NEEDS_REVIEW -> ProfileAuthenticityVerificationStatus.STALE
+        }
+
+        profile.authenticityVerificationStatus = newStatus
+        if (newStatus == ProfileAuthenticityVerificationStatus.STALE) {
+            profile.authenticityVerified = false
+        }
+        if (oldStatus != newStatus) {
+            profile.updatedAt = OffsetDateTime.now()
+        }
+
+        return oldStatus != ProfileAuthenticityVerificationStatus.STALE &&
+            newStatus == ProfileAuthenticityVerificationStatus.STALE
+    }
+
+    private fun recordProfileAuthenticityVerificationUpdated(
+        profile: Profile,
+        oldStatus: ProfileAuthenticityVerificationStatus,
+        reason: String? = null
+    ) {
+        auditEventService.record(
+            eventType = AuditEventType.PROFILE_AUTHENTICITY_VERIFICATION_UPDATED,
+            aggregateType = AuditAggregateType.PROFILE,
+            aggregateId = profile.id,
+            actorUserId = profile.userId,
+            metadata = mapOf(
+                "oldStatus" to oldStatus.name,
+                "newStatus" to profile.authenticityVerificationStatus.name,
+                "authenticityVerified" to profile.authenticityVerified,
+                "reason" to reason
+            )
+        )
     }
 
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
@@ -874,14 +950,14 @@ class ProfileService(
         }
     }
 
-    private fun validateIdentityVerificationForActivation(profile: Profile) {
+    private fun validateAuthenticityVerificationForActivation(profile: Profile) {
         if (
-            requireIdentityVerificationForActivation &&
-            profile.identityVerificationStatus != IdentityVerificationStatus.VERIFIED
+            requireAuthenticityVerificationForActivation &&
+            profile.authenticityVerificationStatus != ProfileAuthenticityVerificationStatus.VERIFIED
         ) {
             throw DomainConflictException(
-                code = DomainErrorCode.PROFILE_IDENTITY_VERIFICATION_REQUIRED,
-                message = "Profile identity must be verified before activation"
+                code = DomainErrorCode.PROFILE_AUTHENTICITY_VERIFICATION_REQUIRED,
+                message = "Profile authenticity must be verified before activation"
             )
         }
     }

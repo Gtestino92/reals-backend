@@ -1,6 +1,6 @@
-package com.reals.backend.service.identity
+package com.reals.backend.service.authenticity
 
-import com.reals.backend.domain.IdentityVerificationStatus
+import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
@@ -8,14 +8,14 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 @Service
-class IdentityVerificationService(
-    private val provider: IdentityVerificationProvider,
+class ProfileAuthenticityVerificationService(
+    private val provider: ProfileAuthenticityVerificationProvider,
 
-    @param:Value("\${profile.identity-verification.fail-on-provider-error:false}")
+    @param:Value("\${profile.authenticity-verification.fail-on-provider-error:false}")
     private val failOnProviderError: Boolean
 ) {
 
-    fun verify(request: IdentityVerificationRequest): IdentityVerificationResult =
+    fun verify(request: ProfileAuthenticityVerificationRequest): ProfileAuthenticityVerificationResult =
         try {
             provider.verify(request)
         } catch (ex: DomainException) {
@@ -23,13 +23,13 @@ class IdentityVerificationService(
         } catch (ex: Exception) {
             if (failOnProviderError) {
                 throw DomainConflictException(
-                    code = DomainErrorCode.IDENTITY_VERIFICATION_PROVIDER_ERROR,
-                    message = "Identity verification provider failed"
+                    code = DomainErrorCode.AUTHENTICITY_VERIFICATION_PROVIDER_ERROR,
+                    message = "Profile authenticity verification provider failed"
                 )
             }
 
-            IdentityVerificationResult(
-                status = IdentityVerificationStatus.NEEDS_REVIEW,
+            ProfileAuthenticityVerificationResult(
+                status = ProfileAuthenticityVerificationStatus.NEEDS_REVIEW,
                 provider = "provider-error",
                 reason = ex.message
             )

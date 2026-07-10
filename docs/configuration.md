@@ -80,9 +80,9 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_HATE_REJECT_THRESHOLD` | no | Reals hate/extremism reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
 | `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
 | `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Dev/prod override for `profile.photos.min-full-body-photos`. `dev` defaults to `1`; `prod` defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/test defaults remain unchanged. |
-| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
-| `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
-| `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER` | no | Profile authenticity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, authenticity verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject profile authenticity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `authenticityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
@@ -204,7 +204,7 @@ Sensitive runtime secrets:
 | `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | Sightengine API secret. Required only when the provider is selected. Do not commit or log it. |
 | `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
-| `IDENTITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future identity provider; keep empty while provider is `none`. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future profile authenticity provider; keep empty while provider is `none`. |
 
 S3-compatible storage has two endpoint concerns. `STORAGE_S3_ENDPOINT` is where the
 backend writes and deletes objects. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
@@ -232,7 +232,7 @@ In that setup, CI builds and publishes the image from this repository, then the 
 
 `application-dev.yml` and `application-prod.yml` intentionally repeat operational settings such as scheduler cadence, chat durations, scheduling limits and profile photo limits. This makes deploy-time behavior explicit without relying on implicit inheritance from `application.yml`.
 
-These files should use placeholders only for environment-specific or secret-backed values, such as database credentials, S3 bucket/region, Firebase service account location and future identity-verification credentials.
+These files should use placeholders only for environment-specific or secret-backed values, such as database credentials, S3 bucket/region, Firebase service account location and future profile-authenticity credentials.
 
 Do not commit real credentials in any `application-*.yml` file.
 
@@ -267,23 +267,44 @@ does `SchedulingNegotiationTimeoutJob` close expired scheduling negotiations.
 `schedulingExpiresAt` on a pending connection is provisional because activation
 recalculates the actionable deadline from the activation time.
 
-## Identity Verification
+## Profile Authenticity Verification
 
-`profile.identity-verification.provider` currently supports only `none`. The
-provider abstraction exists so a real identity-verification integration can be
-added later without changing profile creation flow. Identity verification is
-invoked explicitly through `POST /api/me/profile/identity-verification`; profile
-creation does not call the provider.
+`profile.authenticity-verification.provider` currently supports only `none`.
+The provider abstraction exists so a real profile-authenticity integration can
+be added later without changing profile creation flow. Profile authenticity
+verification is invoked explicitly through
+`POST /api/me/profile/authenticity-verification`; profile creation does not call
+the provider. This endpoint remains the current synchronous provider abstraction
+entry point, not the final liveness/session API.
+
+Profile Authenticity Verification is not legal identity verification. It does
+not prove legal name, DNI, passport identity, KYC identity or age. Age assurance
+and legal/document verification are separate future concerns.
 
 With `provider=none` outside `prod`, profiles are marked
-`identityVerificationStatus=VERIFIED` and `identityVerified=true` for MVP/local
-compatibility only. This does not represent real external identity, document,
-liveness, age or fraud verification.
+`authenticityVerificationStatus=VERIFIED` and `authenticityVerified=true` for
+MVP/local compatibility only. This does not represent liveness, face comparison,
+legal identity, document verification, age assurance or fraud verification.
 
 With `provider=none` in `prod`, the endpoint fails with
-`409 IDENTITY_VERIFICATION_NOT_CONFIGURED` and no `VERIFIED` state is persisted.
-Identity verification remains optional for activation unless
-`profile.identity-verification.require-for-activation=true`.
+`409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED` and no `VERIFIED` state is
+persisted. Profile authenticity verification remains optional for activation
+unless `profile.authenticity-verification.require-for-activation=true`. When
+enabled, activation requires `authenticityVerificationStatus=VERIFIED`; `STALE`
+fails activation with `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRED`.
+
+The future target is a liveness-derived live reference plus comparison against
+every current validated person photo. Candidate photos are exactly
+`validationStatus=VALIDATED` and `isPersonPhoto=true`, sorted by current
+profile-photo position. For each candidate person photo, at least one face must
+match the verified live reference. Group photos can remain authentic when the
+verified person appears alongside other people. Non-person photos are excluded
+from face comparison.
+
+Uploading, replacing or deleting a profile photo invalidates previous
+authenticity verification to `STALE` and sets `authenticityVerified=false`.
+Reordering photos does not invalidate authenticity because the photo content and
+set are unchanged.
 
 Profile photo validation and moderation are also profile-aware. Outside `prod`,
 the MVP compatibility shortcuts preserve `true`/`true`/`VALIDATED` semantic
@@ -314,10 +335,13 @@ to clients.
 Sightengine `faces` entries are used only for the MVP `isPersonPhoto` signal.
 Any real face makes `isPersonPhoto=true`; zero real faces makes it false.
 `artificial_faces` do not count. This is not facial recognition, face matching,
-liveness, identity verification, age estimation or minor detection. Group-photo
-and other-person false positives are accepted MVP limitations. Sightengine does
-not establish `isFullBody`; successful Sightengine analyses always persist
-`isFullBody=false`.
+liveness, profile authenticity verification, legal identity verification, age
+estimation or minor detection. Group-photo and other-person false positives are
+accepted MVP limitations. Sightengine does not establish `isFullBody`;
+successful Sightengine analyses always persist `isFullBody=false`. Because
+`isPersonPhoto` currently means at least one real face was detected, this
+skeleton does not yet prove person consistency for a body-only image without a
+comparable visible face.
 
 Reals maps Sightengine model output to provider-neutral moderation signals:
 sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism.
@@ -338,8 +362,15 @@ because there is not yet a real full-body semantic detector and Sightengine
 analysis always leaves `isFullBody=false`. A future provider can restore the
 production minimum to `1`.
 
-`IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
-empty until that provider is implemented.
+Future real-provider work still needs decisions or implementation for liveness
+capture/session lifecycle, live reference artifact handling, facial comparison
+provider, score thresholds, retry policy, `NEEDS_REVIEW` workflow, provider
+metadata, biometric/privacy/retention policy, reference-image retention or
+immediate deletion, asynchronous callback/webhook handling if required, and
+separate age assurance.
+
+`PROFILE_AUTHENTICITY_VERIFICATION_API_KEY` is reserved for a future provider
+and should stay empty until that provider is implemented.
 
 ## Matchmaking Tuning
 

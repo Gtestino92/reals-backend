@@ -1,0 +1,20 @@
+meta {
+  name: 04 Verify Authenticity A
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile/authenticity-verification
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  bru.setEnvVar("profileAAuthenticityVerified", body.authenticityVerified);
+}
