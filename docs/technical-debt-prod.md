@@ -81,8 +81,8 @@ Future work:
 ## 2. Profile authenticity verification
 
 Current state:
-- `Profile.authenticityVerified` exists.
-- `Profile.authenticityVerificationStatus` is the richer persisted profile-authenticity state.
+- `Profile.authenticityVerificationStatus` is the richer persisted profile-authenticity state and the source of truth.
+- `Profile.authenticityVerified` exists as a compatibility projection with the invariant `authenticityVerified == (authenticityVerificationStatus == VERIFIED)`.
 - Profile authenticity verification endpoint exists.
 - Provider abstraction exists.
 - Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not liveness, face comparison, legal identity, document verification or age assurance.

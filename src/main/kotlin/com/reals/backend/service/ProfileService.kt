@@ -680,9 +680,7 @@ class ProfileService(
         }
 
         profile.authenticityVerificationStatus = newStatus
-        if (newStatus == ProfileAuthenticityVerificationStatus.STALE) {
-            profile.authenticityVerified = false
-        }
+        profile.authenticityVerified = newStatus == ProfileAuthenticityVerificationStatus.VERIFIED
         if (oldStatus != newStatus) {
             profile.updatedAt = OffsetDateTime.now()
         }
