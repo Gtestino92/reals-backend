@@ -169,7 +169,7 @@ these values as text, not HTML.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo upload/replacement/deletion or match-filter configuration.
 - `PUT /api/me/profile/match-filters`: replace matchmaking preferences. Body: `intention`, `lookingForGenders`, `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
-- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. Current provider `none` marks the profile `VERIFIED` for MVP/local compatibility, but does not represent real external identity or age verification.
+- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent real external identity or age verification. With provider `none` in `prod`, verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
@@ -184,11 +184,37 @@ responses when needed instead of persisting URLs permanently.
 
 Photo upload validation has two separate fields. `validationStatus` is the
 blocking technical upload result for file type, size, decoding and dimensions.
-`moderationStatus` is the content-moderation result. The current default
-provider is `none`, which permissively returns `APPROVED` and does not represent
-an external safety, person or full-body review. Production can later require
-`moderationStatus = APPROVED` for activation with
+Successful technical image validation is not semantic person/full-body
+validation. Outside `prod`, the temporary MVP shortcut still returns
+`isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
+`prod`, technical validation alone returns `isPersonPhoto=false`,
+`isFullBody=false` and `validationStatus=PENDING` when provider `none` is used.
+With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, the backend makes one
+Sightengine multipart request after technical validation and uses real face
+presence only as an MVP person-photo signal. At least one `faces` entry sets
+`isPersonPhoto=true`; zero real faces sets `isPersonPhoto=false`.
+`artificial_faces` do not count. Successful Sightengine analysis always persists
+`validationStatus=VALIDATED` and `isFullBody=false`. This is not facial
+recognition, identity verification, face matching, liveness, age estimation,
+minor detection or full-body detection.
+
+`moderationStatus` is the content-moderation result. With provider `none`
+outside `prod`, the MVP compatibility path returns `APPROVED` without external
+review. With provider `none` in `prod`, uploads may proceed but persist
+`NEEDS_REVIEW`. With provider `sightengine`, the same single provider response
+also feeds Reals moderation policy for sexual explicit, sexual suggestive,
+violence/threat, gore and hate/extremism signals. Reject thresholds produce
+`REJECTED`, review thresholds produce `NEEDS_REVIEW`, and otherwise moderation
+is `APPROVED`. `NEEDS_REVIEW` enters the existing admin review queue.
+Automatic provider moderation does not create safety reports, child-safety
+reports, blocks, penalties, bans or account deletions. Production defaults to requiring
+`moderationStatus=APPROVED` for activation through
 `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
+
+`PhotoValidationStatus.PENDING` and `PhotoModerationStatus.NEEDS_REVIEW` are
+separate states. Validation `PENDING` means semantic person/full-body analysis
+has not produced a result. Moderation `NEEDS_REVIEW` means content moderation
+requires a human admin decision.
 
 ## Matchmaking
 
@@ -251,6 +277,8 @@ All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated
 - `POST /api/admin/safety-reports/{reportId}/dismissal`: dismiss a pending report. Body: `{ "notes": "optional notes" }`. Does not create a penalty.
 - `POST /api/admin/safety-reports/{reportId}/abusive-dismissal`: dismiss a pending report as abusive or unjustified. Body: `{ "notes": "optional notes" }`. Does not create a safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter.
 - `POST /api/admin/safety-reports/{reportId}/penalty`: confirm a pending report and apply a penalty to the reported user. Temporary body: `{ "type": "TEMPORARY_BAN", "durationHours": 24, "reason": "Harassment confirmed", "notes": "optional notes" }`. Permanent body: `{ "type": "PERMANENT_BAN", "reason": "Severe safety violation", "notes": "optional notes" }`.
+- `GET /api/admin/profile-photos/review`: list up to 100 current profile photos where `moderationStatus=NEEDS_REVIEW`, ordered by `createdAt ASC`. The response includes `photoId`, `profileId`, `userId`, `displayName`, `position`, `readUrl`, `photoVersion`, `validationStatus`, `moderationStatus`, `isPersonPhoto`, `isFullBody` and `createdAt`. It does not expose storage keys, buckets, email or Firebase UID.
+- `POST /api/admin/profile-photos/{photoId}/moderation`: resolve one photo moderation review. Body: `{ "expectedPhotoVersion": 3, "decision": "APPROVED", "notes": "optional notes" }` or `{ "expectedPhotoVersion": 3, "decision": "REJECTED", "notes": "optional notes" }`. `expectedPhotoVersion` must be the `photoVersion` returned by the queue item the admin reviewed. The only supported transitions are `NEEDS_REVIEW -> APPROVED` and `NEEDS_REVIEW -> REJECTED`; stale review snapshots and photos currently in `PENDING`, `APPROVED` or `REJECTED` return `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`. On that conflict, the admin should refresh the queue and review the current photo again. Manual moderation changes only `moderationStatus`; it does not alter `validationStatus`, `isPersonPhoto` or `isFullBody`.
 
 Temporary penalties require positive `durationHours`; permanent penalties reject `durationHours` and have `expiresAt = null`. Active penalties block matchmaking and remove the user from the queue if already queued. The penalty expiration job deactivates only expired temporary penalties.
 

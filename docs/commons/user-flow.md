@@ -8,6 +8,44 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+Profile trust-provider shortcuts are execution-profile aware. Outside `prod`,
+provider `none` preserves MVP compatibility for local/dev/test flows: identity
+verification may return `VERIFIED`, photo moderation may return `APPROVED`, and
+technical photo validation may produce `isPersonPhoto=true`,
+`isFullBody=true` and `validationStatus=VALIDATED`. In `prod`, provider `none`
+does not create positive trust facts: identity verification returns
+`409 IDENTITY_VERIFICATION_NOT_CONFIGURED`, photo moderation persists
+`NEEDS_REVIEW`, and technical photo validation alone persists
+`false`/`false`/`PENDING`. Successful image decoding is not semantic
+person/full-body validation. Production activation defaults to requiring
+moderation approval in addition to the existing validated/person/full-body photo
+counts.
+
+When `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, a technically valid
+profile-photo upload or replacement runs one Sightengine multipart request with
+the fixed models `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
+`offensive-2.0`. Real face presence is used only for the MVP `isPersonPhoto`
+field: at least one `faces` entry counts as a person photo, `artificial_faces`
+do not count, and `isFullBody` remains `false` because this provider path is
+not a full-body detector. This does not perform facial recognition, face
+matching, liveness, identity verification, age estimation or minor detection.
+Mapped moderation signals can become `NEEDS_REVIEW` and are handled by the
+admin review queue.
+
+Photo moderation has a small admin human-review loop. Automated/provider
+moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.
+`NEEDS_REVIEW` photos appear in `/api/admin/profile-photos/review` for admins
+with `ROLE_ADMIN`; an admin can resolve them through
+`POST /api/admin/profile-photos/{photoId}/moderation` as `APPROVED` or
+`REJECTED` by submitting the `expectedPhotoVersion` returned by the queue item
+they reviewed. If the photo changed after the queue was loaded, the resolution
+returns `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`; the admin should
+refresh and review the current photo again. This is a content-moderation
+decision, not user-visible moderation scoring. It does not change semantic
+validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
+Automatic provider moderation does not create child-safety reports, safety
+reports, blocks, penalties, bans or account deletions.
+
 Legal compliance is backend-authoritative for protected participation/content
 writes. After provisioning, clients can call `GET /api/me/legal-status`; when
 `requirementsSatisfied=false`, they should show the current legal requirements,

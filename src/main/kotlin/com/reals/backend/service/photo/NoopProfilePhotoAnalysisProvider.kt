@@ -1,6 +1,5 @@
 package com.reals.backend.service.photo
 
-import com.reals.backend.domain.PhotoModerationStatus
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 
@@ -11,10 +10,7 @@ import org.springframework.stereotype.Component
     havingValue = "none",
     matchIfMissing = true
 )
-class NoopPhotoModerationProvider : PhotoModerationProvider {
-    override fun moderate(request: PhotoModerationRequest): PhotoModerationResult =
-        PhotoModerationResult(
-            status = PhotoModerationStatus.APPROVED,
-            provider = "none"
-        )
+class NoopProfilePhotoAnalysisProvider : ProfilePhotoAnalysisProvider {
+    override fun analyze(request: ProfilePhotoAnalysisRequest): ProfilePhotoAnalysisProviderResult =
+        ProfilePhotoAnalysisProviderResult.NotConfigured(provider = "none")
 }

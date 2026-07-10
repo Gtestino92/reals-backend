@@ -338,14 +338,29 @@ paths:
     post:
       tags: [Profiles]
       summary: Run identity verification for the profile
-      description: Current provider none marks the profile VERIFIED for MVP/local compatibility and does not represent real external identity or age verification.
+      description: With provider none outside prod, the MVP compatibility path may mark the profile VERIFIED and does not represent real external identity or age verification. With provider none in prod, verification is unavailable and no VERIFIED state is persisted.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Domain conflict. In prod with provider none, stable code `IDENTITY_VERIFICATION_NOT_CONFIGURED` is returned. This endpoint may also return `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                identityVerificationNotConfigured:
+                  value:
+                    code: IDENTITY_VERIFICATION_NOT_CONFIGURED
+                    error: Conflict
+                    message: Identity verification is not configured
+                legalActionRequired:
+                  value:
+                    code: LEGAL_ACTION_REQUIRED
+                    error: Conflict
+                    message: Current legal document actions are required before continuing
   /api/me/profile/photos:
     post:
       tags: [Profiles]
@@ -842,6 +857,58 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/review:
+    get:
+      tags: [Admin]
+      summary: List profile photos awaiting moderation review
+      description: Requires ROLE_ADMIN. Returns only current NEEDS_REVIEW moderation photos, ordered by createdAt ascending and limited to 100. Validation PENDING photos are not included unless moderationStatus is NEEDS_REVIEW. Each item includes photoVersion, which must be submitted as expectedPhotoVersion when resolving the review.
+      responses:
+        '200':
+          description: Profile photos awaiting human moderation review
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/{photoId}/moderation:
+    post:
+      tags: [Admin]
+      summary: Resolve a profile photo moderation review
+      description: Requires ROLE_ADMIN. Supports only NEEDS_REVIEW -> APPROVED and NEEDS_REVIEW -> REJECTED. The request must include expectedPhotoVersion from the reviewed queue item. Stale review snapshots return PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE and should be refreshed before review. Does not delete photos, create safety reports, create blocks, apply penalties or change semantic validation fields.
+      parameters:
+        - $ref: '#/components/parameters/PhotoId'
+      requestBody:
+        $ref: '#/components/requestBodies/AdminPhotoModerationResolution'
+      responses:
+        '200':
+          description: Updated profile photo moderation review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Photo is not currently awaiting moderation review, or the submitted expectedPhotoVersion is stale. Stable code `PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE
+                error: Conflict
+                message: Profile photo is not awaiting moderation review
   /api/admin/safety-reports/{reportId}:
     get:
       tags: [Admin]
@@ -1203,6 +1270,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SafetyReportPenaltyRequest'
+    AdminPhotoModerationResolution:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminPhotoModerationResolutionRequest'
     AddProposal:
       required: true
       content:
@@ -2005,10 +2078,10 @@ components:
         isFullBody: { type: boolean }
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
-          description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
+          description: Technical and semantic photo-validation status. Outside prod with provider none, the MVP shortcut may return VALIDATED after technical validation. In prod with provider none, technical validation alone returns PENDING and does not establish person/full-body semantics. With provider sightengine, real face presence is used only as an MVP isPersonPhoto signal; at least one real face validates person-photo semantics, artificial faces do not count, and successful analysis still leaves isFullBody=false.
         moderationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
-          description: Content moderation status. With provider none, APPROVED is a permissive MVP result and does not represent external safety review.
+          description: Content moderation status. With provider none outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
     VisualProfileResponse:
       type: object
       required:
@@ -2282,6 +2355,40 @@ components:
         activeConnectionLocks: { type: integer, format: int64, minimum: 0 }
         oldestQueueEntryEnteredAt: { type: string, format: date-time, nullable: true }
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
+    AdminProfilePhotoModerationReviewResponse:
+      type: object
+      required: [photoId, profileId, userId, displayName, position, readUrl, photoVersion, validationStatus, moderationStatus, isPersonPhoto, isFullBody, createdAt]
+      properties:
+        photoId: { type: string, format: uuid }
+        profileId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        position: { type: integer }
+        readUrl:
+          type: string
+          description: Current backend-generated photo read URL. Storage bucket and key are not exposed.
+        photoVersion:
+          type: integer
+          format: int64
+          description: Current photo row version. Submit this as expectedPhotoVersion when resolving the reviewed photo.
+        validationStatus:
+          $ref: '#/components/schemas/PhotoValidationStatus'
+        moderationStatus:
+          $ref: '#/components/schemas/PhotoModerationStatus'
+        isPersonPhoto: { type: boolean }
+        isFullBody: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    AdminPhotoModerationResolutionRequest:
+      type: object
+      required: [expectedPhotoVersion, decision]
+      properties:
+        expectedPhotoVersion:
+          type: integer
+          format: int64
+          description: Version from the queue item the admin reviewed. Stale versions are rejected with PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE.
+        decision:
+          $ref: '#/components/schemas/AdminPhotoModerationDecision'
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
     AdminSafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, priorityReview, createdAt]
@@ -2453,6 +2560,9 @@ components:
     PhotoModerationStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, NEEDS_REVIEW]
+    AdminPhotoModerationDecision:
+      type: string
+      enum: [APPROVED, REJECTED]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]

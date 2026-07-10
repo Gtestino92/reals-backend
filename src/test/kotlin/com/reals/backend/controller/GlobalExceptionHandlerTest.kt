@@ -2,6 +2,7 @@ package com.reals.backend.controller
 
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -113,5 +114,21 @@ class GlobalExceptionHandlerTest {
         assertEquals("PROFILE_NOT_FOUND", response.body?.code)
         assertEquals("Not Found", response.body?.error)
         assertEquals("Profile not found for current user", response.body?.message)
+    }
+
+    @Test
+    fun `identity verification not configured exposes stable conflict response`() {
+        val response =
+            handler.handleDomainException(
+                DomainConflictException(
+                    code = DomainErrorCode.IDENTITY_VERIFICATION_NOT_CONFIGURED,
+                    message = "Identity verification is not configured"
+                )
+            )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals("IDENTITY_VERIFICATION_NOT_CONFIGURED", response.body?.code)
+        assertEquals("Conflict", response.body?.error)
+        assertEquals("Identity verification is not configured", response.body?.message)
     }
 }

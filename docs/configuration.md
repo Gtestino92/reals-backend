@@ -4,12 +4,38 @@ Production and shared development profiles should receive environment-specific v
 
 ## Profiles
 
-- `local-firebase`: default local profile, Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
+- `local-firebase`: local Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
 - `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
+
+Exactly one execution profile from this set must be active:
+
+```text
+local-nodb
+local-postgres
+local-firebase
+dev
+prod
+test
+```
+
+The shared `application.yml` does not set a default execution profile. Local
+Docker selects `local-firebase` explicitly, and shared deployments must set
+`SPRING_PROFILES_ACTIVE` to `dev` or `prod`. Startup fails when no execution
+profile is active or when more than one execution profile is active, for example
+`prod,local-firebase` or `dev,prod`. Auxiliary profiles are allowed as long as
+they do not add a second execution profile.
+
+`/api/local-dev/**` is local tooling only. It remains unauthenticated in
+`local-nodb`, `local-postgres` and `local-firebase`, and Spring Security
+explicitly denies it in `dev`, `prod` and `test` even if a handler is
+accidentally registered.
+
+The H2 console is accessible only with `local-nodb`; Spring Security explicitly
+denies `/h2-console/**` for every other execution profile.
 
 ## Placeholder Reference
 
@@ -37,11 +63,24 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo moderation provider. Defaults to `none`, which approves without external review. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, `none` preserves the MVP semantic and moderation shortcuts; in `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` to enable one Sightengine multipart request per upload/replacement. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
-| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` for MVP/local compatibility. |
-| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`, which marks profiles verified without external review for MVP/local compatibility. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
+| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | no | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`. |
+| `PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS` | no | Sightengine connect timeout in milliseconds. Defaults to `3000`; must be positive. |
+| `PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS` | no | Sightengine response/read timeout in milliseconds. Defaults to `10000`; must be positive. |
+| `PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD` | no | Reals sexual-explicit review score threshold. Defaults to `0.50`. |
+| `PROFILE_PHOTO_SEXUAL_EXPLICIT_REJECT_THRESHOLD` | no | Reals sexual-explicit reject score threshold. Defaults to `0.80`; must be at least the review threshold. |
+| `PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD` | no | Reals sexual-suggestive review score threshold. Defaults to `0.80`; suggestive content alone does not auto-reject in this slice. |
+| `PROFILE_PHOTO_VIOLENCE_REVIEW_THRESHOLD` | no | Reals violence/threat review score threshold. Defaults to `0.50`. |
+| `PROFILE_PHOTO_VIOLENCE_REJECT_THRESHOLD` | no | Reals violence/threat reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
+| `PROFILE_PHOTO_GORE_REVIEW_THRESHOLD` | no | Reals gore review score threshold. Defaults to `0.40`. |
+| `PROFILE_PHOTO_GORE_REJECT_THRESHOLD` | no | Reals gore reject score threshold. Defaults to `0.80`; must be at least the review threshold. |
+| `PROFILE_PHOTO_HATE_REVIEW_THRESHOLD` | no | Reals hate/extremism review score threshold. Defaults to `0.50`. |
+| `PROFILE_PHOTO_HATE_REJECT_THRESHOLD` | no | Reals hate/extremism reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
+| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
+| `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Production override for `profile.photos.min-full-body-photos`. Production defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/dev/test defaults remain unchanged. |
+| `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
 | `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
@@ -161,6 +200,8 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
+| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | Sightengine API user. Required only when the provider is selected. Do not commit real values. |
+| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | Sightengine API secret. Required only when the provider is selected. Do not commit or log it. |
 | `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `IDENTITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future identity provider; keep empty while provider is `none`. |
@@ -232,10 +273,67 @@ recalculates the actionable deadline from the activation time.
 provider abstraction exists so a real identity-verification integration can be
 added later without changing profile creation flow. Identity verification is
 invoked explicitly through `POST /api/me/profile/identity-verification`; profile
-creation does not call the provider. With `provider=none`, profiles are marked
+creation does not call the provider.
+
+With `provider=none` outside `prod`, profiles are marked
 `identityVerificationStatus=VERIFIED` and `identityVerified=true` for MVP/local
-compatibility only; this does not represent real external identity or age
-verification.
+compatibility only. This does not represent real external identity, document,
+liveness, age or fraud verification.
+
+With `provider=none` in `prod`, the endpoint fails with
+`409 IDENTITY_VERIFICATION_NOT_CONFIGURED` and no `VERIFIED` state is persisted.
+Identity verification remains optional for activation unless
+`profile.identity-verification.require-for-activation=true`.
+
+Profile photo validation and moderation are also profile-aware. Outside `prod`,
+the MVP compatibility shortcuts preserve `true`/`true`/`VALIDATED` semantic
+photo validation and `APPROVED` moderation when moderation provider is `none`.
+In `prod`, successful technical image validation alone returns
+`isPersonPhoto=false`, `isFullBody=false` and `validationStatus=PENDING`; `none`
+moderation returns `NEEDS_REVIEW`. Successful file decoding and dimension checks
+are not semantic person/full-body validation. `application-prod.yml` defaults
+`profile.photos.require-moderation-approval-for-activation` to `true`, while
+preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
+override.
+
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` to use Sightengine for
+profile-photo analysis. The backend sends one synchronous multipart request to
+`PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` per technically valid upload or
+replacement. The request uses the uploaded bytes directly as the `media` part
+before object storage and includes the fixed MVP model list:
+`face-analysis,nudity-2.1,violence,gore-2.0,offensive-2.0`. Operators must
+verify that the configured Sightengine account can use this model set before
+production deployment; account plan/model restrictions are treated as provider
+failures, not silently downgraded requests.
+
+Sightengine credentials are `SIGHTENGINE_API_USER` and
+`SIGHTENGINE_API_SECRET`. They are required only when provider `sightengine` is
+selected. Do not commit credentials, log them, or expose raw provider responses
+to clients.
+
+Sightengine `faces` entries are used only for the MVP `isPersonPhoto` signal.
+Any real face makes `isPersonPhoto=true`; zero real faces makes it false.
+`artificial_faces` do not count. This is not facial recognition, face matching,
+liveness, identity verification, age estimation or minor detection. Group-photo
+and other-person false positives are accepted MVP limitations. Sightengine does
+not establish `isFullBody`; successful Sightengine analyses always persist
+`isFullBody=false`.
+
+Reals maps Sightengine model output to provider-neutral moderation signals:
+sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism.
+The configured thresholds are Reals product defaults, not Sightengine
+recommendations. Reject thresholds take precedence over review thresholds;
+otherwise configured review thresholds produce `NEEDS_REVIEW`; otherwise the
+photo is `APPROVED`. The existing admin profile-photo review queue resolves
+`NEEDS_REVIEW`. Automatic provider moderation does not create child-safety
+reports, safety reports, blocks, penalties, bans or account lifecycle changes,
+and raw provider scores/request IDs are not persisted yet.
+
+Production also temporarily defaults `profile.photos.min-full-body-photos` to
+`0` through `${PROFILE_MIN_FULL_BODY_PHOTOS:0}`. The `isFullBody` domain/API
+field and configurable requirement remain in place; the production default is
+lowered only because there is not yet a real full-body semantic detector. A
+future provider can restore the production minimum to `1`.
 
 `IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
 empty until that provider is implemented.

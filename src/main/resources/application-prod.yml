@@ -111,7 +111,8 @@ profile:
     max-count: 9
     required-count: 9
     min-person-photos: 3
-    min-full-body-photos: 1
+    min-full-body-photos: ${PROFILE_MIN_FULL_BODY_PHOTOS:0}
+    require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:true}
   identity-verification:
     provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:${IDENTITY_VERIFICATION_PROVIDER:none}}
     fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
