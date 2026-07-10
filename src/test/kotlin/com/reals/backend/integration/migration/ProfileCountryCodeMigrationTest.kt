@@ -109,7 +109,7 @@ class ProfileCountryCodeMigrationTest {
             .dataSource(jdbc.dataSource)
             .locations("classpath:db/migration")
             .baselineOnMigrate(true)
-            .baselineVersion("24")
+            .baselineVersion("25")
             .load()
             .migrate()
     }
