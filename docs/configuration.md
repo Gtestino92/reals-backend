@@ -63,7 +63,7 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, `none` preserves the MVP semantic and moderation shortcuts; in `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` to enable one Sightengine multipart request per upload/replacement. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` in `prod` to enable one Sightengine multipart request per upload/replacement. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
 | `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | no | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`. |
@@ -202,8 +202,8 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
-| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | Sightengine API user. Required only when the provider is selected. Do not commit real values. |
-| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | Sightengine API secret. Required only when the provider is selected. Do not commit or log it. |
+| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API user. Required only when the production provider is selected. Do not commit real values. |
+| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API secret. Required only when the production provider is selected. Do not commit or log it. |
 | `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future profile authenticity provider; keep empty while provider is `none`. |
@@ -336,8 +336,10 @@ are not semantic person/full-body validation. `application-prod.yml` defaults
 preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
 override.
 
-Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` to use Sightengine for
-profile-photo analysis. The backend sends one synchronous multipart request to
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` to use Sightengine
+for profile-photo analysis. Non-production execution profiles ignore this
+provider selection and use the provider `none` compatibility path. In `prod`,
+the backend sends one synchronous multipart request to
 `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` per technically valid upload or
 replacement. The request uses the uploaded bytes directly as the `media` part
 before object storage and includes the fixed MVP model list:
@@ -348,8 +350,8 @@ failures, not silently downgraded requests.
 
 Sightengine credentials are `SIGHTENGINE_API_USER` and
 `SIGHTENGINE_API_SECRET`. They are required only when provider `sightengine` is
-selected. Do not commit credentials, log them, or expose raw provider responses
-to clients.
+selected in `prod`. Do not commit credentials, log them, or expose raw provider
+responses to clients.
 
 Sightengine `faces` entries are used only for the MVP `isPersonPhoto` signal.
 Any real face makes `isPersonPhoto=true`; zero real faces makes it false.

@@ -2078,10 +2078,10 @@ components:
         isFullBody: { type: boolean }
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
-          description: Technical and semantic photo-validation status. Outside prod with provider none, the MVP shortcut may return VALIDATED after technical validation. In prod with provider none, technical validation alone returns PENDING and does not establish person/full-body semantics. With provider sightengine, real face presence is used only as an MVP isPersonPhoto signal; at least one real face validates person-photo semantics, artificial faces do not count, and successful analysis still leaves isFullBody=false.
+          description: Technical and semantic photo-validation status. Outside prod, provider none is used even if sightengine is configured, and the MVP shortcut may return VALIDATED after technical validation. In prod with provider none, technical validation alone returns PENDING and does not establish person/full-body semantics. With provider sightengine in prod, real face presence is used only as an MVP isPersonPhoto signal; at least one real face validates person-photo semantics, artificial faces do not count, and successful analysis still leaves isFullBody=false.
         moderationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
-          description: Content moderation status. With provider none outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
+          description: Content moderation status. With provider none outside prod, including when sightengine is configured outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine in prod, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
     VisualProfileResponse:
       type: object
       required:
