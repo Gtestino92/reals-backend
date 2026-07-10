@@ -8,7 +8,8 @@
 - `controller.dto`: API request/response DTOs.
 - `service`: business rules, validations, state transitions and external push notification orchestration.
 - `service.matching`: matchmaking queue orchestration, availability checks, diagnostics, hard matching filters, compatibility evaluation and scoring.
-- `service.identity`: identity-verification provider abstraction.
+- `service.authenticity`: profile authenticity verification provider abstraction.
+- `service.identity`: Firebase/external account identity lifecycle services.
 - `service.reputation`: trust score / reputation evaluation.
 - `repository`: Spring Data JPA persistence access.
 - `domain`: persisted entities and enums.
