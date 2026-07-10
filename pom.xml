@@ -38,7 +38,6 @@
         <netty.version>4.2.13.Final</netty.version>
         <resilience4j.version>2.4.0</resilience4j.version>
         <testcontainers.version>1.21.3</testcontainers.version>
-        <google-cloud-vision.version>3.74.0</google-cloud-vision.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -231,12 +230,6 @@
             <artifactId>firebase-admin</artifactId>
             <version>9.9.0</version>
             <scope>compile</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-vision</artifactId>
-            <version>${google-cloud-vision.version}</version>
         </dependency>
 
         <!-- ========================================= -->

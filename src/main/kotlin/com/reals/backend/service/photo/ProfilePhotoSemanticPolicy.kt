@@ -5,16 +5,10 @@ import com.reals.backend.domain.ProfilePhotoValidationResult
 import org.springframework.stereotype.Component
 
 @Component
-class ProfilePhotoSemanticPolicy(
-    private val properties: GoogleVisionPhotoAnalysisProperties
-) {
+class ProfilePhotoSemanticPolicy {
     fun evaluate(signals: ProfilePhotoAnalysisSignals): ProfilePhotoValidationResult {
-        val hasQualifyingFace = signals.faceDetectionConfidences.any {
-            it >= properties.faceDetectionConfidenceThreshold
-        }
-
         return ProfilePhotoValidationResult(
-            isPersonPhoto = hasQualifyingFace,
+            isPersonPhoto = signals.realFaceCount > 0,
             isFullBody = false,
             status = PhotoValidationStatus.VALIDATED
         )

@@ -7,12 +7,11 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
-import com.reals.backend.service.photo.PhotoContentLikelihood
-import com.reals.backend.service.photo.PhotoSafeSearchSignals
 import com.reals.backend.service.photo.ProfilePhotoAnalysisProvider
 import com.reals.backend.service.photo.ProfilePhotoAnalysisProviderResult
 import com.reals.backend.service.photo.ProfilePhotoAnalysisRequest
 import com.reals.backend.service.photo.ProfilePhotoAnalysisSignals
+import com.reals.backend.service.photo.ProfilePhotoModerationSignals
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -44,8 +43,8 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         val userId = createDraftProfile()
 
         stubAnalysis(
-            faceConfidences = listOf(0.90),
-            safeSearch = safeSearch(adult = PhotoContentLikelihood.LIKELY)
+            realFaceCount = 1,
+            moderation = moderationSignals(sexualExplicit = 0.80)
         )
 
         mockMvc.perform(
@@ -82,12 +81,12 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         Mockito.`when`(analysisProvider.analyze(anyAnalysisRequest()))
             .thenReturn(
                 successAnalysis(
-                    faceConfidences = listOf(0.90),
-                    safeSearch = safeSearch()
+                    realFaceCount = 1,
+                    moderation = moderationSignals()
                 ),
                 successAnalysis(
-                    faceConfidences = listOf(0.90),
-                    safeSearch = safeSearch(adult = PhotoContentLikelihood.POSSIBLE)
+                    realFaceCount = 1,
+                    moderation = moderationSignals(sexualExplicit = 0.50)
                 )
             )
 
@@ -145,7 +144,7 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `successful analysis with no qualifying face and approved SafeSearch persists derived state`() {
+    fun `successful analysis with no real face and approved moderation persists derived state`() {
         val userId = createDraftProfile()
         val storedObject = StoredObject(
             bucket = "test-bucket",
@@ -155,8 +154,8 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         )
         stubStorageUploads(storedObject)
         stubAnalysis(
-            faceConfidences = listOf(0.49),
-            safeSearch = safeSearch()
+            realFaceCount = 0,
+            moderation = moderationSignals()
         )
 
         mockMvc.perform(
@@ -181,7 +180,7 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `successful analysis with qualifying face and ambiguous SafeSearch persists needs review`() {
+    fun `successful analysis with real face and ambiguous moderation persists needs review`() {
         val userId = createDraftProfile()
         val storedObject = StoredObject(
             bucket = "test-bucket",
@@ -191,8 +190,8 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         )
         stubStorageUploads(storedObject)
         stubAnalysis(
-            faceConfidences = listOf(0.50),
-            safeSearch = safeSearch(racy = PhotoContentLikelihood.POSSIBLE)
+            realFaceCount = 1,
+            moderation = moderationSignals(sexualSuggestive = 0.80)
         )
 
         mockMvc.perform(
@@ -237,23 +236,23 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
     }
 
     private fun stubAnalysis(
-        faceConfidences: List<Double>,
-        safeSearch: PhotoSafeSearchSignals
+        realFaceCount: Int,
+        moderation: ProfilePhotoModerationSignals
     ) {
         Mockito.`when`(analysisProvider.analyze(anyAnalysisRequest()))
-            .thenReturn(successAnalysis(faceConfidences, safeSearch))
+            .thenReturn(successAnalysis(realFaceCount, moderation))
     }
 
     private fun successAnalysis(
-        faceConfidences: List<Double>,
-        safeSearch: PhotoSafeSearchSignals
+        realFaceCount: Int,
+        moderation: ProfilePhotoModerationSignals
     ): ProfilePhotoAnalysisProviderResult =
         ProfilePhotoAnalysisProviderResult.Success(
             provider = "test",
             signals = ProfilePhotoAnalysisSignals(
                 provider = "test",
-                faceDetectionConfidences = faceConfidences,
-                safeSearch = safeSearch
+                realFaceCount = realFaceCount,
+                moderation = moderation
             )
         )
 
@@ -299,19 +298,19 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         )
     }
 
-    private fun safeSearch(
-        adult: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
-        spoof: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
-        medical: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
-        violence: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
-        racy: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY
-    ): PhotoSafeSearchSignals =
-        PhotoSafeSearchSignals(
-            adult = adult,
-            spoof = spoof,
-            medical = medical,
-            violence = violence,
-            racy = racy
+    private fun moderationSignals(
+        sexualExplicit: Double = 0.0,
+        sexualSuggestive: Double = 0.0,
+        violenceOrThreat: Double = 0.0,
+        gore: Double = 0.0,
+        hateOrExtremism: Double = 0.0
+    ): ProfilePhotoModerationSignals =
+        ProfilePhotoModerationSignals(
+            sexualExplicit = sexualExplicit,
+            sexualSuggestive = sexualSuggestive,
+            violenceOrThreat = violenceOrThreat,
+            gore = gore,
+            hateOrExtremism = hateOrExtremism
         )
 
     private fun anyUuid(): UUID {

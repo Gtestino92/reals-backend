@@ -5,15 +5,15 @@ import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
-import com.reals.backend.service.photo.GoogleVisionPhotoAnalysisProperties
-import com.reals.backend.service.photo.PhotoContentLikelihood
-import com.reals.backend.service.photo.PhotoSafeSearchSignals
 import com.reals.backend.service.photo.ProfilePhotoAnalysisProvider
 import com.reals.backend.service.photo.ProfilePhotoAnalysisProviderResult
+import com.reals.backend.service.photo.ProfilePhotoAnalysisRequest
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import com.reals.backend.service.photo.ProfilePhotoAnalysisSignals
+import com.reals.backend.service.photo.ProfilePhotoModerationPolicy
+import com.reals.backend.service.photo.ProfilePhotoModerationPolicyProperties
+import com.reals.backend.service.photo.ProfilePhotoModerationSignals
 import com.reals.backend.service.photo.ProfilePhotoSemanticPolicy
-import com.reals.backend.service.photo.VisionPhotoModerationPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -22,8 +22,8 @@ import java.util.UUID
 class ProfilePhotoAnalysisServiceTest {
 
     @Test
-    fun `confidence above threshold validates person photo and never full-body`() {
-        val result = serviceFor(successProvider(faceConfidences = listOf(0.90))).analyzeUploadedPhoto()
+    fun `real face count greater than zero validates person photo and never full-body`() {
+        val result = serviceFor(successProvider(realFaceCount = 1)).analyzeUploadedPhoto()
 
         assertEquals(PhotoValidationStatus.VALIDATED, result.validation.status)
         assertEquals(true, result.validation.isPersonPhoto)
@@ -31,26 +31,8 @@ class ProfilePhotoAnalysisServiceTest {
     }
 
     @Test
-    fun `confidence exactly equal to threshold counts as person photo`() {
-        val result = serviceFor(successProvider(faceConfidences = listOf(0.50))).analyzeUploadedPhoto()
-
-        assertEquals(PhotoValidationStatus.VALIDATED, result.validation.status)
-        assertEquals(true, result.validation.isPersonPhoto)
-        assertEquals(false, result.validation.isFullBody)
-    }
-
-    @Test
-    fun `all confidences below threshold validates non-person photo`() {
-        val result = serviceFor(successProvider(faceConfidences = listOf(0.49, 0.10))).analyzeUploadedPhoto()
-
-        assertEquals(PhotoValidationStatus.VALIDATED, result.validation.status)
-        assertEquals(false, result.validation.isPersonPhoto)
-        assertEquals(false, result.validation.isFullBody)
-    }
-
-    @Test
-    fun `no faces validates non-person photo`() {
-        val result = serviceFor(successProvider(faceConfidences = emptyList())).analyzeUploadedPhoto()
+    fun `zero real faces validates non-person photo and never full-body`() {
+        val result = serviceFor(successProvider(realFaceCount = 0)).analyzeUploadedPhoto()
 
         assertEquals(PhotoValidationStatus.VALIDATED, result.validation.status)
         assertEquals(false, result.validation.isPersonPhoto)
@@ -134,35 +116,35 @@ class ProfilePhotoAnalysisServiceTest {
         provider: ProfilePhotoAnalysisProvider,
         profile: String = "test",
         failUploadOnProviderError: Boolean = false,
-        properties: GoogleVisionPhotoAnalysisProperties = GoogleVisionPhotoAnalysisProperties()
+        properties: ProfilePhotoModerationPolicyProperties = ProfilePhotoModerationPolicyProperties()
     ): ProfilePhotoAnalysisService =
         ProfilePhotoAnalysisService(
             provider = provider,
-            semanticPolicy = ProfilePhotoSemanticPolicy(properties),
-            moderationPolicy = VisionPhotoModerationPolicy(properties),
+            semanticPolicy = ProfilePhotoSemanticPolicy(),
+            moderationPolicy = ProfilePhotoModerationPolicy(properties),
             environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles(profile),
             failUploadOnProviderError = failUploadOnProviderError
         )
 
     private fun successProvider(
-        faceConfidences: List<Double>,
-        safeSearch: PhotoSafeSearchSignals = safeSearch()
+        realFaceCount: Int,
+        moderation: ProfilePhotoModerationSignals = lowModerationSignals()
     ): ProfilePhotoAnalysisProvider =
         object : ProfilePhotoAnalysisProvider {
-            override fun analyze(request: com.reals.backend.service.photo.ProfilePhotoAnalysisRequest) =
+            override fun analyze(request: ProfilePhotoAnalysisRequest) =
                 ProfilePhotoAnalysisProviderResult.Success(
                     provider = "test",
                     signals = ProfilePhotoAnalysisSignals(
                         provider = "test",
-                        faceDetectionConfidences = faceConfidences,
-                        safeSearch = safeSearch
+                        realFaceCount = realFaceCount,
+                        moderation = moderation
                     )
                 )
         }
 
     private fun failureProvider(): ProfilePhotoAnalysisProvider =
         object : ProfilePhotoAnalysisProvider {
-            override fun analyze(request: com.reals.backend.service.photo.ProfilePhotoAnalysisRequest) =
+            override fun analyze(request: ProfilePhotoAnalysisRequest) =
                 ProfilePhotoAnalysisProviderResult.ProviderFailure(
                     provider = "test",
                     reason = "failed"
@@ -171,22 +153,22 @@ class ProfilePhotoAnalysisServiceTest {
 
     private fun notConfiguredProvider(): ProfilePhotoAnalysisProvider =
         object : ProfilePhotoAnalysisProvider {
-            override fun analyze(request: com.reals.backend.service.photo.ProfilePhotoAnalysisRequest) =
+            override fun analyze(request: ProfilePhotoAnalysisRequest) =
                 ProfilePhotoAnalysisProviderResult.NotConfigured(provider = "none")
         }
 
     private fun throwingProvider(): ProfilePhotoAnalysisProvider =
         object : ProfilePhotoAnalysisProvider {
-            override fun analyze(request: com.reals.backend.service.photo.ProfilePhotoAnalysisRequest):
+            override fun analyze(request: ProfilePhotoAnalysisRequest):
                 ProfilePhotoAnalysisProviderResult = throw RuntimeException("provider unavailable")
         }
 
-    private fun safeSearch(): PhotoSafeSearchSignals =
-        PhotoSafeSearchSignals(
-            adult = PhotoContentLikelihood.UNLIKELY,
-            spoof = PhotoContentLikelihood.UNLIKELY,
-            medical = PhotoContentLikelihood.UNLIKELY,
-            violence = PhotoContentLikelihood.UNLIKELY,
-            racy = PhotoContentLikelihood.UNLIKELY
+    private fun lowModerationSignals(): ProfilePhotoModerationSignals =
+        ProfilePhotoModerationSignals(
+            sexualExplicit = 0.0,
+            sexualSuggestive = 0.0,
+            violenceOrThreat = 0.0,
+            gore = 0.0,
+            hateOrExtremism = 0.0
         )
 }

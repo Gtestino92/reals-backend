@@ -15,7 +15,7 @@ import java.util.UUID
 class ProfilePhotoAnalysisService(
     private val provider: ProfilePhotoAnalysisProvider,
     private val semanticPolicy: ProfilePhotoSemanticPolicy,
-    private val moderationPolicy: VisionPhotoModerationPolicy,
+    private val moderationPolicy: ProfilePhotoModerationPolicy,
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
 
     @param:Value("\${profile.photos.moderation.fail-upload-on-provider-error:false}")

@@ -127,10 +127,10 @@ Implemented production photo pipeline:
 - production activation defaults to requiring `APPROVED` moderation.
 - minimal backend admin moderation review is implemented for `NEEDS_REVIEW -> APPROVED` and `NEEDS_REVIEW -> REJECTED`.
 - production temporarily defaults minimum full-body photos to `0` because no real full-body detector exists.
-- Google Vision can be enabled with `PROFILE_PHOTO_MODERATION_PROVIDER=google-vision`.
-- Google Vision performs one synchronous annotation request per upload/replacement after technical validation, requesting both `FACE_DETECTION` and `SAFE_SEARCH_DETECTION`.
-- Google Vision face detection provides an MVP person-photo signal: at least one face at the configured confidence threshold sets `isPersonPhoto=true`.
-- Google Vision SafeSearch provides automatic content moderation signals for adult, spoof, medical, violence and racy categories.
+- Sightengine can be enabled with `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`.
+- Sightengine performs one synchronous multipart request per upload/replacement after technical validation, requesting `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and `offensive-2.0`.
+- Sightengine real face presence provides an MVP person-photo signal: at least one `faces` entry sets `isPersonPhoto=true`, while `artificial_faces` do not count.
+- Sightengine model output is mapped to Reals-owned moderation signals for sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism policy.
 - The existing admin moderation queue handles `NEEDS_REVIEW` outcomes.
 
 Current shortcut split:
@@ -138,15 +138,15 @@ Current shortcut split:
 - In `prod`, technical upload validation alone leaves photos as `validationStatus=PENDING`, `isPersonPhoto=false` and `isFullBody=false`.
 - Outside `prod`, moderation provider `none` returns `APPROVED` for compatibility.
 - In `prod`, moderation provider `none` returns `NEEDS_REVIEW`.
-- Vision face detection is not identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
-- Vision SafeSearch does not solve child safety, CSAM/CSAE handling, legal escalation or user sanctioning.
+- Sightengine face analysis is not identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
+- Sightengine moderation does not solve child safety, CSAM/CSAE handling, legal escalation or user sanctioning.
 
 Current synchronous target:
 1. User uploads a photo.
 2. Backend performs technical checks.
-3. If upload succeeds and Google Vision is configured, one provider request returns face and SafeSearch signals.
+3. If upload succeeds and Sightengine is configured, one provider request returns face and moderation signals.
 4. Semantic policy updates `validation_status`, `isPersonPhoto` and `isFullBody`.
-5. SafeSearch moderation policy updates `moderation_status`.
+5. Reals moderation policy updates `moderation_status`.
 6. Optional provider/model/version metadata is still not recorded.
 
 ### 3.2 Future activation analysis
@@ -174,10 +174,10 @@ Future work:
 - Face/person consistency and group/other-person validation.
 - Age estimation/minor-risk analysis if product/legal policy requires it.
 - CSAM/CSAE tooling, legal escalation and external-authority reporting procedures.
-- Hate-symbol detection if not covered by the current provider.
-- Broader prohibited-content coverage beyond the current SafeSearch policy.
-- Provider signal/confidence persistence.
-- Provider/model/version persistence.
+- More nuanced nudity/context rules.
+- Broader weapon, self-harm or restricted-substance policy if desired.
+- Sightengine provider/model/version/request metadata persistence.
+- Raw normalized signal persistence if operationally justified.
 - Rejected-media retention/removal policy.
 - Expand manual photo-review operations beyond the minimal backend queue, including reopen/override and removal workflows.
 - Define provider artifact privacy/retention.
@@ -187,6 +187,7 @@ Future work:
 - Decide whether and how rejected photo moderation should feed safety reports or penalties; no automatic safety report, ban or penalty exists now.
 - Define operational retention/removal policy for rejected media.
 - Define asynchronous callbacks/webhooks only if a future provider requires them.
+- Review provider privacy/retention before meaningful production traffic.
 
 Historical production data limitation:
 - The backend does not persist enough historical provider/analyzer identity to safely determine which old positive rows came from MVP shortcuts and which could theoretically come from another implementation.

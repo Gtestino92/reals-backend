@@ -35,41 +35,17 @@ sealed interface ProfilePhotoAnalysisProviderResult {
 
 data class ProfilePhotoAnalysisSignals(
     val provider: String,
-    val faceDetectionConfidences: List<Double>,
-    val safeSearch: PhotoSafeSearchSignals
+    val realFaceCount: Int,
+    val moderation: ProfilePhotoModerationSignals
 )
 
-data class PhotoSafeSearchSignals(
-    val adult: PhotoContentLikelihood,
-    val spoof: PhotoContentLikelihood,
-    val medical: PhotoContentLikelihood,
-    val violence: PhotoContentLikelihood,
-    val racy: PhotoContentLikelihood
+data class ProfilePhotoModerationSignals(
+    val sexualExplicit: Double,
+    val sexualSuggestive: Double,
+    val violenceOrThreat: Double,
+    val gore: Double,
+    val hateOrExtremism: Double
 )
-
-enum class PhotoContentLikelihood(private val severity: Int?) {
-    UNKNOWN(null),
-    VERY_UNLIKELY(0),
-    UNLIKELY(1),
-    POSSIBLE(2),
-    LIKELY(3),
-    VERY_LIKELY(4);
-
-    fun isKnownAtLeast(threshold: PhotoContentLikelihood): Boolean {
-        val currentSeverity = severity ?: return false
-        val thresholdSeverity = threshold.severity
-            ?: throw IllegalArgumentException("UNKNOWN cannot be used as a policy threshold")
-        return currentSeverity >= thresholdSeverity
-    }
-
-    fun isMoreRestrictiveOrEqualTo(threshold: PhotoContentLikelihood): Boolean {
-        val currentSeverity = severity
-            ?: throw IllegalArgumentException("UNKNOWN cannot be used as a policy threshold")
-        val thresholdSeverity = threshold.severity
-            ?: throw IllegalArgumentException("UNKNOWN cannot be used as a policy threshold")
-        return currentSeverity >= thresholdSeverity
-    }
-}
 
 data class PhotoModerationResult(
     val status: PhotoModerationStatus,
