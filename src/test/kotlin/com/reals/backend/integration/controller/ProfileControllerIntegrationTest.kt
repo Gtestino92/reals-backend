@@ -46,7 +46,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "bio" to "Created through MockMvc",
             "preferredMinAge" to 30,
             "preferredMaxAge" to 40,
@@ -65,10 +65,118 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
+            .andExpect(jsonPath("$.city", equalTo("Buenos Aires")))
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
             .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE")))
             .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
             .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("NOT_STARTED")))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
+    }
+
+    @Test
+    fun `create profile normalizes country code before persistence`() {
+        val user = userService.createUser("profile-country-normalized-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody().toMutableMap()
+        body["countryCode"] = " ar "
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
+
+        val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
+        assertEquals("AR", profile.countryCode)
+    }
+
+    @Test
+    fun `create profile rejects unknown country code with stable error code`() {
+        val user = userService.createUser("profile-country-invalid-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody().toMutableMap()
+        body["countryCode"] = "ZZ"
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_COUNTRY")))
+    }
+
+    @Test
+    fun `update profile normalizes valid country code and rejects invalid values`() {
+        val user = userService.createUser("profile-country-update-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Country Update",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("countryCode" to " uy ")))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.countryCode", equalTo("UY")))
+
+        assertEquals("UY", profileService.findByIdOrThrow(profile.id).countryCode)
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("countryCode" to "Argentina")))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_COUNTRY")))
+    }
+
+    @Test
+    fun `update profile null country code preserves existing value`() {
+        val user = userService.createUser("profile-country-null-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Country Preserve",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("city" to "Cordoba", "countryCode" to null)))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.city", equalTo("Cordoba")))
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
+
+        assertEquals("AR", profileService.findByIdOrThrow(profile.id).countryCode)
     }
 
     @Test
@@ -136,7 +244,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.FEMALE, Gender.NON_BINARY),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -164,7 +272,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.FEMALE, Gender.NON_BINARY),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -205,7 +313,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.FEMALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -242,7 +350,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -274,7 +382,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "bio" to "Plain bio",
             "preferredMinAge" to 30,
             "preferredMaxAge" to 40,
@@ -303,7 +411,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.bio", equalTo("Line one\nLine two\rLine three")))
 
-        listOf("displayName", "city", "country").forEach { field ->
+        listOf("displayName", "city", "countryCode").forEach { field ->
             val user = userService.createUser("profile-newline-$field-${UUID.randomUUID()}@example.com")
             val body = validCreateProfileBody().toMutableMap()
             body[field] = "Bad\n$field"
@@ -330,7 +438,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -345,7 +453,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.bio", equalTo("Line one\nLine two\rLine three")))
 
-        listOf("displayName", "city", "country").forEach { field ->
+        listOf("displayName", "city", "countryCode").forEach { field ->
             val user = userService.createUser("profile-update-newline-$field-${UUID.randomUUID()}@example.com")
             profileService.createProfile(
                 userId = user.id,
@@ -355,7 +463,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 lookingForGenders = setOf(Gender.MALE),
                 intention = Intention.DATE,
                 city = "Buenos Aires",
-                country = "AR",
+                countryCode = "AR",
                 preferredMinAge = 18,
                 preferredMaxAge = 99,
                 maxDistanceKm = 50
@@ -408,7 +516,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 25,
             preferredMaxAge = 35,
             maxDistanceKm = 100
@@ -448,7 +556,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "preferredMinAge" to 18,
             "preferredMaxAge" to 99,
             "maxDistanceKm" to 50
@@ -475,7 +583,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "preferredMinAge" to 18,
             "preferredMaxAge" to 99,
             "maxDistanceKm" to 50
@@ -489,7 +597,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -516,7 +624,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -586,7 +694,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -636,7 +744,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -705,7 +813,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -729,7 +837,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -766,7 +874,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "lookingForGenders" to lookingForGenders,
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "bio" to bio,
             "preferredMinAge" to 18,
             "preferredMaxAge" to 99,

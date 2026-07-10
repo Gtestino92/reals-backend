@@ -38,6 +38,7 @@ class ProfileService(
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val countryReferenceService: CountryReferenceService,
 
     @param:Value("\${profile.photos.max-count}")
     private val maxPhotoCount: Int,
@@ -93,7 +94,7 @@ class ProfileService(
         lookingForGenders: Set<Gender>,
         intention: Intention,
         city: String,
-        country: String,
+        countryCode: String,
         bio: String? = null,
         preferredMinAge: Int,
         preferredMaxAge: Int,
@@ -101,12 +102,12 @@ class ProfileService(
     ): Profile {
         val normalizedDisplayName = displayName.trim()
         val normalizedCity = city.trim()
-        val normalizedCountry = country.trim()
+        val normalizedCountryCode = countryReferenceService.normalizeAndValidateCountryCode(countryCode)
         val normalizedBio = normalizeOptionalText(bio)
 
         validateDisplayName(normalizedDisplayName)
         validateBirthDate(birthDate)
-        validateLocation(normalizedCity, normalizedCountry)
+        validateLocation(normalizedCity)
         validateLookingForGenders(lookingForGenders)
         normalizedBio?.let { validateMultilineText("Bio", it, BIO_MAX_LENGTH) }
         validateDynamicMatchFilters(
@@ -131,7 +132,7 @@ class ProfileService(
             lookingForGenders = lookingForGenders.toMutableSet(),
             intention = intention,
             city = normalizedCity,
-            country = normalizedCountry,
+            countryCode = normalizedCountryCode,
             bio = normalizedBio,
             preferredMinAge = preferredMinAge,
             preferredMaxAge = preferredMaxAge,
@@ -334,7 +335,7 @@ class ProfileService(
         displayName: String? = null,
         bio: String? = null,
         city: String? = null,
-        country: String? = null
+        countryCode: String? = null
     ): Profile {
 
         val profile = findByIdOrThrow(profileId)
@@ -355,9 +356,8 @@ class ProfileService(
             profile.city = it
         }
 
-        country?.trim()?.let {
-            validateSingleLineText("Country", it, LOCATION_MAX_LENGTH)
-            profile.country = it
+        countryCode?.let {
+            profile.countryCode = countryReferenceService.normalizeAndValidateCountryCode(it)
         }
 
         profile.updatedAt = OffsetDateTime.now()
@@ -824,13 +824,9 @@ class ProfileService(
         }
     }
 
-    private fun validateLocation(
-        city: String,
-        country: String
-    ) {
+    private fun validateLocation(city: String) {
         validateSingleLineText("City", city, LOCATION_MAX_LENGTH)
-        validateSingleLineText("Country", country, LOCATION_MAX_LENGTH)
-        // TODO: Validate country/city against a canonical cached location dataset.
+        // TODO: Validate city against a future canonical location dataset.
     }
 
     private fun validateSingleLineText(

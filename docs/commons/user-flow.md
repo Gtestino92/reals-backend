@@ -8,6 +8,15 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+Before profile creation, authenticated clients can fetch
+`GET /api/reference/countries` to populate a country selector. The response is a
+complete list of `{ "code", "displayName" }` entries built by the backend from
+the Java runtime ISO country list with Spanish display names and immutable
+in-memory state. Clients submit the selected `code` as profile `countryCode`.
+The backend trims and uppercases valid alpha-2 codes before persistence and
+rejects display names, alpha-3 codes, unknown codes and blank values. `city`
+remains free text.
+
 Profile trust-provider shortcuts are execution-profile aware. Outside `prod`,
 provider `none` preserves MVP compatibility for local/dev/test flows: profile
 authenticity verification may return `VERIFIED`, photo moderation may return
