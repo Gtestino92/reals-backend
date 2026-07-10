@@ -11,9 +11,9 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.identity.IdentityVerificationRequest
 import com.reals.backend.service.identity.IdentityVerificationService
-import com.reals.backend.service.photo.PhotoModerationResult
+import com.reals.backend.service.photo.ProfilePhotoAnalysisDecision
 import com.reals.backend.service.photo.PhotoPlacement
-import com.reals.backend.service.photo.ProfilePhotoModerationService
+import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import com.reals.backend.validation.PlainText
 import com.reals.backend.validation.SingleLinePlainText
 import jakarta.transaction.Transactional
@@ -31,7 +31,7 @@ class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
     private val profilePhotoValidationService: ProfilePhotoValidationService,
-    private val profilePhotoModerationService: ProfilePhotoModerationService,
+    private val profilePhotoAnalysisService: ProfilePhotoAnalysisService,
     private val identityVerificationService: IdentityVerificationService,
     private val storageService: S3StorageService,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
@@ -462,12 +462,12 @@ class ProfileService(
 
         val normalizedContentType = contentType!!.lowercase()
         val newObjectPhotoId = UUID.randomUUID()
-        val validation = profilePhotoValidationService.validateUploadedPhoto(
+        profilePhotoValidationService.validateUploadedPhoto(
             contentType = normalizedContentType,
             bytes = bytes,
             replacingPhoto = existingPhoto
         )
-        val moderation = moderateUploadedPhotoOrThrow(
+        val analysis = analyzeUploadedPhotoOrThrow(
             userId = profile.userId,
             profileId = profileId,
             photoId = newObjectPhotoId,
@@ -491,10 +491,10 @@ class ProfileService(
             existingPhoto.storageProvider = PhotoStorageProvider.S3
             existingPhoto.storageBucket = storedObject.bucket
             existingPhoto.storageKey = storedObject.key
-            existingPhoto.isPersonPhoto = validation.isPersonPhoto
-            existingPhoto.isFullBody = validation.isFullBody
-            existingPhoto.validationStatus = validation.status
-            existingPhoto.moderationStatus = moderation.status
+            existingPhoto.isPersonPhoto = analysis.validation.isPersonPhoto
+            existingPhoto.isFullBody = analysis.validation.isFullBody
+            existingPhoto.validationStatus = analysis.validation.status
+            existingPhoto.moderationStatus = analysis.moderation.status
 
             val saved = profilePhotoRepository.save(existingPhoto)
 
@@ -552,12 +552,12 @@ class ProfileService(
 
         val normalizedContentType = contentType!!.lowercase()
         val photoId = UUID.randomUUID()
-        val validation = profilePhotoValidationService.validateUploadedPhoto(
+        profilePhotoValidationService.validateUploadedPhoto(
             contentType = normalizedContentType,
             bytes = bytes,
             replacingPhoto = null
         )
-        val moderation = moderateUploadedPhotoOrThrow(
+        val analysis = analyzeUploadedPhotoOrThrow(
             userId = profile.userId,
             profileId = profileId,
             photoId = photoId,
@@ -585,10 +585,10 @@ class ProfileService(
                     storageBucket = storedObject.bucket,
                     storageKey = storedObject.key,
                     position = position,
-                    isPersonPhoto = validation.isPersonPhoto,
-                    isFullBody = validation.isFullBody,
-                    validationStatus = validation.status,
-                    moderationStatus = moderation.status
+                    isPersonPhoto = analysis.validation.isPersonPhoto,
+                    isFullBody = analysis.validation.isFullBody,
+                    validationStatus = analysis.validation.status,
+                    moderationStatus = analysis.moderation.status
                 )
             )
 
@@ -886,14 +886,14 @@ class ProfileService(
         }
     }
 
-    private fun moderateUploadedPhotoOrThrow(
+    private fun analyzeUploadedPhotoOrThrow(
         userId: UUID,
         profileId: UUID,
         photoId: UUID,
         contentType: String,
         bytes: ByteArray
-    ): PhotoModerationResult {
-        val result = profilePhotoModerationService.moderateUploadedPhoto(
+    ): ProfilePhotoAnalysisDecision {
+        val result = profilePhotoAnalysisService.analyzeUploadedPhoto(
             userId = userId,
             profileId = profileId,
             photoId = photoId,
@@ -901,7 +901,7 @@ class ProfileService(
             bytes = bytes
         )
 
-        if (result.status == PhotoModerationStatus.REJECTED && !persistRejectedPhotos) {
+        if (result.moderation.status == PhotoModerationStatus.REJECTED && !persistRejectedPhotos) {
             // MVP default: rejected photos are not uploaded or persisted. A future
             // moderation workflow may retain rejected media for review/audit.
             throw DomainBadRequestException(
