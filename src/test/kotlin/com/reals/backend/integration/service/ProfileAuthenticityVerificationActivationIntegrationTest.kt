@@ -1,11 +1,11 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
+import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.BaseIT
@@ -20,14 +20,14 @@ import java.util.UUID
 
 @TestPropertySource(
     properties = [
-        "profile.identity-verification.require-for-activation=true"
+        "profile.authenticity-verification.require-for-activation=true"
     ]
 )
-class ProfileIdentityVerificationActivationIntegrationTest : BaseIT() {
+class ProfileAuthenticityVerificationActivationIntegrationTest : BaseIT() {
 
     @Test
-    fun `activation succeeds when strict identity verification is enabled and profile is verified`() {
-        val profileId = createDraftProfileWithPhotos(IdentityVerificationStatus.VERIFIED)
+    fun `activation succeeds when strict authenticity verification is enabled and profile is verified`() {
+        val profileId = createDraftProfileWithPhotos(ProfileAuthenticityVerificationStatus.VERIFIED)
 
         val activated = profileService.activateProfile(profileId)
 
@@ -35,12 +35,13 @@ class ProfileIdentityVerificationActivationIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `activation fails when strict identity verification is enabled and profile is not verified`() {
+    fun `activation fails when strict authenticity verification is enabled and profile is not verified`() {
         listOf(
-            IdentityVerificationStatus.NOT_STARTED,
-            IdentityVerificationStatus.PENDING,
-            IdentityVerificationStatus.REJECTED,
-            IdentityVerificationStatus.NEEDS_REVIEW
+            ProfileAuthenticityVerificationStatus.NOT_STARTED,
+            ProfileAuthenticityVerificationStatus.PENDING,
+            ProfileAuthenticityVerificationStatus.REJECTED,
+            ProfileAuthenticityVerificationStatus.NEEDS_REVIEW,
+            ProfileAuthenticityVerificationStatus.STALE
         ).forEach { status ->
             val profileId = createDraftProfileWithPhotos(status)
 
@@ -48,12 +49,12 @@ class ProfileIdentityVerificationActivationIntegrationTest : BaseIT() {
                 profileService.activateProfile(profileId)
             }
 
-            assertEquals(DomainErrorCode.PROFILE_IDENTITY_VERIFICATION_REQUIRED, exception.code)
+            assertEquals(DomainErrorCode.PROFILE_AUTHENTICITY_VERIFICATION_REQUIRED, exception.code)
         }
     }
 
     private fun createDraftProfileWithPhotos(
-        identityVerificationStatus: IdentityVerificationStatus
+        authenticityVerificationStatus: ProfileAuthenticityVerificationStatus
     ): UUID {
         val user = userService.createUser("identity-activation-${UUID.randomUUID()}@example.com")
         val profile = profileService.createProfile(
@@ -70,8 +71,9 @@ class ProfileIdentityVerificationActivationIntegrationTest : BaseIT() {
             maxDistanceKm = 50
         )
 
-        profile.identityVerificationStatus = identityVerificationStatus
-        profile.identityVerified = identityVerificationStatus == IdentityVerificationStatus.VERIFIED
+        profile.authenticityVerificationStatus = authenticityVerificationStatus
+        profile.authenticityVerified =
+            authenticityVerificationStatus == ProfileAuthenticityVerificationStatus.VERIFIED
         profileRepository.save(profile)
 
         repeat(4) { index ->

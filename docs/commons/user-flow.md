@@ -9,12 +9,13 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
 Profile trust-provider shortcuts are execution-profile aware. Outside `prod`,
-provider `none` preserves MVP compatibility for local/dev/test flows: identity
-verification may return `VERIFIED`, photo moderation may return `APPROVED`, and
+provider `none` preserves MVP compatibility for local/dev/test flows: profile
+authenticity verification may return `VERIFIED`, photo moderation may return
+`APPROVED`, and
 technical photo validation may produce `isPersonPhoto=true`,
 `isFullBody=true` and `validationStatus=VALIDATED`. In `prod`, provider `none`
-does not create positive trust facts: identity verification returns
-`409 IDENTITY_VERIFICATION_NOT_CONFIGURED`, photo moderation persists
+does not create positive trust facts: profile authenticity verification returns
+`409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`, photo moderation persists
 `NEEDS_REVIEW`, and technical photo validation alone persists
 `false`/`false`/`PENDING`. Successful image decoding is not semantic
 person/full-body validation. Production activation defaults to requiring
@@ -27,10 +28,34 @@ the fixed models `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
 `offensive-2.0`. Real face presence is used only for the MVP `isPersonPhoto`
 field: at least one `faces` entry counts as a person photo, `artificial_faces`
 do not count, and `isFullBody` remains `false` because this provider path is
-not a full-body detector. This does not perform facial recognition, face
-matching, liveness, identity verification, age estimation or minor detection.
+not a full-body detector. This does not perform profile authenticity
+verification, facial recognition, face matching, liveness, legal identity
+verification, age estimation or minor detection.
 Mapped moderation signals can become `NEEDS_REVIEW` and are handled by the
 admin review queue.
+
+Profile Authenticity Verification is not legal identity verification. It is a
+separate profile trust state whose future target is:
+
+```text
+liveness-derived live reference
++
+comparison against every current validated person photo
+```
+
+The comparison candidate set is `validationStatus=VALIDATED` and
+`isPersonPhoto=true`, sorted by profile-photo position. For each candidate
+person photo, at least one face must match the verified live reference. Group
+photos can remain authentic when the verified person appears alongside other
+people, while non-person photos are excluded from face comparison.
+
+The current MVP only has a provider-neutral synchronous skeleton. The
+Sightengine path's `isPersonPhoto` means at least one real face was detected; it
+does not prove person consistency, facial authenticity or ownership. A body-only
+image without a comparable visible face is not solved by this skeleton.
+Uploading, replacing or deleting a profile photo invalidates previous
+authenticity verification to `STALE` and sets `authenticityVerified=false`.
+Reordering photos does not invalidate authenticity.
 
 Photo moderation has a small admin human-review loop. Automated/provider
 moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.

@@ -25,12 +25,13 @@ enum class ProfileStatus {
     INACTIVE
 }
 
-enum class IdentityVerificationStatus {
+enum class ProfileAuthenticityVerificationStatus {
     NOT_STARTED,
     PENDING,
     VERIFIED,
     REJECTED,
-    NEEDS_REVIEW
+    NEEDS_REVIEW,
+    STALE
 }
 
 @Entity
@@ -53,12 +54,13 @@ data class Profile(
     @Column(name = "birth_date", nullable = false)
     var birthDate: LocalDate,
 
-    @Column(name = "identity_verified", nullable = false)
-    var identityVerified: Boolean = false,
+    @Column(name = "authenticity_verified", nullable = false)
+    var authenticityVerified: Boolean = false,
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "identity_verification_status", nullable = false)
-    var identityVerificationStatus: IdentityVerificationStatus = IdentityVerificationStatus.NOT_STARTED,
+    @Column(name = "authenticity_verification_status", nullable = false)
+    var authenticityVerificationStatus: ProfileAuthenticityVerificationStatus =
+        ProfileAuthenticityVerificationStatus.NOT_STARTED,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false)

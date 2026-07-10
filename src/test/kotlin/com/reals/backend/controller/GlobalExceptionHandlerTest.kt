@@ -117,18 +117,18 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    fun `identity verification not configured exposes stable conflict response`() {
+    fun `authenticity verification not configured exposes stable conflict response`() {
         val response =
             handler.handleDomainException(
                 DomainConflictException(
-                    code = DomainErrorCode.IDENTITY_VERIFICATION_NOT_CONFIGURED,
-                    message = "Identity verification is not configured"
+                    code = DomainErrorCode.AUTHENTICITY_VERIFICATION_NOT_CONFIGURED,
+                    message = "Profile authenticity verification is not configured"
                 )
             )
 
         assertEquals(HttpStatus.CONFLICT, response.statusCode)
-        assertEquals("IDENTITY_VERIFICATION_NOT_CONFIGURED", response.body?.code)
+        assertEquals("AUTHENTICITY_VERIFICATION_NOT_CONFIGURED", response.body?.code)
         assertEquals("Conflict", response.body?.error)
-        assertEquals("Identity verification is not configured", response.body?.message)
+        assertEquals("Profile authenticity verification is not configured", response.body?.message)
     }
 }

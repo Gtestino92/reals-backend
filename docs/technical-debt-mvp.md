@@ -65,7 +65,7 @@ The following are intentionally not MVP blockers:
 - Gamified reputation badges.
 - Production trust score based on real behavior.
 - Full manual moderation workflow.
-- Identity verification provider integration.
+- Profile authenticity verification provider integration.
 - Canonical country/city reference dataset.
 - Geohash/spatial indexing.
 - CDN/cache strategy for media.

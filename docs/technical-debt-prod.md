@@ -78,37 +78,35 @@ Future work:
 
 ---
 
-## 2. Identity verification
+## 2. Profile authenticity verification
 
 Current state:
-- `Profile.identityVerified` exists.
-- `Profile.identityVerificationStatus` is the richer persisted verification state.
-- Identity verification endpoint exists.
+- `Profile.authenticityVerified` exists.
+- `Profile.authenticityVerificationStatus` is the richer persisted profile-authenticity state.
+- Profile authenticity verification endpoint exists.
 - Provider abstraction exists.
-- Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not real external identity or age verification.
-- In `prod`, provider `none` fails explicitly with `IDENTITY_VERIFICATION_NOT_CONFIGURED` and does not persist `VERIFIED`.
+- Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not liveness, face comparison, legal identity, document verification or age assurance.
+- In `prod`, provider `none` fails explicitly with `AUTHENTICITY_VERIFICATION_NOT_CONFIGURED` and does not persist `VERIFIED`.
 
 Production decision:
-- Identity verification is separate from profile photos.
-- Do not infer identity from person detection, full-body detection or visual approval.
-- Decide whether production profile activation must set `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
+- Profile Authenticity Verification is not legal identity verification.
+- The future target is liveness-derived live reference plus comparison against every current validated person photo.
+- Do not infer authenticity from person detection, full-body detection, moderation approval, `ProfileStatus.ACTIVE` or visual approval.
+- Decide whether production profile activation must set `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
 
 Future implementation:
-- Choose identity verification provider or internal verification flow.
-- Define the identity verification product requirement.
-- Define required inputs:
-  - selfie;
-  - liveness check;
-  - document verification;
-  - profile photo comparison;
-  - or hybrid process.
+- Choose profile authenticity provider or internal verification flow.
+- Define liveness capture/session lifecycle.
+- Define live reference artifact handling.
+- Define facial comparison provider and score thresholds.
+- Define retry policy.
+- Define `NEEDS_REVIEW` workflow.
 - Store provider reference/audit metadata.
-- Define retry/failure policy around `PENDING`, `REJECTED` and `NEEDS_REVIEW`.
-- Define manual review flow for `NEEDS_REVIEW`.
 - Define provider webhook/callback handling if provider verification is asynchronous.
-- Define privacy and data-retention policy for provider artifacts.
+- Define biometric/privacy/retention policy, including reference-image retention or immediate deletion.
+- Keep age assurance and legal/document verification separate.
 - Define frontend UX.
-- Decide whether identity verification is:
+- Decide whether profile authenticity verification is:
   - optional;
   - required for activation;
   - required only after trust/safety escalation;
@@ -138,7 +136,7 @@ Current shortcut split:
 - In `prod`, technical upload validation alone leaves photos as `validationStatus=PENDING`, `isPersonPhoto=false` and `isFullBody=false`.
 - Outside `prod`, moderation provider `none` returns `APPROVED` for compatibility.
 - In `prod`, moderation provider `none` returns `NEEDS_REVIEW`.
-- Sightengine face analysis is not identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
+- Sightengine face analysis is not profile authenticity verification, legal identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
 - Sightengine moderation does not solve child safety, CSAM/CSAE handling, legal escalation or user sanctioning.
 
 Current synchronous target:
@@ -836,7 +834,7 @@ Future requirement:
 Production work:
 - Define sensitive-field log policy.
 - Keep tokens, chat contents, personal messages, full emails, private media URLs and raw request bodies out of logs.
-- Add audit trails for moderation, identity verification and admin actions.
+- Add audit trails for moderation, profile authenticity verification and admin actions.
 
 ---
 
@@ -922,7 +920,7 @@ Before Google Play production distribution:
 - Prominently expose the account-deletion request path.
 - Reference Reals or the production developer name used in the Play listing.
 - Allow the user to initiate the deletion request without being redirected to the Android app or required to reinstall it.
-- Decide the minimum identity-verification/support flow for web deletion requests.
+- Decide the minimum account-ownership/support flow for web deletion requests.
 - Disclose the account/data deletion URL in the Play Console Data safety form.
 - Align public deletion copy with the 30-day recovery window and the actual retention policy.
 - Clearly describe retained safety, fraud-prevention, regulatory, audit or legal-evidence data once those retention policies are finalized.

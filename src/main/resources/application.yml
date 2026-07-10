@@ -194,10 +194,10 @@ profile:
       connect-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS:3000}
       read-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS:10000}
 
-  identity-verification:
-    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:none}
-    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
-    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+  authenticity-verification:
+    provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
+    fail-on-provider-error: ${PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
 
 engagement:
   # Maximum number of simultaneous active Matches a user can participate in
