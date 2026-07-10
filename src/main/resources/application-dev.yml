@@ -116,6 +116,9 @@ profile:
     provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
     fail-on-provider-error: ${PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
     require-for-activation: ${PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+    policy:
+      min-matched-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS:3}
+      max-contradictory-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS:0}
 
 engagement:
   max-active-matches: 5

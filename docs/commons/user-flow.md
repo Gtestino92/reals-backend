@@ -40,14 +40,24 @@ separate profile trust state whose future target is:
 ```text
 liveness-derived live reference
 +
-comparison against every current validated person photo
+provider-neutral facial comparison signals for current candidate person photos
 ```
 
 The comparison candidate set is `validationStatus=VALIDATED` and
-`isPersonPhoto=true`, sorted by profile-photo position. For each candidate
-person photo, at least one face must match the verified live reference. Group
-photos can remain authentic when the verified person appears alongside other
-people, while non-person photos are excluded from face comparison.
+`isPersonPhoto=true`, sorted by profile-photo position. `isPersonPhoto` selects
+comparison candidates; it does not prove that the detected person is the
+verified user. Reals policy uses configurable positive and contradictory facial
+evidence thresholds. The default MVP policy requires an accepted live reference,
+at least 3 `MATCHED` candidate person photos and at most 0 `CONTRADICTORY`
+candidate person photos. `MATCHED` is positive evidence, `UNRESOLVED` is
+neutral and `CONTRADICTORY` is comparable facial evidence inconsistent with the
+accepted live reference. Group photos can be `MATCHED` when at least one
+comparable face matches the live reference, while non-person photos are excluded
+from face comparison. Old, distant, side-profile, obscured or otherwise poor
+comparisons may be `UNRESOLVED` and do not automatically invalidate the
+profile. Strong contradictory evidence prevents automatic verification under
+the default zero-contradiction policy, but it does not prove fraud and currently
+produces `NEEDS_REVIEW`, not automatic `REJECTED`.
 
 The current MVP only has a provider-neutral synchronous skeleton. The
 Sightengine path's `isPersonPhoto` means at least one real face was detected; it

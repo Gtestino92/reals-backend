@@ -8,9 +8,12 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.integration.ControllerIT
+import com.reals.backend.service.authenticity.ProfileAuthenticityPhotoComparison
+import com.reals.backend.service.authenticity.ProfileAuthenticityPhotoComparisonOutcome
 import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationProvider
+import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationProviderResult
 import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationRequest
-import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationResult
+import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationSignals
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -31,27 +34,9 @@ class ProfileAuthenticityVerificationIntegrationTest : ControllerIT() {
     private lateinit var profileAuthenticityVerificationProvider: ProfileAuthenticityVerificationProvider
 
     @Test
-    fun `provider rejected result updates authenticity status and compatibility boolean`() {
+    fun `provider signals that need review update authenticity status and compatibility boolean`() {
         val userId = createDraftProfile()
-        stubAuthenticityResult(ProfileAuthenticityVerificationStatus.REJECTED)
-
-        mockMvc.perform(
-            post("/api/me/profile/authenticity-verification")
-                .with(authenticatedAs(userId))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
-            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("REJECTED")))
-
-        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
-        assertEquals(false, profile.authenticityVerified)
-        assertEquals(ProfileAuthenticityVerificationStatus.REJECTED, profile.authenticityVerificationStatus)
-    }
-
-    @Test
-    fun `provider needs review result updates authenticity status and compatibility boolean`() {
-        val userId = createDraftProfile()
-        stubAuthenticityResult(ProfileAuthenticityVerificationStatus.NEEDS_REVIEW)
+        stubLiveReferenceNotAccepted()
 
         mockMvc.perform(
             post("/api/me/profile/authenticity-verification")
@@ -60,20 +45,28 @@ class ProfileAuthenticityVerificationIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
             .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("NEEDS_REVIEW")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        assertEquals(false, profile.authenticityVerified)
+        assertEquals(ProfileAuthenticityVerificationStatus.NEEDS_REVIEW, profile.authenticityVerificationStatus)
     }
 
     @Test
-    fun `provider pending result updates authenticity status and compatibility boolean`() {
+    fun `provider matched signals update authenticity status and compatibility boolean`() {
         val userId = createDraftProfile()
-        stubAuthenticityResult(ProfileAuthenticityVerificationStatus.PENDING)
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        savePhoto(profile.id, position = 1, isPersonPhoto = true, PhotoValidationStatus.VALIDATED)
+        savePhoto(profile.id, position = 2, isPersonPhoto = true, PhotoValidationStatus.VALIDATED)
+        savePhoto(profile.id, position = 3, isPersonPhoto = true, PhotoValidationStatus.VALIDATED)
+        stubAllCandidatePhotosMatched()
 
         mockMvc.perform(
             post("/api/me/profile/authenticity-verification")
                 .with(authenticatedAs(userId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
-            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("PENDING")))
+            .andExpect(jsonPath("$.authenticityVerified", equalTo(true)))
+            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("VERIFIED")))
     }
 
     @Test
@@ -84,7 +77,8 @@ class ProfileAuthenticityVerificationIntegrationTest : ControllerIT() {
         savePhoto(profile.id, position = 1, isPersonPhoto = false, PhotoValidationStatus.VALIDATED)
         val second = savePhoto(profile.id, position = 2, isPersonPhoto = true, PhotoValidationStatus.VALIDATED)
         savePhoto(profile.id, position = 4, isPersonPhoto = true, PhotoValidationStatus.FAILED)
-        stubAuthenticityResult(ProfileAuthenticityVerificationStatus.VERIFIED)
+        val fifth = savePhoto(profile.id, position = 5, isPersonPhoto = true, PhotoValidationStatus.VALIDATED)
+        stubAllCandidatePhotosMatched()
 
         mockMvc.perform(
             post("/api/me/profile/authenticity-verification")
@@ -99,9 +93,9 @@ class ProfileAuthenticityVerificationIntegrationTest : ControllerIT() {
         val request = captor.value
         assertEquals(userId, request.userId)
         assertEquals(profile.id, request.profileId)
-        assertEquals(listOf(second.id, third.id), request.personPhotos.map { it.photoId })
-        assertEquals(listOf(second.storageKey, third.storageKey), request.personPhotos.map { it.storageKey })
-        assertEquals(listOf(second.version, third.version), request.personPhotos.map { it.photoVersion })
+        assertEquals(listOf(second.id, third.id, fifth.id), request.personPhotos.map { it.photoId })
+        assertEquals(listOf(second.storageKey, third.storageKey, fifth.storageKey), request.personPhotos.map { it.storageKey })
+        assertEquals(listOf(second.version, third.version, fifth.version), request.personPhotos.map { it.photoVersion })
     }
 
     @Test
@@ -133,14 +127,36 @@ class ProfileAuthenticityVerificationIntegrationTest : ControllerIT() {
         return user.id
     }
 
-    private fun stubAuthenticityResult(status: ProfileAuthenticityVerificationStatus) {
+    private fun stubLiveReferenceNotAccepted() {
         Mockito.`when`(profileAuthenticityVerificationProvider.verify(anyAuthenticityRequest()))
             .thenReturn(
-                ProfileAuthenticityVerificationResult(
-                    status = status,
-                    provider = "test"
+                ProfileAuthenticityVerificationProviderResult.Success(
+                    ProfileAuthenticityVerificationSignals(
+                        provider = "test",
+                        liveReferenceAccepted = false,
+                        photoComparisons = emptyList()
+                    )
                 )
             )
+    }
+
+    private fun stubAllCandidatePhotosMatched() {
+        Mockito.`when`(profileAuthenticityVerificationProvider.verify(anyAuthenticityRequest()))
+            .thenAnswer { invocation ->
+                val request = invocation.arguments[0] as ProfileAuthenticityVerificationRequest
+                ProfileAuthenticityVerificationProviderResult.Success(
+                    ProfileAuthenticityVerificationSignals(
+                        provider = "test",
+                        liveReferenceAccepted = true,
+                        photoComparisons = request.personPhotos.map {
+                            ProfileAuthenticityPhotoComparison(
+                                photoId = it.photoId,
+                                outcome = ProfileAuthenticityPhotoComparisonOutcome.MATCHED
+                            )
+                        }
+                    )
+                )
+            }
     }
 
     private fun anyAuthenticityRequest(): ProfileAuthenticityVerificationRequest {

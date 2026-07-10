@@ -11,6 +11,8 @@ import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.authenticity.NoopProfileAuthenticityVerificationProvider
+import com.reals.backend.service.authenticity.ProfileAuthenticityPolicy
+import com.reals.backend.service.authenticity.ProfileAuthenticityPolicyProperties
 import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationService
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -72,9 +74,9 @@ class ProfileServiceTest {
             profilePhotoValidationService = Mockito.mock(ProfilePhotoValidationService::class.java),
             profilePhotoAnalysisService = Mockito.mock(ProfilePhotoAnalysisService::class.java),
             profileAuthenticityVerificationService = ProfileAuthenticityVerificationService(
-                provider = NoopProfileAuthenticityVerificationProvider(
-                    EnvironmentExposurePolicy.forActiveProfiles("prod")
-                ),
+                provider = NoopProfileAuthenticityVerificationProvider(),
+                policy = ProfileAuthenticityPolicy(ProfileAuthenticityPolicyProperties()),
+                environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("prod"),
                 failOnProviderError = false
             ),
             storageService = Mockito.mock(S3StorageService::class.java),

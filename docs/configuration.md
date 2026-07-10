@@ -83,6 +83,8 @@ Non-sensitive runtime configuration:
 | `PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER` | no | Profile authenticity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, authenticity verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject profile authenticity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `authenticityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS` | no | Minimum current candidate person photos that must positively match the accepted live reference for automatic `VERIFIED`. Defaults to `3`; must be positive. This is separate from `profile.photos.min-person-photos`. |
+| `PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS` | no | Maximum current candidate person photos with contradictory facial evidence allowed for automatic `VERIFIED`. Defaults to `0`; must not be negative. Contradictions currently produce `NEEDS_REVIEW`, not automatic `REJECTED`. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
@@ -293,13 +295,30 @@ unless `profile.authenticity-verification.require-for-activation=true`. When
 enabled, activation requires `authenticityVerificationStatus=VERIFIED`; `STALE`
 fails activation with `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRED`.
 
-The future target is a liveness-derived live reference plus comparison against
-every current validated person photo. Candidate photos are exactly
-`validationStatus=VALIDATED` and `isPersonPhoto=true`, sorted by current
-profile-photo position. For each candidate person photo, at least one face must
-match the verified live reference. Group photos can remain authentic when the
-verified person appears alongside other people. Non-person photos are excluded
-from face comparison.
+The future target is a liveness-derived live reference plus provider-neutral
+facial comparison signals for current candidate person photos. Candidate photos
+are exactly `validationStatus=VALIDATED` and `isPersonPhoto=true`, sorted by
+current profile-photo position. `isPersonPhoto` selects comparison candidates;
+it does not prove that the detected person is the verified user. Non-person
+photos are excluded from face comparison.
+
+Reals policy owns the final domain decision. Successful providers return
+neutral outcomes: `MATCHED` is positive evidence, `UNRESOLVED` is neutral, and
+`CONTRADICTORY` is comparable facial evidence inconsistent with the accepted
+live reference. The default MVP policy requires `liveReferenceAccepted=true`, at
+least 3 matched candidate person photos and at most 0 contradictory candidate
+person photos. Group photos can be `MATCHED` when at least one comparable face
+matches the live reference. Old, distant, side-profile, obscured or otherwise
+poor comparisons may be `UNRESOLVED` and do not automatically invalidate the
+profile. Strong contradictory evidence prevents automatic verification under
+the default zero-contradiction policy, but it does not prove fraud and currently
+produces `NEEDS_REVIEW`, not automatic `REJECTED`.
+
+The policy properties are independent from `profile.photos.min-person-photos`:
+`profile.photos.min-person-photos` counts photos classified as person photos,
+while `profile.authenticity-verification.policy.min-matched-person-photos`
+counts current candidate person photos that positively match the accepted live
+reference. Both default to `3` today but must remain independently configurable.
 
 Uploading, replacing or deleting a profile photo invalidates previous
 authenticity verification to `STALE` and sets `authenticityVerified=false`.

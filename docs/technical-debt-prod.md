@@ -90,7 +90,13 @@ Current state:
 
 Production decision:
 - Profile Authenticity Verification is not legal identity verification.
-- The future target is liveness-derived live reference plus comparison against every current validated person photo.
+- The future target is liveness-derived live reference plus provider-neutral facial comparison signals for current candidate person photos.
+- Reals policy, not the provider, owns the final profile-authenticity domain decision.
+- Default MVP policy is `liveReferenceAccepted=true`, matched current candidate person photos >= 3 and contradictory current candidate person photos <= 0.
+- `MATCHED` is positive evidence, `UNRESOLVED` is neutral, and `CONTRADICTORY` is comparable facial evidence inconsistent with the accepted live reference.
+- Contradictory evidence currently produces `NEEDS_REVIEW`, not automatic `REJECTED`; it does not prove fraud by itself.
+- Group photos can be `MATCHED` when at least one comparable face matches the live reference. Old, distant, side-profile, obscured or otherwise poor comparisons may be `UNRESOLVED`.
+- `isPersonPhoto` selects authenticity comparison candidates but does not establish that the detected person is the verified user.
 - Do not infer authenticity from person detection, full-body detection, moderation approval, `ProfileStatus.ACTIVE` or visual approval.
 - Decide whether production profile activation must set `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
 
@@ -99,6 +105,7 @@ Future implementation:
 - Define liveness capture/session lifecycle.
 - Define live reference artifact handling.
 - Define facial comparison provider and score thresholds.
+- Define provider-specific mapping into `MATCHED`, `UNRESOLVED` and `CONTRADICTORY`.
 - Define retry policy.
 - Define `NEEDS_REVIEW` workflow.
 - Store provider reference/audit metadata.
