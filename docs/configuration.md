@@ -67,6 +67,7 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
 | `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
+| `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Production override for `profile.photos.min-full-body-photos`. Production defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/dev/test defaults remain unchanged. |
 | `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
 | `PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject identity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `identityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
@@ -280,6 +281,12 @@ are not semantic person/full-body validation. `application-prod.yml` defaults
 `profile.photos.require-moderation-approval-for-activation` to `true`, while
 preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
 override.
+
+Production also temporarily defaults `profile.photos.min-full-body-photos` to
+`0` through `${PROFILE_MIN_FULL_BODY_PHOTOS:0}`. The `isFullBody` domain/API
+field and configurable requirement remain in place; the production default is
+lowered only because there is not yet a real full-body semantic detector. A
+future provider can restore the production minimum to `1`.
 
 `IDENTITY_VERIFICATION_API_KEY` is reserved for a future provider and should stay
 empty until that provider is implemented.

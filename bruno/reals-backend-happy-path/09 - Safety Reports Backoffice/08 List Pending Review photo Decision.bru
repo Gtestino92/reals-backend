@@ -1,0 +1,23 @@
+meta {
+  name: 08 List Pending Review photo Decision
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/admin/profile-photos/57ee8dd9-6ed0-4016-acb4-642cc5ef491a/moderation
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+body:json {
+  {
+    "expectedPhotoVersion": 2,
+    "decision": "APPROVED",
+    "notes": "Stale review manual PostgreSQL test"
+  }
+}

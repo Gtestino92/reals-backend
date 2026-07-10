@@ -21,6 +21,18 @@ person/full-body validation. Production activation defaults to requiring
 moderation approval in addition to the existing validated/person/full-body photo
 counts.
 
+Photo moderation has a small admin human-review loop. Automated/provider
+moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.
+`NEEDS_REVIEW` photos appear in `/api/admin/profile-photos/review` for admins
+with `ROLE_ADMIN`; an admin can resolve them through
+`POST /api/admin/profile-photos/{photoId}/moderation` as `APPROVED` or
+`REJECTED` by submitting the `expectedPhotoVersion` returned by the queue item
+they reviewed. If the photo changed after the queue was loaded, the resolution
+returns `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`; the admin should
+refresh and review the current photo again. This is a content-moderation
+decision, not user-visible moderation scoring. It does not change semantic
+validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
+
 Legal compliance is backend-authoritative for protected participation/content
 writes. After provisioning, clients can call `GET /api/me/legal-status`; when
 `requirementsSatisfied=false`, they should show the current legal requirements,

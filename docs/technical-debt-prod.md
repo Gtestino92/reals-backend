@@ -125,6 +125,8 @@ Implemented production fail-safe compatibility:
 - photo moderation provider `none` does not create `APPROVED` in `prod`;
 - technical photo validation does not create person/full-body semantic facts in `prod`;
 - production activation defaults to requiring `APPROVED` moderation.
+- minimal backend admin moderation review is implemented for `NEEDS_REVIEW -> APPROVED` and `NEEDS_REVIEW -> REJECTED`.
+- production temporarily defaults minimum full-body photos to `0` because no real full-body detector exists.
 
 Current shortcut split:
 - Outside `prod`, `validationStatus=VALIDATED`, `isPersonPhoto=true` and `isFullBody=true` are preserved for MVP/local/dev/test compatibility after technical upload validation.
@@ -164,7 +166,6 @@ Preferred long-term direction:
 ### 3.3 Future moderation workflow for photos
 
 Future work:
-- Add admin ability to hide/reject/remove photos.
 - Implement real photo semantic analysis for person/full-body requirements.
 - Implement real photo content moderation.
 - Add external automatic image moderation for:
@@ -176,9 +177,14 @@ Future work:
   - other prohibited content.
 - Add person detection, full-body detection and face/person consistency if product requirements need them.
 - Define asynchronous callbacks/webhooks if required.
-- Define manual review flows.
+- Expand manual photo-review operations beyond the minimal backend queue, including reopen/override and removal workflows.
 - Define provider artifact privacy/retention.
 - Define whether rejected photos are deleted, hidden, quarantined or retained for audit.
+- Add an admin web UI for the backend review queue.
+- Persist provider signal/reason/confidence if a real provider needs it.
+- Define reopen/override workflow for already resolved moderation decisions.
+- Decide whether and how rejected photo moderation should feed safety reports or penalties; no automatic safety report, ban or penalty exists now.
+- Define operational retention/removal policy for rejected media.
 
 Historical production data limitation:
 - The backend does not persist enough historical provider/analyzer identity to safely determine which old positive rows came from MVP shortcuts and which could theoretically come from another implementation.
