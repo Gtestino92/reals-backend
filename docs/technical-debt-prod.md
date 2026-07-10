@@ -78,37 +78,70 @@ Future work:
 
 ---
 
-## 2. Identity verification
+## 2. Profile authenticity verification
 
 Current state:
-- `Profile.identityVerified` exists.
-- `Profile.identityVerificationStatus` is the richer persisted verification state.
-- Identity verification endpoint exists.
+- `Profile.authenticityVerified` exists.
+- `Profile.authenticityVerificationStatus` is the richer persisted profile-authenticity state.
+- Profile authenticity verification endpoint exists.
 - Provider abstraction exists.
-- Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not real external identity or age verification.
-- In `prod`, provider `none` fails explicitly with `IDENTITY_VERIFICATION_NOT_CONFIGURED` and does not persist `VERIFIED`.
+- Provider `none` returns `VERIFIED` for MVP/local/dev/test compatibility only; it is not liveness, face comparison, legal identity, document verification or age assurance.
+- In `prod`, provider `none` fails explicitly with `AUTHENTICITY_VERIFICATION_NOT_CONFIGURED` and does not persist `VERIFIED`.
 
 Production decision:
-- Identity verification is separate from profile photos.
-- Do not infer identity from person detection, full-body detection or visual approval.
-- Decide whether production profile activation must set `PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
+- Profile Authenticity Verification is not legal identity verification.
+- The future target is liveness-derived live reference plus provider-neutral facial comparison signals for current candidate person photos.
+- Reals policy, not the provider, owns the final profile-authenticity domain decision.
+- Default MVP policy is `liveReferenceAccepted=true`, matched current candidate person photos >= 3 and contradictory current candidate person photos <= 0.
+- `MATCHED` is positive evidence, `UNRESOLVED` is neutral, and `CONTRADICTORY` is comparable facial evidence inconsistent with the accepted live reference.
+- Contradictory evidence currently produces `NEEDS_REVIEW`, not automatic `REJECTED`; it does not prove fraud by itself.
+- Group photos can be `MATCHED` when at least one comparable face matches the live reference. Old, distant, side-profile, obscured or otherwise poor comparisons may be `UNRESOLVED`.
+- `isPersonPhoto` selects authenticity comparison candidates but does not establish that the detected person is the verified user.
+- Do not infer authenticity from person detection, full-body detection, moderation approval, `ProfileStatus.ACTIVE` or visual approval.
+- Decide whether production profile activation must set `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION=true`.
 
-Future implementation:
-- Choose identity verification provider or internal verification flow.
-- Define the identity verification product requirement.
-- Define required inputs:
-  - selfie;
-  - liveness check;
-  - document verification;
-  - profile photo comparison;
-  - or hybrid process.
-- Store provider reference/audit metadata.
-- Define retry/failure policy around `PENDING`, `REJECTED` and `NEEDS_REVIEW`.
-- Define manual review flow for `NEEDS_REVIEW`.
-- Define provider webhook/callback handling if provider verification is asynchronous.
-- Define privacy and data-retention policy for provider artifacts.
-- Define frontend UX.
-- Decide whether identity verification is:
+Preferred next provider target:
+- The currently preferred next real provider target is a self-hosted DeepFace REST API deployed as a separate ML container/service and consumed directly over HTTP by the existing Kotlin/Spring `reals-backend` monolith.
+- Do not treat DeepFace as currently configured, deployed or production-approved. The current branch keeps the provider-neutral skeleton active: `ProfileAuthenticityVerificationProvider -> ProfileAuthenticityVerificationSignals -> ProfileAuthenticityPolicy`.
+- Do not make providers decide `VERIFIED`, `NEEDS_REVIEW` or `REJECTED` for successful analyses. A future `DeepFaceProfileAuthenticityVerificationProvider` should implement `ProfileAuthenticityVerificationProvider` and map DeepFace-specific responses into `liveReferenceAccepted` plus `MATCHED`, `UNRESOLVED` and `CONTRADICTORY` photo outcomes. `ProfileAuthenticityPolicy` remains responsible for the final Reals authenticity status.
+- The intended deployment shape is `reals-backend -> HTTP -> DeepFace REST API container`.
+- A custom Reals Python/FastAPI adapter or Reals-owned ML microservice is not the current target. A dedicated Reals ML service may be reconsidered later if orchestration grows to multiple ML engines, custom models, GPU workload management, batching, queues or model-version lifecycle.
+
+Preferred future DeepFace flow:
+1. Android captures a fresh camera image specifically for profile-authenticity verification.
+2. A future backend authenticity-verification input/session contract carries that live-reference capture. The current endpoint does not accept this input and does not implement camera freshness or liveness.
+3. The DeepFace provider evaluates passive anti-spoofing/liveness for the live-reference capture only and maps that result to `liveReferenceAccepted`.
+4. If the live reference is accepted, the provider compares it against current authenticity photo candidates: `validationStatus == VALIDATED AND isPersonPhoto == true`.
+5. The provider maps each candidate comparison into `MATCHED`, `UNRESOLVED` or `CONTRADICTORY`.
+6. `ProfileAuthenticityPolicy` applies configured `min-matched-person-photos` and `max-contradictory-person-photos`.
+
+DeepFace REST usage direction:
+- The expected integration may use DeepFace REST operations conceptually like `/represent` with anti-spoofing enabled for the live-reference capture, followed by `/verify` without anti-spoofing for live-reference versus profile-photo comparisons.
+- This is not a permanent Reals HTTP contract. Exact endpoint orchestration must be validated against the pinned DeepFace version selected during implementation.
+- Do not run anti-spoofing against historical profile photos. A historical profile photo is not expected to prove current physical presence.
+
+Remaining design requirements before implementation:
+- Define the future HTTP/session contract carrying the live-reference capture.
+- Define Android fresh-camera capture UX and whether gallery/imported images are forbidden for the live reference.
+- Define live-reference size limits and technical image validation.
+- Define temporary live-reference handling.
+- Define reference-image retention versus immediate deletion.
+- Define biometric/privacy policy.
+- Pin the exact DeepFace version.
+- Select the exact face-recognition model and detector backend.
+- Define similarity/distance thresholds and mapping to `MATCHED`, `UNRESOLVED` and `CONTRADICTORY`.
+- Define DeepFace API authentication and network exposure.
+- Define provider connect/read timeouts.
+- Size container CPU and memory requirements.
+- Define model startup/readiness behavior.
+- Decide how DeepFace accesses current profile-photo content. Current `S3StorageService` does not expose an internal object-read operation for provider analysis, so the real provider implementation must either add an internal read path or provide short-lived provider-accessible URLs.
+- Define retry behavior.
+- Define `NEEDS_REVIEW` operational workflow.
+- Define provider/model/version audit metadata.
+- Review licenses for the exact DeepFace-wrapped recognition and detector models selected for production.
+- Avoid persisting face embeddings or biometric templates in the Reals relational database unless a future design explicitly requires and reviews that decision.
+- Keep age assurance and legal/document verification separate.
+- Decide whether profile authenticity verification is:
   - optional;
   - required for activation;
   - required only after trust/safety escalation;
@@ -138,7 +171,7 @@ Current shortcut split:
 - In `prod`, technical upload validation alone leaves photos as `validationStatus=PENDING`, `isPersonPhoto=false` and `isFullBody=false`.
 - Outside `prod`, moderation provider `none` returns `APPROVED` for compatibility.
 - In `prod`, moderation provider `none` returns `NEEDS_REVIEW`.
-- Sightengine face analysis is not identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
+- Sightengine face analysis is not profile authenticity verification, legal identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
 - Sightengine moderation does not solve child safety, CSAM/CSAE handling, legal escalation or user sanctioning.
 
 Current synchronous target:
@@ -836,7 +869,7 @@ Future requirement:
 Production work:
 - Define sensitive-field log policy.
 - Keep tokens, chat contents, personal messages, full emails, private media URLs and raw request bodies out of logs.
-- Add audit trails for moderation, identity verification and admin actions.
+- Add audit trails for moderation, profile authenticity verification and admin actions.
 
 ---
 
@@ -922,7 +955,7 @@ Before Google Play production distribution:
 - Prominently expose the account-deletion request path.
 - Reference Reals or the production developer name used in the Play listing.
 - Allow the user to initiate the deletion request without being redirected to the Android app or required to reinstall it.
-- Decide the minimum identity-verification/support flow for web deletion requests.
+- Decide the minimum account-ownership/support flow for web deletion requests.
 - Disclose the account/data deletion URL in the Play Console Data safety form.
 - Align public deletion copy with the 30-day recovery window and the actual retention policy.
 - Clearly describe retained safety, fraud-prevention, regulatory, audit or legal-evidence data once those retention policies are finalized.

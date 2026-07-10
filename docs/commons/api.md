@@ -46,8 +46,8 @@ actions stay persisted but do not satisfy a newer configured version. Legacy
 actions without a stored content SHA-256 and historical actions with a different
 content SHA-256 also do not satisfy the current configured document.
 
-The gate applies to profile creation/editing/activation/match filters/identity
-verification/photo upload/photo reorder/photo replacement, entering
+The gate applies to profile creation/editing/activation/match filters/profile
+authenticity verification/photo upload/photo reorder/photo replacement, entering
 matchmaking, sending chat messages, first-chat guidance next requests, visual
 personal-message writes, positive first-chat and visual decisions, and
 scheduling proposal submission/acceptance/round rejection.
@@ -169,7 +169,7 @@ these values as text, not HTML.
 - `PATCH /api/me/profile`: update authenticated user's editable profile fields.
 - `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo upload/replacement/deletion or match-filter configuration.
 - `PUT /api/me/profile/match-filters`: replace matchmaking preferences. Body: `intention`, `lookingForGenders`, `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
-- `POST /api/me/profile/identity-verification`: optionally run identity verification for the authenticated user's profile. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent real external identity or age verification. With provider `none` in `prod`, verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
+- `POST /api/me/profile/authenticity-verification`: optionally run profile authenticity verification for the authenticated user's profile. Profile Authenticity Verification is not legal identity verification. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent liveness, face comparison, legal identity, document verification or age assurance. With provider `none` in `prod`, verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
@@ -189,23 +189,48 @@ validation. Outside `prod`, the temporary MVP shortcut still returns
 `isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
 `prod`, technical validation alone returns `isPersonPhoto=false`,
 `isFullBody=false` and `validationStatus=PENDING` when provider `none` is used.
-With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, the backend makes one
-Sightengine multipart request after technical validation and uses real face
-presence only as an MVP person-photo signal. At least one `faces` entry sets
+With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod`, the backend
+makes one Sightengine multipart request after technical validation and uses real
+face presence only as an MVP person-photo signal. In non-production execution
+profiles, Sightengine is disabled even if the variable is set and the backend
+uses the provider `none` compatibility path. At least one `faces` entry sets
 `isPersonPhoto=true`; zero real faces sets `isPersonPhoto=false`.
 `artificial_faces` do not count. Successful Sightengine analysis always persists
 `validationStatus=VALIDATED` and `isFullBody=false`. This is not facial
-recognition, identity verification, face matching, liveness, age estimation,
-minor detection or full-body detection.
+recognition, profile authenticity verification, legal identity verification,
+face matching, liveness, age estimation, minor detection or full-body detection.
+
+Profile authenticity verification is a separate profile trust state. The future
+target is a liveness-derived live reference plus provider-neutral facial
+comparison signals for current candidate person photos
+(`validationStatus=VALIDATED && isPersonPhoto=true`). `isPersonPhoto` selects
+comparison candidates; it does not prove that the detected person is the
+verified user. Reals policy uses configurable thresholds: by default, an
+accepted live reference, at least 3 `MATCHED` candidate person photos and at
+most 0 `CONTRADICTORY` candidate person photos are required for automatic
+`VERIFIED`. `MATCHED` is positive evidence, `UNRESOLVED` is neutral and
+`CONTRADICTORY` is comparable facial evidence inconsistent with the accepted
+live reference. Group photos can be `MATCHED` when at least one comparable face
+matches the live reference, and non-person photos are excluded from face
+comparison. Old, distant, side-profile, obscured or otherwise poor comparisons
+may be `UNRESOLVED` and do not automatically invalidate the profile. Strong
+contradictory evidence prevents automatic verification under the default
+zero-contradiction policy, but it does not prove fraud and currently produces
+`NEEDS_REVIEW`, not automatic `REJECTED`. Uploading, replacing or deleting a
+profile photo invalidates a previous authenticity result to `STALE` and sets
+`authenticityVerified=false`; reordering photos does not. The Sightengine path
+currently sets `isPersonPhoto` from detected real-face presence only, so this
+skeleton does not solve body-only person consistency without a comparable
+visible face.
 
 `moderationStatus` is the content-moderation result. With provider `none`
 outside `prod`, the MVP compatibility path returns `APPROVED` without external
 review. With provider `none` in `prod`, uploads may proceed but persist
-`NEEDS_REVIEW`. With provider `sightengine`, the same single provider response
-also feeds Reals moderation policy for sexual explicit, sexual suggestive,
-violence/threat, gore and hate/extremism signals. Reject thresholds produce
-`REJECTED`, review thresholds produce `NEEDS_REVIEW`, and otherwise moderation
-is `APPROVED`. `NEEDS_REVIEW` enters the existing admin review queue.
+`NEEDS_REVIEW`. With provider `sightengine` in `prod`, the same single provider
+response also feeds Reals moderation policy for sexual explicit, sexual
+suggestive, violence/threat, gore and hate/extremism signals. Reject thresholds
+produce `REJECTED`, review thresholds produce `NEEDS_REVIEW`, and otherwise
+moderation is `APPROVED`. `NEEDS_REVIEW` enters the existing admin review queue.
 Automatic provider moderation does not create safety reports, child-safety
 reports, blocks, penalties, bans or account deletions. Production defaults to requiring
 `moderationStatus=APPROVED` for activation through
@@ -410,6 +435,9 @@ Selected stable frontend-facing domain codes:
 - `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`: requested legal document version is not the current configured version.
 - `LEGAL_DOCUMENT_ACTION_INVALID`: requested action does not match the configured required action.
 - `LEGAL_ACTION_REQUIRED`: protected participation/content write requires current legal document actions before continuing.
+- `AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`: profile authenticity verification provider is not configured for this environment.
+- `AUTHENTICITY_VERIFICATION_PROVIDER_ERROR`: profile authenticity verification provider failed and fail-on-error is enabled.
+- `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRED`: activation requires `authenticityVerificationStatus=VERIFIED`.
 
 ## Manual blocking
 

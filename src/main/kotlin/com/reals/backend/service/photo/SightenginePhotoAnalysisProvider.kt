@@ -1,23 +1,19 @@
 package com.reals.backend.service.photo
 
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.context.annotation.Conditional
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.RestClient
 import com.fasterxml.jackson.annotation.JsonProperty
 
 @Component
-@ConditionalOnProperty(
-    prefix = "profile.photos.moderation",
-    name = ["provider"],
-    havingValue = "sightengine"
-)
+@Conditional(ProductionSightenginePhotoAnalysisCondition::class)
 class SightenginePhotoAnalysisProvider(
     private val restClient: RestClient,
     private val properties: SightenginePhotoAnalysisProperties

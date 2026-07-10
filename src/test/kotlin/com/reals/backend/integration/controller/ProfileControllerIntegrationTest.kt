@@ -66,8 +66,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
             .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE")))
-            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
-            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("NOT_STARTED")))
+            .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("NOT_STARTED")))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
     }
 
@@ -232,11 +232,11 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `noop identity verification marks profile verified`() {
+    fun `noop profile authenticity verification marks profile verified`() {
         val user = userService.createUser("identity-noop-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
             userId = user.id,
-            displayName = "Identity Noop",
+            displayName = "Authenticity Noop",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
             lookingForGenders = setOf(Gender.MALE),
@@ -249,18 +249,18 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
 
         mockMvc.perform(
-            post("/api/me/profile/identity-verification")
+            post("/api/me/profile/authenticity-verification")
                 .with(authenticatedAs(user.id))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.identityVerified", equalTo(true)))
-            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("VERIFIED")))
+            .andExpect(jsonPath("$.authenticityVerified", equalTo(true)))
+            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("VERIFIED")))
 
         val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
-        org.junit.jupiter.api.Assertions.assertEquals(true, profile.identityVerified)
+        org.junit.jupiter.api.Assertions.assertEquals(true, profile.authenticityVerified)
         org.junit.jupiter.api.Assertions.assertEquals(
-            com.reals.backend.domain.IdentityVerificationStatus.VERIFIED,
-            profile.identityVerificationStatus
+            com.reals.backend.domain.ProfileAuthenticityVerificationStatus.VERIFIED,
+            profile.authenticityVerificationStatus
         )
     }
 

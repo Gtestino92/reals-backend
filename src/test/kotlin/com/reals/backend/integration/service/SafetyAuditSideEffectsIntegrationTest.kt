@@ -14,7 +14,7 @@ import java.util.UUID
 class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
 
     @Test
-    fun `identity verification records audit event`() {
+    fun `profile authenticity verification records audit event`() {
         val userId = createActiveProfile(
             email = "identity-audit-${UUID.randomUUID()}@example.com",
             displayName = "Identity Audit",
@@ -23,17 +23,18 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
         )
         val profile = profileService.findByUserId(userId)!!
 
-        profileService.verifyIdentity(profile.id)
+        profileService.verifyProfileAuthenticity(profile.id)
 
         val event = auditEventRepository.findAll()
             .single {
-                it.eventType == AuditEventType.IDENTITY_VERIFICATION_UPDATED &&
+                it.eventType == AuditEventType.PROFILE_AUTHENTICITY_VERIFICATION_UPDATED &&
                     it.aggregateType == AuditAggregateType.PROFILE &&
                     it.aggregateId == profile.id
             }
         assertEquals(userId, event.actorUserId)
         assertTrue(event.metadataJson!!.contains("oldStatus"))
         assertTrue(event.metadataJson!!.contains("VERIFIED"))
+        assertTrue(event.metadataJson!!.contains("authenticityVerified"))
     }
 
     @Test

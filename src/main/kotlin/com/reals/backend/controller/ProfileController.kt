@@ -179,15 +179,15 @@ class ProfileController(
         )
     }
 
-    @PostMapping("/identity-verification")
-    fun verifyMyIdentity(
+    @PostMapping("/authenticity-verification")
+    fun verifyMyProfileAuthenticity(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val verified = profileService.verifyIdentity(
+        val verified = profileService.verifyProfileAuthenticity(
             profileId = profile.id
         )
 

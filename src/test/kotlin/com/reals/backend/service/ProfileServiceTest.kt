@@ -3,15 +3,17 @@ package com.reals.backend.service
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.s3.ProfilePhotoStorageProperties
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.IdentityVerificationStatus
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.Profile
+import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
-import com.reals.backend.service.identity.IdentityVerificationService
-import com.reals.backend.service.identity.NoopIdentityVerificationProvider
+import com.reals.backend.service.authenticity.NoopProfileAuthenticityVerificationProvider
+import com.reals.backend.service.authenticity.ProfileAuthenticityPolicy
+import com.reals.backend.service.authenticity.ProfileAuthenticityPolicyProperties
+import com.reals.backend.service.authenticity.ProfileAuthenticityVerificationService
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -25,7 +27,7 @@ import java.util.UUID
 class ProfileServiceTest {
 
     @Test
-    fun `failed prod none-provider identity verification does not persist verified state or audit event`() {
+    fun `failed prod none-provider authenticity verification does not persist verified state or audit event`() {
         val profile = Profile(
             id = UUID.randomUUID(),
             userId = UUID.randomUUID(),
@@ -36,8 +38,8 @@ class ProfileServiceTest {
             intention = Intention.DATE,
             city = "Buenos Aires",
             country = "AR",
-            identityVerificationStatus = IdentityVerificationStatus.NOT_STARTED,
-            identityVerified = false,
+            authenticityVerificationStatus = ProfileAuthenticityVerificationStatus.NOT_STARTED,
+            authenticityVerified = false,
             updatedAt = OffsetDateTime.parse("2026-07-09T12:00:00Z")
         )
         val profileRepository = Mockito.mock(ProfileRepository::class.java)
@@ -51,12 +53,12 @@ class ProfileServiceTest {
         )
 
         val exception = assertThrows<DomainConflictException> {
-            service.verifyIdentity(profile.id)
+            service.verifyProfileAuthenticity(profile.id)
         }
 
-        assertEquals(DomainErrorCode.IDENTITY_VERIFICATION_NOT_CONFIGURED, exception.code)
-        assertEquals(IdentityVerificationStatus.NOT_STARTED, profile.identityVerificationStatus)
-        assertEquals(false, profile.identityVerified)
+        assertEquals(DomainErrorCode.AUTHENTICITY_VERIFICATION_NOT_CONFIGURED, exception.code)
+        assertEquals(ProfileAuthenticityVerificationStatus.NOT_STARTED, profile.authenticityVerificationStatus)
+        assertEquals(false, profile.authenticityVerified)
         assertEquals(OffsetDateTime.parse("2026-07-09T12:00:00Z"), profile.updatedAt)
         Mockito.verify(profileRepository, Mockito.never()).save(Mockito.any(Profile::class.java))
         Mockito.verifyNoInteractions(auditEventService)
@@ -71,10 +73,10 @@ class ProfileServiceTest {
             profilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java),
             profilePhotoValidationService = Mockito.mock(ProfilePhotoValidationService::class.java),
             profilePhotoAnalysisService = Mockito.mock(ProfilePhotoAnalysisService::class.java),
-            identityVerificationService = IdentityVerificationService(
-                provider = NoopIdentityVerificationProvider(
-                    EnvironmentExposurePolicy.forActiveProfiles("prod")
-                ),
+            profileAuthenticityVerificationService = ProfileAuthenticityVerificationService(
+                provider = NoopProfileAuthenticityVerificationProvider(),
+                policy = ProfileAuthenticityPolicy(ProfileAuthenticityPolicyProperties()),
+                environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("prod"),
                 failOnProviderError = false
             ),
             storageService = Mockito.mock(S3StorageService::class.java),
@@ -87,6 +89,6 @@ class ProfileServiceTest {
             minFullBodyPhotos = 1,
             persistRejectedPhotos = false,
             requireModerationApprovalForActivation = true,
-            requireIdentityVerificationForActivation = false
+            requireAuthenticityVerificationForActivation = false
         )
 }

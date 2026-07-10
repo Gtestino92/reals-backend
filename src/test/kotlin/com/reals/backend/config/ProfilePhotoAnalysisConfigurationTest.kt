@@ -1,14 +1,16 @@
 package com.reals.backend.config
 
 import com.reals.backend.service.photo.NoopProfilePhotoAnalysisProvider
+import com.reals.backend.service.photo.NoopProfilePhotoAnalysisCondition
 import com.reals.backend.service.photo.ProfilePhotoAnalysisConfig
 import com.reals.backend.service.photo.ProfilePhotoModerationPolicyProperties
+import com.reals.backend.service.photo.ProductionSightenginePhotoAnalysisCondition
 import com.reals.backend.service.photo.SightenginePhotoAnalysisProvider
 import com.reals.backend.service.photo.SightenginePhotoAnalysisProperties
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Conditional
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.web.client.RestClient
 import java.nio.file.Files
@@ -33,8 +35,9 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `Sightengine provider bean is conditional on sightengine provider`() {
+    fun `Sightengine provider bean is conditional on sightengine provider in prod`() {
         contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
             .withPropertyValues(
                 "profile.photos.moderation.provider=sightengine",
                 "profile.photos.sightengine.api-user=test-user",
@@ -47,8 +50,21 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
+    fun `selecting Sightengine outside prod uses noop provider and requires no credentials`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
+            .withPropertyValues("profile.photos.moderation.provider=sightengine")
+            .run { context ->
+                assertThat(context).hasSingleBean(NoopProfilePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(SightenginePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(RestClient::class.java)
+            }
+    }
+
+    @Test
     fun `selecting Sightengine without api user fails startup`() {
         contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
             .withPropertyValues(
                 "profile.photos.moderation.provider=sightengine",
                 "profile.photos.sightengine.api-secret=test-secret"
@@ -61,6 +77,7 @@ class ProfilePhotoAnalysisConfigurationTest {
     @Test
     fun `selecting Sightengine without api secret fails startup`() {
         contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
             .withPropertyValues(
                 "profile.photos.moderation.provider=sightengine",
                 "profile.photos.sightengine.api-user=test-user"
@@ -118,13 +135,20 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `Sightengine provider conditional metadata uses existing selector`() {
+    fun `photo analysis provider conditional metadata uses execution-profile-aware selectors`() {
         val providerCondition = SightenginePhotoAnalysisProvider::class.java
-            .getAnnotation(ConditionalOnProperty::class.java)
+            .getAnnotation(Conditional::class.java)
+        val noopCondition = NoopProfilePhotoAnalysisProvider::class.java
+            .getAnnotation(Conditional::class.java)
 
-        assertEquals("profile.photos.moderation", providerCondition.prefix)
-        assertEquals("sightengine", providerCondition.havingValue)
-        assertEquals(listOf("provider"), providerCondition.name.toList())
+        assertEquals(
+            listOf(ProductionSightenginePhotoAnalysisCondition::class),
+            providerCondition.value.toList()
+        )
+        assertEquals(
+            listOf(NoopProfilePhotoAnalysisCondition::class),
+            noopCondition.value.toList()
+        )
     }
 
     @Test

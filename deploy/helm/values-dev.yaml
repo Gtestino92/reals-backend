@@ -64,7 +64,7 @@ autoscaling:
 env:
   - name: SPRING_PROFILES_ACTIVE
     value: dev
-  - name: IDENTITY_VERIFICATION_PROVIDER
+  - name: PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER
     value: none
 
 configRefs:
@@ -80,5 +80,5 @@ secretRefs:
     key: database_password
   - name: FIREBASE_SERVICE_ACCOUNT_BASE64
     key: firebase_service_account_base64
-  - name: IDENTITY_VERIFICATION_API_KEY
-    key: identity_verification_api_key
+  - name: PROFILE_AUTHENTICITY_VERIFICATION_API_KEY
+    key: profile_authenticity_verification_api_key
