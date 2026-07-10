@@ -857,6 +857,58 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/review:
+    get:
+      tags: [Admin]
+      summary: List profile photos awaiting moderation review
+      description: Requires ROLE_ADMIN. Returns only current NEEDS_REVIEW moderation photos, ordered by createdAt ascending and limited to 100. Validation PENDING photos are not included unless moderationStatus is NEEDS_REVIEW. Each item includes photoVersion, which must be submitted as expectedPhotoVersion when resolving the review.
+      responses:
+        '200':
+          description: Profile photos awaiting human moderation review
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/{photoId}/moderation:
+    post:
+      tags: [Admin]
+      summary: Resolve a profile photo moderation review
+      description: Requires ROLE_ADMIN. Supports only NEEDS_REVIEW -> APPROVED and NEEDS_REVIEW -> REJECTED. The request must include expectedPhotoVersion from the reviewed queue item. Stale review snapshots return PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE and should be refreshed before review. Does not delete photos, create safety reports, create blocks, apply penalties or change semantic validation fields.
+      parameters:
+        - $ref: '#/components/parameters/PhotoId'
+      requestBody:
+        $ref: '#/components/requestBodies/AdminPhotoModerationResolution'
+      responses:
+        '200':
+          description: Updated profile photo moderation review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Photo is not currently awaiting moderation review, or the submitted expectedPhotoVersion is stale. Stable code `PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE
+                error: Conflict
+                message: Profile photo is not awaiting moderation review
   /api/admin/safety-reports/{reportId}:
     get:
       tags: [Admin]
@@ -1218,6 +1270,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SafetyReportPenaltyRequest'
+    AdminPhotoModerationResolution:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminPhotoModerationResolutionRequest'
     AddProposal:
       required: true
       content:
@@ -2297,6 +2355,40 @@ components:
         activeConnectionLocks: { type: integer, format: int64, minimum: 0 }
         oldestQueueEntryEnteredAt: { type: string, format: date-time, nullable: true }
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
+    AdminProfilePhotoModerationReviewResponse:
+      type: object
+      required: [photoId, profileId, userId, displayName, position, readUrl, photoVersion, validationStatus, moderationStatus, isPersonPhoto, isFullBody, createdAt]
+      properties:
+        photoId: { type: string, format: uuid }
+        profileId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        position: { type: integer }
+        readUrl:
+          type: string
+          description: Current backend-generated photo read URL. Storage bucket and key are not exposed.
+        photoVersion:
+          type: integer
+          format: int64
+          description: Current photo row version. Submit this as expectedPhotoVersion when resolving the reviewed photo.
+        validationStatus:
+          $ref: '#/components/schemas/PhotoValidationStatus'
+        moderationStatus:
+          $ref: '#/components/schemas/PhotoModerationStatus'
+        isPersonPhoto: { type: boolean }
+        isFullBody: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    AdminPhotoModerationResolutionRequest:
+      type: object
+      required: [expectedPhotoVersion, decision]
+      properties:
+        expectedPhotoVersion:
+          type: integer
+          format: int64
+          description: Version from the queue item the admin reviewed. Stale versions are rejected with PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE.
+        decision:
+          $ref: '#/components/schemas/AdminPhotoModerationDecision'
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
     AdminSafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, priorityReview, createdAt]
@@ -2468,6 +2560,9 @@ components:
     PhotoModerationStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, NEEDS_REVIEW]
+    AdminPhotoModerationDecision:
+      type: string
+      enum: [APPROVED, REJECTED]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]

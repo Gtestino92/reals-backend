@@ -198,6 +198,11 @@ review. With provider `none` in `prod`, uploads may proceed but persist
 for activation through
 `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
 
+`PhotoValidationStatus.PENDING` and `PhotoModerationStatus.NEEDS_REVIEW` are
+separate states. Validation `PENDING` means semantic person/full-body analysis
+has not produced a result. Moderation `NEEDS_REVIEW` means content moderation
+requires a human admin decision.
+
 ## Matchmaking
 
 - `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`.
@@ -259,6 +264,8 @@ All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated
 - `POST /api/admin/safety-reports/{reportId}/dismissal`: dismiss a pending report. Body: `{ "notes": "optional notes" }`. Does not create a penalty.
 - `POST /api/admin/safety-reports/{reportId}/abusive-dismissal`: dismiss a pending report as abusive or unjustified. Body: `{ "notes": "optional notes" }`. Does not create a safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter.
 - `POST /api/admin/safety-reports/{reportId}/penalty`: confirm a pending report and apply a penalty to the reported user. Temporary body: `{ "type": "TEMPORARY_BAN", "durationHours": 24, "reason": "Harassment confirmed", "notes": "optional notes" }`. Permanent body: `{ "type": "PERMANENT_BAN", "reason": "Severe safety violation", "notes": "optional notes" }`.
+- `GET /api/admin/profile-photos/review`: list up to 100 current profile photos where `moderationStatus=NEEDS_REVIEW`, ordered by `createdAt ASC`. The response includes `photoId`, `profileId`, `userId`, `displayName`, `position`, `readUrl`, `photoVersion`, `validationStatus`, `moderationStatus`, `isPersonPhoto`, `isFullBody` and `createdAt`. It does not expose storage keys, buckets, email or Firebase UID.
+- `POST /api/admin/profile-photos/{photoId}/moderation`: resolve one photo moderation review. Body: `{ "expectedPhotoVersion": 3, "decision": "APPROVED", "notes": "optional notes" }` or `{ "expectedPhotoVersion": 3, "decision": "REJECTED", "notes": "optional notes" }`. `expectedPhotoVersion` must be the `photoVersion` returned by the queue item the admin reviewed. The only supported transitions are `NEEDS_REVIEW -> APPROVED` and `NEEDS_REVIEW -> REJECTED`; stale review snapshots and photos currently in `PENDING`, `APPROVED` or `REJECTED` return `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`. On that conflict, the admin should refresh the queue and review the current photo again. Manual moderation changes only `moderationStatus`; it does not alter `validationStatus`, `isPersonPhoto` or `isFullBody`.
 
 Temporary penalties require positive `durationHours`; permanent penalties reject `durationHours` and have `expiresAt = null`. Active penalties block matchmaking and remove the user from the queue if already queued. The penalty expiration job deactivates only expired temporary penalties.
 
