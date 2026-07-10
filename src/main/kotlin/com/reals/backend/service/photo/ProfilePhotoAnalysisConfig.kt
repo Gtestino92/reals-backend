@@ -1,10 +1,15 @@
 package com.reals.backend.service.photo
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Condition
+import org.springframework.context.annotation.ConditionContext
+import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
+import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestClient
 import java.time.Duration
@@ -102,11 +107,7 @@ data class ReviewScoreThreshold(
 class ProfilePhotoAnalysisConfig {
 
     @Bean
-    @ConditionalOnProperty(
-        prefix = "profile.photos.moderation",
-        name = ["provider"],
-        havingValue = "sightengine"
-    )
+    @Conditional(ProductionSightenginePhotoAnalysisCondition::class)
     fun sightengineRestClient(properties: SightenginePhotoAnalysisProperties): RestClient {
         val requestFactory = SimpleClientHttpRequestFactory().apply {
             setConnectTimeout(Duration.ofMillis(properties.connectTimeoutMs))
@@ -118,3 +119,33 @@ class ProfilePhotoAnalysisConfig {
             .build()
     }
 }
+
+class ProductionSightenginePhotoAnalysisCondition : Condition {
+    override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean =
+        profilePhotoModerationProvider(context.environment) == SIGHTENGINE_PROVIDER &&
+            isProductionExecutionProfile(context.environment)
+}
+
+class NoopProfilePhotoAnalysisCondition : Condition {
+    override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean {
+        val provider = profilePhotoModerationProvider(context.environment)
+        return provider == NOOP_PROVIDER ||
+            (provider == SIGHTENGINE_PROVIDER && !isProductionExecutionProfile(context.environment))
+    }
+}
+
+private fun profilePhotoModerationProvider(environment: Environment): String =
+    environment.getProperty(PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY, NOOP_PROVIDER)
+        .trim()
+        .lowercase()
+
+private fun isProductionExecutionProfile(environment: Environment): Boolean {
+    val activeExecutionProfiles = environment.activeProfiles
+        .toSet()
+        .intersect(EnvironmentExposurePolicy.EXECUTION_PROFILES)
+    return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
+}
+
+private const val PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY = "profile.photos.moderation.provider"
+private const val NOOP_PROVIDER = "none"
+private const val SIGHTENGINE_PROVIDER = "sightengine"

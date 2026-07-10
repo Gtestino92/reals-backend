@@ -22,15 +22,17 @@ person/full-body validation. Production activation defaults to requiring
 moderation approval in addition to the existing validated/person/full-body photo
 counts.
 
-When `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, a technically valid
-profile-photo upload or replacement runs one Sightengine multipart request with
-the fixed models `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
-`offensive-2.0`. Real face presence is used only for the MVP `isPersonPhoto`
-field: at least one `faces` entry counts as a person photo, `artificial_faces`
-do not count, and `isFullBody` remains `false` because this provider path is
-not a full-body detector. This does not perform profile authenticity
-verification, facial recognition, face matching, liveness, legal identity
-verification, age estimation or minor detection.
+When `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod`, a technically
+valid profile-photo upload or replacement runs one Sightengine multipart
+request with the fixed models `face-analysis`, `nudity-2.1`, `violence`,
+`gore-2.0` and `offensive-2.0`. In non-`prod`, Sightengine is disabled even if
+configured and the backend uses the provider `none` compatibility path. Real
+face presence is used only for the MVP `isPersonPhoto` field: at least one
+`faces` entry counts as a person photo, `artificial_faces` do not count, and
+`isFullBody` remains `false` because this provider path is not a full-body
+detector. This does not perform profile authenticity verification, facial
+recognition, face matching, liveness, legal identity verification, age
+estimation or minor detection.
 Mapped moderation signals can become `NEEDS_REVIEW` and are handled by the
 admin review queue.
 
