@@ -172,6 +172,23 @@ profile:
       fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
       persist-rejected-photos: ${PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS:false}
 
+    google-vision:
+      face-detection-confidence-threshold: ${PROFILE_PHOTO_VISION_FACE_DETECTION_CONFIDENCE_THRESHOLD:0.50}
+      safe-search:
+        adult:
+          review-threshold: ${PROFILE_PHOTO_VISION_ADULT_REVIEW_THRESHOLD:POSSIBLE}
+          reject-threshold: ${PROFILE_PHOTO_VISION_ADULT_REJECT_THRESHOLD:LIKELY}
+        violence:
+          review-threshold: ${PROFILE_PHOTO_VISION_VIOLENCE_REVIEW_THRESHOLD:POSSIBLE}
+          reject-threshold: ${PROFILE_PHOTO_VISION_VIOLENCE_REJECT_THRESHOLD:LIKELY}
+        racy:
+          review-threshold: ${PROFILE_PHOTO_VISION_RACY_REVIEW_THRESHOLD:POSSIBLE}
+          reject-threshold: ${PROFILE_PHOTO_VISION_RACY_REJECT_THRESHOLD:VERY_LIKELY}
+        medical:
+          review-threshold: ${PROFILE_PHOTO_VISION_MEDICAL_REVIEW_THRESHOLD:LIKELY}
+        spoof:
+          review-threshold: ${PROFILE_PHOTO_VISION_SPOOF_REVIEW_THRESHOLD:LIKELY}
+
   identity-verification:
     provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:none}
     fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}

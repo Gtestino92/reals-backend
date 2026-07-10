@@ -21,6 +21,17 @@ person/full-body validation. Production activation defaults to requiring
 moderation approval in addition to the existing validated/person/full-body photo
 counts.
 
+When `PROFILE_PHOTO_MODERATION_PROVIDER=google-vision`, a technically valid
+profile-photo upload or replacement runs one Google Cloud Vision request with
+both `FACE_DETECTION` and `SAFE_SEARCH_DETECTION`. Face detection is used only
+for the MVP `isPersonPhoto` field: at least one face at the configured
+confidence threshold counts as a person photo, while `isFullBody` remains
+`false` because Vision face detection is not a full-body detector. This does
+not perform facial recognition, face matching, liveness, identity verification,
+age estimation or minor detection. SafeSearch drives content moderation only;
+ambiguous signals become `NEEDS_REVIEW` and are handled by the admin review
+queue.
+
 Photo moderation has a small admin human-review loop. Automated/provider
 moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.
 `NEEDS_REVIEW` photos appear in `/api/admin/profile-photos/review` for admins
@@ -32,6 +43,8 @@ returns `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`; the admin should
 refresh and review the current photo again. This is a content-moderation
 decision, not user-visible moderation scoring. It does not change semantic
 validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
+Automatic SafeSearch moderation does not create child-safety reports, safety
+reports, blocks, penalties, bans or account deletions.
 
 Legal compliance is backend-authoritative for protected participation/content
 writes. After provisioning, clients can call `GET /api/me/legal-status`; when

@@ -63,9 +63,18 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo moderation provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP `APPROVED` shortcut; in `prod`, `none` returns `NEEDS_REVIEW`. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `google-vision`. Defaults to `none`. Outside `prod`, `none` preserves the MVP semantic and moderation shortcuts; in `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `google-vision` to enable one Google Cloud Vision request per upload/replacement with face detection and SafeSearch. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
+| `PROFILE_PHOTO_VISION_FACE_DETECTION_CONFIDENCE_THRESHOLD` | no | Minimum Google Vision face `detectionConfidence` for MVP `isPersonPhoto=true`. Defaults to `0.50`; valid range is `0.0..1.0`. |
+| `PROFILE_PHOTO_VISION_ADULT_REVIEW_THRESHOLD` | no | SafeSearch adult review threshold. Defaults to `POSSIBLE`. |
+| `PROFILE_PHOTO_VISION_ADULT_REJECT_THRESHOLD` | no | SafeSearch adult reject threshold. Defaults to `LIKELY`; must not be less strict than the review threshold. |
+| `PROFILE_PHOTO_VISION_VIOLENCE_REVIEW_THRESHOLD` | no | SafeSearch violence review threshold. Defaults to `POSSIBLE`. |
+| `PROFILE_PHOTO_VISION_VIOLENCE_REJECT_THRESHOLD` | no | SafeSearch violence reject threshold. Defaults to `LIKELY`; must not be less strict than the review threshold. |
+| `PROFILE_PHOTO_VISION_RACY_REVIEW_THRESHOLD` | no | SafeSearch racy review threshold. Defaults to `POSSIBLE`. |
+| `PROFILE_PHOTO_VISION_RACY_REJECT_THRESHOLD` | no | SafeSearch racy reject threshold. Defaults to `VERY_LIKELY`; must not be less strict than the review threshold. |
+| `PROFILE_PHOTO_VISION_MEDICAL_REVIEW_THRESHOLD` | no | SafeSearch medical review threshold. Defaults to `LIKELY`; medical alone does not automatically reject in this slice. |
+| `PROFILE_PHOTO_VISION_SPOOF_REVIEW_THRESHOLD` | no | SafeSearch spoof review threshold. Defaults to `LIKELY`; spoof alone does not automatically reject in this slice. |
 | `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
 | `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Production override for `profile.photos.min-full-body-photos`. Production defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/dev/test defaults remain unchanged. |
 | `PROFILE_IDENTITY_VERIFICATION_PROVIDER` | no | Identity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, identity verification is unavailable and returns `409 IDENTITY_VERIFICATION_NOT_CONFIGURED`. Legacy fallback in dev/prod: `IDENTITY_VERIFICATION_PROVIDER`. |
@@ -188,6 +197,7 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | when `PROFILE_PHOTO_MODERATION_PROVIDER=google-vision` outside workload-provided ADC | Standard Google ADC path to a mounted credential file. This is consumed by the Google client library, not parsed by Reals. Do not commit the file or raw JSON. |
 | `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `IDENTITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future identity provider; keep empty while provider is `none`. |
@@ -281,6 +291,37 @@ are not semantic person/full-body validation. `application-prod.yml` defaults
 `profile.photos.require-moderation-approval-for-activation` to `true`, while
 preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
 override.
+
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=google-vision` to use Google Cloud
+Vision for profile-photo analysis. The backend creates `ImageAnnotatorClient`
+only for this provider and uses standard Google Application Default
+Credentials. Operators can use `GOOGLE_APPLICATION_CREDENTIALS` locally or rely
+on workload-provided ADC in deployed Google environments. Do not configure or
+commit service-account JSON through Reals properties.
+
+For each technically valid upload or replacement, the Google Vision provider
+sends one in-memory image annotation request built from the uploaded bytes and
+requests both `FACE_DETECTION` and `SAFE_SEARCH_DETECTION`. It does not upload
+the image to Google Cloud Storage and does not send the Reals object-storage
+URL to Vision.
+
+Face detection is used only for the MVP `isPersonPhoto` signal: at least one
+detected face with `detectionConfidence >=
+PROFILE_PHOTO_VISION_FACE_DETECTION_CONFIDENCE_THRESHOLD` sets
+`isPersonPhoto=true`. This is not facial recognition, face matching, liveness,
+identity verification, age estimation or minor detection. Group-photo and
+other-person false positives are accepted MVP limitations. Google Vision face
+detection does not establish `isFullBody`; successful Vision analyses always
+persist `isFullBody=false`.
+
+Google Vision SafeSearch drives only automatic photo content moderation.
+Configured reject thresholds take precedence over review thresholds; otherwise
+configured review thresholds produce `NEEDS_REVIEW`; otherwise the photo is
+`APPROVED`. Any `UNKNOWN` SafeSearch signal produces at least `NEEDS_REVIEW`
+unless another signal already rejects. The existing admin profile-photo review
+queue resolves `NEEDS_REVIEW`. Automatic SafeSearch results do not create child
+safety reports, blocks, penalties, bans or account lifecycle changes, and raw
+provider signals/confidences are not persisted yet.
 
 Production also temporarily defaults `profile.photos.min-full-body-photos` to
 `0` through `${PROFILE_MIN_FULL_BODY_PHOTOS:0}`. The `isFullBody` domain/API

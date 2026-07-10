@@ -3,12 +3,16 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
-import com.reals.backend.service.photo.PhotoModerationProvider
-import com.reals.backend.service.photo.PhotoModerationRequest
-import com.reals.backend.service.photo.PhotoModerationResult
+import com.reals.backend.service.photo.PhotoContentLikelihood
+import com.reals.backend.service.photo.PhotoSafeSearchSignals
+import com.reals.backend.service.photo.ProfilePhotoAnalysisProvider
+import com.reals.backend.service.photo.ProfilePhotoAnalysisProviderResult
+import com.reals.backend.service.photo.ProfilePhotoAnalysisRequest
+import com.reals.backend.service.photo.ProfilePhotoAnalysisSignals
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -33,18 +37,15 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
     private lateinit var storageService: S3StorageService
 
     @MockitoBean
-    private lateinit var moderationProvider: PhotoModerationProvider
+    private lateinit var analysisProvider: ProfilePhotoAnalysisProvider
 
     @Test
     fun `upload rejected by moderation does not store or persist photo`() {
         val userId = createDraftProfile()
 
-        stubModeration(
-            PhotoModerationResult(
-                status = PhotoModerationStatus.REJECTED,
-                provider = "test",
-                reason = "unsafe content"
-            )
+        stubAnalysis(
+            faceConfidences = listOf(0.90),
+            safeSearch = safeSearch(adult = PhotoContentLikelihood.LIKELY)
         )
 
         mockMvc.perform(
@@ -59,6 +60,7 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         val profile = profileService.findByUserId(userId) ?: error("Expected profile")
         assertEquals(0, profilePhotoRepository.countByProfileId(profile.id))
         Mockito.verifyNoInteractions(storageService)
+        Mockito.verify(analysisProvider, Mockito.times(1)).analyze(anyAnalysisRequest())
     }
 
     @Test
@@ -77,15 +79,15 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
             sizeBytes = jpegBytes().size.toLong()
         )
         stubStorageUploads(oldObject, newObject)
-        Mockito.`when`(moderationProvider.moderate(anyModerationRequest()))
+        Mockito.`when`(analysisProvider.analyze(anyAnalysisRequest()))
             .thenReturn(
-                PhotoModerationResult(
-                    status = PhotoModerationStatus.APPROVED,
-                    provider = "test"
+                successAnalysis(
+                    faceConfidences = listOf(0.90),
+                    safeSearch = safeSearch()
                 ),
-                PhotoModerationResult(
-                    status = PhotoModerationStatus.NEEDS_REVIEW,
-                    provider = "test"
+                successAnalysis(
+                    faceConfidences = listOf(0.90),
+                    safeSearch = safeSearch(adult = PhotoContentLikelihood.POSSIBLE)
                 )
             )
 
@@ -116,10 +118,11 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         val updated = profilePhotoRepository.findById(photoId).orElseThrow()
         assertEquals(PhotoModerationStatus.NEEDS_REVIEW, updated.moderationStatus)
         Mockito.verify(storageService).delete(oldObject.key)
+        Mockito.verify(analysisProvider, Mockito.times(2)).analyze(anyAnalysisRequest())
     }
 
     @Test
-    fun `technical invalid upload does not call moderation provider or storage`() {
+    fun `technical invalid upload does not call analysis provider or storage`() {
         val userId = createDraftProfile()
         val file = MockMultipartFile(
             "file",
@@ -137,8 +140,80 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_PHOTO")))
 
-        Mockito.verifyNoInteractions(moderationProvider)
+        Mockito.verifyNoInteractions(analysisProvider)
         Mockito.verifyNoInteractions(storageService)
+    }
+
+    @Test
+    fun `successful analysis with no qualifying face and approved SafeSearch persists derived state`() {
+        val userId = createDraftProfile()
+        val storedObject = StoredObject(
+            bucket = "test-bucket",
+            key = "users/$userId/profile-photos/no-face.jpg",
+            contentType = MediaType.IMAGE_JPEG_VALUE,
+            sizeBytes = jpegBytes().size.toLong()
+        )
+        stubStorageUploads(storedObject)
+        stubAnalysis(
+            faceConfidences = listOf(0.49),
+            safeSearch = safeSearch()
+        )
+
+        mockMvc.perform(
+            multipart("/api/me/profile/photos")
+                .file(jpegFile(name = "file"))
+                .param("position", "1")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
+            .andExpect(jsonPath("$.isPersonPhoto", equalTo(false)))
+            .andExpect(jsonPath("$.isFullBody", equalTo(false)))
+            .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        val photo = profilePhotoRepository.findByProfileId(profile.id).single()
+        assertEquals(PhotoValidationStatus.VALIDATED, photo.validationStatus)
+        assertEquals(false, photo.isPersonPhoto)
+        assertEquals(false, photo.isFullBody)
+        assertEquals(PhotoModerationStatus.APPROVED, photo.moderationStatus)
+        Mockito.verify(analysisProvider, Mockito.times(1)).analyze(anyAnalysisRequest())
+    }
+
+    @Test
+    fun `successful analysis with qualifying face and ambiguous SafeSearch persists needs review`() {
+        val userId = createDraftProfile()
+        val storedObject = StoredObject(
+            bucket = "test-bucket",
+            key = "users/$userId/profile-photos/face-review.jpg",
+            contentType = MediaType.IMAGE_JPEG_VALUE,
+            sizeBytes = jpegBytes().size.toLong()
+        )
+        stubStorageUploads(storedObject)
+        stubAnalysis(
+            faceConfidences = listOf(0.50),
+            safeSearch = safeSearch(racy = PhotoContentLikelihood.POSSIBLE)
+        )
+
+        mockMvc.perform(
+            multipart("/api/me/profile/photos")
+                .file(jpegFile(name = "file"))
+                .param("position", "1")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
+            .andExpect(jsonPath("$.isPersonPhoto", equalTo(true)))
+            .andExpect(jsonPath("$.isFullBody", equalTo(false)))
+            .andExpect(jsonPath("$.moderationStatus", equalTo("NEEDS_REVIEW")))
+
+        val profile = profileService.findByUserId(userId) ?: error("Expected profile")
+        val photo = profilePhotoRepository.findByProfileId(profile.id).single()
+        assertEquals(PhotoValidationStatus.VALIDATED, photo.validationStatus)
+        assertEquals(true, photo.isPersonPhoto)
+        assertEquals(false, photo.isFullBody)
+        assertEquals(PhotoModerationStatus.NEEDS_REVIEW, photo.moderationStatus)
+        Mockito.verify(analysisProvider, Mockito.times(1)).analyze(anyAnalysisRequest())
     }
 
     private fun createDraftProfile(): UUID {
@@ -161,10 +236,26 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         return user.id
     }
 
-    private fun stubModeration(result: PhotoModerationResult) {
-        Mockito.`when`(moderationProvider.moderate(anyModerationRequest()))
-            .thenReturn(result)
+    private fun stubAnalysis(
+        faceConfidences: List<Double>,
+        safeSearch: PhotoSafeSearchSignals
+    ) {
+        Mockito.`when`(analysisProvider.analyze(anyAnalysisRequest()))
+            .thenReturn(successAnalysis(faceConfidences, safeSearch))
     }
+
+    private fun successAnalysis(
+        faceConfidences: List<Double>,
+        safeSearch: PhotoSafeSearchSignals
+    ): ProfilePhotoAnalysisProviderResult =
+        ProfilePhotoAnalysisProviderResult.Success(
+            provider = "test",
+            signals = ProfilePhotoAnalysisSignals(
+                provider = "test",
+                faceDetectionConfidences = faceConfidences,
+                safeSearch = safeSearch
+            )
+        )
 
     private fun stubStorageUploads(vararg storedObjects: StoredObject) {
         Mockito.`when`(
@@ -197,9 +288,9 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         return output.toByteArray()
     }
 
-    private fun anyModerationRequest(): PhotoModerationRequest {
-        any(PhotoModerationRequest::class.java)
-        return PhotoModerationRequest(
+    private fun anyAnalysisRequest(): ProfilePhotoAnalysisRequest {
+        any(ProfilePhotoAnalysisRequest::class.java)
+        return ProfilePhotoAnalysisRequest(
             userId = UUID.randomUUID(),
             profileId = UUID.randomUUID(),
             photoId = UUID.randomUUID(),
@@ -207,6 +298,21 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
             bytes = byteArrayOf()
         )
     }
+
+    private fun safeSearch(
+        adult: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
+        spoof: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
+        medical: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
+        violence: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY,
+        racy: PhotoContentLikelihood = PhotoContentLikelihood.UNLIKELY
+    ): PhotoSafeSearchSignals =
+        PhotoSafeSearchSignals(
+            adult = adult,
+            spoof = spoof,
+            medical = medical,
+            violence = violence,
+            racy = racy
+        )
 
     private fun anyUuid(): UUID {
         any(UUID::class.java)
