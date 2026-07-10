@@ -21,6 +21,17 @@ person/full-body validation. Production activation defaults to requiring
 moderation approval in addition to the existing validated/person/full-body photo
 counts.
 
+When `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, a technically valid
+profile-photo upload or replacement runs one Sightengine multipart request with
+the fixed models `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
+`offensive-2.0`. Real face presence is used only for the MVP `isPersonPhoto`
+field: at least one `faces` entry counts as a person photo, `artificial_faces`
+do not count, and `isFullBody` remains `false` because this provider path is
+not a full-body detector. This does not perform facial recognition, face
+matching, liveness, identity verification, age estimation or minor detection.
+Mapped moderation signals can become `NEEDS_REVIEW` and are handled by the
+admin review queue.
+
 Photo moderation has a small admin human-review loop. Automated/provider
 moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.
 `NEEDS_REVIEW` photos appear in `/api/admin/profile-photos/review` for admins
@@ -32,6 +43,8 @@ returns `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`; the admin should
 refresh and review the current photo again. This is a content-moderation
 decision, not user-visible moderation scoring. It does not change semantic
 validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
+Automatic provider moderation does not create child-safety reports, safety
+reports, blocks, penalties, bans or account deletions.
 
 Legal compliance is backend-authoritative for protected participation/content
 writes. After provisioning, clients can call `GET /api/me/legal-status`; when

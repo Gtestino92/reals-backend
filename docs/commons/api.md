@@ -188,14 +188,27 @@ Successful technical image validation is not semantic person/full-body
 validation. Outside `prod`, the temporary MVP shortcut still returns
 `isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
 `prod`, technical validation alone returns `isPersonPhoto=false`,
-`isFullBody=false` and `validationStatus=PENDING` until real semantic analysis
-exists.
+`isFullBody=false` and `validationStatus=PENDING` when provider `none` is used.
+With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`, the backend makes one
+Sightengine multipart request after technical validation and uses real face
+presence only as an MVP person-photo signal. At least one `faces` entry sets
+`isPersonPhoto=true`; zero real faces sets `isPersonPhoto=false`.
+`artificial_faces` do not count. Successful Sightengine analysis always persists
+`validationStatus=VALIDATED` and `isFullBody=false`. This is not facial
+recognition, identity verification, face matching, liveness, age estimation,
+minor detection or full-body detection.
 
 `moderationStatus` is the content-moderation result. With provider `none`
 outside `prod`, the MVP compatibility path returns `APPROVED` without external
 review. With provider `none` in `prod`, uploads may proceed but persist
-`NEEDS_REVIEW`. Production defaults to requiring `moderationStatus=APPROVED`
-for activation through
+`NEEDS_REVIEW`. With provider `sightengine`, the same single provider response
+also feeds Reals moderation policy for sexual explicit, sexual suggestive,
+violence/threat, gore and hate/extremism signals. Reject thresholds produce
+`REJECTED`, review thresholds produce `NEEDS_REVIEW`, and otherwise moderation
+is `APPROVED`. `NEEDS_REVIEW` enters the existing admin review queue.
+Automatic provider moderation does not create safety reports, child-safety
+reports, blocks, penalties, bans or account deletions. Production defaults to requiring
+`moderationStatus=APPROVED` for activation through
 `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
 
 `PhotoValidationStatus.PENDING` and `PhotoModerationStatus.NEEDS_REVIEW` are

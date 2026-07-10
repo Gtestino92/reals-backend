@@ -171,6 +171,28 @@ profile:
       provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
       fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
       persist-rejected-photos: ${PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS:false}
+      policy:
+        sexual-explicit:
+          review-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REJECT_THRESHOLD:0.80}
+        sexual-suggestive:
+          review-threshold: ${PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD:0.80}
+        violence:
+          review-threshold: ${PROFILE_PHOTO_VIOLENCE_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_VIOLENCE_REJECT_THRESHOLD:0.85}
+        gore:
+          review-threshold: ${PROFILE_PHOTO_GORE_REVIEW_THRESHOLD:0.40}
+          reject-threshold: ${PROFILE_PHOTO_GORE_REJECT_THRESHOLD:0.80}
+        hate:
+          review-threshold: ${PROFILE_PHOTO_HATE_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_HATE_REJECT_THRESHOLD:0.85}
+
+    sightengine:
+      endpoint: ${PROFILE_PHOTO_SIGHTENGINE_ENDPOINT:https://api.sightengine.com/1.0/check.json}
+      api-user: ${SIGHTENGINE_API_USER:}
+      api-secret: ${SIGHTENGINE_API_SECRET:}
+      connect-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS:10000}
 
   identity-verification:
     provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:none}
