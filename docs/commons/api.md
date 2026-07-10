@@ -199,16 +199,27 @@ recognition, profile authenticity verification, legal identity verification, fac
 minor detection or full-body detection.
 
 Profile authenticity verification is a separate profile trust state. The future
-target is a liveness-derived live reference compared against every current
-validated person photo (`validationStatus=VALIDATED && isPersonPhoto=true`).
-For each candidate person photo, at least one face must match the verified live
-reference. Group photos can remain authentic when the verified person appears in
-them, and non-person photos are excluded from face comparison. Uploading,
-replacing or deleting a profile photo invalidates a previous authenticity result
-to `STALE` and sets `authenticityVerified=false`; reordering photos does not.
-The Sightengine path currently sets `isPersonPhoto` from detected real-face
-presence only, so this skeleton does not solve body-only person consistency
-without a comparable visible face.
+target is a liveness-derived live reference plus provider-neutral facial
+comparison signals for current candidate person photos
+(`validationStatus=VALIDATED && isPersonPhoto=true`). `isPersonPhoto` selects
+comparison candidates; it does not prove that the detected person is the
+verified user. Reals policy uses configurable thresholds: by default, an
+accepted live reference, at least 3 `MATCHED` candidate person photos and at
+most 0 `CONTRADICTORY` candidate person photos are required for automatic
+`VERIFIED`. `MATCHED` is positive evidence, `UNRESOLVED` is neutral and
+`CONTRADICTORY` is comparable facial evidence inconsistent with the accepted
+live reference. Group photos can be `MATCHED` when at least one comparable face
+matches the live reference, and non-person photos are excluded from face
+comparison. Old, distant, side-profile, obscured or otherwise poor comparisons
+may be `UNRESOLVED` and do not automatically invalidate the profile. Strong
+contradictory evidence prevents automatic verification under the default
+zero-contradiction policy, but it does not prove fraud and currently produces
+`NEEDS_REVIEW`, not automatic `REJECTED`. Uploading, replacing or deleting a
+profile photo invalidates a previous authenticity result to `STALE` and sets
+`authenticityVerified=false`; reordering photos does not. The Sightengine path
+currently sets `isPersonPhoto` from detected real-face presence only, so this
+skeleton does not solve body-only person consistency without a comparable
+visible face.
 
 `moderationStatus` is the content-moderation result. With provider `none`
 outside `prod`, the MVP compatibility path returns `APPROVED` without external

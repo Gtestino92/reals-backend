@@ -1,39 +1,20 @@
 package com.reals.backend.service.authenticity
 
-import com.reals.backend.config.environment.EnvironmentExposurePolicy
-import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
-import com.reals.backend.service.exception.DomainConflictException
-import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import java.util.UUID
 
 class NoopProfileAuthenticityVerificationProviderTest {
 
     @Test
-    fun `none provider preserves verified result outside prod`() {
-        val provider = NoopProfileAuthenticityVerificationProvider(
-            EnvironmentExposurePolicy.forActiveProfiles("test")
-        )
+    fun `none provider reports not configured without synthesizing authenticity signals`() {
+        val provider = NoopProfileAuthenticityVerificationProvider()
 
         val result = provider.verify(request())
 
-        assertEquals(ProfileAuthenticityVerificationStatus.VERIFIED, result.status)
+        assertTrue(result is ProfileAuthenticityVerificationProviderResult.NotConfigured)
         assertEquals("none", result.provider)
-    }
-
-    @Test
-    fun `none provider fails explicitly in prod`() {
-        val provider = NoopProfileAuthenticityVerificationProvider(
-            EnvironmentExposurePolicy.forActiveProfiles("prod")
-        )
-
-        val exception = assertThrows<DomainConflictException> {
-            provider.verify(request())
-        }
-
-        assertEquals(DomainErrorCode.AUTHENTICITY_VERIFICATION_NOT_CONFIGURED, exception.code)
     }
 
     private fun request(): ProfileAuthenticityVerificationRequest =
