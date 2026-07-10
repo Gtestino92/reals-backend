@@ -1,10 +1,7 @@
 package com.reals.backend.service
 
-import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.s3.ProfilePhotoStorageProperties
-import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
-import com.reals.backend.domain.ProfilePhotoValidationResult
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainErrorCode
 import org.springframework.stereotype.Service
@@ -13,33 +10,17 @@ import javax.imageio.ImageIO
 
 @Service
 class ProfilePhotoValidationService(
-    private val properties: ProfilePhotoStorageProperties,
-    private val environmentExposurePolicy: EnvironmentExposurePolicy
+    private val properties: ProfilePhotoStorageProperties
 ) {
 
     fun validateUploadedPhoto(
         contentType: String,
         bytes: ByteArray,
         replacingPhoto: ProfilePhoto? = null
-    ): ProfilePhotoValidationResult {
+    ) {
         validateImageDecodesAndDimensions(
             contentType = contentType,
             bytes = bytes
-        )
-
-        if (environmentExposurePolicy.isProduction()) {
-            return ProfilePhotoValidationResult(
-                isPersonPhoto = false,
-                isFullBody = false,
-                status = PhotoValidationStatus.PENDING
-            )
-        }
-
-        // Temporary MVP shortcut for non-production compatibility only.
-        return ProfilePhotoValidationResult(
-            isPersonPhoto = true,
-            isFullBody = true,
-            status = PhotoValidationStatus.VALIDATED
         )
     }
 

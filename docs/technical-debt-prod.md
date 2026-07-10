@@ -120,31 +120,34 @@ Future implementation:
 
 ### 3.1 Future upload lifecycle
 
-Implemented production fail-safe compatibility:
+Implemented production photo pipeline:
 - identity provider `none` does not create `VERIFIED` in `prod`;
 - photo moderation provider `none` does not create `APPROVED` in `prod`;
 - technical photo validation does not create person/full-body semantic facts in `prod`;
 - production activation defaults to requiring `APPROVED` moderation.
 - minimal backend admin moderation review is implemented for `NEEDS_REVIEW -> APPROVED` and `NEEDS_REVIEW -> REJECTED`.
 - production temporarily defaults minimum full-body photos to `0` because no real full-body detector exists.
+- Sightengine can be enabled with `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine`.
+- Sightengine performs one synchronous multipart request per upload/replacement after technical validation, requesting `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and `offensive-2.0`.
+- Sightengine real face presence provides an MVP person-photo signal: at least one `faces` entry sets `isPersonPhoto=true`, while `artificial_faces` do not count.
+- Sightengine model output is mapped to Reals-owned moderation signals for sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism policy.
+- The existing admin moderation queue handles `NEEDS_REVIEW` outcomes.
 
 Current shortcut split:
 - Outside `prod`, `validationStatus=VALIDATED`, `isPersonPhoto=true` and `isFullBody=true` are preserved for MVP/local/dev/test compatibility after technical upload validation.
 - In `prod`, technical upload validation alone leaves photos as `validationStatus=PENDING`, `isPersonPhoto=false` and `isFullBody=false`.
 - Outside `prod`, moderation provider `none` returns `APPROVED` for compatibility.
 - In `prod`, moderation provider `none` returns `NEEDS_REVIEW`.
-- A real semantic-analysis provider and real content-moderation provider are still pending.
+- Sightengine face analysis is not identity verification, facial recognition, face matching, liveness, age estimation, minor detection or a full-body detector.
+- Sightengine moderation does not solve child safety, CSAM/CSAE handling, legal escalation or user sanctioning.
 
-Production target:
+Current synchronous target:
 1. User uploads a photo.
 2. Backend performs technical checks.
-3. If upload succeeds, photo starts as `PENDING`.
-4. Technical analysis updates:
-   - `validation_status = VALIDATED` or `FAILED`;
-   - `isPersonPhoto`;
-   - `isFullBody`;
-5. Content moderation updates `moderation_status`.
-6. Optional provider/model/version metadata is recorded if a future provider needs it.
+3. If upload succeeds and Sightengine is configured, one provider request returns face and moderation signals.
+4. Semantic policy updates `validation_status`, `isPersonPhoto` and `isFullBody`.
+5. Reals moderation policy updates `moderation_status`.
+6. Optional provider/model/version metadata is still not recorded.
 
 ### 3.2 Future activation analysis
 
@@ -166,25 +169,25 @@ Preferred long-term direction:
 ### 3.3 Future moderation workflow for photos
 
 Future work:
-- Implement real photo semantic analysis for person/full-body requirements.
-- Implement real photo content moderation.
-- Add external automatic image moderation for:
-  - nudity;
-  - explicit sexual content;
-  - violence;
-  - hate symbols;
-  - minors/underage risk;
-  - other prohibited content.
-- Add person detection, full-body detection and face/person consistency if product requirements need them.
-- Define asynchronous callbacks/webhooks if required.
+- True person detection beyond face presence.
+- Full-body detection.
+- Face/person consistency and group/other-person validation.
+- Age estimation/minor-risk analysis if product/legal policy requires it.
+- CSAM/CSAE tooling, legal escalation and external-authority reporting procedures.
+- More nuanced nudity/context rules.
+- Broader weapon, self-harm or restricted-substance policy if desired.
+- Sightengine provider/model/version/request metadata persistence.
+- Raw normalized signal persistence if operationally justified.
+- Rejected-media retention/removal policy.
 - Expand manual photo-review operations beyond the minimal backend queue, including reopen/override and removal workflows.
 - Define provider artifact privacy/retention.
 - Define whether rejected photos are deleted, hidden, quarantined or retained for audit.
 - Add an admin web UI for the backend review queue.
-- Persist provider signal/reason/confidence if a real provider needs it.
 - Define reopen/override workflow for already resolved moderation decisions.
 - Decide whether and how rejected photo moderation should feed safety reports or penalties; no automatic safety report, ban or penalty exists now.
 - Define operational retention/removal policy for rejected media.
+- Define asynchronous callbacks/webhooks only if a future provider requires them.
+- Review provider privacy/retention before meaningful production traffic.
 
 Historical production data limitation:
 - The backend does not persist enough historical provider/analyzer identity to safely determine which old positive rows came from MVP shortcuts and which could theoretically come from another implementation.

@@ -12,7 +12,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.identity.IdentityVerificationService
 import com.reals.backend.service.identity.NoopIdentityVerificationProvider
-import com.reals.backend.service.photo.ProfilePhotoModerationService
+import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -70,7 +70,7 @@ class ProfileServiceTest {
             profileRepository = profileRepository,
             profilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java),
             profilePhotoValidationService = Mockito.mock(ProfilePhotoValidationService::class.java),
-            profilePhotoModerationService = Mockito.mock(ProfilePhotoModerationService::class.java),
+            profilePhotoAnalysisService = Mockito.mock(ProfilePhotoAnalysisService::class.java),
             identityVerificationService = IdentityVerificationService(
                 provider = NoopIdentityVerificationProvider(
                     EnvironmentExposurePolicy.forActiveProfiles("prod")
