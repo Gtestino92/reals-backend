@@ -2,10 +2,15 @@ package com.reals.backend.service
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.s3.ProfilePhotoStorageProperties
+import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.PhotoStorageProvider
+import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
+import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainConflictException
@@ -64,13 +69,69 @@ class ProfileServiceTest {
         Mockito.verifyNoInteractions(auditEventService)
     }
 
+    @Test
+    fun `successful photo mutation resynchronizes invalid not-started authenticity boolean without stale audit`() {
+        val profile = Profile(
+            id = UUID.randomUUID(),
+            userId = UUID.randomUUID(),
+            displayName = "Authenticity Test",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = mutableSetOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR",
+            authenticityVerificationStatus = ProfileAuthenticityVerificationStatus.NOT_STARTED,
+            authenticityVerified = true
+        )
+        val photo = ProfilePhoto(
+            id = UUID.randomUUID(),
+            profileId = profile.id,
+            storageProvider = PhotoStorageProvider.S3,
+            storageBucket = "test-bucket",
+            storageKey = "profile/${profile.id}/photo.jpg",
+            position = 1,
+            isPersonPhoto = true,
+            isFullBody = false,
+            validationStatus = PhotoValidationStatus.VALIDATED,
+            moderationStatus = PhotoModerationStatus.APPROVED
+        )
+        val profileRepository = Mockito.mock(ProfileRepository::class.java)
+        val profilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java)
+        val auditEventService = Mockito.mock(AuditEventService::class.java)
+        Mockito.`when`(profileRepository.findById(profile.id))
+            .thenReturn(Optional.of(profile))
+        Mockito.`when`(profilePhotoRepository.findById(photo.id))
+            .thenReturn(Optional.of(photo))
+        Mockito.`when`(profileRepository.save(anyProfile()))
+            .thenAnswer { invocation -> invocation.getArgument<Profile>(0) }
+
+        val service = profileService(
+            profileRepository = profileRepository,
+            profilePhotoRepository = profilePhotoRepository,
+            auditEventService = auditEventService
+        )
+
+        val saved = service.deletePhoto(profile.id, photo.id)
+
+        assertEquals(ProfileAuthenticityVerificationStatus.NOT_STARTED, saved.authenticityVerificationStatus)
+        assertEquals(false, saved.authenticityVerified)
+
+        val eventTypes = Mockito.mockingDetails(auditEventService)
+            .invocations
+            .map { invocation -> invocation.arguments[0] as AuditEventType }
+        assertEquals(listOf(AuditEventType.PROFILE_PHOTO_DELETED), eventTypes)
+    }
+
     private fun profileService(
         profileRepository: ProfileRepository,
-        auditEventService: AuditEventService
+        auditEventService: AuditEventService,
+        profilePhotoRepository: ProfilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java),
+        storageService: S3StorageService = Mockito.mock(S3StorageService::class.java)
     ): ProfileService =
         ProfileService(
             profileRepository = profileRepository,
-            profilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java),
+            profilePhotoRepository = profilePhotoRepository,
             profilePhotoValidationService = Mockito.mock(ProfilePhotoValidationService::class.java),
             profilePhotoAnalysisService = Mockito.mock(ProfilePhotoAnalysisService::class.java),
             profileAuthenticityVerificationService = ProfileAuthenticityVerificationService(
@@ -79,7 +140,7 @@ class ProfileServiceTest {
                 environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("prod"),
                 failOnProviderError = false
             ),
-            storageService = Mockito.mock(S3StorageService::class.java),
+            storageService = storageService,
             profilePhotoStorageProperties = ProfilePhotoStorageProperties(),
             auditEventService = auditEventService,
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
@@ -91,4 +152,18 @@ class ProfileServiceTest {
             requireModerationApprovalForActivation = true,
             requireAuthenticityVerificationForActivation = false
         )
+
+    private fun anyProfile(): Profile {
+        Mockito.any(Profile::class.java)
+        return Profile(
+            userId = UUID.randomUUID(),
+            displayName = "Any Profile",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = mutableSetOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            country = "AR"
+        )
+    }
 }
