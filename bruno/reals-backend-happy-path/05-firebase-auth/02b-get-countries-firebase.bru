@@ -1,0 +1,25 @@
+meta {
+  name: 02b Get Countries Firebase
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/reference/countries
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!Array.isArray(body) || body.length === 0) {
+    throw new Error("Expected non-empty country reference list.");
+  }
+  if (!body[0].code || !body[0].displayName) {
+    throw new Error("Expected country entries with code and displayName.");
+  }
+}

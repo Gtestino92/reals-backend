@@ -380,14 +380,17 @@ Non-goals for MVP:
 
 ## 5. Location and geographic matching
 
-### 5.1 Canonical country/city reference data
+### 5.1 Canonical city/locality reference data
 
-Future work:
-- Validate profile `country` and `city` against a canonical dataset.
-- Prefer reference endpoints such as:
-  - `GET /api/reference/countries`;
-  - optional city/region endpoints.
-- Use ISO-3166 alpha-2 country codes for country identity.
+Current country state:
+- Profile country identity uses `Profile.countryCode`, a canonical uppercase ISO-3166 alpha-2 code.
+- `GET /api/reference/countries` returns the backend country reference list for clients.
+- The country catalog is built once from Java runtime ISO country data with Spanish display names and kept as immutable in-memory reference data.
+
+Future city/locality work:
+- Validate profile `city` against a canonical locality dataset.
+- Consider optional city/region reference endpoints if the product needs structured city selection.
+- GeoNames or a similar dataset may be considered for future city/locality data, but it is not part of the current country reference implementation.
 - Avoid embedding global reference data in `GET /api/me/profile`.
 
 ### 5.2 Geographic search optimization

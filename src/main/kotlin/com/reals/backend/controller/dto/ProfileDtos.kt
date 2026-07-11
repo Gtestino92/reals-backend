@@ -37,7 +37,7 @@ data class UpdateProfileRequest(
 
     @field:Size(min = 1, max = 100)
     @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
-    val country: String? = null
+    val countryCode: String? = null
 )
 
 data class UpdateMatchFiltersRequest(
@@ -95,7 +95,7 @@ data class CreateProfileRequest(
     @field:NotBlank
     @field:Size(max = 100)
     @field:Pattern(regexp = SingleLinePlainText.REGEX, message = SingleLinePlainText.MESSAGE)
-    val country: String,
+    val countryCode: String,
 
     @field:Size(max = 1000)
     @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
@@ -126,7 +126,7 @@ data class ProfileResponse(
     val lookingForGenders: Set<Gender>,
     val intention: Intention,
     val city: String,
-    val country: String,
+    val countryCode: String,
     val bio: String?,
     val preferredMinAge: Int,
     val preferredMaxAge: Int,
@@ -152,7 +152,7 @@ data class ProfileResponse(
             lookingForGenders = profile.lookingForGenders.toSet(),
             intention = profile.intention,
             city = profile.city,
-            country = profile.country,
+            countryCode = profile.countryCode,
             bio = profile.bio,
             preferredMinAge = profile.preferredMinAge,
             preferredMaxAge = profile.preferredMaxAge,
