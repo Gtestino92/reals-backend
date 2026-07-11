@@ -173,7 +173,7 @@ class LegalComplianceGateControllerIntegrationTest : ControllerIT() {
           "lookingForGenders": ["MALE"],
           "intention": "DATE",
           "city": "Buenos Aires",
-          "country": "AR",
+          "countryCode": "AR",
           "bio": "Profile after legal compliance",
           "preferredMinAge": 18,
           "preferredMaxAge": 99,

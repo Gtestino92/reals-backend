@@ -222,7 +222,11 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Default shared photo requirements are 9 photos, 3 person photos and 1 full-body photo. Production temporarily defaults minimum full-body photos to 0 until a real full-body detector exists.
 - Local and test profiles override required photos to 4, min person to 1 and min full-body to 1.
 - Birth date and gender are immutable after creation.
-- Editable fields include display name, bio, city, country, intention and looking-for gender.
+- Editable fields include display name, bio, city, country code, intention and looking-for gender.
+- `Profile.city` remains free text.
+- `Profile.countryCode` is a canonical uppercase ISO 3166-1 alpha-2 code stored in `profiles.country_code`.
+- Allowed profile country codes come from the backend country reference catalog. The catalog is built once from the Java runtime ISO country list with Spanish display names from `Locale.forLanguageTag("es")`, ordered by Spanish display name and country code, and retained as immutable in-memory reference data. Clients should fetch it through `GET /api/reference/countries` and submit the selected `code` as `countryCode`.
+- Profile country input is trimmed, uppercased and validated against that catalog. Display names and guessed mappings are not accepted.
 - Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced in the basic matchmaking query. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.
 - Photo positions are unique per profile.
 - Removing a required photo can revert an active profile to `DRAFT`.

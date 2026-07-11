@@ -163,6 +163,7 @@ class ProfileAuthenticityVerificationMigrationTest {
             .locations("classpath:db/migration")
             .baselineOnMigrate(true)
             .baselineVersion("23")
+            .target("25")
             .load()
             .migrate()
     }

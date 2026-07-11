@@ -66,7 +66,7 @@ The following are intentionally not MVP blockers:
 - Production trust score based on real behavior.
 - Full manual moderation workflow.
 - Profile authenticity verification provider integration.
-- Canonical country/city reference dataset.
+- Canonical city/locality reference dataset.
 - Geohash/spatial indexing.
 - CDN/cache strategy for media.
 - Application-level message encryption.

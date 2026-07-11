@@ -341,7 +341,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50

@@ -82,8 +82,8 @@ data class Profile(
     @Column(name = "city", nullable = false)
     var city: String,
 
-    @Column(name = "country", nullable = false)
-    var country: String,
+    @Column(name = "country_code", nullable = false, length = 2)
+    var countryCode: String,
 
     @Column(name = "bio")
     var bio: String? = null,

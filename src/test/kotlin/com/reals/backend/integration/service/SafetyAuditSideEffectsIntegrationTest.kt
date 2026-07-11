@@ -48,7 +48,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             lookingForGenders = setOf(Gender.MALE),
             intention = com.reals.backend.domain.Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
