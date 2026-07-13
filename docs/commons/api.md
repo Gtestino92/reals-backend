@@ -352,7 +352,7 @@ Temporary penalties require positive `durationHours`; permanent penalties reject
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation. Includes `schedulingExpiresAt` from the parent connection so clients can show a countdown without an extra request.
 - `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the expected current round. Body: `{ "expectedRoundNumber": 1, "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots. Each participant may submit at most one ordered list per round. Existing partner proposals in the same round do not make backend submission invalid.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
-- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
+- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept a pending partner proposal and schedule second chat at the accepted time. The proposal instant must still be strictly in the future at backend acceptance time; otherwise the endpoint returns `409 SCHEDULING_PROPOSAL_NOT_AVAILABLE`. Expired proposals remain `PENDING`, visible and rejectable.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects only the partner's pending scheduling proposals for the expected current round. Body: `{ "expectedRoundNumber": 1 }`. A single rejection does not end the round; the round advances only after both users submitted in that round and both lists have been resolved as rejected. On the final permitted round, that second rejection marks the negotiation `FAILED` and closes the connection.
 
 Scheduling mutations after `schedulingExpiresAt` are rejected with
@@ -468,6 +468,7 @@ Selected stable frontend-facing domain codes:
 - `FIRST_CHAT_GUIDANCE_NEXT_ALREADY_REQUESTED`: the requester already requested continuation for the current first-chat guidance question.
 - `FIRST_CHAT_GUIDANCE_COMPLETED`: first-chat guidance already reached the active final configured question.
 - `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
+- `SCHEDULING_PROPOSAL_NOT_AVAILABLE`: scheduling proposal cannot be accepted because it is missing, not pending, from another connection, from an old round or its proposed instant is no longer strictly in the future.
 - `SCHEDULING_ROUND_CHANGED`: `expectedRoundNumber` does not match the current negotiation round; refresh negotiation and proposals before retrying.
 - `SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE`: the expected current round has no pending partner proposal to reject, including retries after proposals were already resolved.
 - `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.

@@ -182,6 +182,52 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `accept expired proposal over http returns proposal not available and keeps negotiation pending`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val body = mapOf(
+            "expectedRoundNumber" to 1,
+            "proposedDateTimes" to listOf(slot.toString())
+        )
+
+        val proposalId =
+            java.util.UUID.fromString(
+                objectMapper.readTree(
+                    mockMvc.perform(
+                        post("/api/connections/${setup.connectionId}/proposals")
+                            .with(authenticatedAs(setup.userAId))
+                            .contentType(jsonContentType)
+                            .content(jsonBody(body))
+                    )
+                        .andExpect(status().isCreated)
+                        .andReturn()
+                        .response
+                        .contentAsString
+                )[0]["id"].asString()
+            )
+
+        val proposal = proposalRepository.findById(proposalId).orElseThrow()
+        proposal.proposedDateTime = OffsetDateTime.now().minusMinutes(30)
+        proposalRepository.saveAndFlush(proposal)
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals/$proposalId/acceptance")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_PROPOSAL_NOT_AVAILABLE")))
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/negotiation")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo(NegotiationStatus.PENDING.name)))
+            .andExpect(jsonPath("$.roundNumber", equalTo(1)))
+            .andExpect(jsonPath("$.confirmedDateTime", nullValue()))
+    }
+
+    @Test
     fun `reject partner proposals after scheduling expiration returns stable code`() {
         val setup = createConnectionInSchedulingPhase()
 

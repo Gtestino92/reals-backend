@@ -191,6 +191,7 @@ class SchedulingService(
     ) {
         if (negotiation.status != NegotiationStatus.PENDING) return
 
+        val now = OffsetDateTime.now()
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
                 connection.id,
@@ -204,25 +205,11 @@ class SchedulingService(
         val proposalsA = byUser[connection.userAId].orEmpty()
         val proposalsB = byUser[connection.userBId].orEmpty()
 
-        val overlap =
-            proposalsA.flatMap { proposalA ->
-                proposalsB
-                    .filter { proposalB ->
-                        proposalA.proposedDateTime.toInstant()
-                            .equals(proposalB.proposedDateTime.toInstant())
-                    }
-                    .map { proposalB ->
-                        AgreedSlotCandidate(
-                            proposalA = proposalA,
-                            proposalB = proposalB,
-                            score = proposalA.preferenceOrder + proposalB.preferenceOrder
-                        )
-                    }
-            }
-                .minWithOrNull(
-                    compareBy<AgreedSlotCandidate> { it.score }
-                        .thenBy { it.proposalA.proposedDateTime.toInstant() }
-                ) ?: return
+        val overlap = selectBestFutureOverlap(
+            proposalsA = proposalsA,
+            proposalsB = proposalsB,
+            now = now
+        ) ?: return
 
         confirmWith(
             accepted = listOf(overlap.proposalA, overlap.proposalB),
@@ -230,6 +217,35 @@ class SchedulingService(
             negotiation = negotiation,
             connectionId = connection.id
         )
+    }
+
+    internal fun selectBestFutureOverlap(
+        proposalsA: List<ScheduleProposal>,
+        proposalsB: List<ScheduleProposal>,
+        now: OffsetDateTime
+    ): AgreedSlotCandidate? {
+        val nowInstant = now.toInstant()
+
+        return proposalsA.flatMap { proposalA ->
+            proposalsB
+                .filter { proposalB ->
+                    val proposedInstant = proposalA.proposedDateTime.toInstant()
+
+                    proposedInstant.isAfter(nowInstant) &&
+                        proposedInstant == proposalB.proposedDateTime.toInstant()
+                }
+                .map { proposalB ->
+                    AgreedSlotCandidate(
+                        proposalA = proposalA,
+                        proposalB = proposalB,
+                        score = proposalA.preferenceOrder + proposalB.preferenceOrder
+                    )
+                }
+        }
+            .minWithOrNull(
+                compareBy<AgreedSlotCandidate> { it.score }
+                    .thenBy { it.proposalA.proposedDateTime.toInstant() }
+            )
     }
 
     /**
@@ -264,13 +280,6 @@ class SchedulingService(
             throw proposalNotAvailable()
         }
 
-        if (proposal.userId == acceptorUserId) {
-            throw DomainConflictException(
-                code = DomainErrorCode.SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL,
-                message = "Users cannot accept their own scheduling proposal"
-            )
-        }
-
         val connection = connectionService.findByIdOrThrow(connectionId)
         userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
@@ -281,7 +290,9 @@ class SchedulingService(
             )
         }
 
-        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+        val now = OffsetDateTime.now()
+
+        if (!now.isBefore(connection.schedulingExpiresAt)) {
             throw schedulingExpired()
         }
 
@@ -291,6 +302,17 @@ class SchedulingService(
 
         if (proposal.roundNumber != negotiation.roundNumber) {
             throw proposalNotAvailable()
+        }
+
+        if (!proposal.proposedDateTime.isAfter(now)) {
+            throw proposalNotAvailable()
+        }
+
+        if (proposal.userId == acceptorUserId) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL,
+                message = "Users cannot accept their own scheduling proposal"
+            )
         }
 
         val pending =
@@ -568,7 +590,7 @@ class SchedulingService(
             message = "Partner scheduling proposals are not available for rejection"
         )
 
-    private data class AgreedSlotCandidate(
+    internal data class AgreedSlotCandidate(
         val proposalA: ScheduleProposal,
         val proposalB: ScheduleProposal,
         val score: Int
