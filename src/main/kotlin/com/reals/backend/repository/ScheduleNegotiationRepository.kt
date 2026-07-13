@@ -3,7 +3,9 @@ package com.reals.backend.repository
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -15,6 +17,12 @@ interface ScheduleNegotiationRepository :
 
     fun findByConnectionId(
         connectionId: UUID
+    ): ScheduleNegotiation?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select n from ScheduleNegotiation n where n.connectionId = :connectionId")
+    fun findByConnectionIdForUpdate(
+        @Param("connectionId") connectionId: UUID
     ): ScheduleNegotiation?
 
     fun findByConnectionIdIn(

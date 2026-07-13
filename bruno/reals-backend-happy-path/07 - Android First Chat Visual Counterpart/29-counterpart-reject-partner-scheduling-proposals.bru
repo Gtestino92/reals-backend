@@ -1,5 +1,5 @@
 meta {
-  name: 29 Counterpart Reject Current Scheduling Round
+  name: 29 Counterpart Reject Partner Scheduling Proposals
   type: http
   seq: 42
 }
@@ -16,7 +16,9 @@ headers {
 }
 
 body:json {
-  {}
+  {
+    "expectedRoundNumber": 1
+  }
 }
 
 script:post-response {
@@ -26,11 +28,11 @@ script:post-response {
     throw new Error(`Expected 200 OK, got ${status}: ${JSON.stringify(body)}`);
   }
   if (!body || !body.id) {
-    throw new Error(`Expected scheduling negotiation response after round rejection, got: ${JSON.stringify(body)}`);
+    throw new Error(`Expected scheduling negotiation response after partner proposal rejection, got: ${JSON.stringify(body)}`);
   }
   bru.setEnvVar("negotiationId", body.id);
 }
 
 docs {
-  Rejects the current scheduling round as a whole, not an individual proposal. Run this only after both Android and the counterpart have submitted non-overlapping proposals for the current round. After this request, run 24 Get Counterpart Scheduling Negotiation and 25 Get Counterpart Scheduling Proposals to refresh state.
+  Rejects only the partner's pending scheduling proposals for expected round 1. A single rejection does not necessarily advance the round; refresh negotiation and proposals after this request.
 }

@@ -57,7 +57,8 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         userService.deleteUser(setup.userAId)

@@ -54,7 +54,7 @@ For those cases, service-level integration tests catch more realistic regression
 - incompatible queued users producing no match
 - matchmaking candidate-pair filtering, candidate limit behavior and FIFO tie-breaking
 - second-chat slot auto-confirmation across ordered proposal lists
-- scheduling preference tie-breaks and explicit round rejection
+- scheduling preference tie-breaks and explicit partner proposal rejection
 - scheduling failure after max rounds
 
 `ChatExitIntegrationTest` covers:

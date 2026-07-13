@@ -337,7 +337,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `explicit scheduling rejection opens next round`() {
+    fun `reciprocal scheduling proposal rejections open next round`() {
         val setup = createConnectionInSchedulingPhase()
         val slotA = futureHalfHourSlot()
         val slotB = slotA.plusHours(1)
@@ -345,17 +345,29 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slotA)
         )
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userBId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slotB)
         )
 
-        val negotiation = schedulingService.rejectCurrentRound(
+        val firstRejection = schedulingService.rejectPartnerProposals(
             connectionId = setup.connectionId,
-            userId = setup.userAId
+            userId = setup.userAId,
+            expectedRoundNumber = 1
+        )
+
+        assertEquals(NegotiationStatus.PENDING, firstRejection.status)
+        assertEquals(1, firstRejection.roundNumber)
+
+        val negotiation = schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1
         )
 
         assertEquals(NegotiationStatus.PENDING, negotiation.status)
@@ -372,20 +384,34 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         val baseSlot = futureHalfHourSlot()
 
         repeat(3) { roundIndex ->
+            val roundNumber = roundIndex + 1
+
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = roundNumber,
                 proposedDateTimes = listOf(baseSlot.plusHours((roundIndex * 2).toLong()))
             )
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userBId,
+                expectedRoundNumber = roundNumber,
                 proposedDateTimes = listOf(baseSlot.plusHours((roundIndex * 2 + 1).toLong()))
             )
 
-            val negotiation = schedulingService.rejectCurrentRound(
+            val firstRejection = schedulingService.rejectPartnerProposals(
                 connectionId = setup.connectionId,
-                userId = setup.userAId
+                userId = setup.userAId,
+                expectedRoundNumber = roundNumber
+            )
+
+            assertEquals(NegotiationStatus.PENDING, firstRejection.status)
+            assertEquals(roundNumber, firstRejection.roundNumber)
+
+            val negotiation = schedulingService.rejectPartnerProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                expectedRoundNumber = roundNumber
             )
 
             if (roundIndex < 2) {
@@ -414,11 +440,13 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(late, early)
         )
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userBId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(early, late)
         )
 

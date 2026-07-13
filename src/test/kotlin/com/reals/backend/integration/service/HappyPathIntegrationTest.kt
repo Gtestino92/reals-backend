@@ -92,6 +92,7 @@ class HappyPathIntegrationTest : BaseIT() {
         val proposalA = schedulingService.addProposals(
             connectionId = connection.id,
             userId = userA,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slot.plusHours(1), slot)
         )
         assertEquals(2, proposalA.size)
@@ -100,6 +101,7 @@ class HappyPathIntegrationTest : BaseIT() {
         schedulingService.addProposals(
             connectionId = connection.id,
             userId = userB,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slot, slot.plusHours(2))
         )
 

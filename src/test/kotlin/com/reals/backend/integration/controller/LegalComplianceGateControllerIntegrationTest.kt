@@ -141,7 +141,7 @@ class LegalComplianceGateControllerIntegrationTest : ControllerIT() {
             post("/api/connections/${setup.connectionId}/proposals")
                 .with(authenticatedAs(setup.userAId))
                 .contentType(jsonContentType)
-                .content("""{"proposedDateTimes":["$proposedDateTime"]}""")
+                .content("""{"expectedRoundNumber":1,"proposedDateTimes":["$proposedDateTime"]}""")
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("LEGAL_ACTION_REQUIRED")))
