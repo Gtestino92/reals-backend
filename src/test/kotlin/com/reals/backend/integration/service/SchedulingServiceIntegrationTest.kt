@@ -304,17 +304,18 @@ class SchedulingServiceIntegrationTest : BaseIT() {
     @Test
     fun `accept proposal rejects expired proposal and preserves scheduling state`() {
         val setup = createConnectionInSchedulingPhase()
-        val proposals = schedulingService.addProposals(
+        val baseSlot = futureHalfHourSlot()
+        val submittedProposals = schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
             expectedRoundNumber = 1,
             proposedDateTimes = listOf(
-                futureHalfHourSlot(),
-                futureHalfHourSlot().plusHours(1)
+                baseSlot,
+                baseSlot.plusHours(1)
             )
         )
-        val expiredProposal = proposals[0]
-        val otherProposal = proposals[1]
+        val expiredProposal = submittedProposals[0]
+        val otherProposal = submittedProposals[1]
 
         moveProposalTime(
             proposalId = expiredProposal.id,
@@ -329,11 +330,11 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             )
         }
 
-        val proposals = proposalRepository.findByConnectionIdAndRoundNumber(setup.connectionId, 1)
+        val persistedProposals = proposalRepository.findByConnectionIdAndRoundNumber(setup.connectionId, 1)
         val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
 
-        assertEquals(ProposalStatus.PENDING, proposals.single { it.id == expiredProposal.id }.status)
-        assertEquals(ProposalStatus.PENDING, proposals.single { it.id == otherProposal.id }.status)
+        assertEquals(ProposalStatus.PENDING, persistedProposals.single { it.id == expiredProposal.id }.status)
+        assertEquals(ProposalStatus.PENDING, persistedProposals.single { it.id == otherProposal.id }.status)
         assertEquals(NegotiationStatus.PENDING, negotiation.status)
         assertEquals(1, negotiation.roundNumber)
         assertEquals(null, negotiation.confirmedDateTime)
@@ -404,13 +405,14 @@ class SchedulingServiceIntegrationTest : BaseIT() {
     @Test
     fun `mixed list keeps future proposal acceptable after expired proposal fails`() {
         val setup = createConnectionInSchedulingPhase()
+        val baseSlot = futureHalfHourSlot()
         val proposals = schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
             expectedRoundNumber = 1,
             proposedDateTimes = listOf(
-                futureHalfHourSlot(),
-                futureHalfHourSlot().plusHours(1)
+                baseSlot,
+                baseSlot.plusHours(1)
             )
         )
         val expiredProposal = proposals[0]
