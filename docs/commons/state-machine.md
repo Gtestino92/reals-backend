@@ -141,3 +141,8 @@ only the partner's pending proposals `REJECTED`. The scheduling round remains
 `PENDING` until both users have submitted in that round and no current-round
 proposal remains `PENDING`; then the backend opens the next round or fails the
 negotiation and closes the connection on the final configured round.
+Proposal instants can pass while their rows remain `PENDING`. The backend does
+not automatically reject those rows or advance the round. Explicit acceptance
+returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE` when the proposal instant is not
+strictly in the future, and overlap auto-confirm ignores expired overlapping
+instants while still considering future overlaps.

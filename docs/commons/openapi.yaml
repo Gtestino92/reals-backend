@@ -1094,6 +1094,7 @@ paths:
     post:
       tags: [Connections]
       summary: Accept partner proposal and schedule second chat
+      description: Accepts a pending partner proposal only if the proposal belongs to the path connection, belongs to the current round, and its proposed instant is still strictly in the future. A persisted proposal may remain `PENDING` after its proposed time passes; accepting it returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE`, but it remains visible and rejectable.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
         - $ref: '#/components/parameters/ProposalId'
@@ -1633,7 +1634,7 @@ components:
                 error: Conflict
                 message: Scheduling round changed; refresh negotiation and proposals before retrying
     SchedulingProposalAcceptanceConflict:
-      description: Scheduling proposal cannot be accepted in the current flow state. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
+      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, and proposals whose own proposed instant is no longer strictly in the future. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
