@@ -130,3 +130,14 @@ State transitions and lock changes should stay coupled in service methods.
 - An `AVAILABLE` or `ACTIVE` second chat becomes `CANCELLED / USER_BLOCK`; terminal chat history is unchanged.
 
 Existing rejection and closure operations release locks. Positive transitions are guarded by pair-wide `USER_PAIR_BLOCKED`; cleanup, rejection, exit, safety, and read paths remain available.
+
+Scheduling mutations (`addProposals`, `acceptProposal`, partner proposal
+rejection and scheduling expiration) serialize on the `ScheduleNegotiation` row
+for the connection before reading or mutating current-round proposal state.
+Clients include `expectedRoundNumber` for proposal submission and partner
+proposal rejection; stale mutations return `SCHEDULING_ROUND_CHANGED` instead
+of being silently applied to a newer round. Rejecting partner proposals marks
+only the partner's pending proposals `REJECTED`. The scheduling round remains
+`PENDING` until both users have submitted in that round and no current-round
+proposal remains `PENDING`; then the backend opens the next round or fails the
+negotiation and closes the connection on the final configured round.

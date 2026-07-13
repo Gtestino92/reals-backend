@@ -342,12 +342,14 @@ abstract class BaseIT {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,

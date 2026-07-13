@@ -50,7 +50,7 @@ The gate applies to profile creation/editing/activation/match filters/profile
 authenticity verification/photo upload/photo reorder/photo replacement, entering
 matchmaking, sending chat messages, first-chat guidance next requests, visual
 personal-message writes, positive first-chat and visual decisions, and
-scheduling proposal submission/acceptance/round rejection.
+scheduling proposal submission/acceptance/partner proposal rejection.
 
 Reads remain available. Account deletion/reactivation, legal endpoints, chat
 exit/cancellation/safety operations, safety reports, queue inspection/leaving,
@@ -350,10 +350,10 @@ Temporary penalties require positive `durationHours`; permanent penalties reject
 - `GET /api/connections/{connectionId}/chat`: fetch the second chat for a connection. If no chat exists and the confirmed second-chat window is open (`now >= availableAt && now < expiresAt`), this idempotently creates and activates the `SECOND_CHAT`. If called before `availableAt`, returns conflict with `SECOND_CHAT_NOT_AVAILABLE_YET`; if called after `expiresAt` with no chat, returns conflict with `SECOND_CHAT_EXPIRED`.
 - `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation. Includes `schedulingExpiresAt` from the parent connection so clients can show a countdown without an extra request.
-- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the current round. Body: `{ "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots.
+- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the expected current round. Body: `{ "expectedRoundNumber": 1, "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots. Each participant may submit at most one ordered list per round. Existing partner proposals in the same round do not make backend submission invalid.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
 - `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept partner proposal and schedule second chat at the accepted time.
-- `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects the current scheduling round after reviewing partner proposals. This opens the next round, or fails/closes if max rounds are exceeded.
+- `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects only the partner's pending scheduling proposals for the expected current round. Body: `{ "expectedRoundNumber": 1 }`. A single rejection does not end the round; the round advances only after both users submitted in that round and both lists have been resolved as rejected. On the final permitted round, that second rejection marks the negotiation `FAILED` and closes the connection.
 
 Scheduling mutations after `schedulingExpiresAt` are rejected with
 `SCHEDULING_EXPIRED`. The timeout job owns the persistent transition to
@@ -468,6 +468,8 @@ Selected stable frontend-facing domain codes:
 - `FIRST_CHAT_GUIDANCE_NEXT_ALREADY_REQUESTED`: the requester already requested continuation for the current first-chat guidance question.
 - `FIRST_CHAT_GUIDANCE_COMPLETED`: first-chat guidance already reached the active final configured question.
 - `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
+- `SCHEDULING_ROUND_CHANGED`: `expectedRoundNumber` does not match the current negotiation round; refresh negotiation and proposals before retrying.
+- `SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE`: the expected current round has no pending partner proposal to reject, including retries after proposals were already resolved.
 - `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.
 - `LEGAL_DOCUMENT_NOT_FOUND`: requested legal document type has no current configured document.
 - `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`: requested legal document version is not the current configured version.

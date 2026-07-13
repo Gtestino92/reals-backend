@@ -6,6 +6,7 @@ import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
 import java.util.*
@@ -313,8 +314,16 @@ data class PartnerMessageResponse(
 // — Scheduling
 
 data class AddProposalRequest(
+    @field:Positive
+    val expectedRoundNumber: Int,
+
     @field:NotEmpty
     val proposedDateTimes: List<OffsetDateTime>
+)
+
+data class RejectPartnerProposalsRequest(
+    @field:Positive
+    val expectedRoundNumber: Int
 )
 
 data class ScheduleProposalResponse(

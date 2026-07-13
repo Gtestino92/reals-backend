@@ -109,7 +109,7 @@ Reads, legal endpoints, account deletion/reactivation, chat exit/cancellation
 and safety/reporting flows remain available without current legal compliance.
 `APPROVED` first-chat and visual decisions require compliance; `REJECTED`
 decisions remain available. Scheduling proposal submission, proposal acceptance
-and scheduling-round rejection require compliance.
+and partner scheduling-proposal rejection require compliance.
 
 ## 2. Matchmaking Queue
 
@@ -250,12 +250,16 @@ Rules:
 - each user submits one proposal list per round
 - each list must contain 1 to `scheduling.max-proposals-per-round` unique future slots
 - slots must be aligned to half-hour boundaries
+- proposal submission includes `expectedRoundNumber`; stale round requests return `SCHEDULING_ROUND_CHANGED`
 - user must belong to the connection
 - user cannot accept their own proposal
 - a participant can accept a partner proposal without first submitting their own list
-- overlapping proposed instants auto-confirm
+- receiving partner proposals does not make backend submission invalid; clients should preferably review known received proposals before showing their own selector, but that review-first rule is UX rather than a backend precondition
+- overlapping currently `PENDING` proposed instants auto-confirm; rejected lists never participate in overlap
 
-If more than one slot overlaps, the backend chooses the slot with the lowest combined preference order. If that still ties, it chooses the earliest agreed slot. If there is no overlap after both users submit, the backend does not immediately open the next round. Proposals remain visible so either participant can accept one partner slot or explicitly reject the current round. A user-triggered rejection opens the next round automatically unless max rounds has been reached.
+If more than one pending slot overlaps, the backend chooses the slot with the lowest combined preference order. If that still ties, it chooses the earliest agreed slot. Accepting any pending partner proposal confirms immediately. If there is no overlap after both users submit, the backend does not immediately open the next round. Proposals remain visible so either participant can accept one partner slot or explicitly reject the partner's pending proposal list.
+
+Partner proposal rejection resolves only the partner's pending proposals. A single rejection does not end the round. The round advances only when both participants have submitted at least one proposal in that round and no proposal in the round remains `PENDING`; at that point the backend opens the next round or fails/closes on the final permitted round. Scheduling mutations are serialized per negotiation through a database write lock on the negotiation row.
 
 Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
 

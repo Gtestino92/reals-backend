@@ -205,7 +205,7 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     fun `scheduling proposal and expiration create expected events`() {
         val setup = createConnectionInSchedulingPhase()
 
-        schedulingService.addProposal(setup.connectionId, setup.userAId, futureHalfHourSlot())
+        schedulingService.addProposal(setup.connectionId, setup.userAId, futureHalfHourSlot(), 1)
         schedulingService.expireNegotiation(setup.connectionId)
 
         assertSingleEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_SLOTS_PROPOSED_ON_TIME, 1)

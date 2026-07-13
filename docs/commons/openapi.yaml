@@ -239,7 +239,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalDocumentActionResponse'
         '400':
-          description: Malformed request or requested action does not match the configured required action. Stable code for wrong action: `LEGAL_DOCUMENT_ACTION_INVALID`.
+          description: "Malformed request or requested action does not match the configured required action. Stable code for wrong action: `LEGAL_DOCUMENT_ACTION_INVALID`."
           content:
             application/json:
               schema:
@@ -247,13 +247,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Requested document type has no current configured document. Stable code: `LEGAL_DOCUMENT_NOT_FOUND`.
+          description: "Requested document type has no current configured document. Stable code: `LEGAL_DOCUMENT_NOT_FOUND`."
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Requested version is not the current configured version. Stable code: `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`.
+          description: "Requested version is not the current configured version. Stable code: `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`."
           content:
             application/json:
               schema:
@@ -1053,7 +1053,8 @@ paths:
   /api/connections/{connectionId}/proposals:
     post:
       tags: [Connections]
-      summary: Submit ordered scheduling proposal list for current round
+      summary: Submit ordered scheduling proposal list for expected current round
+      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       requestBody:
@@ -1106,17 +1107,19 @@ paths:
   /api/connections/{connectionId}/negotiation/rejections:
     post:
       tags: [Connections]
-      summary: Explicitly reject current scheduling round
-      description: Rejects the current scheduling round and opens the next round when allowed; this progression action requires current legal requirements to be satisfied.
+      summary: Reject pending partner scheduling proposals
+      description: Rejects only the partner's pending proposals in the expected current round. A single rejection does not end the round; the round advances only after both participants submitted a list in the round and no pending proposal remains. This progression action requires current legal requirements to be satisfied.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        $ref: '#/components/requestBodies/RejectPartnerProposals'
       responses:
         '200':
           $ref: '#/components/responses/Negotiation'
         '404':
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
         '409':
-          $ref: '#/components/responses/SchedulingRoundRejectionConflict'
+          $ref: '#/components/responses/SchedulingPartnerProposalRejectionConflict'
   /api/matches/{matchId}/block:
     post:
       summary: Durably block the other participant in a match
@@ -1301,6 +1304,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AddProposalRequest'
+    RejectPartnerProposals:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RejectPartnerProposalsRequest'
     RecordLegalDocumentAction:
       required: true
       content:
@@ -1393,7 +1402,7 @@ components:
                 error: Conflict
                 message: Current legal document actions are required before continuing
     ChatMessageInvalid:
-      description: Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`.
+      description: "Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`."
       content:
         application/json:
           schema:
@@ -1403,7 +1412,7 @@ components:
             error: Bad Request
             message: Chat message is invalid
     ChatNotFound:
-      description: Chat not found. Stable code: `CHAT_NOT_FOUND`.
+      description: "Chat not found. Stable code: `CHAT_NOT_FOUND`."
       content:
         application/json:
           schema:
@@ -1560,7 +1569,7 @@ components:
                 error: Conflict
                 message: Chat exit request is not available
     SchedulingInvalidProposals:
-      description: Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`.
+      description: "Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`."
       content:
         application/json:
           schema:
@@ -1582,7 +1591,7 @@ components:
                 error: Not Found
                 message: Scheduling negotiation was not found
     SchedulingProposalNotFound:
-      description: Scheduling proposal not found. Stable code: `SCHEDULING_PROPOSAL_NOT_AVAILABLE`.
+      description: "Scheduling proposal not found. Stable code: `SCHEDULING_PROPOSAL_NOT_AVAILABLE`."
       content:
         application/json:
           schema:
@@ -1618,6 +1627,11 @@ components:
                 code: SCHEDULING_PROPOSALS_ALREADY_SUBMITTED
                 error: Conflict
                 message: Scheduling proposals were already submitted for this round
+            roundChanged:
+              value:
+                code: SCHEDULING_ROUND_CHANGED
+                error: Conflict
+                message: Scheduling round changed; refresh negotiation and proposals before retrying
     SchedulingProposalAcceptanceConflict:
       description: Scheduling proposal cannot be accepted in the current flow state. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
@@ -1650,8 +1664,8 @@ components:
                 code: SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL
                 error: Conflict
                 message: Users cannot accept their own scheduling proposal
-    SchedulingRoundRejectionConflict:
-      description: Scheduling round cannot be rejected in the current flow state. Rejecting the current scheduling round may also return `LEGAL_ACTION_REQUIRED`.
+    SchedulingPartnerProposalRejectionConflict:
+      description: Partner scheduling proposals cannot be rejected in the current flow state. Rejecting partner scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1667,11 +1681,21 @@ components:
                 code: SCHEDULING_NOT_AVAILABLE
                 error: Conflict
                 message: Scheduling is not available
-            roundNotRejectable:
+            schedulingExpired:
               value:
-                code: SCHEDULING_ROUND_NOT_REJECTABLE
+                code: SCHEDULING_EXPIRED
                 error: Conflict
-                message: Scheduling round is not rejectable
+                message: Scheduling has expired
+            roundChanged:
+              value:
+                code: SCHEDULING_ROUND_CHANGED
+                error: Conflict
+                message: Scheduling round changed; refresh negotiation and proposals before retrying
+            partnerProposalsNotAvailable:
+              value:
+                code: SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE
+                error: Conflict
+                message: Partner scheduling proposals are not available for rejection
   schemas:
     PingResponse:
       type: object
@@ -2558,13 +2582,25 @@ components:
           description: True when the current user's Home should hide this connection's second-chat next step.
     AddProposalRequest:
       type: object
-      required: [proposedDateTimes]
+      required: [expectedRoundNumber, proposedDateTimes]
       properties:
+        expectedRoundNumber:
+          type: integer
+          minimum: 1
+          description: Current negotiation round observed by the client. Mutations with stale values return `SCHEDULING_ROUND_CHANGED`.
         proposedDateTimes:
           type: array
           minItems: 1
           maxItems: 3
           items: { type: string, format: date-time }
+    RejectPartnerProposalsRequest:
+      type: object
+      required: [expectedRoundNumber]
+      properties:
+        expectedRoundNumber:
+          type: integer
+          minimum: 1
+          description: Current negotiation round observed by the client. Mutations with stale values return `SCHEDULING_ROUND_CHANGED`.
     ScheduleProposalResponse:
       type: object
       required: [id, connectionId, userId, roundNumber, preferenceOrder, proposedDateTime, status, createdAt]

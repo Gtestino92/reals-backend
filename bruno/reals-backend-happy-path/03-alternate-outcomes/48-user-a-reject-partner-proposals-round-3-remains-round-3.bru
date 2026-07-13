@@ -1,22 +1,32 @@
 meta {
-  name: 45 User A Reject Round 2 Opens Round 3
+  name: 48 User A Reject Partner Proposals Round 3 Remains Round 3
   type: http
-  seq: 45
+  seq: 48
 }
 
 post {
   url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
-  body: none
+  body: json
   auth: none
 }
 
 headers {
+  Content-Type: application/json
   X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 3
+  }
 }
 
 script:post-response {
   const body = res.getBody();
   if (body.status !== "PENDING" || body.roundNumber !== 3) {
     throw new Error(`Expected PENDING round 3, got ${body.status} round ${body.roundNumber}`);
+  }
+  if (body.chatId) {
+    throw new Error("Pending negotiation must not create a second chat.");
   }
 }
