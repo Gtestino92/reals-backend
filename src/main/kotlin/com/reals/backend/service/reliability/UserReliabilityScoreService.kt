@@ -154,6 +154,9 @@ class UserReliabilityScoreService(
         if (userIds.isEmpty()) {
             return emptyMap()
         }
+        if (!enabled) {
+            return userIds.associateWith { baseScore.toDouble() }
+        }
 
         val eventsByUser =
             eventRepository.findByUserIdInAndExpiresAtAfter(userIds, now)

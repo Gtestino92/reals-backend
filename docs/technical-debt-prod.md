@@ -495,6 +495,13 @@ PR2 scalable-claim follow-up:
   Kotlin distance filter remains as a defensive parity check.
 - Partner contention is normal: a missed partner claim falls back to the next
   ranked candidate without counting as a failed matchmaking pair.
+- Probabilistic partner ranking is implemented behind
+  `matchmaking.ranking.mode`. Do not enable it in production before calibrating
+  parameters from real reliability distributions, adding observability for
+  selected FIFO rank, reliability gaps, waiting-time percentiles and fallback
+  frequency, reviewing fairness/starvation effects, designing user-facing
+  reliability guidance, evaluating a future gradual compatibility scorer and
+  deciding whether ranking parameters should differ by market/liquidity.
 - Deferred future work: PostGIS, spatial indexes based on real `EXPLAIN`
   evidence, canonical pair columns, derived pair-exclusion tables, materialized
   eligibility caches, queue partitioning, sharding, multi-region matchmaking

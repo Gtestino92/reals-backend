@@ -109,12 +109,16 @@ old unmatchable anchors do not block progress, then reads a bounded partner
 window without row locks. Hard filters, including exact mutual Haversine
 distance, run before the partner `LIMIT`.
 
-Partners are ranked in application code with the existing compatibility score,
-reliability modifier, minimum score, early-accept FIFO behavior and FIFO
-tie-breaks. The selected partners are claimed one at a time by exact queue-entry
-id with hard revalidation and `FOR UPDATE OF qb SKIP LOCKED`; normal partner
-contention falls through to the next ranked candidate instead of becoming a
-processing failure.
+Partners are ranked in application code. `LEGACY_EARLY_ACCEPT` preserves the
+previous compatibility plus bounded reliability-modifier behavior, early-accept
+FIFO group and score-descending fallback. `PROBABILISTIC_WEIGHTED` gates by raw
+compatibility, combines compatibility quality with individual reliability-score
+similarity, relaxes reliability similarity as partner wait time grows and uses a
+Gumbel weighted permutation without replacement. Reliability scores are loaded
+once for the partner window. The selected partners are claimed one at a time by
+exact queue-entry id with hard revalidation and `FOR UPDATE OF qb SKIP LOCKED`;
+normal partner contention falls through to the next ranked candidate instead of
+becoming a processing failure. See `docs/matchmaking-ranking.md`.
 
 Defensive direct match creation still locks both users through
 `UserRepository.findAllByIdForUpdate` before persisting a match. After those

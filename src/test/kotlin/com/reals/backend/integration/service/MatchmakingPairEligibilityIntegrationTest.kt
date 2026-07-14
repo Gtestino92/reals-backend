@@ -34,6 +34,26 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `partner discovery maps partner entered at`() {
+        val now = fixedNow()
+        val (userA, userB) = createQueuedCompatiblePair("partner-entered-at")
+        val anchor = matchmakingQueueRepository.findByUserId(userA) ?: error("Expected anchor queue entry")
+        val partner = matchmakingQueueRepository.findByUserId(userB) ?: error("Expected partner queue entry")
+
+        val candidate =
+            matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.id,
+                limit = 10,
+                today = now.toLocalDate(),
+                exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
+                previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
+                firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            ).single()
+
+        assertEquals(partner.enteredAt, candidate.partnerEnteredAt)
+    }
+
+    @Test
     fun `active matches and approved transition without connection are excluded`() {
         val now = fixedNow()
         val chatActive = createQueuedCompatiblePair("active-chat")
