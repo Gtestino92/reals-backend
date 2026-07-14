@@ -163,6 +163,7 @@ internal object MatchmakingSqlFragments {
     val PARTNER_SELECT_AND_BASE_JOINS = """
         SELECT
             qb.id AS partner_queue_entry_id,
+            qb.entered_at AS partner_entered_at,
             qa.user_id AS user_a_id,
             qb.user_id AS user_b_id,
             qa.latitude AS user_a_latitude,

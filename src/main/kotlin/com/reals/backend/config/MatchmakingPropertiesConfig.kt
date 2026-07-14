@@ -4,5 +4,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration
 
 @Configuration
-@EnableConfigurationProperties(MatchmakingProperties::class)
+@EnableConfigurationProperties(
+    MatchmakingProperties::class,
+    MatchmakingRankingProperties::class
+)
 class MatchmakingPropertiesConfig

@@ -113,6 +113,12 @@ matchmaking:
   exclude-previous-pairing: true
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7
+  ranking:
+    mode: LEGACY_EARLY_ACCEPT
+    compatibility-temperature: 0.20
+    reliability-similarity-scale: 10.0
+    waiting-relaxation-period-hours: 72.0
+    maximum-similarity-scale-multiplier: 3.0
 
 chat:
   # Maximum duration for the anonymous first chat between matched users

@@ -144,6 +144,7 @@ class JdbcMatchmakingCandidateRepository(
     private fun ResultSet.toPartnerCandidate(): MatchmakingPartnerCandidate =
         MatchmakingPartnerCandidate(
             partnerQueueEntryId = getObject("partner_queue_entry_id", UUID::class.java),
+            partnerEnteredAt = getObject("partner_entered_at", OffsetDateTime::class.java),
             pair = MatchmakingCandidatePair(
                 userAId = getObject("user_a_id", UUID::class.java),
                 userBId = getObject("user_b_id", UUID::class.java),
