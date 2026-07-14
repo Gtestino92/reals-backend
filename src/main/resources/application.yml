@@ -108,6 +108,11 @@ account:
   deletion:
     recovery-window-days: 30
 
+matchmaking:
+  exclude-previous-pairing: true
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
+
 chat:
   # Maximum duration for the anonymous first chat between matched users
   first-chat:

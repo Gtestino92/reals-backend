@@ -67,6 +67,9 @@ matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  exclude-previous-pairing: false
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
 
 profile:
   photos:

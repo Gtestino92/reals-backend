@@ -27,6 +27,7 @@ class MatchmakingService(
     private val searchLocationMatchFilter: SearchLocationMatchFilter,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val matchmakingPairEligibilityService: MatchmakingPairEligibilityService,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -134,11 +135,15 @@ class MatchmakingService(
         }
 
         val today = LocalDate.now()
+        val now = java.time.OffsetDateTime.now()
         val candidatePairs =
             queueRepository
                 .findBasicCompatiblePairsSkipLocked(
                     limit = candidatePairLimit,
-                    today = today
+                    today = today,
+                    excludePreviousPairing = matchmakingPairEligibilityService.isHistoricalExclusionEnabled(),
+                    previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
+                    firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
                 )
                 .map {
                     MatchmakingCandidatePair(

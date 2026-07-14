@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.util.UUID
 
 interface MatchmakingQueueRepository :
@@ -75,6 +76,118 @@ interface MatchmakingQueueRepository :
                     AND ub.blocked_user_id = qa.user_id
                 )
             )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM matches m_active
+                WHERE (
+                    (
+                        m_active.user_a_id = qa.user_id
+                        AND m_active.user_b_id = qb.user_id
+                    ) OR (
+                        m_active.user_a_id = qb.user_id
+                        AND m_active.user_b_id = qa.user_id
+                    )
+                )
+                AND (
+                    m_active.state IN ('CHAT_ACTIVE', 'VISUAL_PHASE')
+                    OR (
+                        m_active.state = 'VISUAL_APPROVED'
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM connections c_approved
+                            WHERE c_approved.match_id = m_active.id
+                        )
+                    )
+                )
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM connections c_active
+                WHERE (
+                    (
+                        c_active.user_a_id = qa.user_id
+                        AND c_active.user_b_id = qb.user_id
+                    ) OR (
+                        c_active.user_a_id = qb.user_id
+                        AND c_active.user_b_id = qa.user_id
+                    )
+                )
+                AND c_active.state <> 'CLOSED'
+            )
+            AND (
+                :excludePreviousPairing = false
+                OR (
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM matches m_history
+                        WHERE (
+                            (
+                                m_history.user_a_id = qa.user_id
+                                AND m_history.user_b_id = qb.user_id
+                            ) OR (
+                                m_history.user_a_id = qb.user_id
+                                AND m_history.user_b_id = qa.user_id
+                            )
+                        )
+                        AND (
+                            (
+                                m_history.state IN ('CHAT_REJECTED', 'VISUAL_REJECTED')
+                                AND m_history.updated_at > :previousPairingCutoff
+                            )
+                            OR (
+                                m_history.state = 'EXPIRED'
+                                AND m_history.updated_at > :previousPairingCutoff
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM visual_reviews vr_history
+                                    WHERE vr_history.match_id = m_history.id
+                                )
+                            )
+                            OR (
+                                m_history.state = 'EXPIRED'
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                    FROM visual_reviews vr_first_chat
+                                    WHERE vr_first_chat.match_id = m_history.id
+                                )
+                                AND COALESCE(
+                                    (
+                                        SELECT fc.ended_at
+                                        FROM chats fc
+                                        WHERE fc.match_id = m_history.id
+                                            AND fc.chat_type = 'FIRST_CHAT'
+                                            AND (
+                                                (
+                                                    fc.status = 'EXPIRED'
+                                                    AND fc.ended_reason = 'ABSOLUTE_TIMEOUT'
+                                                ) OR (
+                                                    fc.status = 'ABANDONED'
+                                                    AND fc.ended_reason = 'INACTIVITY_TIMEOUT'
+                                                )
+                                            )
+                                    ),
+                                    m_history.updated_at
+                                ) > :firstChatExpirationCutoff
+                            )
+                        )
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM connections c_history
+                        WHERE (
+                            (
+                                c_history.user_a_id = qa.user_id
+                                AND c_history.user_b_id = qb.user_id
+                            ) OR (
+                                c_history.user_a_id = qb.user_id
+                                AND c_history.user_b_id = qa.user_id
+                            )
+                        )
+                        AND c_history.state = 'CLOSED'
+                        AND c_history.updated_at > :previousPairingCutoff
+                    )
+                )
+            )
             AND pa.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
             AND pa.intention = pb.intention
@@ -124,6 +237,12 @@ interface MatchmakingQueueRepository :
         @Param("limit")
         limit: Int,
         @Param("today")
-        today: LocalDate
+        today: LocalDate,
+        @Param("excludePreviousPairing")
+        excludePreviousPairing: Boolean,
+        @Param("previousPairingCutoff")
+        previousPairingCutoff: OffsetDateTime,
+        @Param("firstChatExpirationCutoff")
+        firstChatExpirationCutoff: OffsetDateTime
     ): List<MatchmakingCandidatePairProjection>
 }

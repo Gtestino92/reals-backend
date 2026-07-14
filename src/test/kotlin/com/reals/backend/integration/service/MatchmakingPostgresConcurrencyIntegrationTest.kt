@@ -1,5 +1,6 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.MatchmakingProcessResult
@@ -10,6 +11,8 @@ import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfilePhotoRepository
+import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.service.MatchService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.ProfileService
@@ -50,7 +53,13 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
     private lateinit var matchmakingProcessorService: MatchmakingProcessorService
 
     @Autowired
+    private lateinit var matchService: MatchService
+
+    @Autowired
     private lateinit var matchRepository: MatchRepository
+
+    @Autowired
+    private lateinit var activeEngagementLockRepository: ActiveEngagementLockRepository
 
     @Autowired
     private lateinit var profilePhotoRepository: ProfilePhotoRepository
@@ -103,6 +112,46 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         assertEquals(0L, matchmakingQueueRepository.count())
     }
 
+    @Test
+    fun `concurrent direct match creation creates one active pair on postgres`() {
+        val userA = createActiveProfile(
+            email = "postgres-duplicate-a@example.com",
+            displayName = "Duplicate A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val userB = createActiveProfile(
+            email = "postgres-duplicate-b@example.com",
+            displayName = "Duplicate B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+
+        val results =
+            runConcurrently(
+                { matchService.createMatch(userA, userB) },
+                { matchService.createMatch(userA, userB) }
+            )
+
+        assertEquals(1, results.count { it })
+        assertEquals(1, results.count { !it })
+        assertEquals(
+            1,
+            matchRepository.findAll().count {
+                (it.userAId == userA && it.userBId == userB) ||
+                    (it.userAId == userB && it.userBId == userA)
+            }
+        )
+        assertEquals(
+            1,
+            activeEngagementLockRepository.countByUserIdAndEngagementType(userA, EngagementType.MATCH)
+        )
+        assertEquals(
+            1,
+            activeEngagementLockRepository.countByUserIdAndEngagementType(userB, EngagementType.MATCH)
+        )
+    }
+
     private fun assertMatchedUsersAreDistinct(expectedUserCount: Int? = null) {
         val matchedUserIds =
             matchRepository
@@ -125,6 +174,35 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     Callable {
                         start.await()
                         matchmakingProcessorService.process(maxPairsPerRun = 1)
+                    }
+                )
+            }
+
+            start.countDown()
+
+            return futures.map {
+                it.get(15, TimeUnit.SECONDS)
+            }
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    private fun runConcurrently(vararg actions: () -> Unit): List<Boolean> {
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(actions.size)
+
+        try {
+            val futures = actions.map { action ->
+                executor.submit(
+                    Callable {
+                        start.await()
+                        try {
+                            action()
+                            true
+                        } catch (_: RuntimeException) {
+                            false
+                        }
                     }
                 )
             }

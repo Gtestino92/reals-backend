@@ -45,7 +45,9 @@ import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingPairEligibilityService
 import com.reals.backend.service.matching.MatchmakingService
+import com.reals.backend.repository.projection.MatchmakingCandidatePairProjection
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
@@ -93,6 +95,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var matchmakingProcessorService: MatchmakingProcessorService
+
+    @Autowired
+    protected lateinit var matchmakingPairEligibilityService: MatchmakingPairEligibilityService
 
     @Autowired
     protected lateinit var matchService: MatchService
@@ -274,6 +279,19 @@ abstract class BaseIT {
             accuracyMeters = accuracyMeters
         )
     }
+
+    protected fun findBasicCompatiblePairs(
+        limit: Int = 5,
+        today: LocalDate = LocalDate.now(),
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): List<MatchmakingCandidatePairProjection> =
+        matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+            limit = limit,
+            today = today,
+            excludePreviousPairing = matchmakingPairEligibilityService.isHistoricalExclusionEnabled(),
+            previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
+            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        )
 
     protected fun createMatchWithFirstChat(
         emailPrefix: String = "match"

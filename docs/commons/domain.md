@@ -115,6 +115,14 @@ Push notifications:
 - `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id. For `SCHEDULING_AVAILABLE`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each.
 - `UserLegalDocumentAction` is an append-oriented factual record that a user performed a configured action for a legal document type/version/content SHA-256 at a backend-generated timestamp. It stores `userId`, `documentType`, `documentVersion`, nullable `documentContentSha256`, `action` and `actedAt`; it does not store document text or document URLs.
 
+Matchmaking pair eligibility distinguishes active interactions, temporary history cooldowns and permanent blocks:
+
+- Active-pair uniqueness is invariant. Users are not eligible as a pair while they have an active `CHAT_ACTIVE` or `VISUAL_PHASE` match, a `VISUAL_APPROVED` match whose connection was not created yet, or any non-`CLOSED` connection.
+- `active_engagement_locks` continue to model per-user active match/connection capacity. They are not an unordered pair-exclusion table and are not duplicated for cooldowns.
+- When `matchmaking.exclude-previous-pairing` is enabled, previous terminal outcomes create temporary exclusions calculated from existing history: 30 days for explicit first-chat rejection, visual rejection, visual-review expiration and closed connections; 7 days for first-chat absolute timeout or inactivity abandonment.
+- `MatchState.EXPIRED` is classified from persisted phase evidence. An expired match with no `VisualReview` is treated as first-chat expiration; an expired match with a `VisualReview` is treated as visual-review expiration. First-chat `Chat.endedAt` is preferred for timeout/abandonment timestamps, with `Match.updatedAt` as legacy fallback.
+- A cooldown expires naturally when its cutoff elapses. No cleanup job, derived cooldown table, new match state or automatic `UserBlock` is created for normal product outcomes.
+
 ## Legal Documents
 
 Legal document configuration defines the current document catalog under
