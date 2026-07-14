@@ -9,6 +9,7 @@ import java.util.UUID
 interface MatchmakingCandidateRepository {
     fun claimNextEligibleAnchorForUpdate(
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingAnchor?
@@ -17,6 +18,7 @@ interface MatchmakingCandidateRepository {
         anchorQueueEntryId: UUID,
         limit: Int,
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): List<MatchmakingPartnerCandidate>
@@ -25,6 +27,7 @@ interface MatchmakingCandidateRepository {
         anchorQueueEntryId: UUID,
         partnerQueueEntryId: UUID,
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingPartnerCandidate?

@@ -13,6 +13,7 @@ import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.matching.MatchmakingCandidateRepository
+import com.reals.backend.repository.matching.MatchmakingPairExclusionPolicy
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.matching.MatchmakingProcessorService
@@ -221,6 +222,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         TransactionTemplate(transactionManager).executeWithoutResult {
             val anchor = matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
                 today = LocalDate.now(),
+                exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                 previousPairingCutoff = null,
                 firstChatExpirationCutoff = null
             ) ?: error("Expected anchor")
@@ -228,6 +230,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                 anchorQueueEntryId = anchor.queueEntryId,
                 limit = 10,
                 today = LocalDate.now(),
+                exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                 previousPairingCutoff = null,
                 firstChatExpirationCutoff = null
             ).single()
@@ -238,6 +241,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     anchorQueueEntryId = anchor.queueEntryId,
                     partnerQueueEntryId = partner.partnerQueueEntryId,
                     today = LocalDate.now(),
+                    exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
                     firstChatExpirationCutoff = null
                 )
@@ -256,6 +260,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     anchorQueueEntryId = anchor.id,
                     partnerQueueEntryId = oldPartnerQueueEntryId ?: error("Expected old partner queue entry id"),
                     today = LocalDate.now(),
+                    exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
                     firstChatExpirationCutoff = null
                 )
@@ -265,6 +270,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     anchorQueueEntryId = anchor.id,
                     partnerQueueEntryId = currentPartner.id,
                     today = LocalDate.now(),
+                    exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
                     firstChatExpirationCutoff = null
                 )
@@ -301,6 +307,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     anchorQueueEntryId = anchor.id,
                     partnerQueueEntryId = partner.id,
                     today = LocalDate.now(),
+                    exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
                     firstChatExpirationCutoff = null
                 )

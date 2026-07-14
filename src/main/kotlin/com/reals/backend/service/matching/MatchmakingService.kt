@@ -139,11 +139,13 @@ class MatchmakingService(
 
         val today = LocalDate.now()
         val now = OffsetDateTime.now()
+        val exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy()
         val cutoffs = historicalCutoffs(now)
 
         val anchor =
             candidateRepository.claimNextEligibleAnchorForUpdate(
                 today = today,
+                exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
                 firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
             )
@@ -154,6 +156,7 @@ class MatchmakingService(
                 anchorQueueEntryId = anchor.queueEntryId,
                 limit = candidatePairLimit,
                 today = today,
+                exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
                 firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
             )
@@ -166,6 +169,7 @@ class MatchmakingService(
                     anchorQueueEntryId = anchor.queueEntryId,
                     partnerQueueEntryId = claimAttempt.candidate.partnerQueueEntryId,
                     today = today,
+                    exclusionPolicy = exclusionPolicy,
                     previousPairingCutoff = cutoffs.previousPairingCutoff,
                     firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
                 )
@@ -286,7 +290,8 @@ class MatchmakingService(
     }
 
     private fun historicalCutoffs(now: OffsetDateTime): MatchmakingHistoricalCutoffs {
-        val includeHistoricalExclusion = matchmakingPairEligibilityService.isHistoricalExclusionEnabled()
+        val includeHistoricalExclusion =
+            matchmakingPairEligibilityService.effectiveExclusionPolicy().excludeHistoricalPairings
         return MatchmakingHistoricalCutoffs(
             previousPairingCutoff =
                 if (includeHistoricalExclusion) {

@@ -26,22 +26,24 @@ class JdbcMatchmakingCandidateRepository(
 
     override fun claimNextEligibleAnchorForUpdate(
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingAnchor? {
-        val includeHistoricalExclusion = requireConsistentCutoffs(
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff
         )
         val parameters = baseParameters(
             today = today,
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff,
-            includeHistoricalExclusion = includeHistoricalExclusion
+            firstChatExpirationCutoff = firstChatExpirationCutoff
         )
 
         return jdbcTemplate.query(
-            claimAnchorSql(includeHistoricalExclusion),
+            claimAnchorSql(exclusionPolicy),
             parameters
         ) { resultSet, _ ->
             MatchmakingAnchor(
@@ -55,24 +57,26 @@ class JdbcMatchmakingCandidateRepository(
         anchorQueueEntryId: UUID,
         limit: Int,
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): List<MatchmakingPartnerCandidate> {
-        val includeHistoricalExclusion = requireConsistentCutoffs(
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff
         )
         val parameters = baseParameters(
             today = today,
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff,
-            includeHistoricalExclusion = includeHistoricalExclusion
+            firstChatExpirationCutoff = firstChatExpirationCutoff
         )
             .addValue("anchorQueueEntryId", anchorQueueEntryId)
             .addValue("limit", limit)
 
         return jdbcTemplate.query(
-            if (includeHistoricalExclusion) FIND_PARTNERS_WITH_HISTORY_SQL else FIND_PARTNERS_ACTIVE_ONLY_SQL,
+            findPartnersSql(exclusionPolicy),
             parameters
         ) { resultSet, _ -> resultSet.toPartnerCandidate() }
     }
@@ -81,39 +85,41 @@ class JdbcMatchmakingCandidateRepository(
         anchorQueueEntryId: UUID,
         partnerQueueEntryId: UUID,
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingPartnerCandidate? {
-        val includeHistoricalExclusion = requireConsistentCutoffs(
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff
         )
         val parameters = baseParameters(
             today = today,
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff,
-            includeHistoricalExclusion = includeHistoricalExclusion
+            firstChatExpirationCutoff = firstChatExpirationCutoff
         )
             .addValue("anchorQueueEntryId", anchorQueueEntryId)
             .addValue("partnerQueueEntryId", partnerQueueEntryId)
 
         return jdbcTemplate.query(
-            claimPartnerSql(includeHistoricalExclusion),
+            claimPartnerSql(exclusionPolicy),
             parameters
         ) { resultSet, _ -> resultSet.toPartnerCandidate() }.firstOrNull()
     }
 
     private fun baseParameters(
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?,
-        includeHistoricalExclusion: Boolean
+        firstChatExpirationCutoff: OffsetDateTime?
     ): MapSqlParameterSource {
         val parameters =
             MapSqlParameterSource()
                 .addValue("today", today)
 
-        if (includeHistoricalExclusion) {
+        if (exclusionPolicy.excludeHistoricalPairings) {
             parameters
                 .addValue("previousPairingCutoff", previousPairingCutoff)
                 .addValue("firstChatExpirationCutoff", firstChatExpirationCutoff)
@@ -122,14 +128,17 @@ class JdbcMatchmakingCandidateRepository(
         return parameters
     }
 
-    private fun requireConsistentCutoffs(
+    private fun requirePolicyMatchesCutoffs(
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
-    ): Boolean {
+    ) {
         require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
             "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
         }
-        return previousPairingCutoff != null
+        require(exclusionPolicy.excludeHistoricalPairings == (previousPairingCutoff != null)) {
+            "Historical exclusion policy and cutoff parameters must match"
+        }
     }
 
     private fun ResultSet.toPartnerCandidate(): MatchmakingPartnerCandidate =
@@ -145,131 +154,83 @@ class JdbcMatchmakingCandidateRepository(
             )
         )
 
-    private fun claimAnchorSql(includeHistoricalExclusion: Boolean): String =
-        when {
-            isPostgres && includeHistoricalExclusion -> CLAIM_ANCHOR_WITH_HISTORY_SQL
-            isPostgres -> CLAIM_ANCHOR_ACTIVE_ONLY_SQL
-            includeHistoricalExclusion -> CLAIM_ANCHOR_WITH_HISTORY_H2_SQL
-            else -> CLAIM_ANCHOR_ACTIVE_ONLY_H2_SQL
-        }
+    private fun claimAnchorSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String {
+        val pairMatchExclusion = pairMatchExclusion(exclusionPolicy)
+        val pairConnectionExclusion = pairConnectionExclusion(exclusionPolicy)
+        val partnerProbe =
+            if (isPostgres) {
+                MatchmakingSqlFragments.partnerLateralJoin(pairMatchExclusion, pairConnectionExclusion)
+            } else {
+                MatchmakingSqlFragments.partnerExistsFilter(pairMatchExclusion, pairConnectionExclusion)
+            }
+        val orderingAndLock =
+            if (isPostgres) {
+                MatchmakingSqlFragments.ANCHOR_ORDER_LIMIT_AND_LOCK
+            } else {
+                MatchmakingSqlFragments.ANCHOR_ORDER_AND_LIMIT
+            }
 
-    private fun claimPartnerSql(includeHistoricalExclusion: Boolean): String =
-        when {
-            isPostgres && includeHistoricalExclusion -> CLAIM_PARTNER_WITH_HISTORY_SQL
-            isPostgres -> CLAIM_PARTNER_ACTIVE_ONLY_SQL
-            includeHistoricalExclusion -> CLAIM_PARTNER_WITH_HISTORY_H2_SQL
-            else -> CLAIM_PARTNER_ACTIVE_ONLY_H2_SQL
-        }
-
-    private companion object {
-        val CLAIM_ANCHOR_ACTIVE_ONLY_SQL =
-            """
+        return """
             ${MatchmakingSqlFragments.ANCHOR_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_LATERAL_JOIN}
+            $partnerProbe
             ${MatchmakingSqlFragments.ANCHOR_BASE_FILTERS}
-            ${MatchmakingSqlFragments.ANCHOR_ORDER_LIMIT_AND_LOCK}
-            """.trimIndent()
-
-        val CLAIM_ANCHOR_WITH_HISTORY_SQL =
-            """
-            ${MatchmakingSqlFragments.ANCHOR_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_LATERAL_JOIN_WITH_HISTORY}
-            ${MatchmakingSqlFragments.ANCHOR_BASE_FILTERS}
-            ${MatchmakingSqlFragments.ANCHOR_ORDER_LIMIT_AND_LOCK}
-            """.trimIndent()
-
-        val CLAIM_ANCHOR_ACTIVE_ONLY_H2_SQL =
-            """
-            ${MatchmakingSqlFragments.ANCHOR_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.ANCHOR_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_EXISTS_FILTER}
-            ${MatchmakingSqlFragments.ANCHOR_ORDER_AND_LIMIT}
-            """.trimIndent()
-
-        val CLAIM_ANCHOR_WITH_HISTORY_H2_SQL =
-            """
-            ${MatchmakingSqlFragments.ANCHOR_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.ANCHOR_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_EXISTS_FILTER_WITH_HISTORY}
-            ${MatchmakingSqlFragments.ANCHOR_ORDER_AND_LIMIT}
-            """.trimIndent()
-
-        val FIND_PARTNERS_ACTIVE_ONLY_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_DISCOVERY_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_ORDER_AND_LIMIT}
-            """.trimIndent()
-
-        val FIND_PARTNERS_WITH_HISTORY_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_DISCOVERY_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_ORDER_AND_LIMIT}
-            """.trimIndent()
-
-        val CLAIM_PARTNER_ACTIVE_ONLY_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_LOCK}
-            """.trimIndent()
-
-        val CLAIM_PARTNER_WITH_HISTORY_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_LOCK}
-            """.trimIndent()
-
-        val CLAIM_PARTNER_ACTIVE_ONLY_H2_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_NO_LOCK}
-            """.trimIndent()
-
-        val CLAIM_PARTNER_WITH_HISTORY_H2_SQL =
-            """
-            ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
-            ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
-            ${MatchmakingSqlFragments.PARTNER_CLAIM_NO_LOCK}
-            """.trimIndent()
+            $orderingAndLock
+        """.trimIndent()
     }
+
+    private fun findPartnersSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        """
+        ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
+        ${MatchmakingSqlFragments.PARTNER_DISCOVERY_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
+        ${pairMatchExclusion(exclusionPolicy)}
+        ${pairConnectionExclusion(exclusionPolicy)}
+        ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
+        ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
+        ${MatchmakingSqlFragments.PARTNER_ORDER_AND_LIMIT}
+        """.trimIndent()
+
+    private fun claimPartnerSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        """
+        ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
+        ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
+        ${pairMatchExclusion(exclusionPolicy)}
+        ${pairConnectionExclusion(exclusionPolicy)}
+        ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
+        ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
+        ${if (isPostgres) MatchmakingSqlFragments.PARTNER_CLAIM_LOCK else MatchmakingSqlFragments.PARTNER_CLAIM_NO_LOCK}
+        """.trimIndent()
+
+    private fun pairMatchExclusion(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        when {
+            exclusionPolicy.excludeActiveInteractions && exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION
+
+            exclusionPolicy.excludeActiveInteractions ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_MATCH_EXCLUSION
+
+            exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_HISTORICAL_MATCH_EXCLUSION
+
+            else ->
+                ""
+        }
+
+    private fun pairConnectionExclusion(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        when {
+            exclusionPolicy.excludeActiveInteractions && exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION
+
+            exclusionPolicy.excludeActiveInteractions ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_CONNECTION_EXCLUSION
+
+            exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_HISTORICAL_CONNECTION_EXCLUSION
+
+            else ->
+                ""
+        }
 }

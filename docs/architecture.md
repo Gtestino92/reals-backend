@@ -98,11 +98,12 @@ Candidate claiming uses a focused JDBC repository with native PostgreSQL SQL
 and participates in the same Spring transaction as anchor claim, partner
 discovery, scoring, partner claim, match creation and first-chat creation.
 
-Candidate claiming has two trusted SQL variants. The active-only variant is
-used when previous-pair exclusion is disabled in local repeatable profiles and
-omits all historical cooldown predicates. The active-plus-history variant adds
-terminal match and closed-connection cooldown checks while preserving the same
-base filters and FIFO ordering. The flow locks one eligible anchor queue row
+Candidate claiming composes trusted SQL fragments from two independent pair
+policy dimensions: active-interaction exclusion and historical-cooldown
+exclusion. This supports active-plus-history, active-only, history-only and no
+pair-history exclusion modes without Boolean `OR` predicates that hide disabled
+filters from PostgreSQL. User-block exclusion is always present. The flow locks
+one eligible anchor queue row
 with `FOR UPDATE OF qa SKIP LOCKED`, uses a non-locking `JOIN LATERAL` probe so
 old unmatchable anchors do not block progress, then reads a bounded partner
 window without row locks. Hard filters, including exact mutual Haversine
@@ -120,6 +121,11 @@ Defensive direct match creation still locks both users through
 locks, a focused JDBC pair-eligibility query returns either active-interaction,
 previous-pairing-cooldown or no blocker in one database round trip. User blocks
 remain a separate permanent exclusion checked before this pair policy.
+`matchmaking.allow-active-pair-duplicates=true` omits active-interaction
+blocking from candidate claim, partner discovery, partner claim and defensive
+match creation, but factual state inspection such as `hasActiveInteraction`
+still reports the persisted active interaction. Historical cooldown and
+engagement-capacity checks remain independent.
 
 `SearchLocationMatchFilter` remains as a defensive service-layer parity check
 for SQL distance filtering. PostGIS, spatial indexes driven by real query

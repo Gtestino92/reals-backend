@@ -479,9 +479,10 @@ Future option:
 
 PR1 query-refactor follow-up:
 - Queue CRUD and candidate discovery are now separate repository responsibilities.
-- Candidate selection uses JDBC/native PostgreSQL SQL with active-only and
-  active-plus-history variants so local repeatable mode does not carry
-  historical cooldown predicates.
+- Candidate selection uses JDBC/native PostgreSQL SQL with independent
+  active-interaction and historical-cooldown fragments so local repeatable mode
+  can omit active duplicate and/or historical predicates without weakening
+  user-block, profile, queue, penalty, age, gender or distance filters.
 - Defensive pair checking uses one focused database query after deterministic
   user locking and before match persistence.
 - Added pair/state indexes support the current active and cooldown lookups.

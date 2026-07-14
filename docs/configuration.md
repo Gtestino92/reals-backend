@@ -91,9 +91,12 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
-| `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Dev/prod flag for historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod. Local repeatable profiles set it to `false`. This never disables active-pair uniqueness or user-block exclusion. |
+| `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES` | no | Local Firebase override for repeated same-pair testing. Defaults to `true` in `local-firebase` Docker runs and `false` globally. Keep `false` for production-like active-pair restrictions. |
+| `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
 | `MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat absolute timeout or inactivity abandonment. Defaults to `7`; must be non-negative. |
+| `ENGAGEMENT_MAX_ACTIVE_MATCHES` | no | Local Firebase override for per-user active match capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
+| `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS` | no | Local Firebase override for per-user active connection capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
 | `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
 | `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
 | `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
@@ -120,13 +123,20 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
 
-Matchmaking pair eligibility has three separate controls:
+Matchmaking pair eligibility has four separate controls:
 
-- Active-pair uniqueness is always enforced in every environment. A pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection.
-- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and does not affect active-pair uniqueness.
+- Active-pair duplicate exclusion is controlled by `matchmaking.allow-active-pair-duplicates`. The global default is `false`, so a pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection. `local-firebase` defaults it to `true` for repeated manual testing.
+- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and is independent from active-pair duplicate handling.
+- Per-user engagement capacity remains controlled by `engagement.max-active-matches` and `engagement.max-active-connections`. Allowing active duplicate pairs does not bypass these limits.
 - User blocks are permanent pair exclusions in either direction until an explicit unblock feature exists. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create `UserBlock` rows.
 
 No cleanup job or derived pairing-exclusion table exists. Cooldown eligibility is calculated from persisted match, chat, visual-review and connection history. Exact cooldown boundary is eligible: a terminal timestamp equal to `now - cooldownDays` is no longer excluded.
+
+Useful local modes:
+
+- Fast repeated local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=true`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=false`, `ENGAGEMENT_MAX_ACTIVE_MATCHES=100`, `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS=100`. The same users may be matched repeatedly; active pair interactions and recent terminal history do not block, while user blocks and hard profile compatibility still apply.
+- Production-like local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=false`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=true`, `ENGAGEMENT_MAX_ACTIVE_MATCHES=5`, `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS=2`. Active pair interactions, historical cooldowns and normal capacity limits apply.
+- Intermediate local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=false`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=false`. Active pair restrictions apply while completed historical pairs can repeat.
 
 Legal document configuration:
 

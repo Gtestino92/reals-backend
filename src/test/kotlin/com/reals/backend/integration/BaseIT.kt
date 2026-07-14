@@ -293,14 +293,15 @@ abstract class BaseIT {
         today: LocalDate = LocalDate.now(),
         now: OffsetDateTime = OffsetDateTime.now()
     ): List<MatchmakingCandidatePair> {
+        val exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy()
         val previousPairingCutoff =
-            if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+            if (exclusionPolicy.excludeHistoricalPairings) {
                 matchmakingPairEligibilityService.previousPairingCutoff(now)
             } else {
                 null
             }
         val firstChatExpirationCutoff =
-            if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+            if (exclusionPolicy.excludeHistoricalPairings) {
                 matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
             } else {
                 null
@@ -308,6 +309,7 @@ abstract class BaseIT {
         val anchor =
             matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
                 today = today,
+                exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = previousPairingCutoff,
                 firstChatExpirationCutoff = firstChatExpirationCutoff
             )
@@ -317,6 +319,7 @@ abstract class BaseIT {
             anchorQueueEntryId = anchor.queueEntryId,
             limit = limit,
             today = today,
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff
         ).map { it.pair }
