@@ -71,6 +71,32 @@ internal object MatchmakingSqlFragments {
         ) partner_probe ON true
     """
 
+    fun partnerLateralJoin(
+        pairMatchExclusion: String,
+        pairConnectionExclusion: String
+    ): String =
+        """
+        -- Non-locking existence probe: old unmatchable anchors must not block later anchors.
+        JOIN LATERAL (
+            SELECT 1
+            FROM matchmaking_queue qb
+            JOIN users ub
+                ON ub.id = qb.user_id
+            JOIN profiles pb
+                ON pb.user_id = qb.user_id
+            WHERE qb.status = 'WAITING'
+                AND ${PARTNER_AFTER_ANCHOR_CONDITION}
+                ${PARTNER_BASE_FILTERS}
+                ${PAIR_BLOCK_EXCLUSION}
+                $pairMatchExclusion
+                $pairConnectionExclusion
+                ${PROFILE_COMPATIBILITY_FILTERS}
+                ${MUTUAL_DISTANCE_FILTER}
+            ORDER BY qb.entered_at, qb.id
+            LIMIT 1
+        ) partner_probe ON true
+        """.trimIndent()
+
     val PARTNER_EXISTS_FILTER: String
         get() = """
             AND EXISTS (
@@ -110,6 +136,29 @@ internal object MatchmakingSqlFragments {
                     ${MUTUAL_DISTANCE_FILTER}
             )
     """
+
+    fun partnerExistsFilter(
+        pairMatchExclusion: String,
+        pairConnectionExclusion: String
+    ): String =
+        """
+            AND EXISTS (
+                SELECT 1
+                FROM matchmaking_queue qb
+                JOIN users ub
+                    ON ub.id = qb.user_id
+                JOIN profiles pb
+                    ON pb.user_id = qb.user_id
+                WHERE qb.status = 'WAITING'
+                    AND ${PARTNER_AFTER_ANCHOR_CONDITION}
+                    ${PARTNER_BASE_FILTERS}
+                    ${PAIR_BLOCK_EXCLUSION}
+                    $pairMatchExclusion
+                    $pairConnectionExclusion
+                    ${PROFILE_COMPATIBILITY_FILTERS}
+                    ${MUTUAL_DISTANCE_FILTER}
+            )
+        """.trimIndent()
 
     val PARTNER_SELECT_AND_BASE_JOINS = """
         SELECT
@@ -282,6 +331,58 @@ internal object MatchmakingSqlFragments {
             )
     """
 
+    val PAIR_HISTORICAL_MATCH_EXCLUSION: String
+        get() = """
+            AND NOT EXISTS (
+                SELECT 1
+                FROM matches m
+                WHERE ${UNORDERED_QUEUE_PAIR_MATCH}
+                AND (
+                    (
+                        m.state IN ('CHAT_REJECTED', 'VISUAL_REJECTED')
+                        AND m.updated_at > :previousPairingCutoff
+                    )
+                    OR (
+                        m.state = 'EXPIRED'
+                        AND m.updated_at > :previousPairingCutoff
+                        -- VisualReview presence distinguishes visual expiration from first-chat expiration.
+                        AND EXISTS (
+                            SELECT 1
+                            FROM visual_reviews vr_history
+                            WHERE vr_history.match_id = m.id
+                        )
+                    )
+                    OR (
+                        m.state = 'EXPIRED'
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM visual_reviews vr_first_chat
+                            WHERE vr_first_chat.match_id = m.id
+                        )
+                        -- Prefer Chat.endedAt; fallback preserves legacy safety-net Match.updatedAt rows.
+                        AND COALESCE(
+                            (
+                                SELECT fc.ended_at
+                                FROM chats fc
+                                WHERE fc.match_id = m.id
+                                    AND fc.chat_type = 'FIRST_CHAT'
+                                    AND (
+                                        (
+                                            fc.status = 'EXPIRED'
+                                            AND fc.ended_reason = 'ABSOLUTE_TIMEOUT'
+                                        ) OR (
+                                            fc.status = 'ABANDONED'
+                                            AND fc.ended_reason = 'INACTIVITY_TIMEOUT'
+                                        )
+                                    )
+                            ),
+                            m.updated_at
+                        ) > :firstChatExpirationCutoff
+                    )
+                )
+            )
+    """
+
     val PAIR_ACTIVE_CONNECTION_EXCLUSION: String
         get() = """
             AND NOT EXISTS (
@@ -305,6 +406,17 @@ internal object MatchmakingSqlFragments {
                         AND c.updated_at > :previousPairingCutoff
                     )
                 )
+            )
+    """
+
+    val PAIR_HISTORICAL_CONNECTION_EXCLUSION: String
+        get() = """
+            AND NOT EXISTS (
+                SELECT 1
+                FROM connections c
+                WHERE ${UNORDERED_QUEUE_PAIR_CONNECTION}
+                AND c.state = 'CLOSED'
+                AND c.updated_at > :previousPairingCutoff
             )
     """
 

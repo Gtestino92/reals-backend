@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "matchmaking")
 data class MatchmakingProperties(
+    val allowActivePairDuplicates: Boolean = false,
     val excludePreviousPairing: Boolean = true,
     val previousPairingCooldownDays: Long = 30,
     val firstChatExpirationCooldownDays: Long = 7

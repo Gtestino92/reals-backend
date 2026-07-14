@@ -341,6 +341,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
                 anchorQueueEntryId = anchor.id,
                 limit = 100,
                 today = now.toLocalDate(),
+                exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
                 previousPairingCutoff = previousPairingCutoff,
                 firstChatExpirationCutoff = firstChatExpirationCutoff
             ).any {
@@ -358,6 +359,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         matchmakingPairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
             previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
             firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
         )

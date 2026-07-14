@@ -83,9 +83,14 @@ matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
-  exclude-previous-pairing: false
+  allow-active-pair-duplicates: ${MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES:true}
+  exclude-previous-pairing: ${MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING:false}
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7
+
+engagement:
+  max-active-matches: ${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}
+  max-active-connections: ${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}
 
 user-reliability:
   enabled: true

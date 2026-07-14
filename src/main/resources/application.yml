@@ -109,6 +109,7 @@ account:
     recovery-window-days: 30
 
 matchmaking:
+  allow-active-pair-duplicates: false
   exclude-previous-pairing: true
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7

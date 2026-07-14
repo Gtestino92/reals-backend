@@ -3,6 +3,7 @@ package com.reals.backend.service.matching
 import com.reals.backend.config.MatchmakingProperties
 import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.matching.MatchmakingPairBlockingReason
+import com.reals.backend.repository.matching.MatchmakingPairExclusionPolicy
 import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -23,6 +24,12 @@ class MatchmakingPairEligibilityService(
 
     fun isHistoricalExclusionEnabled(): Boolean =
         properties.excludePreviousPairing
+
+    fun effectiveExclusionPolicy(): MatchmakingPairExclusionPolicy =
+        MatchmakingPairExclusionPolicy(
+            excludeActiveInteractions = !properties.allowActivePairDuplicates,
+            excludeHistoricalPairings = properties.excludePreviousPairing
+        )
 
     fun requirePairCanCreateMatch(
         userAId: UUID,
@@ -55,6 +62,7 @@ class MatchmakingPairEligibilityService(
         pairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
             previousPairingCutoff = null,
             firstChatExpirationCutoff = null
         ) == MatchmakingPairBlockingReason.ACTIVE_INTERACTION
@@ -71,6 +79,10 @@ class MatchmakingPairEligibilityService(
         return pairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = MatchmakingPairExclusionPolicy(
+                excludeActiveInteractions = false,
+                excludeHistoricalPairings = true
+            ),
             previousPairingCutoff = previousPairingCutoff(now),
             firstChatExpirationCutoff = firstChatExpirationCutoff(now)
         ) == MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN
@@ -80,13 +92,16 @@ class MatchmakingPairEligibilityService(
         userAId: UUID,
         userBId: UUID,
         now: OffsetDateTime
-    ): MatchmakingPairBlockingReason? =
-        pairEligibilityRepository.findBlockingReason(
+    ): MatchmakingPairBlockingReason? {
+        val exclusionPolicy = effectiveExclusionPolicy()
+        return pairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = exclusionPolicy,
             previousPairingCutoff =
-                if (properties.excludePreviousPairing) previousPairingCutoff(now) else null,
+                if (exclusionPolicy.excludeHistoricalPairings) previousPairingCutoff(now) else null,
             firstChatExpirationCutoff =
-                if (properties.excludePreviousPairing) firstChatExpirationCutoff(now) else null
+                if (exclusionPolicy.excludeHistoricalPairings) firstChatExpirationCutoff(now) else null
         )
+    }
 }
