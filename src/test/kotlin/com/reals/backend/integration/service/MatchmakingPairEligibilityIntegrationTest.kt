@@ -330,11 +330,25 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         userAId: UUID,
         userBId: UUID,
         now: OffsetDateTime
-    ): Boolean =
-        findBasicCompatiblePairs(limit = 100, now = now).any {
-            (it.userAId == userAId && it.userBId == userBId) ||
-                (it.userAId == userBId && it.userBId == userAId)
+    ): Boolean {
+        val previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now)
+        val firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        val userAQueueEntry = matchmakingQueueRepository.findByUserId(userAId)
+        val userBQueueEntry = matchmakingQueueRepository.findByUserId(userBId)
+
+        return listOfNotNull(userAQueueEntry, userBQueueEntry).any { anchor ->
+            matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.id,
+                limit = 100,
+                today = now.toLocalDate(),
+                previousPairingCutoff = previousPairingCutoff,
+                firstChatExpirationCutoff = firstChatExpirationCutoff
+            ).any {
+                (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
+                    (it.pair.userAId == userBId && it.pair.userBId == userAId)
+            }
         }
+    }
 
     private fun blockingReason(
         userAId: UUID,

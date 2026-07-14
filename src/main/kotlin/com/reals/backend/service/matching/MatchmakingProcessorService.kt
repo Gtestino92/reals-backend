@@ -70,7 +70,7 @@ class MatchmakingProcessorService(
     private fun claimAndProcessNextCandidatePair(): Match? =
         transactionTemplate.execute<Match?> {
             val (userAId, userBId) =
-                matchmakingService.findNextCandidatePair()
+                matchmakingService.claimNextCandidatePair()
                     ?: return@execute null
 
             try {

@@ -17,8 +17,10 @@ class JdbcMatchmakingPairEligibilityRepository(
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingPairBlockingReason? {
-        val includeHistoricalExclusion =
-            previousPairingCutoff != null && firstChatExpirationCutoff != null
+        val includeHistoricalExclusion = requireConsistentCutoffs(
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
 
         val parameters =
             MapSqlParameterSource()
@@ -37,6 +39,16 @@ class JdbcMatchmakingPairEligibilityRepository(
         ) { resultSet, _ ->
             MatchmakingPairBlockingReason.valueOf(resultSet.getString("reason"))
         }.firstOrNull()
+    }
+
+    private fun requireConsistentCutoffs(
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): Boolean {
+        require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
+            "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
+        }
+        return previousPairingCutoff != null
     }
 
     private companion object {

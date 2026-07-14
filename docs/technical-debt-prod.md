@@ -485,11 +485,19 @@ PR1 query-refactor follow-up:
 - Defensive pair checking uses one focused database query after deterministic
   user locking and before match persistence.
 - Added pair/state indexes support the current active and cooldown lookups.
-- Current broad candidate-row locking remains unchanged.
-- Deferred to PR2: anchor queue selection, partner candidate windows,
-  claim-only-selected-partner logic, retry behavior for lost partner claims,
-  reduced lock scope, SQL geographic prefilters, PostGIS, canonical pair
-  columns, derived pair-exclusion tables and materialized eligibility caches.
+
+PR2 scalable-claim follow-up:
+- Candidate claiming now locks one eligible anchor row, reads a bounded
+  non-locking partner window, ranks partners in application code and claims one
+  selected partner row at a time with hard revalidation.
+- Exact mutual Haversine distance runs in SQL before partner `LIMIT`, while the
+  Kotlin distance filter remains as a defensive parity check.
+- Partner contention is normal: a missed partner claim falls back to the next
+  ranked candidate without counting as a failed matchmaking pair.
+- Deferred future work: PostGIS, spatial indexes based on real `EXPLAIN`
+  evidence, canonical pair columns, derived pair-exclusion tables, materialized
+  eligibility caches, queue partitioning, sharding, multi-region matchmaking
+  and durable pagination or rotation for extremely large partner windows.
 
 ---
 
