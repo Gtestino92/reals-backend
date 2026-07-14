@@ -6,6 +6,7 @@ import com.reals.backend.controller.dto.ChatResponse
 import com.reals.backend.controller.dto.ConnectionDismissalResponse
 import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
+import com.reals.backend.controller.dto.RejectPartnerProposalsRequest
 import com.reals.backend.controller.dto.ScheduleProposalResponse
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
@@ -91,11 +92,11 @@ class ConnectionController(
     }
 
     /**
-     * Submits the user's ordered second-chat slot proposals for the current round.
+     * Submits the user's ordered second-chat slot proposals for the expected current round.
      * After saving, tryConfirm() runs automatically:
      *  - If overlap is found with the other user's proposals -> negotiation CONFIRMED
      *      Connection -> SECOND_CHAT_SCHEDULED. The second chat starts at confirmedDateTime.
-     *  - If no overlap -> stays PENDING so each user can accept a partner slot or reject the round.
+     *  - If no overlap -> stays PENDING so each user can accept a partner slot or reject partner proposals.
      */
     @PostMapping("/{connectionId}/proposals")
     fun addProposal(
@@ -109,6 +110,7 @@ class ConnectionController(
         val proposals = schedulingService.addProposals(
             connectionId = connectionId,
             userId = userId,
+            expectedRoundNumber = request.expectedRoundNumber,
             proposedDateTimes = request.proposedDateTimes
         )
 
@@ -153,6 +155,7 @@ class ConnectionController(
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val negotiation = schedulingService.acceptProposal(
+            connectionId = connectionId,
             proposalId = proposalId,
             acceptorUserId = userId
         )
@@ -169,19 +172,22 @@ class ConnectionController(
     }
 
     /**
-     * Explicitly rejects the current round and automatically opens the next one.
-     * If maxRounds is exceeded -> negotiation FAILED, Connection CLOSED.
+     * Explicitly rejects pending partner proposals in the expected current round.
+     * The round advances only after both users' proposal lists are resolved.
      */
     @PostMapping("/{connectionId}/negotiation/rejections")
-    fun rejectCurrentRound(
+    fun rejectPartnerProposals(
         @CurrentUserId userId: UUID,
-        @PathVariable connectionId: UUID
+        @PathVariable connectionId: UUID,
+        @Valid
+        @RequestBody request: RejectPartnerProposalsRequest
     ): ResponseEntity<NegotiationResponse> {
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
-        val negotiation = schedulingService.rejectCurrentRound(
+        val negotiation = schedulingService.rejectPartnerProposals(
             connectionId = connectionId,
-            userId = userId
+            userId = userId,
+            expectedRoundNumber = request.expectedRoundNumber
         )
         val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,

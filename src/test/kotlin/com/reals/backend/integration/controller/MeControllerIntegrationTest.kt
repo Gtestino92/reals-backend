@@ -510,8 +510,8 @@ class MeControllerIntegrationTest : ControllerIT() {
     fun `home returns SECOND_CHAT_SCHEDULED and materialized second chat next steps`() {
         val scheduledSetup = createConnectionInSchedulingPhase()
         val scheduledSlot = futureHalfHourSlot()
-        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userAId, scheduledSlot)
-        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userBId, scheduledSlot)
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userAId, scheduledSlot, 1)
+        schedulingService.addProposal(scheduledSetup.connectionId, scheduledSetup.userBId, scheduledSlot, 1)
 
         mockMvc.perform(
             get("/api/me/home")
@@ -607,8 +607,8 @@ class MeControllerIntegrationTest : ControllerIT() {
     fun `home excludes expired scheduled second chat without chat`() {
         val setup = createConnectionInSchedulingPhase()
         val scheduledSlot = futureHalfHourSlot()
-        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot)
-        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot)
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot, 1)
 
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,

@@ -30,5 +30,5 @@ script:post-response {
 }
 
 docs {
-  proposalAId must be a proposal created by the Android user, not by the counterpart. Run 25 Get Counterpart Scheduling Proposals first to capture proposalAId safely.
+  proposalAId must be a proposal created by the Android user, not by the counterpart. Run 25 Get Counterpart Scheduling Proposals first to capture proposalAId safely. The backend rejects acceptance with SCHEDULING_PROPOSAL_NOT_AVAILABLE if the proposal instant has already passed.
 }

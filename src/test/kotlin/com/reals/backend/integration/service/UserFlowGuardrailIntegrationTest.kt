@@ -289,7 +289,8 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,
-                proposedDateTime = futureHalfHourSlot()
+                proposedDateTime = futureHalfHourSlot(),
+                expectedRoundNumber = 1
             )
         }
     }
@@ -300,11 +301,13 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         val exception = assertThrows<DomainConflictException> {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = proposal.id,
                 acceptorUserId = setup.userAId
             )
@@ -318,10 +321,12 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         val negotiation = schedulingService.acceptProposal(
+            connectionId = setup.connectionId,
             proposalId = proposal.id,
             acceptorUserId = setup.userBId
         )
@@ -339,6 +344,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(
                     slot,
                     slot.plusHours(1),
