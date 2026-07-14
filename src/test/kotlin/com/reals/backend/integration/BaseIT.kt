@@ -6,6 +6,7 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
+import com.reals.backend.domain.MatchmakingCandidatePair
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
@@ -47,7 +48,8 @@ import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingPairEligibilityService
 import com.reals.backend.service.matching.MatchmakingService
-import com.reals.backend.repository.projection.MatchmakingCandidatePairProjection
+import com.reals.backend.repository.matching.MatchmakingCandidateRepository
+import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
@@ -98,6 +100,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var matchmakingPairEligibilityService: MatchmakingPairEligibilityService
+
+    @Autowired
+    protected lateinit var matchmakingCandidateRepository: MatchmakingCandidateRepository
+
+    @Autowired
+    protected lateinit var matchmakingPairEligibilityRepository: MatchmakingPairEligibilityRepository
 
     @Autowired
     protected lateinit var matchService: MatchService
@@ -284,13 +292,22 @@ abstract class BaseIT {
         limit: Int = 5,
         today: LocalDate = LocalDate.now(),
         now: OffsetDateTime = OffsetDateTime.now()
-    ): List<MatchmakingCandidatePairProjection> =
-        matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
+    ): List<MatchmakingCandidatePair> =
+        matchmakingCandidateRepository.findEligibleCandidatePairsForUpdate(
             limit = limit,
             today = today,
-            excludePreviousPairing = matchmakingPairEligibilityService.isHistoricalExclusionEnabled(),
-            previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
-            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            previousPairingCutoff =
+                if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+                    matchmakingPairEligibilityService.previousPairingCutoff(now)
+                } else {
+                    null
+                },
+            firstChatExpirationCutoff =
+                if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+                    matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+                } else {
+                    null
+                }
         )
 
     protected fun createMatchWithFirstChat(

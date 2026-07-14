@@ -90,6 +90,33 @@ Jobs are guarded with ShedLock infrastructure and should be idempotent where pra
 
 `GET /api/connections/{connectionId}/chat` owns second-chat materialization for user entry. It creates the `SECOND_CHAT` idempotently when the confirmed window is open, then activates it for the conversation.
 
+## Matchmaking Persistence
+
+Matchmaking queue CRUD and candidate discovery are intentionally separate.
+`MatchmakingQueueRepository` owns queue-entry CRUD and status/count operations.
+Candidate discovery uses a focused JDBC repository with native PostgreSQL SQL
+and participates in the same Spring transaction as the current candidate claim,
+scoring, match creation and first-chat creation flow.
+
+Candidate discovery has two trusted SQL variants. The active-only variant is
+used when previous-pair exclusion is disabled in local repeatable profiles and
+omits all historical cooldown predicates. The active-plus-history variant adds
+terminal match and closed-connection cooldown checks while preserving the same
+base filters, FIFO ordering, candidate limit and
+`FOR UPDATE OF qa, qb SKIP LOCKED` queue-row locking. Eligibility filters remain
+before `LIMIT`; current broad queue-row lock scope is unchanged in this PR.
+
+Defensive direct match creation still locks both users through
+`UserRepository.findAllByIdForUpdate` before persisting a match. After those
+locks, a focused JDBC pair-eligibility query returns either active-interaction,
+previous-pairing-cooldown or no blocker in one database round trip. User blocks
+remain a separate permanent exclusion checked before this pair policy.
+
+The current PR keeps distance filtering, compatibility scoring, reliability
+modifiers and FIFO tie-breaking in application code. Anchor-based claiming,
+partner windows, lock-scope reduction, SQL distance filtering, PostGIS and
+canonical pair identity are deferred.
+
 `SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
 
 `SecondChatReminderNotificationJob` sends privacy-safe external push reminders

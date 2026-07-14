@@ -12,7 +12,9 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.repository.matching.MatchmakingPairBlockingReason
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.test.context.TestPropertySource
@@ -43,6 +45,7 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
         listOf(chatRejected, visualRejected, firstChatExpired, visualExpired, closedConnection).forEach { (userA, userB) ->
             assertTrue(matchmakingPairEligibilityService.isPairEligible(userA, userB, now))
             assertTrue(queryContainsPair(userA, userB, now))
+            assertEquals(null, activeOnlyBlockingReason(userA, userB))
         }
     }
 
@@ -65,6 +68,8 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
             assertFalse(matchmakingPairEligibilityService.isPairEligible(userA, userB, now))
             assertFalse(queryContainsPair(userA, userB, now))
         }
+        assertEquals(MatchmakingPairBlockingReason.ACTIVE_INTERACTION, activeOnlyBlockingReason(activeMatch.first, activeMatch.second))
+        assertEquals(MatchmakingPairBlockingReason.ACTIVE_INTERACTION, activeOnlyBlockingReason(activeConnection.first, activeConnection.second))
     }
 
     private fun createQueuedCompatiblePair(prefix: String): Pair<UUID, UUID> {
@@ -94,9 +99,20 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
         now: OffsetDateTime
     ): Boolean =
         findBasicCompatiblePairs(limit = 100, now = now).any {
-            (UUID.fromString(it.userAId) == userAId && UUID.fromString(it.userBId) == userBId) ||
-                (UUID.fromString(it.userAId) == userBId && UUID.fromString(it.userBId) == userAId)
+            (it.userAId == userAId && it.userBId == userBId) ||
+                (it.userAId == userBId && it.userBId == userAId)
         }
+
+    private fun activeOnlyBlockingReason(
+        userAId: UUID,
+        userBId: UUID
+    ): MatchmakingPairBlockingReason? =
+        matchmakingPairEligibilityRepository.findBlockingReason(
+            userAId = userAId,
+            userBId = userBId,
+            previousPairingCutoff = null,
+            firstChatExpirationCutoff = null
+        )
 
     private fun saveHistoricalMatch(
         userAId: UUID,

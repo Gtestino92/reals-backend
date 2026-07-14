@@ -1,6 +1,7 @@
 package com.reals.backend.service.matching
 
 import com.reals.backend.domain.*
+import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.service.HomeStateInvalidationService
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.ProfileService
@@ -20,6 +21,7 @@ import java.util.*
 class MatchmakingService(
 
     private val queueRepository: MatchmakingQueueRepository,
+    private val candidateRepository: MatchmakingCandidateRepository,
     private val userService: UserService,
     private val profileService: ProfileService,
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
@@ -136,25 +138,26 @@ class MatchmakingService(
 
         val today = LocalDate.now()
         val now = java.time.OffsetDateTime.now()
+        val includeHistoricalExclusion = matchmakingPairEligibilityService.isHistoricalExclusionEnabled()
+        val previousPairingCutoff =
+            if (includeHistoricalExclusion) {
+                matchmakingPairEligibilityService.previousPairingCutoff(now)
+            } else {
+                null
+            }
+        val firstChatExpirationCutoff =
+            if (includeHistoricalExclusion) {
+                matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            } else {
+                null
+            }
         val candidatePairs =
-            queueRepository
-                .findBasicCompatiblePairsSkipLocked(
-                    limit = candidatePairLimit,
-                    today = today,
-                    excludePreviousPairing = matchmakingPairEligibilityService.isHistoricalExclusionEnabled(),
-                    previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
-                    firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
-                )
-                .map {
-                    MatchmakingCandidatePair(
-                        userAId = UUID.fromString(it.userAId),
-                        userBId = UUID.fromString(it.userBId),
-                        userALatitude = it.userALatitude,
-                        userALongitude = it.userALongitude,
-                        userBLatitude = it.userBLatitude,
-                        userBLongitude = it.userBLongitude
-                    )
-                }
+            candidateRepository.findEligibleCandidatePairsForUpdate(
+                limit = candidatePairLimit,
+                today = today,
+                previousPairingCutoff = previousPairingCutoff,
+                firstChatExpirationCutoff = firstChatExpirationCutoff
+            )
 
         if (candidatePairs.isEmpty()) {
             return null
