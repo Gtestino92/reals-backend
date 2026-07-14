@@ -71,6 +71,46 @@ internal object MatchmakingSqlFragments {
         ) partner_probe ON true
     """
 
+    val PARTNER_EXISTS_FILTER: String
+        get() = """
+            AND EXISTS (
+                SELECT 1
+                FROM matchmaking_queue qb
+                JOIN users ub
+                    ON ub.id = qb.user_id
+                JOIN profiles pb
+                    ON pb.user_id = qb.user_id
+                WHERE qb.status = 'WAITING'
+                    AND ${PARTNER_AFTER_ANCHOR_CONDITION}
+                    ${PARTNER_BASE_FILTERS}
+                    ${PAIR_BLOCK_EXCLUSION}
+                    ${PAIR_ACTIVE_MATCH_EXCLUSION}
+                    ${PAIR_ACTIVE_CONNECTION_EXCLUSION}
+                    ${PROFILE_COMPATIBILITY_FILTERS}
+                    ${MUTUAL_DISTANCE_FILTER}
+            )
+    """
+
+    val PARTNER_EXISTS_FILTER_WITH_HISTORY: String
+        get() = """
+            AND EXISTS (
+                SELECT 1
+                FROM matchmaking_queue qb
+                JOIN users ub
+                    ON ub.id = qb.user_id
+                JOIN profiles pb
+                    ON pb.user_id = qb.user_id
+                WHERE qb.status = 'WAITING'
+                    AND ${PARTNER_AFTER_ANCHOR_CONDITION}
+                    ${PARTNER_BASE_FILTERS}
+                    ${PAIR_BLOCK_EXCLUSION}
+                    ${PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION}
+                    ${PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION}
+                    ${PROFILE_COMPATIBILITY_FILTERS}
+                    ${MUTUAL_DISTANCE_FILTER}
+            )
+    """
+
     val PARTNER_SELECT_AND_BASE_JOINS = """
         SELECT
             qb.id AS partner_queue_entry_id,
@@ -299,6 +339,11 @@ internal object MatchmakingSqlFragments {
         FOR UPDATE OF qa SKIP LOCKED
     """
 
+    val ANCHOR_ORDER_AND_LIMIT = """
+        ORDER BY qa.entered_at, qa.id
+        LIMIT 1
+    """
+
     val PARTNER_ORDER_AND_LIMIT = """
         ORDER BY qb.entered_at, qb.id
         LIMIT :limit
@@ -307,6 +352,10 @@ internal object MatchmakingSqlFragments {
     val PARTNER_CLAIM_LOCK = """
         LIMIT 1
         FOR UPDATE OF qb SKIP LOCKED
+    """
+
+    val PARTNER_CLAIM_NO_LOCK = """
+        LIMIT 1
     """
 
     val ACTIVE_MATCH_EXISTS: String
