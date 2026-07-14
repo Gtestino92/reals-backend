@@ -190,6 +190,7 @@ class UserBlockBack3IntegrationTest : ControllerIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(futureHalfHourSlot())
             )
         }

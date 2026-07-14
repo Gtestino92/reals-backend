@@ -275,12 +275,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
 
         assertEquals(
@@ -343,12 +345,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
 
         val confirmedDateTime = OffsetDateTime.now().plusMinutes(1)
@@ -386,12 +390,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
 
         val confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
@@ -521,12 +527,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
 
         negotiationRepository.updateConfirmedDateTimeByConnectionId(

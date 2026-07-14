@@ -36,6 +36,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
         val body = mapOf(
+            "expectedRoundNumber" to 1,
             "proposedDateTimes" to listOf(
                 slot.toString(),
                 slot.plusHours(1).toString()
@@ -56,10 +57,70 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `submit proposal list requires positive expected round`() {
+        val setup = createConnectionInSchedulingPhase()
+        val body = mapOf(
+            "expectedRoundNumber" to 0,
+            "proposedDateTimes" to listOf(futureHalfHourSlot().toString())
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `submit proposal list rejects old body shape`() {
+        val setup = createConnectionInSchedulingPhase()
+        val body = mapOf(
+            "proposedDateTimes" to listOf(futureHalfHourSlot().toString())
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("MALFORMED_REQUEST")))
+    }
+
+    @Test
+    fun `stale proposal submission returns scheduling round changed`() {
+        val setup = createConnectionInSchedulingPhase()
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        negotiation.roundNumber = 2
+        negotiationRepository.saveAndFlush(negotiation)
+
+        val body = mapOf(
+            "expectedRoundNumber" to 1,
+            "proposedDateTimes" to listOf(futureHalfHourSlot().toString())
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_ROUND_CHANGED")))
+    }
+
+    @Test
     fun `matching proposal lists confirm negotiation over http`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
-        val body = mapOf("proposedDateTimes" to listOf(slot.toString()))
+        val body = mapOf(
+            "expectedRoundNumber" to 1,
+            "proposedDateTimes" to listOf(slot.toString())
+        )
 
         mockMvc.perform(
             post("/api/connections/${setup.connectionId}/proposals")
@@ -91,7 +152,10 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     fun `user can accept partner proposal without own proposal over http`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
-        val body = mapOf("proposedDateTimes" to listOf(slot.toString()))
+        val body = mapOf(
+            "expectedRoundNumber" to 1,
+            "proposedDateTimes" to listOf(slot.toString())
+        )
 
         val proposalId =
             objectMapper.readTree(
@@ -118,7 +182,53 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `reject current round after scheduling expiration returns stable code`() {
+    fun `accept expired proposal over http returns proposal not available and keeps negotiation pending`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val body = mapOf(
+            "expectedRoundNumber" to 1,
+            "proposedDateTimes" to listOf(slot.toString())
+        )
+
+        val proposalId =
+            java.util.UUID.fromString(
+                objectMapper.readTree(
+                    mockMvc.perform(
+                        post("/api/connections/${setup.connectionId}/proposals")
+                            .with(authenticatedAs(setup.userAId))
+                            .contentType(jsonContentType)
+                            .content(jsonBody(body))
+                    )
+                        .andExpect(status().isCreated)
+                        .andReturn()
+                        .response
+                        .contentAsString
+                )[0]["id"].asString()
+            )
+
+        val proposal = proposalRepository.findById(proposalId).orElseThrow()
+        proposal.proposedDateTime = OffsetDateTime.now().minusMinutes(30)
+        proposalRepository.saveAndFlush(proposal)
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/proposals/$proposalId/acceptance")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_PROPOSAL_NOT_AVAILABLE")))
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/negotiation")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo(NegotiationStatus.PENDING.name)))
+            .andExpect(jsonPath("$.roundNumber", equalTo(1)))
+            .andExpect(jsonPath("$.confirmedDateTime", nullValue()))
+    }
+
+    @Test
+    fun `reject partner proposals after scheduling expiration returns stable code`() {
         val setup = createConnectionInSchedulingPhase()
 
         connectionRepository.updateSchedulingExpiresAt(
@@ -129,9 +239,62 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         mockMvc.perform(
             post("/api/connections/${setup.connectionId}/negotiation/rejections")
                 .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("expectedRoundNumber" to 1)))
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("SCHEDULING_EXPIRED")))
+    }
+
+    @Test
+    fun `reject partner proposals requires positive expected round`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/negotiation/rejections")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("expectedRoundNumber" to 0)))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `reject partner proposals rejects old empty body shape`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/negotiation/rejections")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("MALFORMED_REQUEST")))
+    }
+
+    @Test
+    fun `stale partner proposal rejection returns scheduling round changed`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(futureHalfHourSlot())
+        )
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        negotiation.roundNumber = 2
+        negotiationRepository.saveAndFlush(negotiation)
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/negotiation/rejections")
+                .with(authenticatedAs(setup.userBId))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("expectedRoundNumber" to 1)))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SCHEDULING_ROUND_CHANGED")))
     }
 
     @Test
@@ -272,8 +435,8 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     fun `get second chat before available time returns conflict`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
-        schedulingService.addProposal(setup.connectionId, setup.userAId, slot)
-        schedulingService.addProposal(setup.connectionId, setup.userBId, slot)
+        schedulingService.addProposal(setup.connectionId, setup.userAId, slot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, slot, 1)
 
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,
@@ -314,8 +477,8 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     fun `get second chat after expired scheduled window returns conflict`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
-        schedulingService.addProposal(setup.connectionId, setup.userAId, slot)
-        schedulingService.addProposal(setup.connectionId, setup.userBId, slot)
+        schedulingService.addProposal(setup.connectionId, setup.userAId, slot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, slot, 1)
 
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,
@@ -447,6 +610,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
         val body = mapOf(
+            "expectedRoundNumber" to 1,
             "proposedDateTimes" to listOf(
                 slot.toString(),
                 slot.plusHours(1).toString(),

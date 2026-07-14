@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
+import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.domain.UserReliabilityEventType
@@ -99,18 +100,20 @@ class SchedulingService(
     fun addProposals(
         connectionId: UUID,
         userId: UUID,
+        expectedRoundNumber: Int,
         proposedDateTimes: List<OffsetDateTime>
     ): List<ScheduleProposal> {
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
-        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
-
-        val negotiation = findNegotiationOrThrow(connectionId)
+        val negotiation = lockNegotiationOrThrow(connectionId)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
             throw schedulingNotAvailable()
         }
 
+        requireExpectedRound(negotiation, expectedRoundNumber)
+
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
@@ -140,7 +143,7 @@ class SchedulingService(
             ScheduleProposal(
                 connectionId = connectionId,
                 userId = userId,
-                roundNumber = negotiation.roundNumber,
+                roundNumber = expectedRoundNumber,
                 preferenceOrder = index + 1,
                 proposedDateTime = proposedDateTime
             )
@@ -155,7 +158,10 @@ class SchedulingService(
             relatedConnectionId = connectionId
         )
 
-        tryAutoConfirmOverlap(connectionId)
+        tryAutoConfirmOverlap(
+            connection = connection,
+            negotiation = negotiation
+        )
 
         return saved
     }
@@ -163,11 +169,13 @@ class SchedulingService(
     fun addProposal(
         connectionId: UUID,
         userId: UUID,
-        proposedDateTime: OffsetDateTime
+        proposedDateTime: OffsetDateTime,
+        expectedRoundNumber: Int
     ): ScheduleProposal =
         addProposals(
             connectionId = connectionId,
             userId = userId,
+            expectedRoundNumber = expectedRoundNumber,
             proposedDateTimes = listOf(proposedDateTime)
         ).first()
 
@@ -177,17 +185,16 @@ class SchedulingService(
      * the earliest agreed instant.
      * For explicit acceptance use [acceptProposal].
      */
-    private fun tryAutoConfirmOverlap(connectionId: UUID) {
-
-        val negotiation = findNegotiationOrThrow(connectionId)
-
+    private fun tryAutoConfirmOverlap(
+        connection: Connection,
+        negotiation: ScheduleNegotiation
+    ) {
         if (negotiation.status != NegotiationStatus.PENDING) return
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
-
+        val now = OffsetDateTime.now()
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
-                connectionId,
+                connection.id,
                 negotiation.roundNumber
             ).filter { it.status == ProposalStatus.PENDING }
 
@@ -198,32 +205,47 @@ class SchedulingService(
         val proposalsA = byUser[connection.userAId].orEmpty()
         val proposalsB = byUser[connection.userBId].orEmpty()
 
-        val overlap =
-            proposalsA.flatMap { proposalA ->
-                proposalsB
-                    .filter { proposalB ->
-                        proposalA.proposedDateTime.toInstant()
-                            .equals(proposalB.proposedDateTime.toInstant())
-                    }
-                    .map { proposalB ->
-                        AgreedSlotCandidate(
-                            proposalA = proposalA,
-                            proposalB = proposalB,
-                            score = proposalA.preferenceOrder + proposalB.preferenceOrder
-                        )
-                    }
-            }
-                .minWithOrNull(
-                    compareBy<AgreedSlotCandidate> { it.score }
-                        .thenBy { it.proposalA.proposedDateTime.toInstant() }
-                ) ?: return
+        val overlap = selectBestFutureOverlap(
+            proposalsA = proposalsA,
+            proposalsB = proposalsB,
+            now = now
+        ) ?: return
 
         confirmWith(
             accepted = listOf(overlap.proposalA, overlap.proposalB),
             pending = pending,
             negotiation = negotiation,
-            connectionId = connectionId
+            connectionId = connection.id
         )
+    }
+
+    internal fun selectBestFutureOverlap(
+        proposalsA: List<ScheduleProposal>,
+        proposalsB: List<ScheduleProposal>,
+        now: OffsetDateTime
+    ): AgreedSlotCandidate? {
+        val nowInstant = now.toInstant()
+
+        return proposalsA.flatMap { proposalA ->
+            proposalsB
+                .filter { proposalB ->
+                    val proposedInstant = proposalA.proposedDateTime.toInstant()
+
+                    proposedInstant.isAfter(nowInstant) &&
+                        proposedInstant == proposalB.proposedDateTime.toInstant()
+                }
+                .map { proposalB ->
+                    AgreedSlotCandidate(
+                        proposalA = proposalA,
+                        proposalB = proposalB,
+                        score = proposalA.preferenceOrder + proposalB.preferenceOrder
+                    )
+                }
+        }
+            .minWithOrNull(
+                compareBy<AgreedSlotCandidate> { it.score }
+                    .thenBy { it.proposalA.proposedDateTime.toInstant() }
+            )
     }
 
     /**
@@ -235,9 +257,12 @@ class SchedulingService(
      * - Confirms the negotiation and transitions Connection to SECOND_CHAT_SCHEDULED.
      */
     fun acceptProposal(
+        connectionId: UUID,
         proposalId: UUID,
         acceptorUserId: UUID
     ): ScheduleNegotiation {
+
+        val negotiation = lockNegotiationOrThrow(connectionId)
 
         val proposal = proposalRepository.findById(proposalId)
             .orElseThrow {
@@ -247,7 +272,39 @@ class SchedulingService(
                 )
             }
 
+        if (proposal.connectionId != connectionId) {
+            throw proposalNotAvailable()
+        }
+
         if (proposal.status != ProposalStatus.PENDING) {
+            throw proposalNotAvailable()
+        }
+
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+        requireSchedulingPhase(connection.state)
+
+        if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
+            throw AccessDeniedException(
+                "User $acceptorUserId does not belong to connection $connectionId"
+            )
+        }
+
+        val now = OffsetDateTime.now()
+
+        if (!now.isBefore(connection.schedulingExpiresAt)) {
+            throw schedulingExpired()
+        }
+
+        if (negotiation.status != NegotiationStatus.PENDING) {
+            throw proposalNotAvailable()
+        }
+
+        if (proposal.roundNumber != negotiation.roundNumber) {
+            throw proposalNotAvailable()
+        }
+
+        if (!proposal.proposedDateTime.isAfter(now)) {
             throw proposalNotAvailable()
         }
 
@@ -258,33 +315,9 @@ class SchedulingService(
             )
         }
 
-        val connection = connectionService.findByIdOrThrow(proposal.connectionId)
-        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
-        requireSchedulingPhase(connection.state)
-
-        if (acceptorUserId != connection.userAId && acceptorUserId != connection.userBId) {
-            throw AccessDeniedException(
-                "User $acceptorUserId does not belong to connection ${proposal.connectionId}"
-            )
-        }
-
-        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
-            throw schedulingExpired()
-        }
-
-        val negotiation = findNegotiationOrThrow(proposal.connectionId)
-
-        if (negotiation.status != NegotiationStatus.PENDING) {
-            throw proposalNotAvailable()
-        }
-
-        if (proposal.roundNumber != negotiation.roundNumber) {
-            throw proposalNotAvailable()
-        }
-
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
-                proposal.connectionId,
+                connectionId,
                 negotiation.roundNumber
             ).filter { it.status == ProposalStatus.PENDING }
 
@@ -292,30 +325,35 @@ class SchedulingService(
             accepted = listOf(proposal),
             pending = pending,
             negotiation = negotiation,
-            connectionId = proposal.connectionId
+            connectionId = connectionId
         )
 
         return negotiation
     }
 
     /**
-     * Explicitly rejects the current negotiation round and opens the next one.
+     * Explicitly rejects the partner's pending proposal list for the current round.
      *
      * Rules:
      * - Only callable if negotiation is PENDING.
-     * - Both users must have submitted proposals in the current round.
+     * - The caller's expected round must match the locked negotiation round.
+     * - The partner must have at least one pending proposal in the current round.
+     * - Only the partner's pending proposals are rejected.
      * - If maxRounds is exceeded, marks negotiation as FAILED and closes the connection.
      */
-    fun rejectCurrentRound(
+    fun rejectPartnerProposals(
         connectionId: UUID,
-        userId: UUID
+        userId: UUID,
+        expectedRoundNumber: Int
     ): ScheduleNegotiation {
 
-        val negotiation = findNegotiationOrThrow(connectionId)
+        val negotiation = lockNegotiationOrThrow(connectionId)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
-            throw roundNotRejectable()
+            throw partnerProposalsNotAvailable()
         }
+
+        requireExpectedRound(negotiation, expectedRoundNumber)
 
         val connection = connectionService.findByIdOrThrow(connectionId)
         userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
@@ -335,24 +373,42 @@ class SchedulingService(
                 negotiation.roundNumber
             )
 
-        val usersWithPendingProposals =
+        val partnerUserId =
+            if (userId == connection.userAId) {
+                connection.userBId
+            } else {
+                connection.userAId
+            }
+
+        val pendingPartnerProposals =
+            currentRoundProposals.filter {
+                it.userId == partnerUserId && it.status == ProposalStatus.PENDING
+            }
+
+        if (pendingPartnerProposals.isEmpty()) {
+            throw partnerProposalsNotAvailable()
+        }
+
+        pendingPartnerProposals.forEach { it.status = ProposalStatus.REJECTED }
+
+        proposalRepository.saveAll(pendingPartnerProposals)
+
+        val usersWithAnyProposal =
             currentRoundProposals
-                .filter { it.status == ProposalStatus.PENDING }
                 .map { it.userId }
                 .toSet()
 
-        if (
-            !usersWithPendingProposals.contains(connection.userAId) ||
-            !usersWithPendingProposals.contains(connection.userBId)
-        ) {
-            throw roundNotRejectable()
+        val bothUsersSubmitted =
+            usersWithAnyProposal.contains(connection.userAId) &&
+                usersWithAnyProposal.contains(connection.userBId)
+
+        val noPendingProposals =
+            currentRoundProposals.none { it.status == ProposalStatus.PENDING }
+
+        if (!bothUsersSubmitted || !noPendingProposals) {
+            negotiation.updatedAt = OffsetDateTime.now()
+            return negotiationRepository.save(negotiation)
         }
-
-        currentRoundProposals
-            .filter { it.status == ProposalStatus.PENDING }
-            .forEach { it.status = ProposalStatus.REJECTED }
-
-        proposalRepository.saveAll(currentRoundProposals)
 
         if (negotiation.roundNumber >= maxRounds) {
             negotiation.status = NegotiationStatus.FAILED
@@ -379,12 +435,12 @@ class SchedulingService(
      * Called by SchedulingNegotiationTimeoutJob when Connection.schedulingExpiresAt is past.
      */
     fun expireNegotiation(connectionId: UUID): Boolean {
+        val negotiation = negotiationRepository.findByConnectionIdForUpdate(connectionId)
         val connection = connectionService.findByIdOrThrow(connectionId)
         if (connection.state != ConnectionState.SCHEDULING_PHASE) {
             return false
         }
 
-        val negotiation = findNegotiationOrNull(connectionId)
         if (negotiation != null && negotiation.status == NegotiationStatus.PENDING) {
             val usersWithAnyProposal =
                 proposalRepository.findByConnectionId(connectionId)
@@ -414,6 +470,23 @@ class SchedulingService(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    private fun lockNegotiationOrThrow(connectionId: UUID): ScheduleNegotiation {
+        return negotiationRepository.findByConnectionIdForUpdate(connectionId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.SCHEDULING_NEGOTIATION_NOT_FOUND,
+                message = "Scheduling negotiation was not found"
+            )
+    }
+
+    private fun requireExpectedRound(
+        negotiation: ScheduleNegotiation,
+        expectedRoundNumber: Int
+    ) {
+        if (negotiation.roundNumber != expectedRoundNumber) {
+            throw roundChanged()
+        }
+    }
 
     /**
      * Marks [accepted] as ACCEPTED, rejects remaining PENDING proposals in the current round,
@@ -505,13 +578,19 @@ class SchedulingService(
             message = "Scheduling proposal is not available"
         )
 
-    private fun roundNotRejectable(): DomainConflictException =
+    private fun roundChanged(): DomainConflictException =
         DomainConflictException(
-            code = DomainErrorCode.SCHEDULING_ROUND_NOT_REJECTABLE,
-            message = "Scheduling round is not rejectable"
+            code = DomainErrorCode.SCHEDULING_ROUND_CHANGED,
+            message = "Scheduling round changed; refresh negotiation and proposals before retrying"
         )
 
-    private data class AgreedSlotCandidate(
+    private fun partnerProposalsNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE,
+            message = "Partner scheduling proposals are not available for rejection"
+        )
+
+    internal data class AgreedSlotCandidate(
         val proposalA: ScheduleProposal,
         val proposalB: ScheduleProposal,
         val score: Int

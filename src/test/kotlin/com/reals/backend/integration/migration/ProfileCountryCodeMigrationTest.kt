@@ -134,11 +134,25 @@ class ProfileCountryCodeMigrationTest {
         JdbcTemplate(adminDataSource).execute("CREATE SCHEMA $schema")
 
         val dataSource = DriverManagerDataSource(
-            "${postgres.jdbcUrl}?currentSchema=$schema",
+            postgres.jdbcUrl.withJdbcParameter("currentSchema", schema),
             postgres.username,
             postgres.password
         )
         return JdbcTemplate(dataSource)
+    }
+
+    private fun String.withJdbcParameter(
+        name: String,
+        value: String
+    ): String {
+        val separator =
+            when {
+                contains("?") && !endsWith("?") && !endsWith("&") -> "&"
+                endsWith("?") || endsWith("&") -> ""
+                else -> "?"
+            }
+
+        return "$this$separator$name=$value"
     }
 
     private class KPostgreSQLContainer(imageName: String) :

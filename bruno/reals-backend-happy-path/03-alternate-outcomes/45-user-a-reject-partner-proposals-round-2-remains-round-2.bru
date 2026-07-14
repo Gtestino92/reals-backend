@@ -1,17 +1,24 @@
 meta {
-  name: 42 User A Reject Round 1 Opens Round 2
+  name: 45 User A Reject Partner Proposals Round 2 Remains Round 2
   type: http
-  seq: 42
+  seq: 45
 }
 
 post {
   url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
-  body: none
+  body: json
   auth: none
 }
 
 headers {
+  Content-Type: application/json
   X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 2
+  }
 }
 
 script:post-response {
