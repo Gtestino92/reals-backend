@@ -1,14 +1,31 @@
 package com.reals.backend.repository.matching
 
-import com.reals.backend.domain.MatchmakingCandidatePair
+import com.reals.backend.domain.MatchmakingAnchor
+import com.reals.backend.domain.MatchmakingPartnerCandidate
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.util.UUID
 
 interface MatchmakingCandidateRepository {
-    fun findEligibleCandidatePairsForUpdate(
+    fun claimNextEligibleAnchorForUpdate(
+        today: LocalDate,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): MatchmakingAnchor?
+
+    fun findEligiblePartnerCandidates(
+        anchorQueueEntryId: UUID,
         limit: Int,
         today: LocalDate,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
-    ): List<MatchmakingCandidatePair>
+    ): List<MatchmakingPartnerCandidate>
+
+    fun tryClaimEligiblePartnerForUpdate(
+        anchorQueueEntryId: UUID,
+        partnerQueueEntryId: UUID,
+        today: LocalDate,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): MatchmakingPartnerCandidate?
 }

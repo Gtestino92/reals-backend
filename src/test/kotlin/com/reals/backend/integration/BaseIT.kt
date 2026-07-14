@@ -292,23 +292,35 @@ abstract class BaseIT {
         limit: Int = 5,
         today: LocalDate = LocalDate.now(),
         now: OffsetDateTime = OffsetDateTime.now()
-    ): List<MatchmakingCandidatePair> =
-        matchmakingCandidateRepository.findEligibleCandidatePairsForUpdate(
+    ): List<MatchmakingCandidatePair> {
+        val previousPairingCutoff =
+            if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+                matchmakingPairEligibilityService.previousPairingCutoff(now)
+            } else {
+                null
+            }
+        val firstChatExpirationCutoff =
+            if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
+                matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            } else {
+                null
+            }
+        val anchor =
+            matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
+                today = today,
+                previousPairingCutoff = previousPairingCutoff,
+                firstChatExpirationCutoff = firstChatExpirationCutoff
+            )
+                ?: return emptyList()
+
+        return matchmakingCandidateRepository.findEligiblePartnerCandidates(
+            anchorQueueEntryId = anchor.queueEntryId,
             limit = limit,
             today = today,
-            previousPairingCutoff =
-                if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
-                    matchmakingPairEligibilityService.previousPairingCutoff(now)
-                } else {
-                    null
-                },
-            firstChatExpirationCutoff =
-                if (matchmakingPairEligibilityService.isHistoricalExclusionEnabled()) {
-                    matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
-                } else {
-                    null
-                }
-        )
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        ).map { it.pair }
+    }
 
     protected fun createMatchWithFirstChat(
         emailPrefix: String = "match"

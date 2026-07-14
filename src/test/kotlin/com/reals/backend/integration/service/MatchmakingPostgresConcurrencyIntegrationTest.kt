@@ -12,16 +12,22 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
+import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.service.MatchService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -67,6 +73,15 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
     @Autowired
     private lateinit var matchmakingQueueRepository: MatchmakingQueueRepository
 
+    @Autowired
+    private lateinit var matchmakingCandidateRepository: MatchmakingCandidateRepository
+
+    @Autowired
+    private lateinit var userBlockService: UserBlockService
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
+
     @Test
     fun `concurrent processors do not double match queued users on postgres`() {
         createActiveProfile(
@@ -99,10 +114,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         assertEquals(0, results.sumOf { it.failedPairs })
 
         val concurrentlyCreated = results.sumOf { it.matchesCreated }
-        assertTrue(
-            concurrentlyCreated in 1..2,
-            "Expected at least one concurrent processor to create a match without creating more than the available pairs"
-        )
+        assertEquals(2, concurrentlyCreated)
         assertMatchedUsersAreDistinct()
 
         matchmakingProcessorService.process(maxPairsPerRun = 2)
@@ -110,6 +122,190 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         assertMatchedUsersAreDistinct(expectedUserCount = 4)
         assertEquals(2, matchRepository.count())
         assertEquals(0L, matchmakingQueueRepository.count())
+    }
+
+    @Test
+    fun `oldest unmatchable queued user does not block later compatible pair on postgres`() {
+        val oldUnmatchable = createActiveProfile(
+            email = "postgres-unmatchable-old@example.com",
+            displayName = "Old Unmatchable",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.NON_BINARY)
+        ).also(::enqueueForMatchmaking)
+        val compatibleA = createActiveProfile(
+            email = "postgres-progress-compatible-a@example.com",
+            displayName = "Progress Compatible A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        ).also(::enqueueForMatchmaking)
+        val compatibleB = createActiveProfile(
+            email = "postgres-progress-compatible-b@example.com",
+            displayName = "Progress Compatible B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        ).also(::enqueueForMatchmaking)
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(1, result.matchesCreated)
+        assertTrue(matchmakingQueueRepository.existsByUserId(oldUnmatchable))
+        assertTrue(
+            matchRepository.findAll().any {
+                (it.userAId == compatibleA && it.userBId == compatibleB) ||
+                    (it.userAId == compatibleB && it.userBId == compatibleA)
+            }
+        )
+    }
+
+    @Test
+    fun `distance filtering happens before partner candidate limit on postgres`() {
+        val anchor = createActiveProfile(
+            email = "postgres-distance-anchor@example.com",
+            displayName = "Distance Anchor",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            maxDistanceKm = 50
+        ).also(::enqueueForMatchmaking)
+
+        repeat(5) { index ->
+            createActiveProfile(
+                email = "postgres-distance-far-$index@example.com",
+                displayName = "Distance Far $index",
+                gender = Gender.MALE,
+                lookingForGenders = setOf(Gender.FEMALE),
+                maxDistanceKm = 50
+            ).also {
+                enqueueForMatchmaking(
+                    userId = it,
+                    latitude = 0.0,
+                    longitude = 0.0
+                )
+            }
+        }
+
+        val nearby = createActiveProfile(
+            email = "postgres-distance-near@example.com",
+            displayName = "Distance Near",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE),
+            maxDistanceKm = 50
+        ).also(::enqueueForMatchmaking)
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(1, result.matchesCreated)
+        assertTrue(
+            matchRepository.findAll().any {
+                (it.userAId == anchor && it.userBId == nearby) ||
+                    (it.userAId == nearby && it.userBId == anchor)
+            }
+        )
+    }
+
+    @Test
+    fun `exact partner claim ignores deleted and re-enqueued partner rows on postgres`() {
+        val userA = createActiveProfile(
+            email = "postgres-exact-claim-a@example.com",
+            displayName = "Exact Claim A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        ).also(::enqueueForMatchmaking)
+        val userB = createActiveProfile(
+            email = "postgres-exact-claim-b@example.com",
+            displayName = "Exact Claim B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        ).also(::enqueueForMatchmaking)
+
+        var oldPartnerQueueEntryId: UUID? = null
+        TransactionTemplate(transactionManager).executeWithoutResult {
+            val anchor = matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
+                today = LocalDate.now(),
+                previousPairingCutoff = null,
+                firstChatExpirationCutoff = null
+            ) ?: error("Expected anchor")
+            val partner = matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.queueEntryId,
+                limit = 10,
+                today = LocalDate.now(),
+                previousPairingCutoff = null,
+                firstChatExpirationCutoff = null
+            ).single()
+            oldPartnerQueueEntryId = partner.partnerQueueEntryId
+
+            assertNotNull(
+                matchmakingCandidateRepository.tryClaimEligiblePartnerForUpdate(
+                    anchorQueueEntryId = anchor.queueEntryId,
+                    partnerQueueEntryId = partner.partnerQueueEntryId,
+                    today = LocalDate.now(),
+                    previousPairingCutoff = null,
+                    firstChatExpirationCutoff = null
+                )
+            )
+        }
+
+        matchmakingService.dequeue(userB)
+        enqueueForMatchmaking(userB)
+
+        TransactionTemplate(transactionManager).executeWithoutResult {
+            val anchor = matchmakingQueueRepository.findByUserId(userA) ?: error("Expected queued anchor")
+            val currentPartner = matchmakingQueueRepository.findByUserId(userB) ?: error("Expected requeued partner")
+
+            assertNull(
+                matchmakingCandidateRepository.tryClaimEligiblePartnerForUpdate(
+                    anchorQueueEntryId = anchor.id,
+                    partnerQueueEntryId = oldPartnerQueueEntryId ?: error("Expected old partner queue entry id"),
+                    today = LocalDate.now(),
+                    previousPairingCutoff = null,
+                    firstChatExpirationCutoff = null
+                )
+            )
+            assertNotNull(
+                matchmakingCandidateRepository.tryClaimEligiblePartnerForUpdate(
+                    anchorQueueEntryId = anchor.id,
+                    partnerQueueEntryId = currentPartner.id,
+                    today = LocalDate.now(),
+                    previousPairingCutoff = null,
+                    firstChatExpirationCutoff = null
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `partner claim returns null after pair becomes blocked on postgres`() {
+        val userA = createActiveProfile(
+            email = "postgres-claim-block-a@example.com",
+            displayName = "Claim Block A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        ).also(::enqueueForMatchmaking)
+        val userB = createActiveProfile(
+            email = "postgres-claim-block-b@example.com",
+            displayName = "Claim Block B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        ).also(::enqueueForMatchmaking)
+
+        val anchor = matchmakingQueueRepository.findByUserId(userA) ?: error("Expected anchor")
+        val partner = matchmakingQueueRepository.findByUserId(userB) ?: error("Expected partner")
+        userBlockService.blockUser(
+            blockerUserId = userB,
+            blockedUserId = userA,
+            source = com.reals.backend.domain.UserBlockSource.MANUAL
+        )
+
+        TransactionTemplate(transactionManager).executeWithoutResult {
+            assertNull(
+                matchmakingCandidateRepository.tryClaimEligiblePartnerForUpdate(
+                    anchorQueueEntryId = anchor.id,
+                    partnerQueueEntryId = partner.id,
+                    today = LocalDate.now(),
+                    previousPairingCutoff = null,
+                    firstChatExpirationCutoff = null
+                )
+            )
+        }
     }
 
     @Test
@@ -221,7 +417,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         email: String,
         displayName: String,
         gender: Gender,
-        lookingForGenders: Set<Gender>
+        lookingForGenders: Set<Gender>,
+        maxDistanceKm: Int = 50
     ): UUID {
         val user = userService.createUser(email)
         val profile = profileService.createProfile(
@@ -236,7 +433,7 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             bio = "Postgres concurrency integration test profile",
             preferredMinAge = 18,
             preferredMaxAge = 99,
-            maxDistanceKm = 50
+            maxDistanceKm = maxDistanceKm
         )
 
         repeat(4) { index ->
@@ -259,11 +456,15 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
         return user.id
     }
 
-    private fun enqueueForMatchmaking(userId: UUID) {
+    private fun enqueueForMatchmaking(
+        userId: UUID,
+        latitude: Double = BUENOS_AIRES_LATITUDE,
+        longitude: Double = BUENOS_AIRES_LONGITUDE
+    ) {
         matchmakingService.enqueue(
             userId = userId,
-            latitude = BUENOS_AIRES_LATITUDE,
-            longitude = BUENOS_AIRES_LONGITUDE,
+            latitude = latitude,
+            longitude = longitude,
             accuracyMeters = 50
         )
     }

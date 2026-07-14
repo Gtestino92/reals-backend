@@ -14,6 +14,7 @@ import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.util.*
 
 @Service
@@ -112,19 +113,19 @@ class MatchmakingService(
     }
 
     /**
-     * Claims hard-filtered queue pairs using SKIP LOCKED and selects the
-     * best scored pair.
+     * Claims one eligible anchor queue row, scores a bounded partner window,
+     * then claims partners one at a time with SKIP LOCKED fallback.
      *
      * Actual match creation is delegated to MatchService.
      *
-     * The repository query applies hard filters that can run in SQL, such as
-     * active profile, mutual gender preference, intention and mutual preferred
-     * age range. SearchLocationMatchFilter applies the application-level
-     * distance hard filter. CompatibilityScorer ranks the remaining candidates.
+     * The repository applies hard SQL filters before partner LIMIT, including
+     * exact mutual distance. SearchLocationMatchFilter remains as a defensive
+     * service-layer parity check. CompatibilityScorer ranks the remaining
+     * candidates without changing early-accept FIFO semantics.
      */
-    fun findNextCandidatePair(): Pair<UUID, UUID>? {
+    fun claimNextCandidatePair(): Pair<UUID, UUID>? {
         require(candidatePairLimit > 0) {
-            "Candidate pair limit must be greater than 0"
+            "Candidate partner limit must be greater than 0"
         }
         require(minCompatibilityScore in 0.0..1.0) {
             "Minimum compatibility score must be between 0.0 and 1.0"
@@ -137,48 +138,55 @@ class MatchmakingService(
         }
 
         val today = LocalDate.now()
-        val now = java.time.OffsetDateTime.now()
-        val includeHistoricalExclusion = matchmakingPairEligibilityService.isHistoricalExclusionEnabled()
-        val previousPairingCutoff =
-            if (includeHistoricalExclusion) {
-                matchmakingPairEligibilityService.previousPairingCutoff(now)
-            } else {
-                null
-            }
-        val firstChatExpirationCutoff =
-            if (includeHistoricalExclusion) {
-                matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
-            } else {
-                null
-            }
-        val candidatePairs =
-            candidateRepository.findEligibleCandidatePairsForUpdate(
-                limit = candidatePairLimit,
+        val now = OffsetDateTime.now()
+        val cutoffs = historicalCutoffs(now)
+
+        val anchor =
+            candidateRepository.claimNextEligibleAnchorForUpdate(
                 today = today,
-                previousPairingCutoff = previousPairingCutoff,
-                firstChatExpirationCutoff = firstChatExpirationCutoff
+                previousPairingCutoff = cutoffs.previousPairingCutoff,
+                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
             )
-
-        if (candidatePairs.isEmpty()) {
-            return null
-        }
-
-        val selectedPair =
-            selectBestCandidatePair(candidatePairs)
                 ?: return null
 
-        return Pair(
-            selectedPair.userAId,
-            selectedPair.userBId
-        )
+        val partnerCandidates =
+            candidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.queueEntryId,
+                limit = candidatePairLimit,
+                today = today,
+                previousPairingCutoff = cutoffs.previousPairingCutoff,
+                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
+            )
+
+        val claimAttempts = rankPartnerClaimAttempts(partnerCandidates)
+
+        for (claimAttempt in claimAttempts) {
+            val claimed =
+                candidateRepository.tryClaimEligiblePartnerForUpdate(
+                    anchorQueueEntryId = anchor.queueEntryId,
+                    partnerQueueEntryId = claimAttempt.candidate.partnerQueueEntryId,
+                    today = today,
+                    previousPairingCutoff = cutoffs.previousPairingCutoff,
+                    firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
+                )
+
+            if (claimed != null) {
+                return Pair(
+                    claimed.pair.userAId,
+                    claimed.pair.userBId
+                )
+            }
+        }
+
+        return null
     }
 
-    private fun selectBestCandidatePair(
-        candidatePairs: List<MatchmakingCandidatePair>
-    ): MatchmakingCandidatePair? {
+    private fun rankPartnerClaimAttempts(
+        partnerCandidates: List<MatchmakingPartnerCandidate>
+    ): List<ScoredMatchmakingPartnerCandidate> {
         val candidateUserIds =
-            candidatePairs
-                .flatMap { listOf(it.userAId, it.userBId) }
+            partnerCandidates
+                .flatMap { listOf(it.pair.userAId, it.pair.userBId) }
                 .distinct()
 
         val profilesByUserId =
@@ -186,9 +194,11 @@ class MatchmakingService(
                 .findByUserIds(candidateUserIds)
                 .associateBy { it.userId }
 
-        var bestCandidate: ScoredMatchmakingCandidatePair? = null
+        val earlyAccepted = mutableListOf<ScoredMatchmakingPartnerCandidate>()
+        val fallback = mutableListOf<ScoredMatchmakingPartnerCandidate>()
 
-        for ((index, pair) in candidatePairs.withIndex()) {
+        for ((index, candidate) in partnerCandidates.withIndex()) {
+            val pair = candidate.pair
             val profileA = profilesByUserId[pair.userAId]
                 ?: continue
             val profileB = profilesByUserId[pair.userBId]
@@ -196,30 +206,33 @@ class MatchmakingService(
 
             val scoredCandidate =
                 scoreCandidatePair(
-                    pair = pair,
+                    candidate = candidate,
                     order = index,
                     profileA = profileA,
                     profileB = profileB
                 ) ?: continue
 
             if (scoredCandidate.score >= earlyAcceptCompatibilityScore) {
-                return scoredCandidate.pair
-            }
-
-            if (isBetterCandidate(scoredCandidate, bestCandidate)) {
-                bestCandidate = scoredCandidate
+                earlyAccepted.add(scoredCandidate)
+            } else {
+                fallback.add(scoredCandidate)
             }
         }
 
-        return bestCandidate?.pair
+        return earlyAccepted +
+            fallback.sortedWith(
+                compareByDescending<ScoredMatchmakingPartnerCandidate> { it.score }
+                    .thenBy { it.order }
+            )
     }
 
     private fun scoreCandidatePair(
-        pair: MatchmakingCandidatePair,
+        candidate: MatchmakingPartnerCandidate,
         order: Int,
         profileA: Profile,
         profileB: Profile
-    ): ScoredMatchmakingCandidatePair? {
+    ): ScoredMatchmakingPartnerCandidate? {
+        val pair = candidate.pair
         if (!searchLocationMatchFilter.passes(pair, profileA, profileB)) {
             return null
         }
@@ -238,26 +251,11 @@ class MatchmakingService(
             return null
         }
 
-        return ScoredMatchmakingCandidatePair(
-            pair = pair,
+        return ScoredMatchmakingPartnerCandidate(
+            candidate = candidate,
             score = score,
             order = order
         )
-    }
-
-    private fun isBetterCandidate(
-        candidate: ScoredMatchmakingCandidatePair,
-        currentBest: ScoredMatchmakingCandidatePair?
-    ): Boolean {
-        if (currentBest == null) {
-            return true
-        }
-
-        if (candidate.score != currentBest.score) {
-            return candidate.score > currentBest.score
-        }
-
-        return candidate.order < currentBest.order
     }
 
     private fun validateSearchLocation(
@@ -286,4 +284,33 @@ class MatchmakingService(
             }
         }
     }
+
+    private fun historicalCutoffs(now: OffsetDateTime): MatchmakingHistoricalCutoffs {
+        val includeHistoricalExclusion = matchmakingPairEligibilityService.isHistoricalExclusionEnabled()
+        return MatchmakingHistoricalCutoffs(
+            previousPairingCutoff =
+                if (includeHistoricalExclusion) {
+                    matchmakingPairEligibilityService.previousPairingCutoff(now)
+                } else {
+                    null
+                },
+            firstChatExpirationCutoff =
+                if (includeHistoricalExclusion) {
+                    matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+                } else {
+                    null
+                }
+        )
+    }
+
+    private data class MatchmakingHistoricalCutoffs(
+        val previousPairingCutoff: OffsetDateTime?,
+        val firstChatExpirationCutoff: OffsetDateTime?
+    )
+
+    private data class ScoredMatchmakingPartnerCandidate(
+        val candidate: MatchmakingPartnerCandidate,
+        val score: Double,
+        val order: Int
+    )
 }

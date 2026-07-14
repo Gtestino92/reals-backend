@@ -94,17 +94,26 @@ Jobs are guarded with ShedLock infrastructure and should be idempotent where pra
 
 Matchmaking queue CRUD and candidate discovery are intentionally separate.
 `MatchmakingQueueRepository` owns queue-entry CRUD and status/count operations.
-Candidate discovery uses a focused JDBC repository with native PostgreSQL SQL
-and participates in the same Spring transaction as the current candidate claim,
-scoring, match creation and first-chat creation flow.
+Candidate claiming uses a focused JDBC repository with native PostgreSQL SQL
+and participates in the same Spring transaction as anchor claim, partner
+discovery, scoring, partner claim, match creation and first-chat creation.
 
-Candidate discovery has two trusted SQL variants. The active-only variant is
+Candidate claiming has two trusted SQL variants. The active-only variant is
 used when previous-pair exclusion is disabled in local repeatable profiles and
 omits all historical cooldown predicates. The active-plus-history variant adds
 terminal match and closed-connection cooldown checks while preserving the same
-base filters, FIFO ordering, candidate limit and
-`FOR UPDATE OF qa, qb SKIP LOCKED` queue-row locking. Eligibility filters remain
-before `LIMIT`; current broad queue-row lock scope is unchanged in this PR.
+base filters and FIFO ordering. The flow locks one eligible anchor queue row
+with `FOR UPDATE OF qa SKIP LOCKED`, uses a non-locking `JOIN LATERAL` probe so
+old unmatchable anchors do not block progress, then reads a bounded partner
+window without row locks. Hard filters, including exact mutual Haversine
+distance, run before the partner `LIMIT`.
+
+Partners are ranked in application code with the existing compatibility score,
+reliability modifier, minimum score, early-accept FIFO behavior and FIFO
+tie-breaks. The selected partners are claimed one at a time by exact queue-entry
+id with hard revalidation and `FOR UPDATE OF qb SKIP LOCKED`; normal partner
+contention falls through to the next ranked candidate instead of becoming a
+processing failure.
 
 Defensive direct match creation still locks both users through
 `UserRepository.findAllByIdForUpdate` before persisting a match. After those
@@ -112,10 +121,9 @@ locks, a focused JDBC pair-eligibility query returns either active-interaction,
 previous-pairing-cooldown or no blocker in one database round trip. User blocks
 remain a separate permanent exclusion checked before this pair policy.
 
-The current PR keeps distance filtering, compatibility scoring, reliability
-modifiers and FIFO tie-breaking in application code. Anchor-based claiming,
-partner windows, lock-scope reduction, SQL distance filtering, PostGIS and
-canonical pair identity are deferred.
+`SearchLocationMatchFilter` remains as a defensive service-layer parity check
+for SQL distance filtering. PostGIS, spatial indexes driven by real query
+plans, canonical pair identity and derived eligibility state remain deferred.
 
 `SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
 
