@@ -84,6 +84,9 @@ matchmaking:
   candidate-pair-limit: 100
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  exclude-previous-pairing: ${MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING:true}
+  previous-pairing-cooldown-days: ${MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS:30}
+  first-chat-expiration-cooldown-days: ${MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS:7}
 
 chat:
   first-chat:

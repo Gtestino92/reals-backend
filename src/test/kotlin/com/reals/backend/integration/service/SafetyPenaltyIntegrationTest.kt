@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Duration
-import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -178,10 +177,7 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
             )
         )
 
-        val pairs = matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
-            limit = 5,
-            today = LocalDate.now()
-        )
+        val pairs = findBasicCompatiblePairs()
 
         assertTrue(pairs.isEmpty())
         assertTrue(matchmakingQueueRepository.existsByUserId(userA))

@@ -4,6 +4,7 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.service.matching.MatchmakingPairEligibilityService
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -20,6 +21,7 @@ class MatchService(
     private val queueRepository: MatchmakingQueueRepository,
     private val userService: UserService,
     private val userBlockService: UserBlockService,
+    private val matchmakingPairEligibilityService: MatchmakingPairEligibilityService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${engagement.max-active-matches:5}")
@@ -53,12 +55,16 @@ class MatchService(
         userService.lockActiveUsersOrThrow(listOf(userAId, userBId),
             "Cannot create match: one or more users were not found")
 
-        checkMatchLimit(userId = userAId)
-        checkMatchLimit(userId = userBId)
         userBlockService.requirePairNotBlocked(
             userAId = userAId,
             userBId = userBId
         )
+        matchmakingPairEligibilityService.requirePairCanCreateMatch(
+            userAId = userAId,
+            userBId = userBId
+        )
+        checkMatchLimit(userId = userAId)
+        checkMatchLimit(userId = userBId)
 
         val match = matchRepository.save(
             Match(

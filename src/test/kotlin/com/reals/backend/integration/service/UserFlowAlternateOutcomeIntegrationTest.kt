@@ -102,11 +102,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         enqueueForMatchmaking(userA)
         enqueueForMatchmaking(userB)
 
-        val candidatePairs =
-            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
-                limit = 5,
-                today = LocalDate.now()
-            )
+        val candidatePairs = findBasicCompatiblePairs()
 
         assertTrue(candidatePairs.isEmpty())
         assertNull(matchmakingService.findNextCandidatePair())
@@ -202,11 +198,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         enqueueForMatchmaking(tooYoungForA)
         enqueueForMatchmaking(acceptedByA)
 
-        val basicCandidatePairs =
-            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
-                limit = 5,
-                today = LocalDate.now()
-            )
+        val basicCandidatePairs = findBasicCompatiblePairs()
         assertFalse(
             basicCandidatePairs.any {
                 UUID.fromString(it.userAId) == userA &&
@@ -306,11 +298,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         queuedUsers.forEach { enqueueForMatchmaking(it) }
 
-        val candidatePairs =
-            matchmakingQueueRepository.findBasicCompatiblePairsSkipLocked(
-                limit = 3,
-                today = LocalDate.now()
-            )
+        val candidatePairs = findBasicCompatiblePairs(limit = 3)
 
         assertEquals(3, candidatePairs.size)
         assertEquals(queuedUsers[0], UUID.fromString(candidatePairs[0].userAId))
