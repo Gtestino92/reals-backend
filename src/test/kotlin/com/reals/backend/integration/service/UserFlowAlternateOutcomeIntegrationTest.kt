@@ -201,8 +201,8 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         val basicCandidatePairs = findBasicCompatiblePairs()
         assertFalse(
             basicCandidatePairs.any {
-                UUID.fromString(it.userAId) == userA &&
-                    UUID.fromString(it.userBId) == tooYoungForA
+                it.userAId == userA &&
+                    it.userBId == tooYoungForA
             }
         )
 
@@ -301,8 +301,8 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         val candidatePairs = findBasicCompatiblePairs(limit = 3)
 
         assertEquals(3, candidatePairs.size)
-        assertEquals(queuedUsers[0], UUID.fromString(candidatePairs[0].userAId))
-        assertEquals(queuedUsers[1], UUID.fromString(candidatePairs[0].userBId))
+        assertEquals(queuedUsers[0], candidatePairs[0].userAId)
+        assertEquals(queuedUsers[1], candidatePairs[0].userBId)
     }
 
     @Test

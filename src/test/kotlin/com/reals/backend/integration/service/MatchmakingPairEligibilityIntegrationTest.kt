@@ -12,6 +12,7 @@ import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.repository.matching.MatchmakingPairBlockingReason
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -29,6 +30,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertTrue(matchmakingPairEligibilityService.isPairEligible(userA, userB, now))
         assertTrue(queryContainsPair(userA, userB, now))
+        assertEquals(null, blockingReason(userA, userB, now))
     }
 
     @Test
@@ -44,6 +46,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         listOf(chatActive, visualPhase, approvedWithoutConnection).forEach { (userA, userB) ->
             assertFalse(matchmakingPairEligibilityService.isPairEligible(userA, userB, now))
             assertFalse(queryContainsPair(userA, userB, now))
+            assertEquals(MatchmakingPairBlockingReason.ACTIVE_INTERACTION, blockingReason(userA, userB, now))
         }
     }
 
@@ -62,8 +65,19 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertFalse(matchmakingPairEligibilityService.isPairEligible(userA, userB, now))
         assertFalse(queryContainsPair(userA, userB, now))
+        assertEquals(MatchmakingPairBlockingReason.ACTIVE_INTERACTION, blockingReason(userB, userA, now))
         assertTrue(matchmakingPairEligibilityService.isPairEligible(userA, userC, now))
         assertTrue(queryContainsPair(userA, userC, now))
+    }
+
+    @Test
+    fun `defensive blocking reason prioritizes active interaction over historical cooldown`() {
+        val now = fixedNow()
+        val (userA, userB) = createQueuedCompatiblePair("blocking-priority")
+        saveHistoricalMatch(userA, userB, MatchState.CHAT_REJECTED, now.minusDays(1))
+        saveHistoricalMatch(userA, userB, MatchState.CHAT_ACTIVE, now)
+
+        assertEquals(MatchmakingPairBlockingReason.ACTIVE_INTERACTION, blockingReason(userA, userB, now))
     }
 
     @Test
@@ -222,8 +236,10 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertFalse(matchmakingPairEligibilityService.isPairEligible(recent.first, recent.second, now))
         assertFalse(queryContainsPair(recent.first, recent.second, now))
+        assertEquals(MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN, blockingReason(recent.first, recent.second, now))
         assertTrue(matchmakingPairEligibilityService.isPairEligible(boundary.first, boundary.second, now))
         assertTrue(queryContainsPair(boundary.first, boundary.second, now))
+        assertEquals(null, blockingReason(boundary.first, boundary.second, now))
     }
 
     private fun assertVisualExpirationBoundary() {
@@ -235,8 +251,10 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertFalse(matchmakingPairEligibilityService.isPairEligible(recent.first, recent.second, now))
         assertFalse(queryContainsPair(recent.first, recent.second, now))
+        assertEquals(MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN, blockingReason(recent.first, recent.second, now))
         assertTrue(matchmakingPairEligibilityService.isPairEligible(boundary.first, boundary.second, now))
         assertTrue(queryContainsPair(boundary.first, boundary.second, now))
+        assertEquals(null, blockingReason(boundary.first, boundary.second, now))
     }
 
     private fun assertClosedConnectionBoundary() {
@@ -248,8 +266,10 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertFalse(matchmakingPairEligibilityService.isPairEligible(recent.first, recent.second, now))
         assertFalse(queryContainsPair(recent.first, recent.second, now))
+        assertEquals(MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN, blockingReason(recent.first, recent.second, now))
         assertTrue(matchmakingPairEligibilityService.isPairEligible(boundary.first, boundary.second, now))
         assertTrue(queryContainsPair(boundary.first, boundary.second, now))
+        assertEquals(null, blockingReason(boundary.first, boundary.second, now))
     }
 
     private fun assertFirstChatBoundary(
@@ -279,8 +299,10 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
         assertFalse(matchmakingPairEligibilityService.isPairEligible(recent.first, recent.second, now))
         assertFalse(queryContainsPair(recent.first, recent.second, now))
+        assertEquals(MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN, blockingReason(recent.first, recent.second, now))
         assertTrue(matchmakingPairEligibilityService.isPairEligible(boundary.first, boundary.second, now))
         assertTrue(queryContainsPair(boundary.first, boundary.second, now))
+        assertEquals(null, blockingReason(boundary.first, boundary.second, now))
     }
 
     private fun createQueuedCompatiblePair(prefix: String): Pair<UUID, UUID> {
@@ -310,9 +332,21 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         now: OffsetDateTime
     ): Boolean =
         findBasicCompatiblePairs(limit = 100, now = now).any {
-            (UUID.fromString(it.userAId) == userAId && UUID.fromString(it.userBId) == userBId) ||
-                (UUID.fromString(it.userAId) == userBId && UUID.fromString(it.userBId) == userAId)
+            (it.userAId == userAId && it.userBId == userBId) ||
+                (it.userAId == userBId && it.userBId == userAId)
         }
+
+    private fun blockingReason(
+        userAId: UUID,
+        userBId: UUID,
+        now: OffsetDateTime
+    ): MatchmakingPairBlockingReason? =
+        matchmakingPairEligibilityRepository.findBlockingReason(
+            userAId = userAId,
+            userBId = userBId,
+            previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
+            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        )
 
     private fun saveHistoricalMatch(
         userAId: UUID,

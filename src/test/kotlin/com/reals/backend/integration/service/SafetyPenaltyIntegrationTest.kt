@@ -169,7 +169,7 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
 
         enqueueForMatchmaking(userA)
         enqueueForMatchmaking(userB)
-        penaltyRepository.save(
+        penaltyRepository.saveAndFlush(
             Penalty(
                 userId = userA,
                 reason = "Penalty left in queue",
@@ -179,7 +179,12 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
 
         val pairs = findBasicCompatiblePairs()
 
-        assertTrue(pairs.isEmpty())
+        assertFalse(
+            pairs.any {
+                (it.userAId == userA && it.userBId == userB) ||
+                    (it.userAId == userB && it.userBId == userA)
+            }
+        )
         assertTrue(matchmakingQueueRepository.existsByUserId(userA))
         assertTrue(matchmakingQueueRepository.existsByUserId(userB))
     }

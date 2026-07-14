@@ -477,6 +477,20 @@ Future option:
 - Add stronger database constraints.
 - Add concurrency tests for duplicate match prevention.
 
+PR1 query-refactor follow-up:
+- Queue CRUD and candidate discovery are now separate repository responsibilities.
+- Candidate selection uses JDBC/native PostgreSQL SQL with active-only and
+  active-plus-history variants so local repeatable mode does not carry
+  historical cooldown predicates.
+- Defensive pair checking uses one focused database query after deterministic
+  user locking and before match persistence.
+- Added pair/state indexes support the current active and cooldown lookups.
+- Current broad candidate-row locking remains unchanged.
+- Deferred to PR2: anchor queue selection, partner candidate windows,
+  claim-only-selected-partner logic, retry behavior for lost partner claims,
+  reduced lock scope, SQL geographic prefilters, PostGIS, canonical pair
+  columns, derived pair-exclusion tables and materialized eligibility caches.
+
 ---
 
 ## 7.2 UserReliabilityScore cache and production scaling
