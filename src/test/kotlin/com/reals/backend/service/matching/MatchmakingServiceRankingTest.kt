@@ -65,7 +65,7 @@ class MatchmakingServiceRankingTest {
         @Suppress("UNCHECKED_CAST")
         val userIdsCaptor =
             ArgumentCaptor.forClass(Collection::class.java) as ArgumentCaptor<Collection<UUID>>
-        Mockito.verify(reliabilityService).effectiveScores(userIdsCaptor.capture(), anyOffsetDateTime())
+        Mockito.verify(reliabilityService).effectiveScores(captureUuidCollection(userIdsCaptor), anyOffsetDateTime())
         assertEquals(setOf(anchorUserId, partnerAUserId, partnerBUserId, partnerCUserId), userIdsCaptor.value.toSet())
         Mockito.verify(reliabilityService, Mockito.never()).matchmakingModifierForPair(
             anyUuid(),
@@ -314,11 +314,16 @@ class MatchmakingServiceRankingTest {
     }
 
     private fun anyUuidCollection(): Collection<UUID> =
-        Mockito.anyCollection()
+        Mockito.anyCollection<UUID>().let { emptyList() }
+
+    private fun captureUuidCollection(captor: ArgumentCaptor<Collection<UUID>>): Collection<UUID> {
+        captor.capture()
+        return emptyList()
+    }
 
     private fun anyUuid(): UUID =
-        Mockito.any(UUID::class.java)
+        Mockito.any(UUID::class.java).let { UUID.randomUUID() }
 
     private fun anyOffsetDateTime(): OffsetDateTime =
-        Mockito.any(OffsetDateTime::class.java)
+        Mockito.any(OffsetDateTime::class.java).let { OffsetDateTime.now() }
 }
