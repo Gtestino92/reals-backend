@@ -13,6 +13,7 @@ import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.repository.matching.MatchmakingPairBlockingReason
+import com.reals.backend.repository.matching.MatchmakingPairExclusionPolicy
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -23,6 +24,7 @@ import java.util.UUID
 
 @TestPropertySource(
     properties = [
+        "matchmaking.allow-active-pair-duplicates=false",
         "matchmaking.exclude-previous-pairing=false"
     ]
 )
@@ -97,11 +99,24 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
         userAId: UUID,
         userBId: UUID,
         now: OffsetDateTime
-    ): Boolean =
-        findBasicCompatiblePairs(limit = 100, now = now).any {
-            (it.userAId == userAId && it.userBId == userBId) ||
-                (it.userAId == userBId && it.userBId == userAId)
+    ): Boolean {
+        val userAQueueEntry = matchmakingQueueRepository.findByUserId(userAId)
+        val userBQueueEntry = matchmakingQueueRepository.findByUserId(userBId)
+
+        return listOfNotNull(userAQueueEntry, userBQueueEntry).any { anchor ->
+            matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.id,
+                limit = 100,
+                today = now.toLocalDate(),
+                exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
+                previousPairingCutoff = null,
+                firstChatExpirationCutoff = null
+            ).any {
+                (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
+                    (it.pair.userAId == userBId && it.pair.userBId == userAId)
+            }
         }
+    }
 
     private fun activeOnlyBlockingReason(
         userAId: UUID,
@@ -110,6 +125,7 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
         matchmakingPairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
             previousPairingCutoff = null,
             firstChatExpirationCutoff = null
         )

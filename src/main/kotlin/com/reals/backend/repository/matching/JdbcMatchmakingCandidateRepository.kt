@@ -1,6 +1,8 @@
 package com.reals.backend.repository.matching
 
+import com.reals.backend.domain.MatchmakingAnchor
 import com.reals.backend.domain.MatchmakingCandidatePair
+import com.reals.backend.domain.MatchmakingPartnerCandidate
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
@@ -8,69 +10,228 @@ import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
+import javax.sql.DataSource
 
 @Repository
 class JdbcMatchmakingCandidateRepository(
-    private val jdbcTemplate: NamedParameterJdbcTemplate
+    private val jdbcTemplate: NamedParameterJdbcTemplate,
+    private val dataSource: DataSource
 ) : MatchmakingCandidateRepository {
 
-    override fun findEligibleCandidatePairsForUpdate(
-        limit: Int,
+    private val isPostgres: Boolean by lazy {
+        dataSource.connection.use { connection ->
+            connection.metaData.databaseProductName.equals("PostgreSQL", ignoreCase = true)
+        }
+    }
+
+    override fun claimNextEligibleAnchorForUpdate(
         today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
-    ): List<MatchmakingCandidatePair> {
-        val includeHistoricalExclusion =
-            previousPairingCutoff != null && firstChatExpirationCutoff != null
+    ): MatchmakingAnchor? {
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+        val parameters = baseParameters(
+            today = today,
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
 
+        return jdbcTemplate.query(
+            claimAnchorSql(exclusionPolicy),
+            parameters
+        ) { resultSet, _ ->
+            MatchmakingAnchor(
+                queueEntryId = resultSet.getObject("anchor_queue_entry_id", UUID::class.java),
+                userId = resultSet.getObject("anchor_user_id", UUID::class.java)
+            )
+        }.firstOrNull()
+    }
+
+    override fun findEligiblePartnerCandidates(
+        anchorQueueEntryId: UUID,
+        limit: Int,
+        today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): List<MatchmakingPartnerCandidate> {
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+        val parameters = baseParameters(
+            today = today,
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+            .addValue("anchorQueueEntryId", anchorQueueEntryId)
+            .addValue("limit", limit)
+
+        return jdbcTemplate.query(
+            findPartnersSql(exclusionPolicy),
+            parameters
+        ) { resultSet, _ -> resultSet.toPartnerCandidate() }
+    }
+
+    override fun tryClaimEligiblePartnerForUpdate(
+        anchorQueueEntryId: UUID,
+        partnerQueueEntryId: UUID,
+        today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): MatchmakingPartnerCandidate? {
+        requirePolicyMatchesCutoffs(
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+        val parameters = baseParameters(
+            today = today,
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+            .addValue("anchorQueueEntryId", anchorQueueEntryId)
+            .addValue("partnerQueueEntryId", partnerQueueEntryId)
+
+        return jdbcTemplate.query(
+            claimPartnerSql(exclusionPolicy),
+            parameters
+        ) { resultSet, _ -> resultSet.toPartnerCandidate() }.firstOrNull()
+    }
+
+    private fun baseParameters(
+        today: LocalDate,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ): MapSqlParameterSource {
         val parameters =
             MapSqlParameterSource()
-                .addValue("limit", limit)
                 .addValue("today", today)
 
-        if (includeHistoricalExclusion) {
+        if (exclusionPolicy.excludeHistoricalPairings) {
             parameters
                 .addValue("previousPairingCutoff", previousPairingCutoff)
                 .addValue("firstChatExpirationCutoff", firstChatExpirationCutoff)
         }
 
-        return jdbcTemplate.query(
-            if (includeHistoricalExclusion) ACTIVE_PLUS_HISTORY_SQL else ACTIVE_ONLY_SQL,
-            parameters
-        ) { resultSet, _ -> resultSet.toCandidatePair() }
+        return parameters
     }
 
-    private fun ResultSet.toCandidatePair(): MatchmakingCandidatePair =
-        MatchmakingCandidatePair(
-            userAId = getObject("user_a_id", UUID::class.java),
-            userBId = getObject("user_b_id", UUID::class.java),
-            userALatitude = getDouble("user_a_latitude"),
-            userALongitude = getDouble("user_a_longitude"),
-            userBLatitude = getDouble("user_b_latitude"),
-            userBLongitude = getDouble("user_b_longitude")
+    private fun requirePolicyMatchesCutoffs(
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ) {
+        require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
+            "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
+        }
+        require(exclusionPolicy.excludeHistoricalPairings == (previousPairingCutoff != null)) {
+            "Historical exclusion policy and cutoff parameters must match"
+        }
+    }
+
+    private fun ResultSet.toPartnerCandidate(): MatchmakingPartnerCandidate =
+        MatchmakingPartnerCandidate(
+            partnerQueueEntryId = getObject("partner_queue_entry_id", UUID::class.java),
+            partnerEnteredAt = getObject("partner_entered_at", OffsetDateTime::class.java),
+            pair = MatchmakingCandidatePair(
+                userAId = getObject("user_a_id", UUID::class.java),
+                userBId = getObject("user_b_id", UUID::class.java),
+                userALatitude = getDouble("user_a_latitude"),
+                userALongitude = getDouble("user_a_longitude"),
+                userBLatitude = getDouble("user_b_latitude"),
+                userBLongitude = getDouble("user_b_longitude")
+            )
         )
 
-    private companion object {
-        val ACTIVE_ONLY_SQL =
-            """
-            ${MatchmakingSqlFragments.SELECT_CANDIDATE_PAIRS_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.BASE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.QUEUE_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.QUEUE_ACTIVE_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.QUEUE_ACTIVE_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.ORDER_LIMIT_AND_LOCK}
-            """.trimIndent()
+    private fun claimAnchorSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String {
+        val pairMatchExclusion = pairMatchExclusion(exclusionPolicy)
+        val pairConnectionExclusion = pairConnectionExclusion(exclusionPolicy)
+        val partnerProbe =
+            if (isPostgres) {
+                MatchmakingSqlFragments.partnerLateralJoin(pairMatchExclusion, pairConnectionExclusion)
+            } else {
+                MatchmakingSqlFragments.partnerExistsFilter(pairMatchExclusion, pairConnectionExclusion)
+            }
+        val orderingAndLock =
+            if (isPostgres) {
+                MatchmakingSqlFragments.ANCHOR_ORDER_LIMIT_AND_LOCK
+            } else {
+                MatchmakingSqlFragments.ANCHOR_ORDER_AND_LIMIT
+            }
 
-        val ACTIVE_PLUS_HISTORY_SQL =
-            """
-            ${MatchmakingSqlFragments.SELECT_CANDIDATE_PAIRS_AND_BASE_JOINS}
-            ${MatchmakingSqlFragments.BASE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.QUEUE_BLOCK_EXCLUSION}
-            ${MatchmakingSqlFragments.QUEUE_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION}
-            ${MatchmakingSqlFragments.QUEUE_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION}
-            ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
-            ${MatchmakingSqlFragments.ORDER_LIMIT_AND_LOCK}
-            """.trimIndent()
+        return """
+            ${MatchmakingSqlFragments.ANCHOR_SELECT_AND_BASE_JOINS}
+            $partnerProbe
+            ${MatchmakingSqlFragments.ANCHOR_BASE_FILTERS}
+            $orderingAndLock
+        """.trimIndent()
     }
+
+    private fun findPartnersSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        """
+        ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
+        ${MatchmakingSqlFragments.PARTNER_DISCOVERY_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
+        ${pairMatchExclusion(exclusionPolicy)}
+        ${pairConnectionExclusion(exclusionPolicy)}
+        ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
+        ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
+        ${MatchmakingSqlFragments.PARTNER_ORDER_AND_LIMIT}
+        """.trimIndent()
+
+    private fun claimPartnerSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        """
+        ${MatchmakingSqlFragments.PARTNER_SELECT_AND_BASE_JOINS}
+        ${MatchmakingSqlFragments.PARTNER_CLAIM_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PARTNER_BASE_FILTERS}
+        ${MatchmakingSqlFragments.PAIR_BLOCK_EXCLUSION}
+        ${pairMatchExclusion(exclusionPolicy)}
+        ${pairConnectionExclusion(exclusionPolicy)}
+        ${MatchmakingSqlFragments.PROFILE_COMPATIBILITY_FILTERS}
+        ${MatchmakingSqlFragments.MUTUAL_DISTANCE_FILTER}
+        ${if (isPostgres) MatchmakingSqlFragments.PARTNER_CLAIM_LOCK else MatchmakingSqlFragments.PARTNER_CLAIM_NO_LOCK}
+        """.trimIndent()
+
+    private fun pairMatchExclusion(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        when {
+            exclusionPolicy.excludeActiveInteractions && exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_MATCH_EXCLUSION
+
+            exclusionPolicy.excludeActiveInteractions ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_MATCH_EXCLUSION
+
+            exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_HISTORICAL_MATCH_EXCLUSION
+
+            else ->
+                ""
+        }
+
+    private fun pairConnectionExclusion(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+        when {
+            exclusionPolicy.excludeActiveInteractions && exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_OR_HISTORICAL_CONNECTION_EXCLUSION
+
+            exclusionPolicy.excludeActiveInteractions ->
+                MatchmakingSqlFragments.PAIR_ACTIVE_CONNECTION_EXCLUSION
+
+            exclusionPolicy.excludeHistoricalPairings ->
+                MatchmakingSqlFragments.PAIR_HISTORICAL_CONNECTION_EXCLUSION
+
+            else ->
+                ""
+        }
 }

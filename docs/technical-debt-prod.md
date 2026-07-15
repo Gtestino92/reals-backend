@@ -479,17 +479,33 @@ Future option:
 
 PR1 query-refactor follow-up:
 - Queue CRUD and candidate discovery are now separate repository responsibilities.
-- Candidate selection uses JDBC/native PostgreSQL SQL with active-only and
-  active-plus-history variants so local repeatable mode does not carry
-  historical cooldown predicates.
+- Candidate selection uses JDBC/native PostgreSQL SQL with independent
+  active-interaction and historical-cooldown fragments so local repeatable mode
+  can omit active duplicate and/or historical predicates without weakening
+  user-block, profile, queue, penalty, age, gender or distance filters.
 - Defensive pair checking uses one focused database query after deterministic
   user locking and before match persistence.
 - Added pair/state indexes support the current active and cooldown lookups.
-- Current broad candidate-row locking remains unchanged.
-- Deferred to PR2: anchor queue selection, partner candidate windows,
-  claim-only-selected-partner logic, retry behavior for lost partner claims,
-  reduced lock scope, SQL geographic prefilters, PostGIS, canonical pair
-  columns, derived pair-exclusion tables and materialized eligibility caches.
+
+PR2 scalable-claim follow-up:
+- Candidate claiming now locks one eligible anchor row, reads a bounded
+  non-locking partner window, ranks partners in application code and claims one
+  selected partner row at a time with hard revalidation.
+- Exact mutual Haversine distance runs in SQL before partner `LIMIT`, while the
+  Kotlin distance filter remains as a defensive parity check.
+- Partner contention is normal: a missed partner claim falls back to the next
+  ranked candidate without counting as a failed matchmaking pair.
+- Probabilistic partner ranking is implemented behind
+  `matchmaking.ranking.mode`. Do not enable it in production before calibrating
+  parameters from real reliability distributions, adding observability for
+  selected FIFO rank, reliability gaps, waiting-time percentiles and fallback
+  frequency, reviewing fairness/starvation effects, designing user-facing
+  reliability guidance, evaluating a future gradual compatibility scorer and
+  deciding whether ranking parameters should differ by market/liquidity.
+- Deferred future work: PostGIS, spatial indexes based on real `EXPLAIN`
+  evidence, canonical pair columns, derived pair-exclusion tables, materialized
+  eligibility caches, queue partitioning, sharding, multi-region matchmaking
+  and durable pagination or rotation for extremely large partner windows.
 
 ---
 

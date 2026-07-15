@@ -14,32 +14,76 @@ class JdbcMatchmakingPairEligibilityRepository(
     override fun findBlockingReason(
         userAId: UUID,
         userBId: UUID,
+        exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?
     ): MatchmakingPairBlockingReason? {
-        val includeHistoricalExclusion =
-            previousPairingCutoff != null && firstChatExpirationCutoff != null
+        requireConsistentCutoffs(
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff
+        )
+        require(exclusionPolicy.excludeHistoricalPairings == (previousPairingCutoff != null)) {
+            "Historical exclusion policy and cutoff parameters must match"
+        }
+        if (!exclusionPolicy.excludeActiveInteractions && !exclusionPolicy.excludeHistoricalPairings) {
+            return null
+        }
 
         val parameters =
             MapSqlParameterSource()
                 .addValue("userAId", userAId)
                 .addValue("userBId", userBId)
 
-        if (includeHistoricalExclusion) {
+        if (exclusionPolicy.excludeHistoricalPairings) {
             parameters
                 .addValue("previousPairingCutoff", previousPairingCutoff)
                 .addValue("firstChatExpirationCutoff", firstChatExpirationCutoff)
         }
 
         return jdbcTemplate.query(
-            if (includeHistoricalExclusion) ACTIVE_PLUS_HISTORY_SQL else ACTIVE_ONLY_SQL,
+            blockingReasonSql(exclusionPolicy),
             parameters
         ) { resultSet, _ ->
             MatchmakingPairBlockingReason.valueOf(resultSet.getString("reason"))
         }.firstOrNull()
     }
 
+    private fun requireConsistentCutoffs(
+        previousPairingCutoff: OffsetDateTime?,
+        firstChatExpirationCutoff: OffsetDateTime?
+    ) {
+        require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
+            "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
+        }
+    }
+
     private companion object {
+        fun blockingReasonSql(exclusionPolicy: MatchmakingPairExclusionPolicy): String =
+            when {
+                exclusionPolicy.excludeActiveInteractions && exclusionPolicy.excludeHistoricalPairings ->
+                    ACTIVE_PLUS_HISTORY_SQL
+
+                exclusionPolicy.excludeActiveInteractions ->
+                    ACTIVE_ONLY_SQL
+
+                exclusionPolicy.excludeHistoricalPairings ->
+                    HISTORY_ONLY_SQL
+
+                else ->
+                    NONE_SQL
+            }
+
+        val NONE_SQL =
+            """
+            SELECT reason
+            FROM (
+                SELECT 1 AS priority, 'ACTIVE_INTERACTION' AS reason
+                WHERE false
+            ) blockers
+            ORDER BY priority
+            LIMIT 1
+            """.trimIndent()
+
         val ACTIVE_ONLY_SQL =
             """
             SELECT reason
@@ -47,6 +91,18 @@ class JdbcMatchmakingPairEligibilityRepository(
                 SELECT 1 AS priority, 'ACTIVE_INTERACTION' AS reason
                 WHERE ${MatchmakingSqlFragments.ACTIVE_MATCH_EXISTS}
                     OR ${MatchmakingSqlFragments.ACTIVE_CONNECTION_EXISTS}
+            ) blockers
+            ORDER BY priority
+            LIMIT 1
+            """.trimIndent()
+
+        val HISTORY_ONLY_SQL =
+            """
+            SELECT reason
+            FROM (
+                SELECT 2 AS priority, 'PREVIOUS_PAIRING_COOLDOWN' AS reason
+                WHERE ${MatchmakingSqlFragments.HISTORICAL_MATCH_EXISTS}
+                    OR ${MatchmakingSqlFragments.HISTORICAL_CONNECTION_EXISTS}
             ) blockers
             ORDER BY priority
             LIMIT 1

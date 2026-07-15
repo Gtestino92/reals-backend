@@ -34,6 +34,26 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `partner discovery maps partner entered at`() {
+        val now = fixedNow()
+        val (userA, userB) = createQueuedCompatiblePair("partner-entered-at")
+        val anchor = matchmakingQueueRepository.findByUserId(userA) ?: error("Expected anchor queue entry")
+        val partner = matchmakingQueueRepository.findByUserId(userB) ?: error("Expected partner queue entry")
+
+        val candidate =
+            matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.id,
+                limit = 10,
+                today = now.toLocalDate(),
+                exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
+                previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
+                firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            ).single()
+
+        assertEquals(partner.enteredAt, candidate.partnerEnteredAt)
+    }
+
+    @Test
     fun `active matches and approved transition without connection are excluded`() {
         val now = fixedNow()
         val chatActive = createQueuedCompatiblePair("active-chat")
@@ -330,11 +350,26 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         userAId: UUID,
         userBId: UUID,
         now: OffsetDateTime
-    ): Boolean =
-        findBasicCompatiblePairs(limit = 100, now = now).any {
-            (it.userAId == userAId && it.userBId == userBId) ||
-                (it.userAId == userBId && it.userBId == userAId)
+    ): Boolean {
+        val previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now)
+        val firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        val userAQueueEntry = matchmakingQueueRepository.findByUserId(userAId)
+        val userBQueueEntry = matchmakingQueueRepository.findByUserId(userBId)
+
+        return listOfNotNull(userAQueueEntry, userBQueueEntry).any { anchor ->
+            matchmakingCandidateRepository.findEligiblePartnerCandidates(
+                anchorQueueEntryId = anchor.id,
+                limit = 100,
+                today = now.toLocalDate(),
+                exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
+                previousPairingCutoff = previousPairingCutoff,
+                firstChatExpirationCutoff = firstChatExpirationCutoff
+            ).any {
+                (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
+                    (it.pair.userAId == userBId && it.pair.userBId == userAId)
+            }
         }
+    }
 
     private fun blockingReason(
         userAId: UUID,
@@ -344,6 +379,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
         matchmakingPairEligibilityRepository.findBlockingReason(
             userAId = userAId,
             userBId = userBId,
+            exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
             previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
             firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
         )
