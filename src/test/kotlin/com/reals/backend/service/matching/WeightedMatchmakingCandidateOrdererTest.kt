@@ -3,7 +3,6 @@ package com.reals.backend.service.matching
 import com.reals.backend.domain.MatchmakingCandidatePair
 import com.reals.backend.domain.MatchmakingPartnerCandidate
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -69,18 +68,26 @@ class WeightedMatchmakingCandidateOrdererTest {
     }
 
     @Test
-    fun `ordered candidates are a complete fallback sequence with no no-match marker`() {
+    fun `ordered candidates are a complete fallback permutation`() {
+        val candidates =
+            listOf(
+                weighted("a", logWeight = 0.0, order = 0),
+                weighted("b", logWeight = 0.0, order = 1),
+                weighted("c", logWeight = -1.0, order = 2)
+            )
         val ordered =
             orderer(0.1, 0.2)
-                .order(
-                    listOf(
-                        weighted("a", logWeight = 0.0, order = 0),
-                        weighted("b", logWeight = 0.0, order = 1)
-                    )
-                )
+                .order(candidates)
 
-        assertEquals(2, ordered.size)
-        assertTrue(ordered.all { it.candidate.partnerQueueEntryId != UUID(0, 0) })
+        assertEquals(candidates.size, ordered.size)
+        assertEquals(
+            candidates.map { it.candidate.partnerQueueEntryId }.toSet(),
+            ordered.map { it.candidate.partnerQueueEntryId }.toSet()
+        )
+        assertEquals(
+            ordered.size,
+            ordered.map { it.candidate.partnerQueueEntryId }.distinct().size
+        )
     }
 
     private fun orderer(vararg values: Double): WeightedMatchmakingCandidateOrderer {

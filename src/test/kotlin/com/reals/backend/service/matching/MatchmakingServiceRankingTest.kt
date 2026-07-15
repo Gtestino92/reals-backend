@@ -17,7 +17,10 @@ import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
 import java.time.LocalDate
@@ -100,6 +103,100 @@ class MatchmakingServiceRankingTest {
     }
 
     @Test
+    fun `probabilistic raw compatibility gate discards candidate before claim`() {
+        val candidate = candidate("below-minimum", partnerAUserId)
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate)
+            )
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val reliabilityService = reliabilityService(enabled = true)
+        Mockito.`when`(
+            reliabilityService.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            mapOf(
+                anchorUserId to 100.0,
+                partnerAUserId to 100.0
+            )
+        )
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService,
+                randomValues = listOf(0.99),
+                compatibilityScore = 0.19,
+                minCompatibilityScore = 0.2
+            ).claimNextCandidatePair()
+
+        assertNull(pair)
+        assertEquals(emptyList<UUID>(), candidateRepository.claimAttempts)
+    }
+
+    @Test
+    fun `probabilistic and legacy modes apply minimum score to different scores`() {
+        val candidate = candidate("minimum-semantics", partnerAUserId)
+        val probabilisticRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate)
+            )
+        probabilisticRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val probabilisticReliability = reliabilityService(enabled = true)
+        Mockito.`when`(
+            probabilisticReliability.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            mapOf(
+                anchorUserId to 100.0,
+                partnerAUserId to 120.0
+            )
+        )
+
+        val probabilisticPair =
+            service(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                candidateRepository = probabilisticRepository,
+                reliabilityService = probabilisticReliability,
+                randomValues = listOf(0.99),
+                compatibilityScore = 0.15,
+                minCompatibilityScore = 0.2
+            ).claimNextCandidatePair()
+
+        assertNull(probabilisticPair)
+        assertEquals(emptyList<UUID>(), probabilisticRepository.claimAttempts)
+
+        val legacyRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate)
+            )
+        legacyRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val legacyReliability = reliabilityService(enabled = true)
+        Mockito.`when`(
+            legacyReliability.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            mapOf(
+                anchorUserId to 100.0,
+                partnerAUserId to 120.0
+            )
+        )
+        Mockito.`when`(legacyReliability.matchmakingModifierForScores(100.0, 120.0)).thenReturn(0.10)
+
+        val legacyPair =
+            service(
+                mode = MatchmakingRankingMode.LEGACY_EARLY_ACCEPT,
+                candidateRepository = legacyRepository,
+                reliabilityService = legacyReliability,
+                randomValues = emptyList(),
+                compatibilityScore = 0.15,
+                minCompatibilityScore = 0.2,
+                earlyAcceptCompatibilityScore = 0.9
+            ).claimNextCandidatePair()
+
+        assertEquals(Pair(anchorUserId, partnerAUserId), legacyPair)
+        assertEquals(listOf(candidate.partnerQueueEntryId), legacyRepository.claimAttempts)
+    }
+
+    @Test
     fun `legacy mode keeps first fifo early accepted candidate first`() {
         val first = candidate("first", partnerAUserId)
         val second = candidate("second", partnerBUserId)
@@ -163,28 +260,225 @@ class MatchmakingServiceRankingTest {
         )
     }
 
+    @Test
+    fun `legacy fallback keeps fifo order when combined scores tie`() {
+        val first = candidate("fifo-first", partnerAUserId)
+        val second = candidate("fifo-second", partnerBUserId)
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = listOf(first, second)
+            )
+        candidateRepository.claimResults[first.partnerQueueEntryId] = first
+        val reliabilityService = reliabilityService(enabled = true)
+        Mockito.`when`(
+            reliabilityService.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            mapOf(
+                anchorUserId to 100.0,
+                partnerAUserId to 100.0,
+                partnerBUserId to 100.0
+            )
+        )
+        Mockito.`when`(reliabilityService.matchmakingModifierForScores(100.0, 100.0)).thenReturn(0.0)
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.LEGACY_EARLY_ACCEPT,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService,
+                randomValues = emptyList(),
+                compatibilityScore = 0.5,
+                earlyAcceptCompatibilityScore = 0.9
+            ).claimNextCandidatePair()
+
+        assertEquals(Pair(anchorUserId, partnerAUserId), pair)
+        assertEquals(listOf(first.partnerQueueEntryId), candidateRepository.claimAttempts)
+    }
+
+    @Test
+    fun `probabilistic mode ignores invalid legacy-only early accept value`() {
+        val candidate = candidate("probabilistic-legacy-threshold", partnerAUserId)
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate)
+            )
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val reliabilityService = reliabilityService(enabled = false)
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService,
+                randomValues = listOf(0.5),
+                earlyAcceptCompatibilityScore = 0.1,
+                minCompatibilityScore = 0.2
+            ).claimNextCandidatePair()
+
+        assertEquals(Pair(anchorUserId, partnerAUserId), pair)
+    }
+
+    @Test
+    fun `legacy mode still rejects invalid early accept value`() {
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate("legacy-invalid-threshold", partnerAUserId))
+            )
+
+        assertThrows<IllegalArgumentException> {
+            service(
+                mode = MatchmakingRankingMode.LEGACY_EARLY_ACCEPT,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService(enabled = false),
+                randomValues = emptyList(),
+                earlyAcceptCompatibilityScore = 0.1,
+                minCompatibilityScore = 0.2
+            ).claimNextCandidatePair()
+        }
+    }
+
+    @Test
+    fun `probabilistic ranking uses shared ranking time for reliability and waiting calculation`() {
+        val candidate = candidate("shared-time", partnerAUserId)
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = listOf(candidate)
+            )
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val reliabilityService = reliabilityService(enabled = true)
+        Mockito.`when`(
+            reliabilityService.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            mapOf(
+                anchorUserId to 100.0,
+                partnerAUserId to 100.0
+            )
+        )
+        val rankingProperties =
+            MatchmakingRankingProperties(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                compatibilityTemperature = 0.20,
+                reliabilitySimilarityScale = 10.0,
+                waitingRelaxationPeriodHours = 72.0,
+                maximumSimilarityScaleMultiplier = 3.0
+            )
+        val weightPolicy = Mockito.mock(ProbabilisticMatchmakingWeightPolicy::class.java)
+        Mockito.`when`(weightPolicy.calculate(anyWeightInput()))
+            .thenReturn(
+                MatchmakingCandidateWeight(
+                    compatibilityLogWeight = 0.0,
+                    reliabilityLogWeight = 0.0,
+                    waitingHours = 0.0,
+                    waitingMultiplier = 1.0,
+                    effectiveReliabilitySimilarityScale = 10.0,
+                    logWeight = 0.0
+                )
+            )
+
+        service(
+            mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+            candidateRepository = candidateRepository,
+            reliabilityService = reliabilityService,
+            randomValues = listOf(0.5),
+            rankingProperties = rankingProperties,
+            probabilisticWeightPolicy = weightPolicy
+        ).claimNextCandidatePair()
+
+        @Suppress("UNCHECKED_CAST")
+        val userIdsCaptor =
+            ArgumentCaptor.forClass(Collection::class.java) as ArgumentCaptor<Collection<UUID>>
+        val reliabilityNowCaptor = ArgumentCaptor.forClass(OffsetDateTime::class.java)
+        Mockito.verify(reliabilityService).effectiveScores(
+            captureUuidCollection(userIdsCaptor),
+            captureOffsetDateTime(reliabilityNowCaptor)
+        )
+        val weightInputCaptor = ArgumentCaptor.forClass(MatchmakingCandidateWeightInput::class.java)
+        Mockito.verify(weightPolicy).calculate(captureWeightInput(weightInputCaptor))
+
+        assertEquals(reliabilityNowCaptor.value, weightInputCaptor.value.now)
+        assertEquals(candidate.partnerEnteredAt, weightInputCaptor.value.partnerEnteredAt)
+    }
+
+    @Test
+    fun `large probabilistic candidate window ranks complete window and batches reliability`() {
+        val candidates =
+            (1..520).map { index ->
+                candidate(
+                    label = "large-$index",
+                    partnerUserId = UUID.nameUUIDFromBytes("large-partner-$index".toByteArray())
+                )
+            }
+        val candidateRepository =
+            FakeCandidateRepository(
+                candidates = candidates
+            )
+        val window = candidates.take(500)
+        candidateRepository.claimResults[window.last().partnerQueueEntryId] = window.last()
+        val reliabilityService = reliabilityService(enabled = true)
+        Mockito.`when`(
+            reliabilityService.effectiveScores(anyUuidCollection(), anyOffsetDateTime())
+        ).thenReturn(
+            (listOf(anchorUserId) + window.map { it.pair.userBId })
+                .associateWith { 100.0 }
+        )
+        val compatibilityScorer = CountingCompatibilityScorer(1.0)
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService,
+                randomValues = List(500) { 0.5 },
+                candidatePairLimit = 500,
+                compatibilityScorer = compatibilityScorer
+            ).claimNextCandidatePair()
+
+        @Suppress("UNCHECKED_CAST")
+        val userIdsCaptor =
+            ArgumentCaptor.forClass(Collection::class.java) as ArgumentCaptor<Collection<UUID>>
+        Mockito.verify(reliabilityService, Mockito.times(1))
+            .effectiveScores(captureUuidCollection(userIdsCaptor), anyOffsetDateTime())
+        assertEquals((listOf(anchorUserId) + window.map { it.pair.userBId }).toSet(), userIdsCaptor.value.toSet())
+        Mockito.verify(reliabilityService, Mockito.never()).matchmakingModifierForPair(
+            anyUuid(),
+            anyUuid(),
+            anyOffsetDateTime()
+        )
+        assertEquals(500, compatibilityScorer.calls)
+        assertEquals(window.map { it.partnerQueueEntryId }, candidateRepository.claimAttempts)
+        assertEquals(Pair(anchorUserId, window.last().pair.userBId), pair)
+    }
+
     private fun service(
         mode: MatchmakingRankingMode,
         candidateRepository: FakeCandidateRepository,
         reliabilityService: UserReliabilityScoreService,
         randomValues: List<Double>,
         compatibilityScore: Double = 1.0,
-        earlyAcceptCompatibilityScore: Double = 0.9
+        earlyAcceptCompatibilityScore: Double = 0.9,
+        minCompatibilityScore: Double = 0.2,
+        candidatePairLimit: Int = 10,
+        compatibilityScorer: CompatibilityScorer? = null,
+        rankingProperties: MatchmakingRankingProperties? = null,
+        probabilisticWeightPolicy: ProbabilisticMatchmakingWeightPolicy? = null
     ): MatchmakingService {
         val profileService = Mockito.mock(ProfileService::class.java)
         Mockito.`when`(profileService.findByUserIds(anyUuidCollection()))
             .thenReturn(
-                listOf(
-                    profile(anchorUserId, Gender.FEMALE, Gender.MALE),
-                    profile(partnerAUserId, Gender.MALE, Gender.FEMALE),
-                    profile(partnerBUserId, Gender.MALE, Gender.FEMALE),
-                    profile(partnerCUserId, Gender.MALE, Gender.FEMALE)
-                )
+                (listOf(anchorUserId) + candidateRepository.candidates.map { it.pair.userBId })
+                    .distinct()
+                    .map { userId ->
+                        if (userId == anchorUserId) {
+                            profile(userId, Gender.FEMALE, Gender.MALE)
+                        } else {
+                            profile(userId, Gender.MALE, Gender.FEMALE)
+                        }
+                    }
             )
         val pairEligibilityService = Mockito.mock(MatchmakingPairEligibilityService::class.java)
         Mockito.`when`(pairEligibilityService.effectiveExclusionPolicy())
             .thenReturn(MatchmakingPairExclusionPolicy.ACTIVE_ONLY)
-        val compatibilityScorer =
+        val resolvedCompatibilityScorer = compatibilityScorer ?:
             object : CompatibilityScorer {
                 override fun score(
                     profileA: Profile,
@@ -192,7 +486,7 @@ class MatchmakingServiceRankingTest {
                 ): Double =
                     compatibilityScore
             }
-        val rankingProperties =
+        val resolvedRankingProperties = rankingProperties ?:
             MatchmakingRankingProperties(
                 mode = mode,
                 compatibilityTemperature = 0.20,
@@ -207,16 +501,16 @@ class MatchmakingServiceRankingTest {
             userService = Mockito.mock(UserService::class.java),
             profileService = profileService,
             matchmakingAvailabilityService = Mockito.mock(MatchmakingAvailabilityService::class.java),
-            compatibilityScorer = compatibilityScorer,
+            compatibilityScorer = resolvedCompatibilityScorer,
             searchLocationMatchFilter = SearchLocationMatchFilter(),
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
             userReliabilityScoreService = reliabilityService,
             matchmakingPairEligibilityService = pairEligibilityService,
-            rankingProperties = rankingProperties,
-            probabilisticWeightPolicy = ProbabilisticMatchmakingWeightPolicy(rankingProperties),
+            rankingProperties = resolvedRankingProperties,
+            probabilisticWeightPolicy = probabilisticWeightPolicy ?: ProbabilisticMatchmakingWeightPolicy(resolvedRankingProperties),
             weightedCandidateOrderer = WeightedMatchmakingCandidateOrderer(sequenceRandom(randomValues)),
-            candidatePairLimit = 10,
-            minCompatibilityScore = 0.2,
+            candidatePairLimit = candidatePairLimit,
+            minCompatibilityScore = minCompatibilityScore,
             earlyAcceptCompatibilityScore = earlyAcceptCompatibilityScore
         )
     }
@@ -321,9 +615,53 @@ class MatchmakingServiceRankingTest {
         return emptyList()
     }
 
+    private fun captureOffsetDateTime(captor: ArgumentCaptor<OffsetDateTime>): OffsetDateTime {
+        captor.capture()
+        return OffsetDateTime.now()
+    }
+
+    private fun anyWeightInput(): MatchmakingCandidateWeightInput {
+        Mockito.any(MatchmakingCandidateWeightInput::class.java)
+        return MatchmakingCandidateWeightInput(
+            compatibilityScore = 1.0,
+            anchorReliabilityScore = 100.0,
+            partnerReliabilityScore = 100.0,
+            partnerEnteredAt = OffsetDateTime.now(),
+            now = OffsetDateTime.now()
+        )
+    }
+
+    private fun captureWeightInput(
+        captor: ArgumentCaptor<MatchmakingCandidateWeightInput>
+    ): MatchmakingCandidateWeightInput {
+        captor.capture()
+        return MatchmakingCandidateWeightInput(
+            compatibilityScore = 1.0,
+            anchorReliabilityScore = 100.0,
+            partnerReliabilityScore = 100.0,
+            partnerEnteredAt = OffsetDateTime.now(),
+            now = OffsetDateTime.now()
+        )
+    }
+
     private fun anyUuid(): UUID =
         Mockito.any(UUID::class.java).let { UUID.randomUUID() }
 
     private fun anyOffsetDateTime(): OffsetDateTime =
         Mockito.any(OffsetDateTime::class.java).let { OffsetDateTime.now() }
+
+    private class CountingCompatibilityScorer(
+        private val score: Double
+    ) : CompatibilityScorer {
+        var calls: Int = 0
+            private set
+
+        override fun score(
+            profileA: Profile,
+            profileB: Profile
+        ): Double {
+            calls += 1
+            return score
+        }
+    }
 }

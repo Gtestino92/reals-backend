@@ -423,7 +423,7 @@ and should stay empty until that provider is implemented.
 
 `matchmaking.candidate-pair-limit` controls the bounded partner-candidate window scored after one eligible anchor queue row has been claimed. Hard SQL filters, including exact mutual distance, run before this limit. Local and test profiles keep the window low for deterministic, cheap checks. Dev/prod use higher starting values and should be adjusted using queue size, job duration, partner-claim contention and match creation metrics.
 
-`matchmaking.min-compatibility-score` is always a deterministic compatibility gate. In `LEGACY_EARLY_ACCEPT`, `matchmaking.early-accept-compatibility-score` preserves the old FIFO early-accept group and score-descending fallback. In `PROBABILISTIC_WEIGHTED`, early-accept is ignored; every candidate above the raw compatibility minimum enters a weighted permutation without replacement. See `docs/matchmaking-ranking.md` for formulas and calibration notes.
+`matchmaking.min-compatibility-score` has mode-specific semantics. In `LEGACY_EARLY_ACCEPT`, it applies to the combined legacy score: raw compatibility plus the bounded legacy reliability modifier. This preserves the pre-refactor behavior. In `PROBABILISTIC_WEIGHTED`, it applies only to raw compatibility before reliability similarity and Gumbel randomness are applied. `matchmaking.early-accept-compatibility-score` is used only by `LEGACY_EARLY_ACCEPT`; probabilistic mode ignores it and ranks every candidate that passes the raw compatibility minimum in a weighted permutation without replacement. See `docs/matchmaking-ranking.md` for formulas and calibration notes.
 
 ## How Injection Works
 
