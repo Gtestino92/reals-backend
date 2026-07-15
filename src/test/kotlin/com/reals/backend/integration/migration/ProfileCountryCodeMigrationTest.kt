@@ -110,6 +110,7 @@ class ProfileCountryCodeMigrationTest {
             .locations("classpath:db/migration")
             .baselineOnMigrate(true)
             .baselineVersion("25")
+            .target("26")
             .load()
             .migrate()
     }

@@ -24,9 +24,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.test.context.ActiveProfiles
@@ -82,6 +84,35 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
 
     @Autowired
     private lateinit var transactionManager: PlatformTransactionManager
+
+    @Autowired
+    private lateinit var jdbcTemplate: JdbcTemplate
+
+    @BeforeEach
+    fun cleanDatabase() {
+        jdbcTemplate.execute(
+            """
+            TRUNCATE TABLE
+                active_engagement_locks,
+                chats,
+                chat_decisions,
+                chat_exit_requests,
+                chat_messages,
+                connections,
+                visual_reviews,
+                matches,
+                matchmaking_queue,
+                profile_photos,
+                profile_looking_for_genders,
+                profiles,
+                penalties,
+                user_blocks,
+                user_home_status,
+                users
+            RESTART IDENTITY CASCADE
+            """.trimIndent()
+        )
+    }
 
     @Test
     fun `concurrent processors do not double match queued users on postgres`() {
