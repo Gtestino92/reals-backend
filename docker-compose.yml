@@ -16,6 +16,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/reals
       SPRING_DATASOURCE_USERNAME: reals
       SPRING_DATASOURCE_PASSWORD: reals
+      TZ: UTC
       RATE_LIMIT_ENABLED: "false"
       #RATE_LIMIT_PROVISION_CAPACITY: "1"
       #RATE_LIMIT_PROVISION_REFILL_TOKENS: "1"
@@ -56,6 +57,7 @@ services:
       POSTGRES_DB: reals
       POSTGRES_USER: reals
       POSTGRES_PASSWORD: reals
+      TZ: UTC
     ports:
       - "5432:5432"
     volumes:
