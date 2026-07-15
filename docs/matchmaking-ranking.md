@@ -36,9 +36,10 @@ already run.
 `matchmaking.ranking.mode` controls the application ranking strategy:
 
 - `LEGACY_EARLY_ACCEPT`: preserves the previous behavior. It combines
-  compatibility with the bounded legacy reliability modifier, accepts FIFO
-  candidates at or above `matchmaking.early-accept-compatibility-score`, then
-  tries remaining candidates by score descending with FIFO tie-break.
+  compatibility with the bounded legacy reliability modifier, applies
+  `matchmaking.min-compatibility-score` to that combined legacy score, accepts
+  FIFO candidates at or above `matchmaking.early-accept-compatibility-score`,
+  then tries remaining candidates by score descending with FIFO tie-break.
 - `PROBABILISTIC_WEIGHTED`: gates by raw compatibility, calculates pair
   log-weights, adds Gumbel noise and sorts into a complete weighted permutation
   without replacement.
@@ -50,6 +51,14 @@ experimentation and can be switched with `MATCHMAKING_RANKING_MODE`.
 `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` only affects
 `LEGACY_EARLY_ACCEPT`. Probabilistic ranking uses individual reliability-score
 similarity instead.
+
+Minimum-score semantics intentionally differ by mode:
+
+- In `LEGACY_EARLY_ACCEPT`, `matchmaking.min-compatibility-score` applies to
+  `compatibilityScore + boundedReliabilityModifier`.
+- In `PROBABILISTIC_WEIGHTED`, `matchmaking.min-compatibility-score` applies to
+  raw `compatibilityScore`; reliability similarity and Gumbel randomness are
+  applied only after that raw compatibility gate passes.
 
 ## Formula
 
@@ -235,6 +244,20 @@ Before production rollout, inspect:
 - evidence of starvation or behavioral stratification.
 
 This task does not implement a metrics platform.
+
+## Functional Scalability Tests
+
+The test suite includes two non-benchmark scalability checks:
+
+- an in-memory large candidate-window service test that ranks hundreds of
+  partner candidates deterministically and verifies one batched reliability
+  load for the window;
+- a PostgreSQL large-queue behavioral test that persists hundreds of queued
+  users and verifies bounded partner discovery, queue-row removal and repeated
+  processor progress.
+
+These tests prove functional behavior around bounded windows and large queues.
+They are not production latency guarantees or load benchmarks.
 
 ## User Transparency
 

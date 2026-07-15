@@ -131,14 +131,19 @@ class MatchmakingService(
         require(candidatePairLimit > 0) {
             "Candidate partner limit must be greater than 0"
         }
+        require(minCompatibilityScore.isFinite()) {
+            "Minimum compatibility score must be finite"
+        }
         require(minCompatibilityScore in 0.0..1.0) {
             "Minimum compatibility score must be between 0.0 and 1.0"
         }
-        require(earlyAcceptCompatibilityScore in 0.0..1.0) {
-            "Early accept compatibility score must be between 0.0 and 1.0"
-        }
-        require(earlyAcceptCompatibilityScore >= minCompatibilityScore) {
-            "Early accept compatibility score must be greater than or equal to minimum compatibility score"
+        if (rankingProperties.mode == MatchmakingRankingMode.LEGACY_EARLY_ACCEPT) {
+            require(earlyAcceptCompatibilityScore in 0.0..1.0) {
+                "Early accept compatibility score must be between 0.0 and 1.0"
+            }
+            require(earlyAcceptCompatibilityScore >= minCompatibilityScore) {
+                "Early accept compatibility score must be greater than or equal to minimum compatibility score"
+            }
         }
 
         val today = LocalDate.now()
