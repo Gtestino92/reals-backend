@@ -149,28 +149,10 @@ class MeHomeService(
         val visibleConnections =
             activeConnections.filter { it.id !in dismissedConnectionIds }
 
-        val activeConnectionsForSummary = connectionRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(
-                    ConnectionState.SCHEDULING_PENDING,
-                    ConnectionState.SCHEDULING_PHASE,
-                    ConnectionState.SECOND_CHAT_SCHEDULED,
-                    ConnectionState.SECOND_CHAT_AVAILABLE,
-                    ConnectionState.SECOND_CHAT
-                )
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-            .filter { it.id !in dismissedConnectionIds }
-
-        val pendingSchedulingConnectionCount =
-            activeConnectionsForSummary.count {
-                it.state == ConnectionState.SCHEDULING_PENDING
-            }
-
-        val revealedConnectionCount =
-            activeConnectionsForSummary.count {
-                it.state != ConnectionState.SCHEDULING_PENDING
-            }
+        val pendingSchedulingConnections = pendingSchedulingConnections(
+            userId = userId,
+            blockedCounterpartIds = blockedCounterpartIds
+        )
 
         val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
@@ -208,11 +190,41 @@ class MeHomeService(
                     .associateBy { it.userId }
             }
 
+        val pendingActions = activeMatches.mapNotNull { match ->
+            toPendingAction(
+                match = match,
+                currentUserId = userId,
+                firstChat = firstChatsByMatchId[match.id],
+                decision = chatDecisionsByMatchId[match.id],
+                visualReview = visualReviewByMatchId[match.id],
+                partner = partnerProfilesByUserId[
+                    partnerUserId(match.userAId, match.userBId, userId)
+                ],
+                now = now
+            )
+        }
+
+        val nextSteps = visibleConnections.mapNotNull { connection ->
+            toNextStep(
+                connection = connection,
+                secondChat = secondChatsByConnectionId[connection.id],
+                secondChatAvailableAt = confirmedNegotiationsByConnectionId[
+                    connection.id
+                ]?.confirmedDateTime,
+                partner = partnerProfilesByUserId[
+                    partnerUserId(connection.userAId, connection.userBId, userId)
+                ],
+                now = now
+            )
+        }
+
+        val hasPendingSchedulingConnection = pendingSchedulingConnections.isNotEmpty()
+
         val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
-            activeInitialCount = activeMatches.size,
-            activeConnectionCount = revealedConnectionCount,
-            pendingSchedulingConnectionCount = pendingSchedulingConnectionCount,
-            actionableConnectionCount = visibleConnections.size
+            activeInitialCount = pendingActions.size,
+            activeConnectionCount = nextSteps.size,
+            hasPendingSchedulingConnection = hasPendingSchedulingConnection,
+            actionableConnectionCount = nextSteps.size
         )
 
         val matchmakingAvailability = matchmakingAvailabilityService.availabilityFor(
@@ -233,33 +245,11 @@ class MeHomeService(
                 }
             ),
             activeInteractionsSummary = activeInteractionsSummary,
-            pendingActions = activeMatches.mapNotNull { match ->
-                toPendingAction(
-                    match = match,
-                    currentUserId = userId,
-                    firstChat = firstChatsByMatchId[match.id],
-                    decision = chatDecisionsByMatchId[match.id],
-                    visualReview = visualReviewByMatchId[match.id],
-                    partner = partnerProfilesByUserId[
-                        partnerUserId(match.userAId, match.userBId, userId)
-                    ],
-                    now = now
-                )
-            },
-            nextSteps = visibleConnections.mapNotNull { connection ->
-                toNextStep(
-                    connection = connection,
-                    secondChat = secondChatsByConnectionId[connection.id],
-                    secondChatAvailableAt = confirmedNegotiationsByConnectionId[
-                        connection.id
-                    ]?.confirmedDateTime,
-                    partner = partnerProfilesByUserId[
-                        partnerUserId(connection.userAId, connection.userBId, userId)
-                    ],
-                    now = now
-                )
-            },
-            passiveNotices = passiveNoticesFor(activeInteractionsSummary)
+            pendingActions = pendingActions,
+            nextSteps = nextSteps,
+            passiveNotices = passiveNoticesForPendingScheduling(
+                hasPendingSchedulingConnection
+            )
         )
     }
 
@@ -350,12 +340,10 @@ class MeHomeService(
                 .associateBy { it.connectionId }
         }
 
-        val pendingSchedulingConnectionCount = connectionRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(ConnectionState.SCHEDULING_PENDING)
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-            .size
+        val hasPendingSchedulingConnection = pendingSchedulingConnections(
+            userId = userId,
+            blockedCounterpartIds = blockedCounterpartIds
+        ).isNotEmpty()
 
         return HomePendingStateResponse(
             version = status.version,
@@ -379,8 +367,8 @@ class MeHomeService(
                     now = now
                 )
             },
-            passiveNotices = passiveNoticesForPendingSchedulingCount(
-                pendingSchedulingConnectionCount
+            passiveNotices = passiveNoticesForPendingScheduling(
+                hasPendingSchedulingConnection
             ),
             serverTime = OffsetDateTime.now()
         )
@@ -630,6 +618,31 @@ class MeHomeService(
         return activeConnections.filter { it.id !in dismissedConnectionIds }
     }
 
+    private fun pendingSchedulingConnections(
+        userId: UUID,
+        blockedCounterpartIds: Set<UUID>
+    ): List<Connection> {
+        val pendingConnections = connectionRepository
+            .findByParticipantIdAndStateIn(
+                userId = userId,
+                states = listOf(ConnectionState.SCHEDULING_PENDING)
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
+
+        val dismissedConnectionIds =
+            if (pendingConnections.isEmpty()) {
+                emptySet()
+            } else {
+                dismissalRepository
+                    .findDismissedConnectionIds(
+                        userId = userId,
+                        connectionIds = pendingConnections.map { it.id }
+                    )
+                    .toSet()
+            }
+
+        return pendingConnections.filter { it.id !in dismissedConnectionIds }
+    }
+
     private fun isScheduledSecondChatWindowExpired(
         availableAt: OffsetDateTime?,
         now: OffsetDateTime
@@ -691,21 +704,13 @@ class MeHomeService(
         }
     }
 
-    private fun passiveNoticesFor(
-        summary: HomeActiveInteractionsSummaryResponse
+    private fun passiveNoticesForPendingScheduling(
+        hasPendingSchedulingConnection: Boolean
     ): List<HomePassiveNoticeResponse> =
-        passiveNoticesForPendingSchedulingCount(
-            summary.pendingSchedulingConnectionCount
-        )
-
-    private fun passiveNoticesForPendingSchedulingCount(
-        pendingSchedulingConnectionCount: Int
-    ): List<HomePassiveNoticeResponse> =
-        if (pendingSchedulingConnectionCount > 0) {
+        if (hasPendingSchedulingConnection) {
             listOf(
                 HomePassiveNoticeResponse(
-                    type = HomePassiveNoticeType.SCHEDULING_PREPARING,
-                    count = pendingSchedulingConnectionCount
+                    type = HomePassiveNoticeType.SCHEDULING_PREPARING
                 )
             )
         } else {

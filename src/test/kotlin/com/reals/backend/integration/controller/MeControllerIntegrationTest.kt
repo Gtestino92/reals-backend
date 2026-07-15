@@ -207,7 +207,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.matchmaking.canSearch", equalTo(false)))
             .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
             .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.hasPendingSchedulingConnection", equalTo(false)))
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
@@ -306,6 +306,91 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home does not expose partner first chat decision timing through initial count`() {
+        val setup = createMatchWithFirstChat("home-first-chat-privacy")
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+
+        chatService.recordChatDecision(
+            setup.matchId,
+            setup.userAId,
+            ChatContinueDecision.APPROVED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
+
+        chatService.recordChatDecision(
+            setup.matchId,
+            setup.userBId,
+            ChatContinueDecision.REJECTED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home initial count follows visual review action after mutual first chat approval`() {
+        val setup = createMatchWithFirstChat("home-first-chat-positive")
+
+        chatService.recordChatDecision(
+            setup.matchId,
+            setup.userAId,
+            ChatContinueDecision.APPROVED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+
+        chatService.recordChatDecision(
+            setup.matchId,
+            setup.userBId,
+            ChatContinueDecision.APPROVED
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
     }
 
     @Test
@@ -413,13 +498,23 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
             .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(1)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.hasPendingSchedulingConnection", equalTo(true)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount").doesNotExist())
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
             .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
             .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
-            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].count").doesNotExist())
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count").doesNotExist())
 
         kotlin.test.assertEquals(
             1,
@@ -475,12 +570,22 @@ class MeControllerIntegrationTest : ControllerIT() {
                 )
             )
             .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
-            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(2)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.hasPendingSchedulingConnection", equalTo(true)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount").doesNotExist())
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
             .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
             .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
-            .andExpect(jsonPath("$.passiveNotices[0].count", equalTo(2)))
+            .andExpect(jsonPath("$.passiveNotices[0].count").doesNotExist())
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(1)))
+            .andExpect(jsonPath("$.passiveNotices[0].type", equalTo("SCHEDULING_PREPARING")))
+            .andExpect(jsonPath("$.passiveNotices[0].count").doesNotExist())
     }
 
     @Test
@@ -494,7 +599,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
             .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(1)))
-            .andExpect(jsonPath("$.activeInteractionsSummary.pendingSchedulingConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.hasPendingSchedulingConnection", equalTo(false)))
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(1)))
             .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
@@ -620,6 +725,8 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
     }
 
