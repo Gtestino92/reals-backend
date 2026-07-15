@@ -91,9 +91,17 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_ACTIVATION_DELAY_MINUTES` | no | Production/dev override for the delay between mutual visual approval and scheduling becoming actionable. Defaults to `5` in current profiles. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
-| `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Dev/prod flag for historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod. Local repeatable profiles set it to `false`. This never disables active-pair uniqueness or user-block exclusion. |
+| `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES` | no | Local Firebase override for repeated same-pair testing. Defaults to `true` in `local-firebase` Docker runs and `false` globally. Keep `false` for production-like active-pair restrictions. |
+| `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
 | `MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat absolute timeout or inactivity abandonment. Defaults to `7`; must be non-negative. |
+| `MATCHMAKING_RANKING_MODE` | no | Matchmaking partner ranking mode. Defaults to `LEGACY_EARLY_ACCEPT` globally/dev/prod and `PROBABILISTIC_WEIGHTED` in `local-firebase`. |
+| `MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE` | no | Probabilistic compatibility temperature. Defaults to `0.20`; must be finite and greater than `0`. |
+| `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Defaults to `10.0`; must be finite and greater than `0`. |
+| `MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS` | no | Hours for each `+1` waiting relaxation multiplier before the cap. Defaults to `72.0`; must be finite and greater than `0`. |
+| `MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER` | no | Maximum waiting relaxation multiplier. Defaults to `3.0`; must be finite and at least `1`. |
+| `ENGAGEMENT_MAX_ACTIVE_MATCHES` | no | Local Firebase override for per-user active match capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
+| `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS` | no | Local Firebase override for per-user active connection capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
 | `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
 | `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
 | `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
@@ -102,7 +110,7 @@ Non-sensitive runtime configuration:
 | `FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER` | no | Reliability-only first-chat minimum participation message threshold. Defaults to `2`. |
 | `FIRST_CHAT_MIN_PARTICIPATION_MINUTES` | no | Reliability-only first-chat minimum participation elapsed-time threshold. Defaults to `5`. |
 | `SECOND_CHAT_NO_SHOW_GRACE_MINUTES` | no | Grace window for second-chat attendance/no-show reliability events. Defaults to `10`. |
-| `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring when enabled. Defaults to `0.05`. |
+| `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring in `LEGACY_EARLY_ACCEPT` mode when reliability is enabled. Defaults to `0.05`. |
 | `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `60000`. |
 | `SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN` | no | Dev/prod upper bound for pairs processed per matchmaking run. Defaults to `10`. |
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
@@ -120,13 +128,20 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
 
-Matchmaking pair eligibility has three separate controls:
+Matchmaking pair eligibility has four separate controls:
 
-- Active-pair uniqueness is always enforced in every environment. A pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection.
-- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and does not affect active-pair uniqueness.
+- Active-pair duplicate exclusion is controlled by `matchmaking.allow-active-pair-duplicates`. The global default is `false`, so a pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection. `local-firebase` defaults it to `true` for repeated manual testing.
+- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and is independent from active-pair duplicate handling.
+- Per-user engagement capacity remains controlled by `engagement.max-active-matches` and `engagement.max-active-connections`. Allowing active duplicate pairs does not bypass these limits.
 - User blocks are permanent pair exclusions in either direction until an explicit unblock feature exists. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create `UserBlock` rows.
 
 No cleanup job or derived pairing-exclusion table exists. Cooldown eligibility is calculated from persisted match, chat, visual-review and connection history. Exact cooldown boundary is eligible: a terminal timestamp equal to `now - cooldownDays` is no longer excluded.
+
+Useful local modes:
+
+- Fast repeated local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=true`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=false`, `ENGAGEMENT_MAX_ACTIVE_MATCHES=100`, `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS=100`. The same users may be matched repeatedly; active pair interactions and recent terminal history do not block, while user blocks and hard profile compatibility still apply.
+- Production-like local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=false`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=true`, `ENGAGEMENT_MAX_ACTIVE_MATCHES=5`, `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS=2`. Active pair interactions, historical cooldowns and normal capacity limits apply.
+- Intermediate local testing: `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES=false`, `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING=false`. Active pair restrictions apply while completed historical pairs can repeat.
 
 Legal document configuration:
 
@@ -406,9 +421,9 @@ and should stay empty until that provider is implemented.
 
 ## Matchmaking Tuning
 
-`matchmaking.candidate-pair-limit` controls how many SQL-filtered candidate pairs are scored per matchmaking selection. Local and test profiles keep this low for deterministic, cheap checks. Dev/prod use higher starting values and should be adjusted using queue size, job duration and match creation metrics.
+`matchmaking.candidate-pair-limit` controls the bounded partner-candidate window scored after one eligible anchor queue row has been claimed. Hard SQL filters, including exact mutual distance, run before this limit. Local and test profiles keep the window low for deterministic, cheap checks. Dev/prod use higher starting values and should be adjusted using queue size, job duration, partner-claim contention and match creation metrics.
 
-`matchmaking.min-compatibility-score` discards scored pairs below the configured threshold. `matchmaking.early-accept-compatibility-score` stops scoring as soon as a strong enough pair is found. Scores are expected to be normalized from `0.0` to `1.0`.
+`matchmaking.min-compatibility-score` has mode-specific semantics. In `LEGACY_EARLY_ACCEPT`, it applies to the combined legacy score: raw compatibility plus the bounded legacy reliability modifier. This preserves the pre-refactor behavior. In `PROBABILISTIC_WEIGHTED`, it applies only to raw compatibility before reliability similarity and Gumbel randomness are applied. `matchmaking.early-accept-compatibility-score` is used only by `LEGACY_EARLY_ACCEPT`; probabilistic mode ignores it and ranks every candidate that passes the raw compatibility minimum in a weighted permutation without replacement. See `docs/matchmaking-ranking.md` for formulas and calibration notes.
 
 ## How Injection Works
 

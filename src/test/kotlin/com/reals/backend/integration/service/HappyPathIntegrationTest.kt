@@ -38,7 +38,7 @@ class HappyPathIntegrationTest : BaseIT() {
         enqueueForMatchmaking(userA)
         enqueueForMatchmaking(userB)
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
             ?: error("Expected a candidate pair")
         val match = matchService.createMatch(pair.first, pair.second)
         val firstChat = chatService.startFirstChat(match.id)

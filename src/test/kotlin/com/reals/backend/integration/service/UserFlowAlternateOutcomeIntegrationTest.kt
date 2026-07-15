@@ -74,7 +74,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         enqueueForMatchmaking(userA)
         enqueueForMatchmaking(userB)
 
-        assertTrue(matchmakingService.findNextCandidatePair() == null)
+        assertTrue(matchmakingService.claimNextCandidatePair() == null)
         assertNoMatchLocks(userA, userB)
         assertFalse(matchExistsForUsers(userA, userB))
     }
@@ -105,7 +105,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         val candidatePairs = findBasicCompatiblePairs()
 
         assertTrue(candidatePairs.isEmpty())
-        assertNull(matchmakingService.findNextCandidatePair())
+        assertNull(matchmakingService.claimNextCandidatePair())
         assertFalse(matchExistsForUsers(userA, userB))
     }
 
@@ -163,7 +163,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
         enqueueForMatchmaking(incompatibleUser)
         enqueueForMatchmaking(userC)
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
 
         assertEquals(Pair(userA, userC), pair)
         assertFalse(matchExistsForUsers(userA, incompatibleUser))
@@ -206,7 +206,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             }
         )
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
 
         assertEquals(Pair(userA, acceptedByA), pair)
         assertFalse(matchExistsForUsers(userA, tooYoungForA))
@@ -248,7 +248,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
             longitude = -58.3820
         )
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
 
         assertEquals(Pair(userA, nearA), pair)
         assertFalse(matchExistsForUsers(userA, tooFarForA))
@@ -319,7 +319,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         queuedUsers.forEach { enqueueForMatchmaking(it) }
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
 
         assertEquals(Pair(queuedUsers[0], queuedUsers[1]), pair)
     }
