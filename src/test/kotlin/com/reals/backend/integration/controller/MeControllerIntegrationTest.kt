@@ -678,13 +678,13 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.availableAt",
-                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot))
+                    equalTo(DateTimeFormatter.ISO_INSTANT.format(scheduledSlot.toInstant()))
                 )
             )
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(scheduledSlot.plusMinutes(120)))
+                    equalTo(DateTimeFormatter.ISO_INSTANT.format(scheduledSlot.plusMinutes(120).toInstant()))
                 )
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
@@ -711,13 +711,13 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.availableAt",
-                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(availableAt))
+                    equalTo(DateTimeFormatter.ISO_INSTANT.format(availableAt.toInstant()))
                 )
             )
             .andExpect(
                 jsonPath(
                     "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(activeSecondChat.timeoutAt))
+                    equalTo(DateTimeFormatter.ISO_INSTANT.format(activeSecondChat.timeoutAt.toInstant()))
                 )
             )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
