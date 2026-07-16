@@ -161,6 +161,11 @@ Home also returns `matchmaking`, `activeInteractionsSummary`, `nextSteps` and
 `passiveNotices` so clients can render navigation without deriving actions from
 raw `MatchState`, `ConnectionState` or expiration timestamps.
 
+For `VISUAL_REVIEW` pending actions, both full Home and lightweight Home
+pending responses include `visualStartedAt` and `visualExpiresAt` from the
+persisted visual-review record. These fields are `null` for pending actions that
+are not `VISUAL_REVIEW`.
+
 `GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`,
 `myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt` and nullable
 `guidance` metadata. New first chats initialize guidance; legacy chats may have
@@ -226,8 +231,9 @@ participation event when user reliability is enabled. The message remains
 optional, and reading the partner message does not create a reliability event.
 
 Match and visual-profile responses expose `visualExpiresAt` so clients can warn
-before the visual phase expires. New visual decisions after that deadline are
-rejected by the backend.
+before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
+`visualStartedAt` and `visualExpiresAt` for the currently actionable phase. New
+visual decisions after that deadline are rejected by the backend.
 
 ## 6. Connection Creation
 
