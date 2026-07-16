@@ -10,6 +10,7 @@ import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -25,7 +26,10 @@ class VisualReviewService(
     private val userBlockService: UserBlockService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
-    private val visualPhaseDurationMinutes: Long
+    private val visualPhaseDurationMinutes: Long,
+
+    @param:Value("\${notifications.visual-review-reminder.remaining-percentage:40}")
+    private val visualReviewReminderRemainingPercentage: Long
 ) {
 
     private companion object {
@@ -52,11 +56,15 @@ class VisualReviewService(
             return existing
         }
 
+        val now = OffsetDateTime.now()
+        val expiresAt = now.plusMinutes(visualPhaseDurationMinutes)
         val review = visualReviewRepository.save(
             VisualReview(
                 matchId = matchId,
-                expiresAt = OffsetDateTime.now()
-                    .plusMinutes(visualPhaseDurationMinutes)
+                expiresAt = expiresAt,
+                reminderEligibleAt = visualReviewReminderEligibleAt(now),
+                createdAt = now,
+                updatedAt = now
             )
         )
         homeStateInvalidationService.bumpBoth(
@@ -65,6 +73,18 @@ class VisualReviewService(
             reason = "visual_review_available"
         )
         return review
+    }
+
+    private fun visualReviewReminderEligibleAt(now: OffsetDateTime): OffsetDateTime {
+        require(visualReviewReminderRemainingPercentage in 1..99) {
+            "notifications.visual-review-reminder.remaining-percentage must be greater than 0 and less than 100"
+        }
+
+        val elapsedPercentage = 100L - visualReviewReminderRemainingPercentage
+        val durationSeconds = Duration.ofMinutes(visualPhaseDurationMinutes).seconds
+        val elapsedSeconds = durationSeconds * elapsedPercentage / 100L
+
+        return now.plusSeconds(elapsedSeconds)
     }
 
     fun expireVisualReview(matchId: UUID): Boolean {

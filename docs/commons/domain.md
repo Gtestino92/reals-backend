@@ -91,7 +91,7 @@ User:
 Push notifications:
 
 - `PushPlatform`: `ANDROID`
-- `PushNotificationType`: `VISUAL_REVIEW_AVAILABLE`, `SCHEDULING_AVAILABLE`, `SECOND_CHAT_REMINDER`
+- `PushNotificationType`: `VISUAL_REVIEW_AVAILABLE` (historical only), `VISUAL_REVIEW_REMINDER`, `SCHEDULING_AVAILABLE`, `SECOND_CHAT_REMINDER`
 - `PushDeliveryStatus`: `SENT`, `SKIPPED_NO_ACTIVE_TOKEN`, `FAILED`
 
 ## Relationships
@@ -114,7 +114,7 @@ Push notifications:
 - `ScheduleProposal` belongs to a connection and user.
 - `ActiveEngagementLock` logically belongs to a user and either a match or connection.
 - `PushDeviceToken` belongs to a user and stores an enabled FCM device token.
-- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_AVAILABLE`, the aggregate id is the match id. For `SCHEDULING_AVAILABLE`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each.
+- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `VISUAL_REVIEW_REMINDER`, the aggregate id is the match id; historical `VISUAL_REVIEW_AVAILABLE` rows also use match id and remain readable. For `SCHEDULING_AVAILABLE`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each.
 - `UserLegalDocumentAction` is an append-oriented factual record that a user performed a configured action for a legal document type/version/content SHA-256 at a backend-generated timestamp. It stores `userId`, `documentType`, `documentVersion`, nullable `documentContentSha256`, `action` and `actedAt`; it does not store document text or document URLs.
 
 Matchmaking pair eligibility distinguishes active interactions, temporary history cooldowns and permanent blocks:

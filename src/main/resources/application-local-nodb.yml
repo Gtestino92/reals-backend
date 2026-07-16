@@ -40,6 +40,8 @@ scheduler:
     fixed-delay: 120000
   second-chat-reminder-job:
     fixed-delay: 60000
+  visual-review-reminder-job:
+    fixed-delay: 1800000
   match-expiration-job:
     fixed-delay: 300000
     max-chat-duration: PT20M
@@ -62,6 +64,8 @@ notifications:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: 10
+  visual-review-reminder:
+    remaining-percentage: 40
 
 matchmaking:
   candidate-pair-limit: 5

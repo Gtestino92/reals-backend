@@ -12,6 +12,7 @@ import java.util.UUID
 
 enum class PushNotificationType {
     VISUAL_REVIEW_AVAILABLE,
+    VISUAL_REVIEW_REMINDER,
     SCHEDULING_AVAILABLE,
     SECOND_CHAT_REMINDER
 }

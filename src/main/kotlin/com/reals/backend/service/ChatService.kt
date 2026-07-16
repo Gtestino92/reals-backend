@@ -27,7 +27,6 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
-import com.reals.backend.service.notification.VisualReviewNotificationService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
@@ -46,7 +45,6 @@ class ChatService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val matchService: MatchService,
     private val visualReviewService: VisualReviewService,
-    private val visualReviewNotificationService: VisualReviewNotificationService,
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
@@ -309,7 +307,6 @@ class ChatService(
 
             matchService.transitionToVisualPhase(matchId)
             visualReviewService.initializeForMatch(matchId)
-            visualReviewNotificationService.notifyVisualReviewAvailable(matchId)
         }
 
         homeStateInvalidationService.bumpBoth(
