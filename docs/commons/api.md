@@ -107,10 +107,18 @@ Home returns `matchmaking` for search UX:
 
 Home also returns `activeInteractionsSummary`:
 
-- `activeInitialCount`: active initial interactions currently visible/actionable in Home.
-- `activeConnectionCount`: visible/revealed active connections, excluding `SCHEDULING_PENDING`.
-- `pendingSchedulingConnectionCount`: unrevealed pending scheduling coordinations created after mutual visual approval.
-- `actionableConnectionCount`: connections returned in `nextSteps[]`.
+- `activeInitialCount`: visible pending initial-stage actions for the current
+  user. It does not count an interaction while the current user is only waiting
+  for the other person's hidden decision.
+- `activeConnectionCount`: visible connection next steps returned in
+  `nextSteps[]`. It is currently the same projection as
+  `actionableConnectionCount` and is preserved for client compatibility.
+- `hasPendingSchedulingConnection`: boolean that indicates at least one
+  non-dismissed, non-blocked connection is internally waiting for scheduling
+  preparation. It intentionally avoids exposing an exact internal count.
+- `actionableConnectionCount`: visible connection next steps returned in
+  `nextSteps[]`. It is currently the same projection as
+  `activeConnectionCount`.
 
 The lightweight pending endpoint intentionally omits partner summaries. Clients
 that need full profile/matchmaking context should call `GET /api/me/home`,
@@ -125,11 +133,13 @@ Bruno debug requests for this `local-firebase` flow live under
 `nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED`,
 `SECOND_CHAT_AVAILABLE` and `SECOND_CHAT_READ_ONLY` items. `SCHEDULING_PENDING`
 is not actionable and is surfaced through
-`activeInteractionsSummary.pendingSchedulingConnectionCount` plus a
+`activeInteractionsSummary.hasPendingSchedulingConnection` plus one generic
 `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the activation
-job moves the connection to `SCHEDULING_PHASE`. It still occupies internal
-capacity through connection locks, but it is surfaced only as this passive
-preparation notice until scheduling is activated.
+job moves the connection to `SCHEDULING_PHASE`. The passive notice has no
+`count` field and does not reveal whether one or multiple connections are being
+prepared. Pending scheduling still occupies internal capacity through
+connection locks, but Home surfaces only this generic preparation state until
+scheduling is activated.
 
 `SCHEDULING_PENDING` is advanced by `SchedulingActivationJob`, not by user
 actions and not by `SchedulingNegotiationTimeoutJob`. The scheduling timeout is
@@ -367,7 +377,7 @@ negotiation. At that point the backend sends one privacy-safe
 `SCHEDULING_AVAILABLE` push per participant and connection. Notification taps
 should refresh/open Home for MVP; the payload contains only `type`,
 `connectionId` and `matchId`. In local profiles, if Home shows only
-`SCHEDULING_PREPARING`/`pendingSchedulingConnectionCount`, run the local
+`SCHEDULING_PREPARING`/`hasPendingSchedulingConnection`, run the local
 scheduling activation job before testing scheduling proposal or timeout flows.
 
 ## Local Dev Tooling Endpoints

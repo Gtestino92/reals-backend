@@ -1857,20 +1857,26 @@ components:
         serverTime: { type: string, format: date-time }
     HomeActiveInteractionsSummaryResponse:
       type: object
-      required: [activeInitialCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
+      required: [activeInitialCount, activeConnectionCount, hasPendingSchedulingConnection, actionableConnectionCount]
       properties:
-        activeInitialCount: { type: integer, format: int32, minimum: 0 }
+        activeInitialCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Visible pending initial-stage actions for the current user. It does not count an interaction while the current user is only waiting for the other person's hidden decision.
         activeConnectionCount:
           type: integer
           format: int32
           minimum: 0
-          description: Visible/revealed active connections, excluding SCHEDULING_PENDING.
-        pendingSchedulingConnectionCount:
+          description: Visible connection next steps returned in nextSteps[]. Currently the same projection as actionableConnectionCount for compatibility.
+        hasPendingSchedulingConnection:
+          type: boolean
+          description: True when at least one non-dismissed, non-blocked connection is internally waiting for scheduling preparation. This is intentionally boolean to avoid exposing exact internal counts.
+        actionableConnectionCount:
           type: integer
           format: int32
           minimum: 0
-          description: Unrevealed pending scheduling coordinations created after mutual visual approval. These still occupy internal capacity/locks and are surfaced only as SCHEDULING_PREPARING passive notices until scheduling is activated.
-        actionableConnectionCount: { type: integer, format: int32, minimum: 0 }
+          description: Visible connection next steps returned in nextSteps[]. Currently the same projection as activeConnectionCount for compatibility.
     HomeMatchmakingResponse:
       type: object
       required: [inQueue, canSearch]
@@ -1947,10 +1953,9 @@ components:
           nullable: true
     HomePassiveNoticeResponse:
       type: object
-      required: [type, count]
+      required: [type]
       properties:
         type: { $ref: '#/components/schemas/HomePassiveNoticeType' }
-        count: { type: integer, format: int32, minimum: 1 }
     HomeChatResponse:
       type: object
       description: Second-chat navigation metadata. For SECOND_CHAT_SCHEDULED, chatId/chatType/chatStatus may be null because the chat row is created when the entry window opens. availableAt is the agreed second-chat start time; clients may enable entry 10 minutes before it. For SECOND_CHAT_READ_ONLY, chatStatus is EXPIRED and readOnlyUntil defines the end of read-only visibility.

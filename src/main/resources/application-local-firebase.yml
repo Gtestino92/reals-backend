@@ -90,7 +90,7 @@ matchmaking:
   ranking:
     mode: ${MATCHMAKING_RANKING_MODE:PROBABILISTIC_WEIGHTED}
     compatibility-temperature: ${MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE:0.20}
-    reliability-similarity-scale: ${MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE:10.0}
+    reliability-similarity-scale: ${MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE:2.0}
     waiting-relaxation-period-hours: ${MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS:72.0}
     maximum-similarity-scale-multiplier: ${MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER:3.0}
 
