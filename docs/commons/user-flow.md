@@ -235,6 +235,13 @@ before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
 `visualStartedAt` and `visualExpiresAt` for the currently actionable phase. New
 visual decisions after that deadline are rejected by the backend.
 
+Visual-review reminder eligibility is persisted as `VisualReview.reminderEligibleAt`
+when the visual review is created. The default configuration makes the reminder
+eligible when 40% of the visual-review duration remains. The backend no longer
+sends an immediate visual-review availability push; the reminder job sends only
+to users whose own visual decision remains pending and deduplicates delivery per
+user and match.
+
 ## 6. Connection Creation
 
 `ConnectionService.createFromMatch(match)` creates a connection after visual approval.

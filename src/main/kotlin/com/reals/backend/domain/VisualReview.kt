@@ -49,6 +49,9 @@ data class VisualReview(
     @Column(name = "expires_at")
     var expiresAt: OffsetDateTime? = null,
 
+    @Column(name = "reminder_eligible_at")
+    var reminderEligibleAt: OffsetDateTime? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
@@ -63,17 +66,6 @@ data class VisualReview(
         when (userId) {
             userAId -> userAVisualDecision
             userBId -> userBVisualDecision
-            else -> throw IllegalArgumentException("User $userId does not belong to visual review $id")
-        }
-
-    fun partnerDecisionFor(
-        userId: UUID,
-        userAId: UUID,
-        userBId: UUID
-    ): VisualDecision? =
-        when (userId) {
-            userAId -> userBVisualDecision
-            userBId -> userAVisualDecision
             else -> throw IllegalArgumentException("User $userId does not belong to visual review $id")
         }
 

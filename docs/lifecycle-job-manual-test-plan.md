@@ -36,6 +36,7 @@ Useful local helpers:
 - `POST /api/local-dev/jobs/chat-timeout/run`
 - `POST /api/local-dev/jobs/inactivity-check/run`
 - `POST /api/local-dev/jobs/visual-phase-expiration/run`
+- `POST /api/local-dev/jobs/visual-review-reminder/run`
 - `POST /api/local-dev/jobs/scheduling-activation/run`
 - `POST /api/local-dev/jobs/scheduling-timeout/run`
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
@@ -169,6 +170,33 @@ Expected frontend behavior:
 - Show visual-phase warning/countdown from `visualExpiresAt`.
 - Disable visual decision after the deadline.
 - Refresh/navigate away if the backend returns `VISUAL_REVIEW_EXPIRED`.
+
+## Visual Review Reminder
+
+Purpose: validate the backend-generated visual-review reminder push and
+deduplication.
+
+The immediate visual-review availability push has been removed. Reminder
+eligibility is persisted as `VisualReview.reminderEligibleAt` when the visual
+review is created. With the default configuration, the reminder becomes eligible
+when 40% of the visual-review duration remains. The job runs every 30 minutes,
+so delivery is approximate. Legacy rows with `reminderEligibleAt = null` are
+ignored unless manually backfilled outside Flyway.
+
+1. Move a fresh match to visual review.
+2. Confirm both Android clients have registered FCM tokens.
+3. Wait until `reminderEligibleAt` is due, or in local-only manual testing update
+   that column for the match to a past timestamp.
+4. Run `POST /api/local-dev/jobs/visual-review-reminder/run`.
+5. Confirm only users whose own visual decision is still pending receive a push.
+6. Run the reminder job again.
+7. Confirm duplicate pushes are not sent for the same user and match.
+
+Expected frontend behavior:
+
+- Notification tap should navigate using normal Home/state refresh.
+- Do not infer partner decision state from reminder presence or absence.
+- Do not rely on an in-app notification inbox or unread counter.
 
 ## Scheduling Activation
 

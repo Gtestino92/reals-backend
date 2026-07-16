@@ -4,10 +4,14 @@ import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.User
+import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.notification.VisualReviewReminderNotificationService
+import com.reals.backend.service.notification.VisualReviewReminderProcessingResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -103,6 +107,41 @@ class LifecycleJobSummaryTest {
         Mockito.verify(schedulingService).expireNegotiation(changed.id)
         Mockito.verify(schedulingService).expireNegotiation(stale.id)
         Mockito.verify(schedulingService).expireNegotiation(failed.id)
+    }
+
+    @Test
+    fun `visual review reminder job counts processed notification outcomes not candidate reviews`() {
+        val visualReviewRepository = Mockito.mock(VisualReviewRepository::class.java)
+        val visualReviewReminderNotificationService =
+            Mockito.mock(VisualReviewReminderNotificationService::class.java)
+        val candidate = VisualReview(
+            matchId = UUID.randomUUID(),
+            expiresAt = OffsetDateTime.now().plusHours(1),
+            reminderEligibleAt = OffsetDateTime.now().minusMinutes(1)
+        )
+
+        Mockito.`when`(visualReviewRepository.findVisualReviewReminderCandidates(anyOffsetDateTime()))
+            .thenReturn(listOf(candidate))
+        Mockito.`when`(
+            visualReviewReminderNotificationService.processReminder(
+                eqValue(candidate.matchId),
+                anyOffsetDateTime()
+            )
+        ).thenReturn(VisualReviewReminderProcessingResult(succeeded = 2))
+
+        val summary = VisualReviewReminderNotificationJob(
+            visualReviewRepository = visualReviewRepository,
+            visualReviewReminderNotificationService = visualReviewReminderNotificationService
+        ).processVisualReviewReminders()
+
+        assertEquals(2, summary.processed)
+        assertEquals(2, summary.succeeded)
+        assertEquals(0, summary.skipped)
+        assertEquals(0, summary.failed)
+        Mockito.verify(visualReviewReminderNotificationService).processReminder(
+            eqValue(candidate.matchId),
+            anyOffsetDateTime()
+        )
     }
 
     private fun expiredPenalty(): Penalty =

@@ -84,11 +84,19 @@ that visual-review phase, and `visualExpiresAt`, the authoritative expiration of
 that phase, on the pending action. Both fields are `null` for pending actions
 that are not `VISUAL_REVIEW`.
 
-When a visual review first becomes available, the backend also attempts a
-privacy-safe external push notification with type `VISUAL_REVIEW_AVAILABLE`.
-The push payload includes only `type` and `matchId`; tap behavior remains a
-client concern and Home remains the source of actionable state. There is no
-internal notification inbox, notification bell or unread count.
+When a visual review first becomes available, the backend no longer sends an
+immediate availability push. At `VisualReview` creation time it persists
+`reminderEligibleAt`, calculated from the configured visual-review duration so
+that the reminder becomes eligible when 40% of the phase remains. The
+`VisualReviewReminderNotificationJob` runs approximately every 30 minutes and
+attempts a privacy-safe external push with type `VISUAL_REVIEW_REMINDER` only
+for each participant whose own visual decision is still pending. The push
+payload includes only `type` and `matchId`; tap behavior remains a client
+concern and Home remains the source of actionable state. Delivery is
+deduplicated per user, notification type and match id. Legacy visual reviews
+whose `reminderEligibleAt` is `null` are ignored unless manually backfilled
+outside Flyway. There is no internal notification inbox, notification bell or
+unread count.
 
 When a second chat has a confirmed scheduled time and the connection is still
 `SECOND_CHAT_SCHEDULED`, `SecondChatReminderNotificationJob`
@@ -400,6 +408,7 @@ Supported local job triggers:
 
 - `POST /api/local-dev/jobs/scheduling-activation/run`
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
+- `POST /api/local-dev/jobs/visual-review-reminder/run`
 - `POST /api/local-dev/jobs/second-chat-lifecycle/run`
 - `POST /api/local-dev/jobs/chat-timeout/run`
 - `POST /api/local-dev/jobs/visual-phase-expiration/run`
@@ -423,6 +432,10 @@ Second-chat read-only lifecycle can be tested locally with:
 Second-chat reminder push notifications can be tested locally with:
 
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
+
+Visual-review reminder push notifications can be tested locally with:
+
+- `POST /api/local-dev/jobs/visual-review-reminder/run`
 
 Deferred scheduling activation can be tested locally with:
 
