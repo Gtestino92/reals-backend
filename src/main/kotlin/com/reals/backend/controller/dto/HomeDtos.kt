@@ -5,6 +5,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileStatus
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -58,13 +59,17 @@ data class HomePendingActionResponse(
     val type: HomePendingActionType,
     val matchId: UUID,
     val chatId: UUID?,
+    val visualStartedAt: Instant?,
+    val visualExpiresAt: Instant?,
     val partner: PartnerSummaryResponse?
 )
 
 data class HomePendingActionLiteResponse(
     val type: HomePendingActionType,
     val matchId: UUID,
-    val chatId: UUID?
+    val chatId: UUID?,
+    val visualStartedAt: Instant?,
+    val visualExpiresAt: Instant?
 )
 
 enum class HomeNextStepType {

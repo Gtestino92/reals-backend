@@ -8,6 +8,7 @@ import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -303,6 +304,8 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
             .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].visualStartedAt").value(nullValue()))
+            .andExpect(jsonPath("$.pendingActions[0].visualExpiresAt").value(nullValue()))
             .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
@@ -411,6 +414,8 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].type", equalTo("FIRST_CHAT")))
             .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].chatId", equalTo(setup.firstChatId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].visualStartedAt").value(nullValue()))
+            .andExpect(jsonPath("$.pendingActions[0].visualExpiresAt").value(nullValue()))
             .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
             .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
@@ -419,6 +424,14 @@ class MeControllerIntegrationTest : ControllerIT() {
     @Test
     fun `home returns pending VISUAL_REVIEW action`() {
         val setup = createMatchInVisualPhase()
+        val visualReview = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Visual review was not created")
+        val expectedVisualStartedAt =
+            DateTimeFormatter.ISO_INSTANT.format(visualReview.createdAt.toInstant())
+        val expectedVisualExpiresAt =
+            DateTimeFormatter.ISO_INSTANT.format(
+                (visualReview.expiresAt ?: error("Visual review expiresAt was not set")).toInstant()
+            )
 
         mockMvc.perform(
             get("/api/me/home")
@@ -431,8 +444,40 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
             .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
             .andExpect(jsonPath("$.pendingActions[0].chatId").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions[0].visualStartedAt", equalTo(expectedVisualStartedAt)))
+            .andExpect(jsonPath("$.pendingActions[0].visualExpiresAt", equalTo(expectedVisualExpiresAt)))
             .andExpect(jsonPath("$.pendingActions[0].partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home pending returns VISUAL_REVIEW action with authoritative visual timestamps`() {
+        val setup = createMatchInVisualPhase()
+        val status = homeStatusService.getOrCreateStatus(setup.userAId)
+        val visualReview = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Visual review was not created")
+        val expectedVisualStartedAt =
+            DateTimeFormatter.ISO_INSTANT.format(visualReview.createdAt.toInstant())
+        val expectedVisualExpiresAt =
+            DateTimeFormatter.ISO_INSTANT.format(
+                (visualReview.expiresAt ?: error("Visual review expiresAt was not set")).toInstant()
+            )
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version", equalTo(status.version.toInt())))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+            .andExpect(jsonPath("$.pendingActions[0].type", equalTo("VISUAL_REVIEW")))
+            .andExpect(jsonPath("$.pendingActions[0].matchId", equalTo(setup.matchId.toString())))
+            .andExpect(jsonPath("$.pendingActions[0].chatId").doesNotExist())
+            .andExpect(jsonPath("$.pendingActions[0].visualStartedAt", equalTo(expectedVisualStartedAt)))
+            .andExpect(jsonPath("$.pendingActions[0].visualExpiresAt", equalTo(expectedVisualExpiresAt)))
+            .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+            .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
     }
 
     @Test
