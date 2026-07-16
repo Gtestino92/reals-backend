@@ -34,7 +34,7 @@ class VisualReviewReminderNotificationJob(
         processVisualReviewReminders()
     }
 
-    private fun processVisualReviewReminders() {
+    internal fun processVisualReviewReminders(): JobRunSummary {
         require(fixedDelayMs > 0) {
             "scheduler.visual-review-reminder-job.fixed-delay must be positive"
         }
@@ -66,15 +66,19 @@ class VisualReviewReminderNotificationJob(
             }
         }
 
+        val summary = JobRunSummary(
+            processed = succeeded + skipped + failed,
+            succeeded = succeeded,
+            skipped = skipped,
+            failed = failed
+        )
+
         log.logJobSummary(
             jobName = "VisualReviewReminderNotificationJob",
-            summary = JobRunSummary(
-                processed = candidates.size,
-                succeeded = succeeded,
-                skipped = skipped,
-                failed = failed
-            ),
+            summary = summary,
             startedAt = startedAt
         )
+
+        return summary
     }
 }
