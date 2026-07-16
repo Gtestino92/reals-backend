@@ -453,6 +453,8 @@ class MeHomeService(
                 type = HomePendingActionType.FIRST_CHAT,
                 matchId = match.id,
                 chatId = actionableFirstChat.id,
+                visualStartedAt = null,
+                visualExpiresAt = null,
                 partner = partnerSummary
             )
         }
@@ -469,6 +471,8 @@ class MeHomeService(
                 type = HomePendingActionType.VISUAL_REVIEW,
                 matchId = match.id,
                 chatId = null,
+                visualStartedAt = visualReview?.createdAt?.toInstant(),
+                visualExpiresAt = visualReview?.expiresAt?.toInstant(),
                 partner = partnerSummary
             )
         }
@@ -494,7 +498,9 @@ class MeHomeService(
             return HomePendingActionLiteResponse(
                 type = HomePendingActionType.FIRST_CHAT,
                 matchId = match.id,
-                chatId = actionableFirstChat.id
+                chatId = actionableFirstChat.id,
+                visualStartedAt = null,
+                visualExpiresAt = null
             )
         }
 
@@ -509,7 +515,9 @@ class MeHomeService(
             return HomePendingActionLiteResponse(
                 type = HomePendingActionType.VISUAL_REVIEW,
                 matchId = match.id,
-                chatId = null
+                chatId = null,
+                visualStartedAt = visualReview?.createdAt?.toInstant(),
+                visualExpiresAt = visualReview?.expiresAt?.toInstant()
             )
         }
 
