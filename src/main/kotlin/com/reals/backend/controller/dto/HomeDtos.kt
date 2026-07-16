@@ -34,7 +34,7 @@ data class HomePendingStateResponse(
 data class HomeActiveInteractionsSummaryResponse(
     val activeInitialCount: Int,
     val activeConnectionCount: Int,
-    val pendingSchedulingConnectionCount: Int,
+    val hasPendingSchedulingConnection: Boolean,
     val actionableConnectionCount: Int
 )
 
@@ -102,8 +102,7 @@ enum class HomePassiveNoticeType {
 }
 
 data class HomePassiveNoticeResponse(
-    val type: HomePassiveNoticeType,
-    val count: Int
+    val type: HomePassiveNoticeType
 )
 
 data class HomeChatResponse(

@@ -72,9 +72,11 @@ Connection and scheduling:
 internal active connection for capacity/locks and has `schedulingAvailableAt`,
 but it is not visible as a revealed Home connection or actionable until a
 scheduling activation job moves it to `SCHEDULING_PHASE` and initializes
-negotiation. Home surfaces this state through
-`activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
-notice `SCHEDULING_PREPARING`, not through `nextSteps`.
+negotiation. Home surfaces this state through the boolean
+`activeInteractionsSummary.hasPendingSchedulingConnection` and one generic
+count-free passive notice `SCHEDULING_PREPARING`, not through `nextSteps`. The
+boolean is intentionally not an exact count of internal pending scheduling
+connections.
 
 Scheduling proposals represent second-chat slots inside the app. They do not represent in-person meeting times. A proposal row stores one possible slot, its `roundNumber` and its `preferenceOrder` within the user's submitted list. Proposal submission requires future slots, but a persisted `PENDING` proposal may later become temporally unavailable when its proposed time passes. Expired pending proposals remain visible and rejectable; they are not automatically changed to `REJECTED` and do not automatically advance the round. Explicit acceptance and automatic overlap confirmation consider only proposal instants that are still strictly in the future. Each participant can submit at most one ordered list per round. Rejection is represented by proposal `status = REJECTED`: rejecting partner proposals changes only the partner's pending rows, does not delete historical rows and does not reject the caller's own list. Rejected proposals never participate in overlap auto-confirmation. A confirmed negotiation schedules the second chat for `confirmedDateTime`; `GET /api/connections/{connectionId}/chat` materializes and activates the `SECOND_CHAT` idempotently when `now >= confirmedDateTime` and before the configured writable window expires. Home exposes that agreed time as `secondChat.availableAt`. After `timeoutAt`, second chats become `EXPIRED` and read-only until `readOnlyUntil`; cleanup then marks them `CLOSED` and closes the connection.
 

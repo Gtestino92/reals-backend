@@ -241,8 +241,9 @@ Scheduling is activated later by `SchedulingActivationJob` when
 `schedulingAvailableAt <= now`. The job moves the connection to
 `SCHEDULING_PHASE` and initializes negotiation idempotently. Until then, Home
 does not include the connection in `nextSteps`; clients can see it only through
-`activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
-notice `SCHEDULING_PREPARING`.
+`activeInteractionsSummary.hasPendingSchedulingConnection` and one generic
+count-free passive notice `SCHEDULING_PREPARING`. This intentionally does not
+expose the exact number of internal pending scheduling connections.
 
 `SchedulingNegotiationTimeoutJob` applies only after activation, while the
 connection is in `SCHEDULING_PHASE`. The `schedulingExpiresAt` value created
