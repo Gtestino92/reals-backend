@@ -78,7 +78,11 @@ For visual review navigation, Home exposes a `pendingActions[]` item with
 `type = VISUAL_REVIEW` only while the match remains in `VISUAL_PHASE`, the
 visual review exists, the visual phase has not expired and the current user has
 not decided. Expired or already-decided visual reviews are not returned as
-actions.
+actions. For a currently actionable visual review, both `GET /api/me/home` and
+`GET /api/me/home/pending` include `visualStartedAt`, the authoritative start of
+that visual-review phase, and `visualExpiresAt`, the authoritative expiration of
+that phase, on the pending action. Both fields are `null` for pending actions
+that are not `VISUAL_REVIEW`.
 
 When a visual review first becomes available, the backend also attempts a
 privacy-safe external push notification with type `VISUAL_REVIEW_AVAILABLE`.

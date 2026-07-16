@@ -64,7 +64,9 @@ Purpose: validate the complete user flow before forcing any timeout.
 8. Confirm `inactivityExpiresAt` moves forward after a new message.
 9. Approve first chat from both clients.
 10. Confirm both clients move to visual review.
-11. Confirm visual review responses expose `visualExpiresAt`.
+11. Confirm visual review responses expose `visualExpiresAt`, and Home
+    `VISUAL_REVIEW` pending actions expose `visualStartedAt` and
+    `visualExpiresAt`.
 12. Submit required visual-review personal messages/reads if the UI requires
     them.
 13. Approve visual review from both clients.

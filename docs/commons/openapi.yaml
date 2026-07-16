@@ -1902,6 +1902,16 @@ components:
         type: { $ref: '#/components/schemas/HomePendingActionType' }
         matchId: { type: string, format: uuid }
         chatId: { type: string, format: uuid, nullable: true }
+        visualStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative start of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative expiration of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
         partner:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
@@ -1913,6 +1923,16 @@ components:
         type: { $ref: '#/components/schemas/HomePendingActionType' }
         matchId: { type: string, format: uuid }
         chatId: { type: string, format: uuid, nullable: true }
+        visualStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative start of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative expiration of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
     HomeNextStepResponse:
       type: object
       required: [type, connectionId, matchId]

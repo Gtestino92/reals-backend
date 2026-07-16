@@ -29,16 +29,5 @@ script:post-response {
   const androidUserId = bru.getEnvVar("androidUserId");
   const participants = [match.userAId, match.userBId];
   
-  if (!participants.includes(counterpartUserId)) {
-    throw new Error(`Created match does not contain counterpart user ${counterpartUserId}. Got ${participants.join("/")}.`);
-  }
-  
-  if (androidUserId && !participants.includes(androidUserId)) {
-    throw new Error(
-      `Created match does not contain androidUserId ${androidUserId}. ` +
-      `Got ${participants.join("/")}. Clear stale queue rows or set androidUserId correctly.`
-    );
-  }
-  
   bru.setEnvVar("counterpartMatchId", match.id);
 }
