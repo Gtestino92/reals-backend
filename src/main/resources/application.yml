@@ -63,6 +63,11 @@ scheduler:
   second-chat-reminder-job:
     fixed-delay: 60000
 
+  # Sends a privacy-safe visual-review reminder after the persisted eligibility timestamp.
+  # Runs every 30 minutes; reminder delivery is approximate.
+  visual-review-reminder-job:
+    fixed-delay: 1800000
+
   # Expires matches that have not progressed past CHAT_ACTIVE.
   # Safety net behind ChatTimeoutJob, not the primary first-chat timer.
   match-expiration-job:
@@ -249,6 +254,10 @@ notifications:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: 10
+  visual-review-reminder:
+    # Percentage of the visual-review duration remaining when the reminder becomes eligible.
+    # 40 means the reminder is persisted for 60% elapsed. Values must be > 0 and < 100.
+    remaining-percentage: 40
 
 security:
   rate-limit:
