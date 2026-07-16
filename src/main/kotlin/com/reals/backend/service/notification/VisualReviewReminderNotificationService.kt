@@ -1,9 +1,11 @@
 package com.reals.backend.service.notification
 
+import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.PushDeliveryStatus
 import com.reals.backend.domain.PushNotificationDelivery
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.repository.PushNotificationDeliveryRepository
+import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.notification.sender.PushNotification
@@ -14,10 +16,24 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.util.UUID
 
+data class VisualReviewReminderProcessingResult(
+    val succeeded: Int = 0,
+    val skipped: Int = 0,
+    val failed: Int = 0
+) {
+    operator fun plus(other: VisualReviewReminderProcessingResult): VisualReviewReminderProcessingResult =
+        VisualReviewReminderProcessingResult(
+            succeeded = succeeded + other.succeeded,
+            skipped = skipped + other.skipped,
+            failed = failed + other.failed
+        )
+}
+
 @Service
 @Transactional
-class VisualReviewNotificationService(
+class VisualReviewReminderNotificationService(
     private val matchService: MatchService,
+    private val visualReviewRepository: VisualReviewRepository,
     private val pushDeviceTokenService: PushDeviceTokenService,
     private val pushNotificationSender: PushNotificationSender,
     private val pushNotificationDeliveryRepository: PushNotificationDeliveryRepository
@@ -25,44 +41,74 @@ class VisualReviewNotificationService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun notifyVisualReviewAvailable(matchId: UUID) {
-        try {
-            val match = matchService.findByIdOrThrow(matchId)
+    fun processReminder(
+        matchId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): VisualReviewReminderProcessingResult {
+        val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
+            ?: return VisualReviewReminderProcessingResult(skipped = 1)
 
-            listOf(match.userAId, match.userBId).forEach { userId ->
+        val reminderEligibleAt = review.reminderEligibleAt
+            ?: return VisualReviewReminderProcessingResult(skipped = 1)
+        if (reminderEligibleAt.isAfter(now)) {
+            return VisualReviewReminderProcessingResult(skipped = 1)
+        }
+
+        val expiresAt = review.expiresAt
+            ?: return VisualReviewReminderProcessingResult(skipped = 1)
+        if (!now.isBefore(expiresAt)) {
+            return VisualReviewReminderProcessingResult(skipped = 1)
+        }
+
+        val match = matchService.findByIdOrThrow(matchId)
+        if (match.state != MatchState.VISUAL_PHASE) {
+            return VisualReviewReminderProcessingResult(skipped = 1)
+        }
+
+        val pendingUserIds = buildList {
+            if (review.userAVisualDecision == null) {
+                add(match.userAId)
+            }
+            if (review.userBVisualDecision == null) {
+                add(match.userBId)
+            }
+        }
+
+        if (pendingUserIds.isEmpty()) {
+            return VisualReviewReminderProcessingResult(skipped = 1)
+        }
+
+        return pendingUserIds
+            .map { userId ->
                 notifyUser(
                     userId = userId,
-                    matchId = matchId
+                    matchId = matchId,
+                    now = now
                 )
             }
-        } catch (ex: Exception) {
-            log.warn(
-                "Failed to process visual review push notifications for match {}: {}",
-                matchId,
-                ex.message,
-                ex
-            )
-        }
+            .fold(VisualReviewReminderProcessingResult()) { total, result ->
+                total + result
+            }
     }
 
     private fun notifyUser(
         userId: UUID,
-        matchId: UUID
-    ) {
+        matchId: UUID,
+        now: OffsetDateTime
+    ): VisualReviewReminderProcessingResult {
         try {
             val existingDelivery =
                 pushNotificationDeliveryRepository.findByUserIdAndNotificationTypeAndAggregateId(
                     userId = userId,
-                    notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+                    notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
                     aggregateId = matchId
                 )
 
             if (existingDelivery != null) {
-                return
+                return VisualReviewReminderProcessingResult(skipped = 1)
             }
 
             val activeTokens = pushDeviceTokenService.findActiveTokens(userId)
-            val now = OffsetDateTime.now()
 
             if (activeTokens.isEmpty()) {
                 saveDelivery(
@@ -71,13 +117,13 @@ class VisualReviewNotificationService(
                     status = PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN,
                     now = now
                 )
-                return
+                return VisualReviewReminderProcessingResult(skipped = 1)
             }
 
             val sendResult =
                 pushNotificationSender.sendToTokens(
                     tokens = activeTokens,
-                    notification = visualReviewAvailableNotification(matchId)
+                    notification = visualReviewReminderNotification(matchId)
                 )
 
             sendResult.invalidTokens.forEach { token ->
@@ -94,18 +140,20 @@ class VisualReviewNotificationService(
                     errorMessage = sendResult.errorMessage,
                     now = now
                 )
-            } else {
-                saveDelivery(
-                    userId = userId,
-                    matchId = matchId,
-                    status = PushDeliveryStatus.FAILED,
-                    errorMessage = sendResult.errorMessage ?: "Push sender returned no successful deliveries",
-                    now = now
-                )
+                return VisualReviewReminderProcessingResult(succeeded = 1)
             }
+
+            saveDelivery(
+                userId = userId,
+                matchId = matchId,
+                status = PushDeliveryStatus.FAILED,
+                errorMessage = sendResult.errorMessage ?: "Push sender returned no successful deliveries",
+                now = now
+            )
+            return VisualReviewReminderProcessingResult(failed = 1)
         } catch (ex: Exception) {
             log.warn(
-                "Failed to send visual review push notification for user {} and match {}: {}",
+                "Failed to send visual review reminder push notification for user {} and match {}: {}",
                 userId,
                 matchId,
                 ex.message,
@@ -115,17 +163,19 @@ class VisualReviewNotificationService(
             saveFailureBestEffort(
                 userId = userId,
                 matchId = matchId,
-                errorMessage = ex.message ?: ex.javaClass.simpleName
+                errorMessage = ex.message ?: ex.javaClass.simpleName,
+                now = now
             )
+            return VisualReviewReminderProcessingResult(failed = 1)
         }
     }
 
-    private fun visualReviewAvailableNotification(matchId: UUID): PushNotification =
+    private fun visualReviewReminderNotification(matchId: UUID): PushNotification =
         PushNotification(
-            title = "Tenés una revisión disponible",
-            body = "Ya podés revisar el perfil visual de una conversación reciente.",
+            title = "Tu revisión vence pronto",
+            body = "Tenés una revisión pendiente. Entrá a Reals para completarla antes de que venza.",
             data = mapOf(
-                "type" to PushNotificationType.VISUAL_REVIEW_AVAILABLE.name,
+                "type" to PushNotificationType.VISUAL_REVIEW_REMINDER.name,
                 "matchId" to matchId.toString()
             )
         )
@@ -133,13 +183,14 @@ class VisualReviewNotificationService(
     private fun saveFailureBestEffort(
         userId: UUID,
         matchId: UUID,
-        errorMessage: String
+        errorMessage: String,
+        now: OffsetDateTime
     ) {
         try {
             val existingDelivery =
                 pushNotificationDeliveryRepository.findByUserIdAndNotificationTypeAndAggregateId(
                     userId = userId,
-                    notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+                    notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
                     aggregateId = matchId
                 )
 
@@ -152,11 +203,11 @@ class VisualReviewNotificationService(
                 matchId = matchId,
                 status = PushDeliveryStatus.FAILED,
                 errorMessage = errorMessage,
-                now = OffsetDateTime.now()
+                now = now
             )
         } catch (ex: Exception) {
             log.warn(
-                "Failed to record failed visual review push delivery for user {} and match {}: {}",
+                "Failed to record failed visual review reminder delivery for user {} and match {}: {}",
                 userId,
                 matchId,
                 ex.message,
@@ -177,7 +228,7 @@ class VisualReviewNotificationService(
         pushNotificationDeliveryRepository.save(
             PushNotificationDelivery(
                 userId = userId,
-                notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+                notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
                 aggregateId = matchId,
                 sentAt = sentAt,
                 status = status,

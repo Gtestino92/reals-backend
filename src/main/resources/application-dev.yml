@@ -57,6 +57,8 @@ scheduler:
   second-chat-reminder-job:
     # 60000 keeps reminder precision within a 1-minute window.
     fixed-delay: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY:60000}
+  visual-review-reminder-job:
+    fixed-delay: ${SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY:1800000}
   match-expiration-job:
     fixed-delay: ${SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY:300000}
     max-chat-duration: ${SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION:PT20M}
@@ -162,3 +164,5 @@ notifications:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: ${NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE:10}
+  visual-review-reminder:
+    remaining-percentage: ${NOTIFICATIONS_VISUAL_REVIEW_REMINDER_REMAINING_PERCENTAGE:40}

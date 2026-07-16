@@ -52,11 +52,15 @@ scheduler:
     fixed-delay: 3600000
   second-chat-reminder-job:
     fixed-delay: 60000
+  visual-review-reminder-job:
+    fixed-delay: 1800000
 
 notifications:
   second-chat-reminder:
     # Comma-separated lead times in minutes.
     minutes-before: 10
+  visual-review-reminder:
+    remaining-percentage: 40
 
 account:
   deletion:

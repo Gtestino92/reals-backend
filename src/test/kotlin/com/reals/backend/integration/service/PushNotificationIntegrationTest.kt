@@ -1,4 +1,4 @@
-package com.reals.backend.integration.service
+﻿package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
@@ -11,10 +11,11 @@ import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
+import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.SecondChatReminderNotificationService
-import com.reals.backend.service.notification.VisualReviewNotificationService
+import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.secondChatReminderAggregateId
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationSender
@@ -31,6 +32,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -41,7 +43,10 @@ class PushNotificationIntegrationTest : BaseIT() {
     private lateinit var pushSender: RecordingPushNotificationSender
 
     @Autowired
-    private lateinit var visualReviewNotificationService: VisualReviewNotificationService
+    private lateinit var visualReviewReminderNotificationService: VisualReviewReminderNotificationService
+
+    @Autowired
+    private lateinit var visualReviewReminderNotificationJob: VisualReviewReminderNotificationJob
 
     @Autowired
     private lateinit var schedulingAvailableNotificationService: SchedulingAvailableNotificationService
@@ -100,13 +105,13 @@ class PushNotificationIntegrationTest : BaseIT() {
 
         assertEquals(original.id, updated.id)
         assertEquals(secondUser.id, updated.userId)
+        assertEquals(PushPlatform.ANDROID, updated.platform)
         assertTrue(updated.enabled)
-        assertTrue(updated.lastSeenAt.isAfter(oldLastSeenAt))
     }
 
     @Test
-    fun `visual review available sends notification to both users with active tokens`() {
-        val setup = createMatchWithFirstChat("push-send")
+    fun `mutual first chat approval creates visual review without immediate push`() {
+        val setup = createMatchWithFirstChat("push-no-immediate")
         pushDeviceTokenService.registerToken(setup.userAId, "token-a", PushPlatform.ANDROID)
         pushDeviceTokenService.registerToken(setup.userBId, "token-b", PushPlatform.ANDROID)
 
@@ -115,80 +120,267 @@ class PushNotificationIntegrationTest : BaseIT() {
 
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
 
-        assertEquals(2, pushSender.attempts.size)
-        assertEquals(listOf("token-a", "token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
-
-        pushSender.attempts.forEach { attempt ->
-            assertEquals("Tenés una revisión disponible", attempt.notification.title)
-            assertEquals(
-                "Ya podés revisar el perfil visual de una conversación reciente.",
-                attempt.notification.body
-            )
-            assertEquals("VISUAL_REVIEW_AVAILABLE", attempt.notification.data["type"])
-            assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
-        }
-
-        val deliveries = deliveriesFor(setup.matchId)
-        assertEquals(2, deliveries.size)
-        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+        assertEquals(MatchState.VISUAL_PHASE, matchService.findByIdOrThrow(setup.matchId).state)
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        val expiresAt = review.expiresAt ?: error("Expected visual review expiresAt")
+        val reminderEligibleAt = review.reminderEligibleAt ?: error("Expected visual review reminderEligibleAt")
+        assertTrue(reminderEligibleAt.isAfter(review.createdAt))
+        assertTrue(reminderEligibleAt.isBefore(expiresAt))
+        assertEquals(
+            Duration.between(review.createdAt, expiresAt).seconds * 60 / 100,
+            Duration.between(review.createdAt, reminderEligibleAt).seconds
+        )
+        assertEquals(0, pushSender.attempts.size)
+        assertEquals(0, visualReviewAvailableDeliveriesFor(setup.matchId).size)
+        assertEquals(0, visualReviewReminderDeliveriesFor(setup.matchId).size)
     }
 
     @Test
-    fun `duplicate visual review notification call does not create duplicate deliveries`() {
-        val setup = createMatchWithFirstChat("push-dedup")
+    fun `visual review initialization returns existing legacy row unchanged`() {
+        val userA = createActiveProfile(
+            email = "legacy-visual-a-${UUID.randomUUID()}@example.com",
+            displayName = "Legacy Visual A",
+            gender = com.reals.backend.domain.Gender.FEMALE,
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
+        )
+        val userB = createActiveProfile(
+            email = "legacy-visual-b-${UUID.randomUUID()}@example.com",
+            displayName = "Legacy Visual B",
+            gender = com.reals.backend.domain.Gender.MALE,
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
+        )
+        val match = matchService.createMatch(userA, userB)
+        val existing = visualReviewRepository.saveAndFlush(
+            com.reals.backend.domain.VisualReview(
+                matchId = match.id,
+                expiresAt = OffsetDateTime.now().plusHours(1),
+                reminderEligibleAt = null
+            )
+        )
+
+        val returned = visualReviewService.initializeForMatch(match.id)
+
+        assertEquals(existing.id, returned.id)
+        assertEquals(null, returned.reminderEligibleAt)
+    }
+
+    @Test
+    fun `visual review reminder sends to both pending users and deduplicates`() {
+        val setup = createDueVisualReview("push-reminder-both")
         pushDeviceTokenService.registerToken(setup.userAId, "dedup-token-a", PushPlatform.ANDROID)
         pushDeviceTokenService.registerToken(setup.userBId, "dedup-token-b", PushPlatform.ANDROID)
 
-        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
-        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
-        assertEquals(2, deliveriesFor(setup.matchId).size)
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        assertEquals(2, visualReviewReminderDeliveriesFor(setup.matchId).size)
         assertEquals(2, pushSender.attempts.size)
+        assertEquals(listOf("dedup-token-a", "dedup-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+        pushSender.attempts.forEach { attempt ->
+            assertEquals("Tu revisión vence pronto", attempt.notification.title)
+            assertEquals(
+                "Tenés una revisión pendiente. Entrá a Reals para completarla antes de que venza.",
+                attempt.notification.body
+            )
+            assertEquals(PushNotificationType.VISUAL_REVIEW_REMINDER.name, attempt.notification.data["type"])
+            assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
+        }
 
-        visualReviewNotificationService.notifyVisualReviewAvailable(setup.matchId)
+        visualReviewReminderNotificationJob.runNowForDev()
 
-        assertEquals(2, deliveriesFor(setup.matchId).size)
+        assertEquals(2, visualReviewReminderDeliveriesFor(setup.matchId).size)
         assertEquals(2, pushSender.attempts.size)
     }
 
     @Test
-    fun `no active token creates skipped delivery and does not fail`() {
-        val setup = createMatchWithFirstChat("push-skipped")
+    fun `visual review reminder sends only to user whose own decision is pending`() {
+        val setup = createDueVisualReview("push-reminder-one")
+        pushDeviceTokenService.registerToken(setup.userAId, "pending-a-token", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "pending-b-token", PushPlatform.ANDROID)
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        assertEquals(listOf("pending-b-token"), pushSender.attempts.flatMap { it.tokens })
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
+        assertEquals(1, deliveries.size)
+        assertEquals(setup.userBId, deliveries.single().userId)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.single().status)
+    }
+
+    @Test
+    fun `visual review reminder sends to user A when user B already decided`() {
+        val setup = createDueVisualReview("push-reminder-a-pending")
+        pushDeviceTokenService.registerToken(setup.userAId, "pending-a-only-token", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "decided-b-token", PushPlatform.ANDROID)
+
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        assertEquals(listOf("pending-a-only-token"), pushSender.attempts.flatMap { it.tokens })
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
+        assertEquals(1, deliveries.size)
+        assertEquals(setup.userAId, deliveries.single().userId)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.single().status)
+    }
+
+    @Test
+    fun `visual review reminder honors exact eligibility and expiration boundaries`() {
+        val now = OffsetDateTime.now()
+        val exactlyEligible = createVisualReviewWithWindow(
+            emailPrefix = "push-exact-eligible",
+            reminderEligibleAt = now,
+            expiresAt = now.plusHours(1)
+        )
+        val exactlyExpired = createVisualReviewWithWindow(
+            emailPrefix = "push-exact-expired",
+            reminderEligibleAt = now.minusHours(1),
+            expiresAt = now
+        )
+
+        val persistedEligibleAt = visualReviewRepository.findByMatchId(exactlyEligible.matchId)
+            ?.reminderEligibleAt
+            ?: error("Expected persisted reminder eligibility")
+        val persistedExpiresAt = visualReviewRepository.findByMatchId(exactlyExpired.matchId)
+            ?.expiresAt
+            ?: error("Expected persisted expiration")
+
+        val eligibleCandidates = visualReviewRepository.findVisualReviewReminderCandidates(persistedEligibleAt)
+            .map { it.matchId }
+        val expiredResult = visualReviewReminderNotificationService.processReminder(exactlyExpired.matchId, persistedExpiresAt)
+
+        assertTrue(eligibleCandidates.contains(exactlyEligible.matchId))
+        assertEquals(1, expiredResult.skipped)
+        assertEquals(0, visualReviewReminderDeliveriesFor(exactlyExpired.matchId).size)
+    }
+
+    @Test
+    fun `visual review reminder job ignores ineligible reviews`() {
+        val beforeEligible = createVisualReviewWithWindow(
+            emailPrefix = "push-before",
+            reminderEligibleAt = OffsetDateTime.now().plusMinutes(5),
+            expiresAt = OffsetDateTime.now().plusHours(1)
+        )
+        val expired = createVisualReviewWithWindow(
+            emailPrefix = "push-expired",
+            reminderEligibleAt = OffsetDateTime.now().minusHours(1),
+            expiresAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        val legacyNullEligible = createVisualReviewWithWindow(
+            emailPrefix = "push-null",
+            reminderEligibleAt = null,
+            expiresAt = OffsetDateTime.now().plusHours(1)
+        )
+        val outsideVisualPhase = createDueVisualReview("push-outside")
+        matchRepository.findById(outsideVisualPhase.matchId).orElseThrow().also { match ->
+            match.state = MatchState.EXPIRED
+            match.updatedAt = OffsetDateTime.now()
+            matchRepository.saveAndFlush(match)
+        }
+        val bothDecided = createDueVisualReview("push-decided")
+        visualReviewService.recordDecision(bothDecided.matchId, bothDecided.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(bothDecided.matchId, bothDecided.userBId, VisualDecision.APPROVED)
+
+        listOf(beforeEligible, expired, legacyNullEligible, outsideVisualPhase, bothDecided)
+            .forEach { setup ->
+                pushDeviceTokenService.registerToken(
+                    setup.userAId,
+                    "ineligible-a-${setup.matchId}",
+                    PushPlatform.ANDROID
+                )
+                pushDeviceTokenService.registerToken(
+                    setup.userBId,
+                    "ineligible-b-${setup.matchId}",
+                    PushPlatform.ANDROID
+                )
+            }
+
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        listOf(beforeEligible, expired, legacyNullEligible, outsideVisualPhase, bothDecided)
+            .forEach { setup ->
+                assertEquals(0, visualReviewReminderDeliveriesFor(setup.matchId).size)
+            }
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `legacy visual review available delivery does not suppress reminder`() {
+        val setup = createDueVisualReview("push-legacy")
+        pushDeviceTokenService.registerToken(setup.userAId, "legacy-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "legacy-token-b", PushPlatform.ANDROID)
+        pushNotificationDeliveryRepository.saveAndFlush(
+            com.reals.backend.domain.PushNotificationDelivery(
+                userId = setup.userAId,
+                notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+                aggregateId = setup.matchId,
+                status = PushDeliveryStatus.SENT,
+                sentAt = OffsetDateTime.now()
+            )
+        )
+
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        assertEquals(1, visualReviewAvailableDeliveriesFor(setup.matchId).size)
+        assertEquals(2, visualReviewReminderDeliveriesFor(setup.matchId).size)
+        assertEquals(2, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `visual review reminder creates skipped delivery when user has no active token`() {
+        val setup = createDueVisualReview("push-skipped")
 
         assertDoesNotThrow {
-            chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
-            chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+            visualReviewReminderNotificationJob.runNowForDev()
         }
 
-        val deliveries = deliveriesFor(setup.matchId)
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
         assertEquals(2, deliveries.size)
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN })
         assertEquals(0, pushSender.attempts.size)
     }
 
     @Test
-    fun `sender failure creates failed delivery and does not throw`() {
-        val setup = createMatchWithFirstChat("push-failed")
+    fun `visual review reminder sender failure creates failed delivery and does not throw`() {
+        val setup = createDueVisualReview("push-failed")
         pushDeviceTokenService.registerToken(setup.userAId, "failed-token-a", PushPlatform.ANDROID)
         pushDeviceTokenService.registerToken(setup.userBId, "failed-token-b", PushPlatform.ANDROID)
         pushSender.throwOnSend = RuntimeException("provider unavailable")
 
         assertDoesNotThrow {
-            chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
-            chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+            visualReviewReminderNotificationJob.runNowForDev()
         }
 
         assertEquals(MatchState.VISUAL_PHASE, matchService.findByIdOrThrow(setup.matchId).state)
         assertNotNull(visualReviewRepository.findByMatchId(setup.matchId))
 
-        val deliveries = deliveriesFor(setup.matchId)
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
         assertEquals(2, deliveries.size)
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
         assertTrue(deliveries.all { it.errorMessage?.contains("provider unavailable") == true })
     }
 
     @Test
-    fun `invalid token is disabled when sender reports it`() {
-        val setup = createMatchWithFirstChat("push-invalid")
+    fun `visual review reminder failure for one user does not prevent processing the other`() {
+        val setup = createDueVisualReview("push-one-failure")
+        pushDeviceTokenService.registerToken(setup.userAId, "failure-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "success-token-b", PushPlatform.ANDROID)
+        pushSender.failingTokens = setOf("failure-token-a")
+
+        visualReviewReminderNotificationService.processReminder(setup.matchId)
+
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
+        assertEquals(2, deliveries.size)
+        assertEquals(PushDeliveryStatus.FAILED, deliveries.first { it.userId == setup.userAId }.status)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userBId }.status)
+        assertEquals(listOf("failure-token-a", "success-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+    }
+
+    @Test
+    fun `visual review reminder invalid token is disabled when sender reports it`() {
+        val setup = createDueVisualReview("push-invalid")
         pushDeviceTokenService.registerToken(setup.userAId, "invalid-token", PushPlatform.ANDROID)
         pushSender.nextResult =
             PushSendResult(
@@ -197,8 +389,7 @@ class PushNotificationIntegrationTest : BaseIT() {
                 errorMessage = "registration token is not registered"
             )
 
-        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
-        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewReminderNotificationService.processReminder(setup.matchId)
 
         val token = pushDeviceTokenRepository.findByToken("invalid-token")
             ?: error("Expected token to exist")
@@ -207,7 +398,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         val deliveryForUserA = pushNotificationDeliveryRepository
             .findByUserIdAndNotificationTypeAndAggregateId(
                 userId = setup.userAId,
-                notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+                notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
                 aggregateId = setup.matchId
             )
             ?: error("Expected delivery for user A")
@@ -548,9 +739,15 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(2, pushSender.attempts.size)
     }
 
-    private fun deliveriesFor(matchId: UUID) =
+    private fun visualReviewAvailableDeliveriesFor(matchId: UUID) =
         pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
             notificationType = PushNotificationType.VISUAL_REVIEW_AVAILABLE,
+            aggregateId = matchId
+        )
+
+    private fun visualReviewReminderDeliveriesFor(matchId: UUID) =
+        pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
             aggregateId = matchId
         )
 
@@ -593,6 +790,31 @@ class PushNotificationIntegrationTest : BaseIT() {
         return setup
     }
 
+    private fun createDueVisualReview(emailPrefix: String): MatchFixture =
+        createVisualReviewWithWindow(
+            emailPrefix = emailPrefix,
+            reminderEligibleAt = OffsetDateTime.now().minusSeconds(1),
+            expiresAt = OffsetDateTime.now().plusHours(1)
+        )
+
+    private fun createVisualReviewWithWindow(
+        emailPrefix: String,
+        reminderEligibleAt: OffsetDateTime?,
+        expiresAt: OffsetDateTime
+    ): MatchFixture {
+        val setup = createMatchWithFirstChat(emailPrefix)
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        review.reminderEligibleAt = reminderEligibleAt
+        review.expiresAt = expiresAt
+        review.updatedAt = OffsetDateTime.now()
+        visualReviewRepository.saveAndFlush(review)
+
+        return setup
+    }
+
     @TestConfiguration
     class PushSenderTestConfig {
         @Bean
@@ -610,6 +832,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         val attempts: MutableList<Attempt> = mutableListOf()
         var nextResult: PushSendResult? = null
         var throwOnSend: RuntimeException? = null
+        var failingTokens: Set<String> = emptySet()
 
         override fun sendToTokens(
             tokens: List<PushDeviceToken>,
@@ -621,6 +844,9 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
 
             throwOnSend?.let { throw it }
+            if (tokens.any { failingTokens.contains(it.token) }) {
+                throw RuntimeException("fcm unavailable for token")
+            }
 
             return nextResult ?: PushSendResult(
                 sent = tokens.isNotEmpty(),
@@ -632,6 +858,7 @@ class PushNotificationIntegrationTest : BaseIT() {
             attempts.clear()
             nextResult = null
             throwOnSend = null
+            failingTokens = emptySet()
         }
     }
 }

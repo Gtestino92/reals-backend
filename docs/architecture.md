@@ -83,6 +83,7 @@ Known scheduler jobs:
 - `SchedulingNegotiationTimeoutJob`
 - `SecondChatLifecycleJob`
 - `SecondChatReminderNotificationJob`
+- `VisualReviewReminderNotificationJob`
 - `VisualPhaseExpirationJob`
 - `AccountDeletionFinalizationJob`
 
@@ -147,6 +148,17 @@ is `[10]` minutes and is configured through
 times already in the past are skipped. Delivery is deduplicated per user,
 notification type, connection id and lead time. The payload contains only
 `type`, `connectionId` and `availableAt`.
+
+`VisualReviewReminderNotificationJob` sends privacy-safe external push reminders
+for active visual reviews whose persisted `reminderEligibleAt` is due and whose
+`expiresAt` is still in the future. `reminderEligibleAt` is calculated once when
+`VisualReview` is created from `chat.visual-phase.duration-minutes` and
+`notifications.visual-review-reminder.remaining-percentage` (default 40%
+remaining). The job runs about every 30 minutes, does not calculate percentages
+or phase duration, and sends only to users whose own visual decision is still
+pending. Delivery is deduplicated per user, notification type and match id.
+Legacy rows with `reminderEligibleAt = null` are ignored unless manually
+backfilled outside Flyway.
 
 `UserReliabilityEventCleanupJob` deletes expired internal reliability events
 after their scoring window ends. User reliability is feature-flagged off by

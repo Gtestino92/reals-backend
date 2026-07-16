@@ -116,6 +116,7 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
 | `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for second-chat availability, timeout and read-only cleanup. Defaults to `120000`. |
 | `SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatReminderNotificationJob`. Defaults to `60000`, which gives a 1-minute reminder pickup window. |
+| `SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `VisualReviewReminderNotificationJob`. Defaults to `1800000`, so due visual-review reminders are picked up about every 30 minutes. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for stale match expiration fallback. Defaults to `300000`. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION` | no | Dev/prod ISO-8601 duration for first-chat match expiration fallback. Defaults to `PT20M`. |
 | `SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for inactivity abandonment checks. Defaults to `60000`. |
@@ -127,6 +128,7 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for enabling deferred scheduling. Defaults to `60000`. |
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
+| `NOTIFICATIONS_VISUAL_REVIEW_REMINDER_REMAINING_PERCENTAGE` | no | Remaining visual-review duration percentage used when persisting `VisualReview.reminderEligibleAt` at creation time. Defaults to `40`; must be greater than `0` and less than `100`. |
 
 Matchmaking pair eligibility has four separate controls:
 
@@ -273,6 +275,7 @@ Dev and prod use the same MVP scheduler defaults:
 | `MatchmakingJob` | `60000` ms, `10` pairs/run | Keep queued users moving into first chats. |
 | `SchedulingActivationJob` | `60000` ms | Make scheduling actionable shortly after the deferred availability time. |
 | `SecondChatReminderNotificationJob` | `60000` ms | Pick up second-chat reminders within a 1-minute window. |
+| `VisualReviewReminderNotificationJob` | `1800000` ms | Pick up persisted visual-review reminder eligibility about every 30 minutes. |
 | `ChatTimeoutJob` | `60000` ms | Expire timed-out first chats without leaving users stuck. |
 | `SecondChatLifecycleJob` | `120000` ms | Make due second chats available, expire inactive scheduled windows, expire active second chats and close read-only chats. |
 | `InactivityCheckJob` | `60000` ms, `5` minute threshold | Abandon inactive first chats before the absolute timeout when no messages are sent. |

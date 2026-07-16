@@ -11,6 +11,7 @@ import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
 import com.reals.backend.scheduler.UserReliabilityEventCleanupJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
+import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
@@ -33,7 +34,8 @@ class DevJobController(
     private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
     private val secondChatReminderNotificationJob: ObjectProvider<SecondChatReminderNotificationJob>,
     private val userReliabilityEventCleanupJob: ObjectProvider<UserReliabilityEventCleanupJob>,
-    private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>
+    private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>,
+    private val visualReviewReminderNotificationJob: ObjectProvider<VisualReviewReminderNotificationJob>
 ) {
 
     @PostMapping("/chat-timeout/run")
@@ -100,6 +102,15 @@ class DevJobController(
     fun runVisualPhaseExpiration(): ResponseEntity<DevJobRunResponse> =
         runJob("VisualPhaseExpirationJob") {
             requireJob(visualPhaseExpirationJob, "VisualPhaseExpirationJob").run()
+        }
+
+    @PostMapping("/visual-review-reminder/run")
+    fun runVisualReviewReminder(): ResponseEntity<DevJobRunResponse> =
+        runJob("VisualReviewReminderNotificationJob") {
+            requireJob(
+                visualReviewReminderNotificationJob,
+                "VisualReviewReminderNotificationJob"
+            ).runNowForDev()
         }
 
     private fun runJob(

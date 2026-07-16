@@ -29,6 +29,24 @@ interface VisualReviewRepository :
         expiresAt: OffsetDateTime
     ): List<VisualReview>
 
+    @Query(
+        """
+        select v
+        from VisualReview v
+        where v.reminderEligibleAt is not null
+          and v.reminderEligibleAt <= :now
+          and v.expiresAt is not null
+          and v.expiresAt > :now
+          and (
+            v.userAVisualDecision is null
+            or v.userBVisualDecision is null
+          )
+        """
+    )
+    fun findVisualReviewReminderCandidates(
+        @Param("now") now: OffsetDateTime
+    ): List<VisualReview>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update VisualReview v set v.expiresAt = :expiresAt where v.matchId = :matchId")
     fun updateExpiresAtByMatchId(
