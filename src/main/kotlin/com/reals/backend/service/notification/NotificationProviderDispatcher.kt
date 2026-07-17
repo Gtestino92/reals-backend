@@ -8,9 +8,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 class NotificationProviderDispatcher(
     private val pushNotificationSender: PushNotificationSender
-) {
+) : PushNotificationProviderDispatcher {
 
-    fun send(command: PreparedPushCommand): PushSendResult {
+    override fun send(command: PreparedPushCommand): PushSendResult {
         check(!TransactionSynchronizationManager.isActualTransactionActive()) {
             "Push notification provider calls must run outside active database transactions"
         }
@@ -22,3 +22,6 @@ class NotificationProviderDispatcher(
     }
 }
 
+interface PushNotificationProviderDispatcher {
+    fun send(command: PreparedPushCommand): PushSendResult
+}

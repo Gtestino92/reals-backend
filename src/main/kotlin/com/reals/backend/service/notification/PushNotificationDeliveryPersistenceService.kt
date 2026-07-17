@@ -26,7 +26,7 @@ class PushNotificationDeliveryPersistenceService(
     private val deliveryRepository: PushNotificationDeliveryRepository,
     private val tokenRepository: PushDeviceTokenRepository,
     private val transactionTemplate: TransactionTemplate
-) {
+) : PushNotificationResultPersistence {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -65,10 +65,10 @@ class PushNotificationDeliveryPersistenceService(
         )
     }
 
-    fun persistSendResult(
+    override fun persistSendResult(
         command: PreparedPushCommand,
         sendResult: PushSendResult,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime
     ): DeliveryPersistenceOutcome {
         val status =
             if (sendResult.sent) PushDeliveryStatus.SENT else PushDeliveryStatus.FAILED
@@ -91,10 +91,10 @@ class PushNotificationDeliveryPersistenceService(
         )
     }
 
-    fun persistFailure(
+    override fun persistFailure(
         command: PreparedPushCommand,
         errorMessage: String,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime
     ): DeliveryPersistenceOutcome =
         persistDeliveryResult(
             command = command,
@@ -134,8 +134,22 @@ class PushNotificationDeliveryPersistenceService(
                 command.aggregateId
             )
             DeliveryPersistenceOutcome.DUPLICATE
-        }
     }
+}
+
+interface PushNotificationResultPersistence {
+    fun persistSendResult(
+        command: PreparedPushCommand,
+        sendResult: PushSendResult,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): DeliveryPersistenceOutcome
+
+    fun persistFailure(
+        command: PreparedPushCommand,
+        errorMessage: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): DeliveryPersistenceOutcome
+}
 
     private fun persistDeliveryResultAttempt(
         command: PreparedPushCommand,
@@ -215,4 +229,18 @@ class PushNotificationDeliveryPersistenceService(
             createdAt = now,
             updatedAt = now
         )
+}
+
+interface PushNotificationResultPersistence {
+    fun persistSendResult(
+        command: PreparedPushCommand,
+        sendResult: PushSendResult,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): DeliveryPersistenceOutcome
+
+    fun persistFailure(
+        command: PreparedPushCommand,
+        errorMessage: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): DeliveryPersistenceOutcome
 }

@@ -15,7 +15,7 @@ import java.util.UUID
 class SchedulingAvailableNotificationService(
     private val connectionService: ConnectionService,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
-    private val notificationProviderDispatcher: NotificationProviderDispatcher,
+    private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
 
@@ -99,36 +99,7 @@ class SchedulingAvailableNotificationService(
     }
 
     private fun sendAndPersist(command: PreparedPushCommand) {
-        try {
-            val sendResult = notificationProviderDispatcher.send(command)
-            deliveryPersistenceService.persistSendResult(
-                command = command,
-                sendResult = sendResult
-            )
-        } catch (ex: Exception) {
-            log.warn(
-                "Failed to send scheduling available push notification for user {} and connection {}: {}",
-                command.userId,
-                command.aggregateId,
-                ex.message,
-                ex
-            )
-
-            try {
-                deliveryPersistenceService.persistFailure(
-                    command = command,
-                    errorMessage = ex.message ?: ex.javaClass.simpleName
-                )
-            } catch (persistenceEx: Exception) {
-                log.warn(
-                    "Failed to record failed scheduling available push delivery for user {} and connection {}: {}",
-                    command.userId,
-                    command.aggregateId,
-                    persistenceEx.message,
-                    persistenceEx
-                )
-            }
-        }
+        preparedPushCommandProcessor.process(command)
     }
 
     private fun schedulingAvailableNotification(connection: Connection): PushNotification =
