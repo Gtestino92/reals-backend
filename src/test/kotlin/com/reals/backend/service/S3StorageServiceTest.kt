@@ -12,7 +12,9 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import java.util.UUID
 
@@ -74,6 +76,27 @@ class S3StorageServiceTest {
         } finally {
             presigner.close()
         }
+    }
+
+    @Test
+    fun `delete treats missing object as successful cleanup`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+        Mockito.doThrow(
+            S3Exception.builder()
+                .statusCode(404)
+                .message("object not found")
+                .build()
+        ).`when`(s3Client).deleteObject(any(DeleteObjectRequest::class.java))
+
+        service.deleteObject(
+            bucket = "reals-profile-photos",
+            key = "missing.jpg"
+        )
     }
 
     @Test

@@ -110,6 +110,10 @@ scheduler:
   account-deletion-finalization-job:
     fixed-delay: 3600000
 
+  # Deletes unreferenced profile-photo objects through durable cleanup tasks.
+  media-cleanup-job:
+    fixed-delay: 300000
+
   # Processes queued users into first-chat matches. ShedLock keeps one active
   # processor at a time across app instances.
   matchmaking-job:
@@ -277,6 +281,15 @@ security:
     safety-report-capacity: ${RATE_LIMIT_SAFETY_REPORT_CAPACITY:5}
     safety-report-refill-tokens: ${RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS:5}
     safety-report-refill-period-seconds: ${RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS:86400}
+
+storage:
+  media-cleanup:
+    batch-size: 100
+    lease-duration: PT5M
+    guard-delay: PT30M
+    initial-retry-delay: PT1M
+    max-retry-delay: PT1H
+    max-attempts: 10
 
 info:
   app:

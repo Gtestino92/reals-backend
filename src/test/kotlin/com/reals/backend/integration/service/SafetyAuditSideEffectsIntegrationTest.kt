@@ -5,13 +5,21 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.S3StorageService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.util.UUID
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
+
+    @MockitoBean
+    private lateinit var storageService: S3StorageService
 
     @Test
     fun `profile authenticity verification records audit event`() {

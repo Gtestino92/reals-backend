@@ -228,14 +228,24 @@ Historical production data limitation:
 
 ### 3.4 Media storage production work
 
+Implemented:
+- Profile-photo metadata in PostgreSQL is authoritative.
+- New profile-photo objects are protected by delayed `DELETE_OBJECT` cleanup guards before upload; successful DB finalization removes the guard in the same transaction that persists the `ProfilePhoto`.
+- Replacements upload to a new object key. The old object is never deleted before the DB transaction commits the new reference.
+- Deletes and replacements create durable cleanup tasks for old objects after DB metadata is removed or replaced.
+- Object deletion is idempotent: an already absent object is a successful cleanup.
+- Cleanup processing is bounded and retryable through `media_cleanup_tasks`; successful deletion removes the task row, while `FAILED` tasks require operational inspection.
+- Existing stored objects are not backfilled. They become managed when later replaced or deleted.
+- Defaults: `scheduler.media-cleanup-job.fixed-delay=300000`, `storage.media-cleanup.batch-size=100`, `lease-duration=PT5M`, `guard-delay=PT30M`, `initial-retry-delay=PT1M`, `max-retry-delay=PT1H`, `max-attempts=10`.
+
 Future work:
 - Object lifecycle rules.
-- Orphan cleanup after replace/delete.
 - Malware/content scanning if required.
 - CDN/cache strategy.
 - Thumbnail generation.
 - Dimension normalization.
 - Avoid proxying image bytes through backend unless intentional.
+- Presigned direct-to-S3 upload architecture remains out of scope.
 
 ---
 
@@ -750,8 +760,8 @@ Current hardening:
 Still deferred:
 - PostgreSQL/Testcontainers coverage for database-specific locking behavior remains a separate follow-up block. H2 service tests are not the final proof for PostgreSQL row-lock semantics.
 - The first-chat `ChatDecision` creation race is intentionally unchanged here. Android allows a manual retry immediately after the failed request completes and `actionLoading` is reset; there is no automatic or rapid-fire retry.
-- Notification delivery, scheduler batching/cadence, observability, Home cleanup, media cleanup tasks and rate limiting are out of scope for this block.
-- DB/object-storage consistency through durable media cleanup tasks is approved, but intentionally deferred to a dedicated follow-up block.
+- Notification delivery, unrelated scheduler batching/cadence, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
+- DB/object-storage consistency through durable profile-photo cleanup tasks is implemented. Presigned upload/direct-to-S3 architecture remains a separate future design.
 
 Before scale, keep explicit concurrency tests for:
 

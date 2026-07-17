@@ -54,6 +54,8 @@ scheduler:
     fixed-delay: 60000
   visual-review-reminder-job:
     fixed-delay: 1800000
+  media-cleanup-job:
+    fixed-delay: 3600000
 
 notifications:
   second-chat-reminder:
@@ -129,3 +131,10 @@ storage:
       - image/jpeg
       - image/png
       - image/webp
+  media-cleanup:
+    batch-size: 2
+    lease-duration: PT5M
+    guard-delay: PT30M
+    initial-retry-delay: PT1M
+    max-retry-delay: PT1H
+    max-attempts: 3

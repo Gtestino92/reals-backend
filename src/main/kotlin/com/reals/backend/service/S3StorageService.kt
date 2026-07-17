@@ -9,7 +9,9 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import java.time.Duration
@@ -29,8 +31,11 @@ class S3StorageService(
     ): StoredObject {
         return try {
             val normalizedContentType = contentType.lowercase()
-            val extension = extensionFor(normalizedContentType)
-            val key = "users/$userId/profile-photos/$photoId.$extension"
+            val key = profilePhotoObjectKey(
+                userId = userId,
+                objectId = photoId,
+                contentType = normalizedContentType
+            )
 
             val request = PutObjectRequest.builder()
                 .bucket(properties.bucket)
@@ -53,17 +58,45 @@ class S3StorageService(
     }
 
     fun delete(key: String) {
+        deleteObject(
+            bucket = properties.bucket,
+            key = key
+        )
+    }
+
+    fun deleteObject(
+        bucket: String,
+        key: String
+    ) {
         try {
             val request = DeleteObjectRequest.builder()
-                .bucket(properties.bucket)
+                .bucket(bucket)
                 .key(key)
                 .build()
 
             s3Client.deleteObject(request)
+        } catch (_: NoSuchKeyException) {
+            return
+        } catch (ex: S3Exception) {
+            if (ex.statusCode() == 404) {
+                return
+            }
+            throw ObjectStorageException("Could not delete object from storage", ex)
         } catch (ex: Exception) {
             throw ObjectStorageException("Could not delete object from storage", ex)
         }
     }
+
+    fun profilePhotoObjectKey(
+        userId: UUID,
+        objectId: UUID,
+        contentType: String
+    ): String {
+        val extension = extensionFor(contentType.lowercase())
+        return "users/$userId/profile-photos/$objectId.$extension"
+    }
+
+    fun profilePhotoBucket(): String = properties.bucket
 
     fun getReadUrl(key: String): String {
         return when (properties.readUrlMode) {
