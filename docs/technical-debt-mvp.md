@@ -73,6 +73,13 @@ The following are intentionally not MVP blockers:
 - Parallel matchmaking workers.
 - Kubernetes/Helm/Terraform unless the chosen platform requires them.
 
+Backend concurrency hardening status:
+- Message sends are serialized per `Chat` row with a pessimistic database lock.
+- Firebase provisioning retries one concurrent UID/email unique-conflict attempt in a fresh transaction.
+- PostgreSQL/Testcontainers concurrency coverage remains deferred to a separate production-hardening block.
+- The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
+- Notification delivery, scheduler batching, observability, Home cleanup, media cleanup tasks, rate limiting and durable media cleanup-task implementation are out of scope for this MVP block.
+
 ### 6.1 Push notification delivery workflow cleanup
 
 Current notification event services intentionally keep their event-specific
