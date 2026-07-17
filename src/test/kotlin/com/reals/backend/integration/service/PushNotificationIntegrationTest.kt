@@ -5,7 +5,6 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.PushDeliveryStatus
-import com.reals.backend.domain.PushDeviceToken
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.VisualDecision
@@ -19,6 +18,7 @@ import com.reals.backend.service.notification.VisualReviewReminderNotificationSe
 import com.reals.backend.service.notification.secondChatReminderAggregateId
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationSender
+import com.reals.backend.service.notification.sender.PushNotificationToken
 import com.reals.backend.service.notification.sender.PushSendResult
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -32,11 +32,18 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Import(PushNotificationIntegrationTest.PushSenderTestConfig::class)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
@@ -176,6 +183,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(2, visualReviewReminderDeliveriesFor(setup.matchId).size)
         assertEquals(2, pushSender.attempts.size)
         assertEquals(listOf("dedup-token-a", "dedup-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+        assertProviderCallsOutsideTransactions()
         pushSender.attempts.forEach { attempt ->
             assertEquals("Tu revisión vence pronto", attempt.notification.title)
             assertEquals(
@@ -360,6 +368,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(2, deliveries.size)
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
         assertTrue(deliveries.all { it.errorMessage?.contains("provider unavailable") == true })
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -376,6 +385,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(PushDeliveryStatus.FAILED, deliveries.first { it.userId == setup.userAId }.status)
         assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userBId }.status)
         assertEquals(listOf("failure-token-a", "success-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -403,6 +413,69 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
             ?: error("Expected delivery for user A")
         assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+        assertProviderCallsOutsideTransactions()
+    }
+
+    @Test
+    fun `visual review decision can complete while reminder sender is blocked`() {
+        val setup = createDueVisualReview("push-lock-release")
+        pushDeviceTokenService.registerToken(setup.userAId, "lock-release-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "lock-release-token-b", PushPlatform.ANDROID)
+        val senderStarted = CountDownLatch(1)
+        val releaseSender = CountDownLatch(1)
+        pushSender.senderStarted = senderStarted
+        pushSender.releaseSender = releaseSender
+
+        val executor = Executors.newSingleThreadExecutor()
+        val reminderFuture =
+            executor.submit {
+                visualReviewReminderNotificationService.processReminder(setup.matchId)
+            }
+
+        assertTrue(senderStarted.await(5, TimeUnit.SECONDS))
+
+        assertDoesNotThrow {
+            visualReviewService.recordDecision(
+                matchId = setup.matchId,
+                userId = setup.userAId,
+                decision = VisualDecision.REJECTED
+            )
+        }
+
+        releaseSender.countDown()
+        reminderFuture.get(5, TimeUnit.SECONDS)
+        executor.shutdownNow()
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertEquals(VisualDecision.REJECTED, review.userAVisualDecision)
+        assertTrue(visualReviewReminderDeliveriesFor(setup.matchId).isNotEmpty())
+        assertProviderCallsOutsideTransactions()
+    }
+
+    @Test
+    fun `delivery unique race after provider call does not send twice or fail job`() {
+        val setup = createDueVisualReview("push-race")
+        pushDeviceTokenService.registerToken(setup.userAId, "race-token-a", PushPlatform.ANDROID)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+        pushSender.onSend = { _, notification ->
+            pushNotificationDeliveryRepository.saveAndFlush(
+                com.reals.backend.domain.PushNotificationDelivery(
+                    userId = setup.userAId,
+                    notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
+                    aggregateId = UUID.fromString(notification.data.getValue("matchId")),
+                    status = PushDeliveryStatus.SENT,
+                    sentAt = OffsetDateTime.now()
+                )
+            )
+        }
+
+        val result = visualReviewReminderNotificationService.processReminder(setup.matchId)
+
+        assertEquals(1, pushSender.attempts.size)
+        assertEquals(1, result.succeeded)
+        assertEquals(1, visualReviewReminderDeliveriesFor(setup.matchId).size)
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -418,6 +491,7 @@ class PushNotificationIntegrationTest : BaseIT() {
             listOf("scheduling-token-a", "scheduling-token-b"),
             pushSender.attempts.flatMap { it.tokens }.sorted()
         )
+        assertProviderCallsOutsideTransactions()
 
         pushSender.attempts.forEach { attempt ->
             assertEquals("Ya pueden coordinar horarios", attempt.notification.title)
@@ -475,6 +549,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
         assertTrue(deliveries.all { it.errorMessage?.contains("provider unavailable") == true })
         assertEquals(2, pushSender.attempts.size)
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -502,6 +577,7 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
             ?: error("Expected delivery for user A")
         assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -628,6 +704,7 @@ class PushNotificationIntegrationTest : BaseIT() {
             listOf("second-chat-token-a", "second-chat-token-b"),
             pushSender.attempts.flatMap { it.tokens }.sorted()
         )
+        assertProviderCallsOutsideTransactions()
 
         pushSender.attempts.forEach { attempt ->
             assertEquals("Tu segunda charla empieza pronto", attempt.notification.title)
@@ -716,6 +793,7 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
             ?: error("Expected delivery for user A")
         assertEquals(PushDeliveryStatus.FAILED, deliveryForUserA.status)
+        assertProviderCallsOutsideTransactions()
     }
 
     @Test
@@ -737,6 +815,12 @@ class PushNotificationIntegrationTest : BaseIT() {
 
         assertEquals(2, secondChatReminderDeliveriesFor(due.connectionId, minutesBefore = 10).size)
         assertEquals(2, pushSender.attempts.size)
+        assertProviderCallsOutsideTransactions()
+    }
+
+    private fun assertProviderCallsOutsideTransactions() {
+        assertTrue(pushSender.attempts.isNotEmpty())
+        assertTrue(pushSender.attempts.none { it.transactionActive })
     }
 
     private fun visualReviewAvailableDeliveriesFor(matchId: UUID) =
@@ -826,22 +910,30 @@ class PushNotificationIntegrationTest : BaseIT() {
     class RecordingPushNotificationSender : PushNotificationSender {
         data class Attempt(
             val tokens: List<String>,
-            val notification: PushNotification
+            val notification: PushNotification,
+            val transactionActive: Boolean
         )
 
         val attempts: MutableList<Attempt> = mutableListOf()
         var nextResult: PushSendResult? = null
         var throwOnSend: RuntimeException? = null
         var failingTokens: Set<String> = emptySet()
+        var senderStarted: CountDownLatch? = null
+        var releaseSender: CountDownLatch? = null
+        var onSend: ((List<PushNotificationToken>, PushNotification) -> Unit)? = null
 
         override fun sendToTokens(
-            tokens: List<PushDeviceToken>,
+            tokens: List<PushNotificationToken>,
             notification: PushNotification
         ): PushSendResult {
             attempts += Attempt(
                 tokens = tokens.map { it.token },
-                notification = notification
+                notification = notification,
+                transactionActive = TransactionSynchronizationManager.isActualTransactionActive()
             )
+            onSend?.invoke(tokens, notification)
+            senderStarted?.countDown()
+            releaseSender?.await(5, TimeUnit.SECONDS)
 
             throwOnSend?.let { throw it }
             if (tokens.any { failingTokens.contains(it.token) }) {
@@ -859,6 +951,9 @@ class PushNotificationIntegrationTest : BaseIT() {
             nextResult = null
             throwOnSend = null
             failingTokens = emptySet()
+            senderStarted = null
+            releaseSender = null
+            onSend = null
         }
     }
 }
