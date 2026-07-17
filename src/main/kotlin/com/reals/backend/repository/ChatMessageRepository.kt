@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.ChatMessage
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -13,6 +14,11 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         chatSessionId: UUID
     ): List<ChatMessage>
 
+    fun findByChatSessionIdOrderBySentAtDescIdDesc(
+        chatSessionId: UUID,
+        pageable: Pageable
+    ): List<ChatMessage>
+
     fun findByChatSessionIdAndSentAtAfter(
         chatSessionId: UUID,
         sentAt: OffsetDateTime
@@ -21,6 +27,38 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
     fun findByChatSessionIdAndSentAtAfterOrderBySentAtAsc(
         chatSessionId: UUID,
         sentAt: OffsetDateTime
+    ): List<ChatMessage>
+
+    @Query(
+        value =
+        """
+        select *
+        from chat_messages
+        where chat_session_id = :chatSessionId
+          and (
+            sent_at > (
+              select cursor.sent_at
+              from chat_messages cursor
+              where cursor.id = :cursorId
+            )
+            or (
+              sent_at = (
+                select cursor.sent_at
+                from chat_messages cursor
+                where cursor.id = :cursorId
+              )
+              and cast(id as varchar) > :messageId
+            )
+          )
+        order by sent_at asc, cast(id as varchar) asc
+        """,
+        nativeQuery = true
+    )
+    fun findPageAfterCursor(
+        @Param("chatSessionId") chatSessionId: UUID,
+        @Param("cursorId") cursorId: UUID,
+        @Param("messageId") messageId: String,
+        pageable: Pageable
     ): List<ChatMessage>
 
     fun countByChatSessionIdAndSenderId(
