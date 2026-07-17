@@ -642,6 +642,7 @@ paths:
     get:
       tags: [Chats]
       summary: List chat messages
+      description: Without a cursor, returns the legacy JSON array containing the most recent bounded page in chronological order. With `after` or `afterMessageId`, returns `ChatMessagesResponse` with messages strictly after the cursor ordered by `sentAt ASC, id ASC`; `hasMore` is true when additional rows exist beyond the returned page. Response formats are preserved for compatibility.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - name: after
@@ -654,6 +655,15 @@ paths:
           required: false
           schema: { type: string, format: uuid }
           description: Alias for `after`.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+          description: Maximum number of messages returned. Initial legacy reads fetch the most recent `limit` messages and return them chronologically. Incremental reads fetch at most `limit` messages after the cursor and use `limit + 1` internally to compute `hasMore`.
       responses:
         '200':
           description: Messages. Without a cursor this is the legacy array; with a cursor this is ChatMessagesResponse.
@@ -665,6 +675,8 @@ paths:
                     items:
                       $ref: '#/components/schemas/ChatMessageResponse'
                   - $ref: '#/components/schemas/ChatMessagesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/ChatNotFound'
         '409':
@@ -2378,7 +2390,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChatMessageResponse'
-        hasMore: { type: boolean }
+        hasMore:
+          type: boolean
+          description: True when an incremental request has additional messages beyond the returned page.
         serverTime: { type: string, format: date-time }
     ChatExitRequestCreateRequest:
       type: object
