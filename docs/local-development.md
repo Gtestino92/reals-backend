@@ -437,7 +437,7 @@ Production-like schema changes should be represented with migrations under:
 src/main/resources/db/migration
 ```
 
-Current migration:
+Current migrations:
 
 ```text
 V1__init.sql
@@ -445,4 +445,29 @@ V2__profile_dynamic_match_filters.sql
 V3__add_user_soft_delete.sql
 V4__profile_photo_storage_validation.sql
 V5__account_deletion_recovery_window.sql
+V6__defer_scheduling_activation.sql
+V7__second_chat_read_only_retention.sql
+V8__connection_home_dismissals.sql
+V9__safety_reports_and_penalty_types.sql
+V10__push_notifications.sql
+V11__drop_profile_photo_url.sql
+V12__chat_end_reason_and_user_blocks.sql
+V13__safety_report_contexts.sql
+V14__profile_photo_moderation_status.sql
+V15__profile_identity_verification_status.sql
+V16__audit_events_and_safety_report_evidence.sql
+V17__admin_safety_report_source.sql
+V18__user_home_status.sql
+V19__user_reliability_events.sql
+V20__first_chat_guidance.sql
+V21__profile_looking_for_genders.sql
+V22__user_legal_document_actions.sql
+V23__legal_document_action_content_sha256.sql
+V24__profile_authenticity_verification.sql
+V25__profile_authenticity_verified_status_invariant.sql
+V26__profile_country_code.sql
+V27__matchmaking_candidate_query_indexes.sql
+V28__visual_review_reminder_eligibility.sql
+V29__media_cleanup_tasks.sql
+V30__chat_message_session_sent_at_id_index.sql
 ```

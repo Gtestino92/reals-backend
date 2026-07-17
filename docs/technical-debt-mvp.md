@@ -80,9 +80,9 @@ Backend concurrency hardening status:
 - PostgreSQL remains authoritative for profile-photo references; new objects are protected by delayed cleanup guards until DB finalization commits.
 - Old profile-photo objects are deleted only after the referencing DB transaction commits; deletion is idempotent, durable and retryable.
 - Completed cleanup tasks are removed. `FAILED` cleanup tasks require operational inspection.
-- PostgreSQL/Testcontainers concurrency coverage remains deferred to a separate production-hardening block.
+- Targeted PostgreSQL/Testcontainers coverage exists for Home query-count shape, bounded message reads, one first-chat write race, one second-chat activation race and concurrent Firebase provisioning.
 - The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
-- Exact notification delivery claiming/outbox/retries, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
+- Exact notification delivery claiming/outbox/retries, broad observability, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
 
 Implemented scheduler hardening:
 
@@ -120,4 +120,4 @@ Remaining deferred cleanup:
 - Avoid changing notification payload contents during the extraction.
 - Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. A duplicate push remains theoretically possible if two workers prepare before either persists a delivery row.
 - A prepared push can become stale if the user completes the action immediately after preparation and before transport. Exact delivery claiming, outbox, retries and backoff remain deferred.
-- PostgreSQL/Testcontainers lock verification remains deferred to the final concurrency-test block.
+- Exhaustive PostgreSQL/Testcontainers lock verification remains deferred beyond the targeted production-readiness suite.
