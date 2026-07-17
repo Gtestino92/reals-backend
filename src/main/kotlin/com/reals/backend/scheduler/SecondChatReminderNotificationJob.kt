@@ -1,8 +1,11 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.domain.ScheduleNegotiation
+import com.reals.backend.domain.PushNotificationType
+import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.service.notification.SecondChatReminderNotificationService
+import com.reals.backend.service.notification.secondChatReminderAggregateId
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -15,6 +18,7 @@ import java.time.OffsetDateTime
 @Component
 class SecondChatReminderNotificationJob(
     private val negotiationRepository: ScheduleNegotiationRepository,
+    private val deliveryRepository: PushNotificationDeliveryRepository,
     private val reminderNotificationService: SecondChatReminderNotificationService,
 
     @param:Value("\${scheduler.second-chat-reminder-job.fixed-delay:60000}")
@@ -43,7 +47,7 @@ class SecondChatReminderNotificationJob(
         processSecondChatReminders()
     }
 
-    internal fun processSecondChatReminders(): JobRunSummary {
+    internal fun processSecondChatReminders(now: OffsetDateTime = OffsetDateTime.now()): JobRunSummary {
         require(fixedDelayMs > 0) {
             "scheduler.second-chat-reminder-job.fixed-delay must be positive"
         }
@@ -52,23 +56,43 @@ class SecondChatReminderNotificationJob(
         }
 
         val startedAt = System.nanoTime()
-        val now = OffsetDateTime.now()
         val dueWindowEnd = now.plus(Duration.ofMillis(fixedDelayMs))
         val leadMinutes = configuredReminderLeadMinutes()
         require(batchSize >= leadMinutes.size) {
             "scheduler.second-chat-reminder-job.batch-size must be at least the number of distinct configured reminder lead times"
         }
+        val fetchLimits = globalFetchLimits(
+            leadTimeCount = leadMinutes.size,
+            fetchBudget = batchSize + 1
+        )
+        val reminderWindows = reminderWindows(
+            leadMinutes = leadMinutes,
+            now = now,
+            dueWindowEnd = dueWindowEnd
+        )
 
-        val candidatesByLead =
-            leadMinutes.map { minutesBefore ->
+        val fetchedCandidatesByLead =
+            reminderWindows.mapIndexed { index, reminderWindow ->
                 DueSecondChatReminderCandidates(
-                    minutesBefore = minutesBefore,
+                    minutesBefore = reminderWindow.minutesBefore,
                     negotiations =
-                        negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
-                            windowStart = now.plusMinutes(minutesBefore),
-                            windowEnd = dueWindowEnd.plusMinutes(minutesBefore),
-                            pageable = PageRequest.of(0, batchSize + 1)
+                        negotiationRepository.findConfirmedSecondChatReminderRecoverableForWindow(
+                            windowStartExclusive = reminderWindow.windowStartExclusive,
+                            windowEndInclusive = reminderWindow.windowEndInclusive,
+                            pageable = PageRequest.of(0, fetchLimits[index])
                         )
+                )
+            }
+        val candidatesByLead =
+            fetchedCandidatesByLead.map { candidates ->
+                candidates.copy(
+                    negotiations =
+                        candidates.negotiations.filterNot { negotiation ->
+                            reminderAlreadyFullyHandled(
+                                connectionId = negotiation.connectionId,
+                                minutesBefore = candidates.minutesBefore
+                            )
+                        }
                 )
             }
 
@@ -77,7 +101,7 @@ class SecondChatReminderNotificationJob(
                 candidatesByLead = candidatesByLead,
                 batchSize = batchSize
             )
-        val fetched = candidatesByLead.sumOf { it.negotiations.size }
+        val fetched = fetchedCandidatesByLead.sumOf { it.negotiations.size }
         val selectedByLead =
             dueReminderCandidates
                 .groupingBy { it.minutesBefore }
@@ -169,6 +193,48 @@ class SecondChatReminderNotificationJob(
         return selected
     }
 
+    private fun reminderAlreadyFullyHandled(
+        connectionId: java.util.UUID,
+        minutesBefore: Long
+    ): Boolean =
+        deliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+            aggregateId = secondChatReminderAggregateId(
+                connectionId = connectionId,
+                minutesBefore = minutesBefore
+            )
+        ).size >= SECOND_CHAT_REMINDER_RECIPIENT_COUNT
+
+    private fun globalFetchLimits(
+        leadTimeCount: Int,
+        fetchBudget: Int
+    ): List<Int> {
+        val fetchLimits = MutableList(leadTimeCount) { 0 }
+        repeat(fetchBudget) { index ->
+            fetchLimits[index % leadTimeCount] += 1
+        }
+        return fetchLimits
+    }
+
+    private fun reminderWindows(
+        leadMinutes: List<Long>,
+        now: OffsetDateTime,
+        dueWindowEnd: OffsetDateTime
+    ): List<SecondChatReminderWindow> =
+        leadMinutes.mapIndexed { index, minutesBefore ->
+            val nextCloserLeadMinutes = leadMinutes.getOrNull(index + 1)
+            SecondChatReminderWindow(
+                minutesBefore = minutesBefore,
+                windowStartExclusive =
+                    if (nextCloserLeadMinutes == null) {
+                        now
+                    } else {
+                        dueWindowEnd.plusMinutes(nextCloserLeadMinutes)
+                    },
+                windowEndInclusive = dueWindowEnd.plusMinutes(minutesBefore)
+            )
+        }
+
     private fun configuredReminderLeadMinutes(): List<Long> {
         val configuredValues =
             reminderLeadMinutes.map { rawValue ->
@@ -185,6 +251,7 @@ class SecondChatReminderNotificationJob(
                 }
                 minutesBefore
             }.distinct()
+                .sortedDescending()
 
         require(configuredValues.isNotEmpty()) {
             "notifications.second-chat-reminder.minutes-before must contain at least one value"
@@ -202,4 +269,14 @@ class SecondChatReminderNotificationJob(
         val negotiation: ScheduleNegotiation,
         val minutesBefore: Long
     )
+
+    private data class SecondChatReminderWindow(
+        val minutesBefore: Long,
+        val windowStartExclusive: OffsetDateTime,
+        val windowEndInclusive: OffsetDateTime
+    )
+
+    private companion object {
+        const val SECOND_CHAT_REMINDER_RECIPIENT_COUNT = 2
+    }
 }
