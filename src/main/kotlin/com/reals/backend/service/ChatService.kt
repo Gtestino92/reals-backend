@@ -28,6 +28,8 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.reliability.UserReliabilityScoreService
+import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceContext
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -72,6 +74,9 @@ class ChatService(
     @param:Value("\${user-reliability.second-chat.no-show-grace-minutes:10}")
     private val secondChatNoShowGraceMinutes: Long
 ) {
+
+    @PersistenceContext
+    private lateinit var entityManager: EntityManager
 
     private companion object {
         const val MESSAGE_MAX_LENGTH = 1000
@@ -171,16 +176,23 @@ class ChatService(
     ): ChatMessage {
         val normalizedContent = normalizeMessageContent(content)
 
-        val initialChat = findByIdOrThrow(chatId)
-        requireChatPairNotBlocked(initialChat)
-        val chat =
-            activateAvailableSecondChatIfNeeded(
+        val initialStatus = chatRepository.findStatusById(chatId)
+            ?: throw chatNotFound()
+        if (initialStatus == ChatStatus.AVAILABLE) {
+            val initialChat = findByIdOrThrow(chatId)
+            val activatedChat = activateAvailableSecondChatIfNeeded(
                 chat = initialChat,
                 userId = senderId
             )
+            entityManager.detach(initialChat)
+            if (activatedChat !== initialChat) {
+                entityManager.detach(activatedChat)
+            }
+        }
+        val chat = findByIdForUpdateOrThrow(chatId)
 
+        requireChatPairNotBlocked(chat)
         validateActiveChatWindow(chat)
-
         validateChatParticipant(chat, senderId)
 
         val message =
@@ -192,7 +204,7 @@ class ChatService(
                 )
             )
 
-        chat.lastMessageAt = message.sentAt
+        chat.lastMessageAt = maxOf(chat.lastMessageAt ?: message.sentAt, message.sentAt)
         chatRepository.save(chat)
 
         recordSecondChatAttendanceIfWithinGrace(chat, message)
@@ -866,6 +878,10 @@ class ChatService(
             NoSuchElementException("Chat not found: ${currentChat.id}")
         }
     }
+
+    private fun findByIdForUpdateOrThrow(chatId: UUID): Chat =
+        chatRepository.findByIdForUpdate(chatId)
+            ?: throw chatNotFound()
 
     private fun transitionConnectionToSecondChat(connectionId: UUID) {
         val connection = connectionService.findByIdOrThrow(connectionId)

@@ -3,7 +3,9 @@ package com.reals.backend.repository
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -20,6 +22,17 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     fun findByConnectionIdAndChatType(
         connectionId: UUID,
         chatType: ChatType
+    ): Chat?
+
+    @Query("select c.status from Chat c where c.id = :chatId")
+    fun findStatusById(
+        @Param("chatId") chatId: UUID
+    ): ChatStatus?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Chat c where c.id = :chatId")
+    fun findByIdForUpdate(
+        @Param("chatId") chatId: UUID
     ): Chat?
 
     fun findByMatchIdInAndChatType(
