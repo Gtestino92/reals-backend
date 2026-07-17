@@ -5,7 +5,6 @@ import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.notification.sender.PushNotification
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.OffsetDateTime
@@ -29,11 +28,9 @@ class VisualReviewReminderNotificationService(
     private val matchService: MatchService,
     private val visualReviewRepository: VisualReviewRepository,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
-    private val notificationProviderDispatcher: NotificationProviderDispatcher,
+    private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
-
-    private val log = LoggerFactory.getLogger(javaClass)
 
     fun processReminder(
         matchId: UUID,
@@ -148,44 +145,10 @@ class VisualReviewReminderNotificationService(
         command: PreparedPushCommand,
         now: OffsetDateTime
     ): VisualReviewReminderProcessingResult {
-        return try {
-            val sendResult = notificationProviderDispatcher.send(command)
-            deliveryPersistenceService.persistSendResult(
-                command = command,
-                sendResult = sendResult,
-                now = now
-            )
-
-            if (sendResult.sent) {
-                VisualReviewReminderProcessingResult(succeeded = 1)
-            } else {
-                VisualReviewReminderProcessingResult(failed = 1)
-            }
-        } catch (ex: Exception) {
-            log.warn(
-                "Failed to send visual review reminder push notification for user {} and match {}: {}",
-                command.userId,
-                command.aggregateId,
-                ex.message,
-                ex
-            )
-
-            try {
-                deliveryPersistenceService.persistFailure(
-                    command = command,
-                    errorMessage = ex.message ?: ex.javaClass.simpleName,
-                    now = now
-                )
-            } catch (persistenceEx: Exception) {
-                log.warn(
-                    "Failed to record failed visual review reminder delivery for user {} and match {}: {}",
-                    command.userId,
-                    command.aggregateId,
-                    persistenceEx.message,
-                    persistenceEx
-                )
-            }
-            VisualReviewReminderProcessingResult(failed = 1)
+        return when (preparedPushCommandProcessor.process(command, now)) {
+            PreparedPushCommandOutcome.SENT -> VisualReviewReminderProcessingResult(succeeded = 1)
+            PreparedPushCommandOutcome.NOT_SENT,
+            PreparedPushCommandOutcome.PROVIDER_EXCEPTION -> VisualReviewReminderProcessingResult(failed = 1)
         }
     }
 

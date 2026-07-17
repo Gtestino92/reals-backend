@@ -4,7 +4,6 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.notification.sender.PushNotification
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.nio.charset.StandardCharsets
@@ -15,11 +14,9 @@ import java.util.UUID
 class SecondChatReminderNotificationService(
     private val connectionService: ConnectionService,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
-    private val notificationProviderDispatcher: NotificationProviderDispatcher,
+    private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
-
-    private val log = LoggerFactory.getLogger(javaClass)
 
     fun notifySecondChatReminder(
         connectionId: UUID,
@@ -107,34 +104,7 @@ class SecondChatReminderNotificationService(
         }
 
     private fun sendAndPersist(command: PreparedPushCommand) {
-        try {
-            val sendResult = notificationProviderDispatcher.send(command)
-            deliveryPersistenceService.persistSendResult(
-                command = command,
-                sendResult = sendResult
-            )
-        } catch (ex: Exception) {
-            log.warn(
-                "Failed to send second-chat reminder push notification for user {} and aggregate {}",
-                command.userId,
-                command.aggregateId,
-                ex
-            )
-
-            try {
-                deliveryPersistenceService.persistFailure(
-                    command = command,
-                    errorMessage = ex.message ?: ex.javaClass.simpleName
-                )
-            } catch (persistenceEx: Exception) {
-                log.warn(
-                    "Failed to record failed second-chat reminder push delivery for user {} and aggregate {}",
-                    command.userId,
-                    command.aggregateId,
-                    persistenceEx
-                )
-            }
-        }
+        preparedPushCommandProcessor.process(command)
     }
 
     private fun secondChatReminderNotification(
