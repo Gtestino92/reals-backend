@@ -53,15 +53,18 @@ scheduler:
   # Runs every minute so a 15-minute first chat does not remain open too long.
   chat-timeout-job:
     fixed-delay: 60000
+    batch-size: 100
 
   # Expires active second chats into read-only mode, then closes them after retention.
   second-chat-lifecycle-job:
     fixed-delay: 120000
+    batch-size: 100
 
   # Sends a privacy-safe reminder before a confirmed second-chat start time.
   # Runs every minute so 10-minute reminders are picked up within a 1-minute window.
   second-chat-reminder-job:
     fixed-delay: 60000
+    batch-size: 100
 
   # Sends a privacy-safe visual-review reminder after the persisted eligibility timestamp.
   # Runs every 30 minutes; reminder delivery is approximate.
@@ -72,12 +75,14 @@ scheduler:
   # Safety net behind ChatTimeoutJob, not the primary first-chat timer.
   match-expiration-job:
     fixed-delay: 300000
+    batch-size: 100
     max-chat-duration: PT20M
 
   # Detects first chats with no messages within the inactivity threshold.
   # Runs every minute so short first-chat sessions can be abandoned promptly.
   inactivity-check-job:
     fixed-delay: 60000
+    batch-size: 100
 
     # How long a first chat can have no messages before being considered inactive.
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
@@ -94,6 +99,7 @@ scheduler:
   # Runs every 5 minutes — same cadence as match-expiration-job
   visual-phase-expiration-job:
     fixed-delay: 300000
+    batch-size: 100
 
   # Closes scheduling negotiations that have exceeded their deadline
   # Runs every 15 minutes — hour-level granularity is sufficient for this phase
@@ -104,6 +110,7 @@ scheduler:
   # Enables scheduling after visual approval once its deferred availability time arrives
   scheduling-activation-job:
     fixed-delay: 60000
+    batch-size: 100
 
   # Finalizes recoverable account deletions after the recovery window expires.
   # Runs every hour because finalization is not user-facing urgent.
@@ -117,7 +124,7 @@ scheduler:
   # Processes queued users into first-chat matches. ShedLock keeps one active
   # processor at a time across app instances.
   matchmaking-job:
-    fixed-delay: 60000
+    fixed-delay: 15000
     max-pairs-per-run: 5
 
 account:

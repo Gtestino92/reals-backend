@@ -4,6 +4,8 @@ import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.VisualReviewService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.PageRequest
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -17,7 +19,9 @@ import java.time.OffsetDateTime
 @Component
 class VisualPhaseExpirationJob(
     private val visualReviewRepository: VisualReviewRepository,
-    private val visualReviewService: VisualReviewService
+    private val visualReviewService: VisualReviewService,
+    @param:Value("\${scheduler.visual-phase-expiration-job.batch-size:100}")
+    private val batchSize: Int = 100
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -29,53 +33,72 @@ class VisualPhaseExpirationJob(
         lockAtMostFor = "PT5M"
     )
     fun run() {
+        processVisualPhaseExpirations()
+    }
+
+    internal fun processVisualPhaseExpirations(): JobRunSummary {
+        require(batchSize > 0) { "scheduler.visual-phase-expiration-job.batch-size must be positive" }
         val startedAt = System.nanoTime()
         log.debug("VisualPhaseExpirationJob triggered")
 
-        val expired =
-            visualReviewRepository.findByExpiresAtBefore(
-                expiresAt = OffsetDateTime.now()
+        val now = OffsetDateTime.now()
+        val batch =
+            boundedSchedulerBatch(
+                fetchedCandidates = visualReviewRepository.findExpiredMatchIds(
+                    expiresAt = now,
+                    pageable = PageRequest.of(0, batchSize + 1)
+                ),
+                batchSize = batchSize
             )
 
         var succeeded = 0
         var skipped = 0
         var failed = 0
 
-        expired.forEach { review ->
+        batch.items.forEach { matchId ->
             try {
-                val changed = visualReviewService.expireVisualReview(review.matchId)
+                val changed = visualReviewService.expireVisualReview(matchId)
                 if (changed) {
                     succeeded += 1
                     log.info(
                         "VisualPhaseExpirationJob - expired match={}",
-                        review.matchId
+                        matchId
                     )
                 } else {
                     skipped += 1
                     log.debug(
                         "VisualPhaseExpirationJob - skipped match={} because it was already expired or not due",
-                        review.matchId
+                        matchId
                     )
                 }
             } catch (ex: Exception) {
                 log.error(
                     "VisualPhaseExpirationJob - failed to expire match={}",
-                    review.matchId,
+                    matchId,
                     ex
                 )
                 failed += 1
             }
         }
 
-        log.logJobSummary(
-            jobName = "VisualPhaseExpirationJob",
-            summary = JobRunSummary(
-                processed = expired.size,
+        val summary =
+            JobRunSummary(
+                processed = batch.items.size,
                 succeeded = succeeded,
                 skipped = skipped,
                 failed = failed
-            ),
+            )
+        log.logBatchComplete(
+            jobName = "VisualPhaseExpirationJob",
+            batchSize = batchSize,
+            fetched = batch.fetched,
+            backlogRemaining = batch.backlogRemaining
+        )
+        log.logJobSummary(
+            jobName = "VisualPhaseExpirationJob",
+            summary = summary,
             startedAt = startedAt
         )
+        return summary
     }
 }

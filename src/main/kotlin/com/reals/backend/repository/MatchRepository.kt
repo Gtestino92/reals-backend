@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.*
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -14,6 +15,20 @@ interface MatchRepository :
         state: MatchState,
         createdAtBefore: OffsetDateTime
     ): List<Match>
+
+    @Query(
+        """
+        select m.id from Match m
+        where m.state = :state
+          and m.createdAt < :createdAtBefore
+        order by m.createdAt asc, m.id asc
+        """
+    )
+    fun findIdsByStateAndCreatedAtBefore(
+        @Param("state") state: MatchState,
+        @Param("createdAtBefore") createdAtBefore: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
 
     @Query(
         """

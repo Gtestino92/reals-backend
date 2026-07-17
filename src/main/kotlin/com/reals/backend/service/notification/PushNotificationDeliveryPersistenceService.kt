@@ -134,22 +134,8 @@ class PushNotificationDeliveryPersistenceService(
                 command.aggregateId
             )
             DeliveryPersistenceOutcome.DUPLICATE
+        }
     }
-}
-
-interface PushNotificationResultPersistence {
-    fun persistSendResult(
-        command: PreparedPushCommand,
-        sendResult: PushSendResult,
-        now: OffsetDateTime = OffsetDateTime.now()
-    ): DeliveryPersistenceOutcome
-
-    fun persistFailure(
-        command: PreparedPushCommand,
-        errorMessage: String,
-        now: OffsetDateTime = OffsetDateTime.now()
-    ): DeliveryPersistenceOutcome
-}
 
     private fun persistDeliveryResultAttempt(
         command: PreparedPushCommand,
