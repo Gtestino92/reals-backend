@@ -54,39 +54,38 @@ class SecondChatReminderNotificationJob(
         val startedAt = System.nanoTime()
         val now = OffsetDateTime.now()
         val dueWindowEnd = now.plus(Duration.ofMillis(fixedDelayMs))
-        val dueReminderCandidates = mutableListOf<DueSecondChatReminder>()
-        var fetched = 0
-        var backlogRemaining = false
+        val leadMinutes = configuredReminderLeadMinutes()
+        require(batchSize >= leadMinutes.size) {
+            "scheduler.second-chat-reminder-job.batch-size must be at least the number of distinct configured reminder lead times"
+        }
 
-        configuredReminderLeadMinutes().forEach { minutesBefore ->
-            if (dueReminderCandidates.size >= batchSize) {
-                backlogRemaining = true
-                return@forEach
+        val candidatesByLead =
+            leadMinutes.map { minutesBefore ->
+                DueSecondChatReminderCandidates(
+                    minutesBefore = minutesBefore,
+                    negotiations =
+                        negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
+                            windowStart = now.plusMinutes(minutesBefore),
+                            windowEnd = dueWindowEnd.plusMinutes(minutesBefore),
+                            pageable = PageRequest.of(0, batchSize + 1)
+                        )
+                )
             }
 
-            val remainingCapacity = batchSize - dueReminderCandidates.size
-            val candidates =
-                negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
-                    windowStart = now.plusMinutes(minutesBefore),
-                    windowEnd = dueWindowEnd.plusMinutes(minutesBefore),
-                    pageable = PageRequest.of(0, remainingCapacity + 1)
-                )
-            fetched += candidates.size
-
-            val batch =
-                boundedSchedulerBatch(
-                    fetchedCandidates = candidates,
-                    batchSize = remainingCapacity
-                )
-            backlogRemaining = backlogRemaining || batch.backlogRemaining
-            dueReminderCandidates +=
-                batch.items.map { negotiation ->
-                    DueSecondChatReminder(
-                        negotiation = negotiation,
-                        minutesBefore = minutesBefore
-                    )
-                }
-        }
+        val dueReminderCandidates =
+            selectReminderBatch(
+                candidatesByLead = candidatesByLead,
+                batchSize = batchSize
+            )
+        val fetched = candidatesByLead.sumOf { it.negotiations.size }
+        val selectedByLead =
+            dueReminderCandidates
+                .groupingBy { it.minutesBefore }
+                .eachCount()
+        val backlogRemaining =
+            candidatesByLead.any { candidates ->
+                candidates.negotiations.size > (selectedByLead[candidates.minutesBefore] ?: 0)
+            }
 
         var succeeded = 0
         var skipped = 0
@@ -141,6 +140,35 @@ class SecondChatReminderNotificationJob(
         return summary
     }
 
+    private fun selectReminderBatch(
+        candidatesByLead: List<DueSecondChatReminderCandidates>,
+        batchSize: Int
+    ): List<DueSecondChatReminder> {
+        val selected = mutableListOf<DueSecondChatReminder>()
+        var candidateIndex = 0
+
+        while (
+            selected.size < batchSize &&
+            candidatesByLead.any { candidateIndex < it.negotiations.size }
+        ) {
+            candidatesByLead.forEach { candidates ->
+                if (selected.size >= batchSize) {
+                    return@forEach
+                }
+
+                val negotiation = candidates.negotiations.getOrNull(candidateIndex)
+                    ?: return@forEach
+                selected += DueSecondChatReminder(
+                    negotiation = negotiation,
+                    minutesBefore = candidates.minutesBefore
+                )
+            }
+            candidateIndex += 1
+        }
+
+        return selected
+    }
+
     private fun configuredReminderLeadMinutes(): List<Long> {
         val configuredValues =
             reminderLeadMinutes.map { rawValue ->
@@ -156,7 +184,7 @@ class SecondChatReminderNotificationJob(
                     "notifications.second-chat-reminder.minutes-before values must be positive"
                 }
                 minutesBefore
-            }
+            }.distinct()
 
         require(configuredValues.isNotEmpty()) {
             "notifications.second-chat-reminder.minutes-before must contain at least one value"
@@ -164,6 +192,11 @@ class SecondChatReminderNotificationJob(
 
         return configuredValues
     }
+
+    private data class DueSecondChatReminderCandidates(
+        val minutesBefore: Long,
+        val negotiations: List<ScheduleNegotiation>
+    )
 
     private data class DueSecondChatReminder(
         val negotiation: ScheduleNegotiation,
