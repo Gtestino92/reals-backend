@@ -102,10 +102,11 @@ When a second chat has a confirmed scheduled time and the connection is still
 `SECOND_CHAT_SCHEDULED`, `SecondChatReminderNotificationJob`
 attempts privacy-safe external push reminders per participant before
 `confirmedDateTime` using the list `notifications.second-chat-reminder.minutes-before`
-(default `[10]`). Reminder windows whose target time
-`confirmedDateTime - minutesBefore` is already in the past are skipped. The
-notification type is `SECOND_CHAT_REMINDER`; the payload includes only `type`,
-`connectionId` and `availableAt`. Delivery is deduplicated per user,
+(default `[10]`). Overdue reminder targets may be recovered while still useful:
+an older, larger lead time stops being eligible once the next closer configured
+reminder range applies, and no reminder is sent after the confirmed start time.
+The notification type is `SECOND_CHAT_REMINDER`; the payload includes only
+`type`, `connectionId` and `availableAt`. Delivery is deduplicated per user,
 notification type, connection id and lead time.
 
 Home returns `matchmaking` for search UX:

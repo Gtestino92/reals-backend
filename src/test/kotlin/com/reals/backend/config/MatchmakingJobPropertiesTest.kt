@@ -9,11 +9,11 @@ class MatchmakingJobPropertiesTest {
     @Test
     fun `accepts positive values`() {
         val properties = MatchmakingJobProperties(
-            fixedDelay = 60_000,
+            fixedDelay = 15_000,
             maxPairsPerRun = 10
         )
 
-        assertEquals(60_000, properties.fixedDelay)
+        assertEquals(15_000, properties.fixedDelay)
         assertEquals(10, properties.maxPairsPerRun)
     }
 

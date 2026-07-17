@@ -4,6 +4,7 @@ import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
@@ -80,6 +81,20 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     ): List<Chat>
 
     @Query(
+        """
+        select c.id from Chat c
+        where c.status = 'ACTIVE'
+          and c.chatType = 'FIRST_CHAT'
+          and c.timeoutAt <= :now
+        order by c.timeoutAt asc, c.id asc
+        """
+    )
+    fun findExpiredActiveFirstChatIds(
+        @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
         """ select c from Chat c
         where c.status = 'ACTIVE'
           and c.chatType = 'FIRST_CHAT'
@@ -94,6 +109,22 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     ): List<Chat>
 
     @Query(
+        """ select c.id from Chat c
+        where c.status = 'ACTIVE'
+          and c.chatType = 'FIRST_CHAT'
+          and (
+              (c.lastMessageAt is null and c.startedAt <= :threshold)
+              or c.lastMessageAt <= :threshold
+          )
+        order by coalesce(c.lastMessageAt, c.startedAt) asc, c.id asc
+        """
+    )
+    fun findInactiveActiveChatIds(
+        @Param("threshold") threshold: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
         "select c from Chat c where c.status = 'ACTIVE' and c.chatType = 'SECOND_CHAT' and c.timeoutAt <= :now"
     )
     fun findTimedOutActiveSecondChats(
@@ -101,11 +132,35 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     ): List<Chat>
 
     @Query(
+        """select c.id from Chat c
+           where c.status = 'ACTIVE'
+             and c.chatType = 'SECOND_CHAT'
+             and c.timeoutAt <= :now
+           order by c.timeoutAt asc, c.id asc"""
+    )
+    fun findTimedOutActiveSecondChatIds(
+        @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
         "select c from Chat c where c.status = 'AVAILABLE' and c.chatType = 'SECOND_CHAT' and c.timeoutAt <= :now"
     )
     fun findTimedOutAvailableSecondChats(
         @Param("now") now: OffsetDateTime
     ): List<Chat>
+
+    @Query(
+        """select c.id from Chat c
+           where c.status = 'AVAILABLE'
+             and c.chatType = 'SECOND_CHAT'
+             and c.timeoutAt <= :now
+           order by c.timeoutAt asc, c.id asc"""
+    )
+    fun findTimedOutAvailableSecondChatIds(
+        @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
 
     @Query(
         """select c from Chat c
@@ -117,6 +172,19 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     fun findExpiredReadOnlySecondChats(
         @Param("now") now: OffsetDateTime
     ): List<Chat>
+
+    @Query(
+        """select c.id from Chat c
+           where c.status = 'EXPIRED'
+             and c.chatType = 'SECOND_CHAT'
+             and c.readOnlyUntil is not null
+             and c.readOnlyUntil <= :now
+           order by c.readOnlyUntil asc, c.id asc"""
+    )
+    fun findExpiredReadOnlySecondChatIds(
+        @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Chat c set c.timeoutAt = :timeoutAt where c.id = :chatId")

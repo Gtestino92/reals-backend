@@ -714,12 +714,15 @@ If realtime chat is introduced:
 
 ### 10.1 Lifecycle job hardening
 
-Risk:
-- Scheduled jobs can become bottlenecks when many records expire or transition at similar times.
+Implemented hardening:
+- Frequent lifecycle jobs process bounded deterministic batches and leave remaining backlog for later scheduled runs.
+- `ChatTimeoutJob`, `InactivityCheckJob`, `SecondChatReminderNotificationJob`, `SchedulingActivationJob`, `SecondChatLifecycleJob`, `MatchExpirationJob` and `VisualPhaseExpirationJob` have configurable batch sizes.
+- Candidate queries order by the relevant due timestamp and stable UUID tie-breaker where practical.
+- One candidate failure is isolated and does not abort the rest of the batch.
+- Jobs do not loop to drain an entire backlog, and no worker queues, parallel executors or generic job framework were introduced.
+- Matchmaking now runs every `15000` ms by default; `maxPairsPerRun`, candidate-pair limits and scalable queue claiming remain unchanged.
 
-Before scale:
-- Process records in bounded batches.
-- Ensure one bad record does not abort the entire batch.
+Remaining before scale:
 - Add metrics for:
   - processed;
   - succeeded;
@@ -730,6 +733,8 @@ Before scale:
 - Add indexes for status/deadline fields used by jobs.
 - Add retry/no-op handling for expected stale states.
 - Add alerts for stuck records.
+- Low-frequency jobs that remain intentionally outside this batching block: visual-review reminder, penalty expiration, scheduling negotiation timeout, user reliability cleanup and account deletion finalization.
+- Micrometer backlog gauges remain deferred to the observability block.
 
 Relevant domains:
 - First-chat expiration.
@@ -769,7 +774,7 @@ Current hardening:
 Still deferred:
 - PostgreSQL/Testcontainers coverage for database-specific locking behavior remains a separate follow-up block. H2 service tests are not the final proof for PostgreSQL row-lock semantics.
 - The first-chat `ChatDecision` creation race is intentionally unchanged here. Android allows a manual retry immediately after the failed request completes and `actionLoading` is reset; there is no automatic or rapid-fire retry.
-- Exact notification delivery claiming/outbox/retries, unrelated scheduler batching/cadence, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
+- Exact notification delivery claiming/outbox/retries, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
 - DB/object-storage consistency through durable profile-photo cleanup tasks is implemented. Presigned upload/direct-to-S3 architecture remains a separate future design.
 
 Before scale, keep explicit concurrency tests for:

@@ -5,6 +5,7 @@ import com.reals.backend.service.ChatService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.PageRequest
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -21,7 +22,10 @@ class SecondChatLifecycleJob(
     private val negotiationRepository: ScheduleNegotiationRepository,
 
     @param:Value("\${chat.second-chat.duration-minutes:120}")
-    private val secondChatDurationMinutes: Long = 120
+    private val secondChatDurationMinutes: Long = 120,
+
+    @param:Value("\${scheduler.second-chat-lifecycle-job.batch-size:100}")
+    private val batchSize: Int = 100
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -40,30 +44,86 @@ class SecondChatLifecycleJob(
         processSecondChatLifecycle()
     }
 
-    private fun processSecondChatLifecycle() {
+    internal fun processSecondChatLifecycle(): JobRunSummary {
+        require(batchSize > 0) { "scheduler.second-chat-lifecycle-job.batch-size must be positive" }
         val startedAt = System.nanoTime()
         val now = OffsetDateTime.now()
 
         val expiredScheduledWithoutChat =
-            negotiationRepository.findExpiredConfirmedScheduledNegotiationsWithoutSecondChat(
-                expiresBefore = now.minusMinutes(secondChatDurationMinutes)
+            boundedSchedulerBatch(
+                fetchedCandidates =
+                    negotiationRepository.findExpiredConfirmedScheduledNegotiationConnectionIdsWithoutSecondChat(
+                        expiresBefore = now.minusMinutes(secondChatDurationMinutes),
+                        pageable = PageRequest.of(0, batchSize + 1)
+                    ),
+                batchSize = batchSize
             )
-        val timedOutAvailable = chatService.findTimedOutAvailableSecondChats()
-        val timedOutActive = chatService.findTimedOutActiveSecondChats()
-        val expiredReadOnly = chatService.findExpiredReadOnlySecondChats()
-        val noShowEventsRecorded = chatService.evaluateSecondChatNoShows(now)
+        val timedOutAvailable =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findTimedOutAvailableSecondChatIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val timedOutActive =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findTimedOutActiveSecondChatIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val expiredReadOnly =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findExpiredReadOnlySecondChatIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val noShowConnections =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findSecondChatNoShowConnectionIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
 
-        var succeeded = noShowEventsRecorded
+        var succeeded = 0
         var skipped = 0
         var failed = 0
 
-        expiredScheduledWithoutChat.forEach { negotiation ->
+        noShowConnections.items.forEach { connectionId ->
             try {
-                val confirmedDateTime = negotiation.confirmedDateTime
+                val recorded = chatService.evaluateSecondChatNoShow(
+                    connectionId = connectionId,
+                    now = now
+                )
+                if (recorded > 0) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "SecondChatLifecycleJob - failed to record second-chat no-show connection={}",
+                    connectionId,
+                    ex
+                )
+            }
+        }
+
+        expiredScheduledWithoutChat.items.forEach { connectionId ->
+            try {
+                val negotiation = negotiationRepository.findByConnectionId(connectionId)
+                val confirmedDateTime = negotiation?.confirmedDateTime
                 if (
                     confirmedDateTime != null &&
                     chatService.closeExpiredScheduledSecondChatWindow(
-                        connectionId = negotiation.connectionId,
+                        connectionId = connectionId,
                         confirmedDateTime = confirmedDateTime
                     )
                 ) {
@@ -75,15 +135,15 @@ class SecondChatLifecycleJob(
                 failed += 1
                 log.error(
                     "SecondChatLifecycleJob - failed to close expired scheduled second-chat window connection={}",
-                    negotiation.connectionId,
+                    connectionId,
                     ex
                 )
             }
         }
 
-        timedOutAvailable.forEach { chat ->
+        timedOutAvailable.items.forEach { chatId ->
             try {
-                if (chatService.closeExpiredUnactivatedSecondChat(chat.id)) {
+                if (chatService.closeExpiredUnactivatedSecondChat(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1
@@ -92,15 +152,15 @@ class SecondChatLifecycleJob(
                 failed += 1
                 log.error(
                     "SecondChatLifecycleJob - failed to close expired unactivated second chat={}",
-                    chat.id,
+                    chatId,
                     ex
                 )
             }
         }
 
-        timedOutActive.forEach { chat ->
+        timedOutActive.items.forEach { chatId ->
             try {
-                if (chatService.expireSecondChatToReadOnly(chat.id)) {
+                if (chatService.expireSecondChatToReadOnly(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1
@@ -109,15 +169,15 @@ class SecondChatLifecycleJob(
                 failed += 1
                 log.error(
                     "SecondChatLifecycleJob - failed to expire second chat to read-only chat={}",
-                    chat.id,
+                    chatId,
                     ex
                 )
             }
         }
 
-        expiredReadOnly.forEach { chat ->
+        expiredReadOnly.items.forEach { chatId ->
             try {
-                if (chatService.closeExpiredReadOnlySecondChat(chat.id)) {
+                if (chatService.closeExpiredReadOnlySecondChat(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1
@@ -126,26 +186,48 @@ class SecondChatLifecycleJob(
                 failed += 1
                 log.error(
                     "SecondChatLifecycleJob - failed to close read-only second chat={}",
-                    chat.id,
+                    chatId,
                     ex
                 )
             }
         }
 
-        log.logJobSummary(
-            jobName = "SecondChatLifecycleJob",
-            summary = JobRunSummary(
-                processed =
-                    noShowEventsRecorded +
-                    expiredScheduledWithoutChat.size +
-                        timedOutAvailable.size +
-                        timedOutActive.size +
-                        expiredReadOnly.size,
+        val processed =
+            noShowConnections.items.size +
+                expiredScheduledWithoutChat.items.size +
+                timedOutAvailable.items.size +
+                timedOutActive.items.size +
+                expiredReadOnly.items.size
+        val fetched =
+            noShowConnections.fetched +
+                expiredScheduledWithoutChat.fetched +
+                timedOutAvailable.fetched +
+                timedOutActive.fetched +
+                expiredReadOnly.fetched
+        val backlogRemaining =
+            noShowConnections.backlogRemaining ||
+                expiredScheduledWithoutChat.backlogRemaining ||
+                timedOutAvailable.backlogRemaining ||
+                timedOutActive.backlogRemaining ||
+                expiredReadOnly.backlogRemaining
+        val summary =
+            JobRunSummary(
+                processed = processed,
                 succeeded = succeeded,
                 skipped = skipped,
                 failed = failed
-            ),
+            )
+        log.logBatchComplete(
+            jobName = "SecondChatLifecycleJob",
+            batchSize = batchSize,
+            fetched = fetched,
+            backlogRemaining = backlogRemaining
+        )
+        log.logJobSummary(
+            jobName = "SecondChatLifecycleJob",
+            summary = summary,
             startedAt = startedAt
         )
+        return summary
     }
 }
