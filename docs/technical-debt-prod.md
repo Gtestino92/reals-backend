@@ -673,8 +673,16 @@ Future work:
 
 ### 9.2 Push notifications
 
+Current hardening:
+- FCM/provider transport calls execute outside active database transactions.
+- Notification preparation and delivery-result persistence use short transactions.
+- Aggregate locks are released before transport; this specifically prevents the visual-review reminder from holding the `VisualReview` pessimistic lock while Firebase is called.
+- Current provider-call entry points are scheduler/dev-job driven after product transitions commit.
+- `SENT`, `FAILED` and `SKIPPED_NO_ACTIVE_TOKEN` semantics are unchanged; invalid tokens are disabled only after provider response.
+- Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. Duplicate push delivery remains theoretically possible if concurrent workers prepare before either persists a delivery row.
+- A push can become stale after preparation if the user completes the action before transport. Exact delivery claiming, outbox, `PENDING` state, retries and backoff remain deferred.
+
 Before larger production usage:
-- Add Firebase Cloud Messaging support.
 - Register device tokens.
 - Handle token refresh.
 - Add notification tap routing.
@@ -756,11 +764,12 @@ Production preference:
 Current hardening:
 - Chat message writes now lock the target `Chat` row with a pessimistic write lock before final validation, `ChatMessage` insert, and `lastMessageAt` update. This serializes writes per chat while keeping different chats independent.
 - Firebase provisioning retries at most one concurrent UID/email unique-conflict attempt, and the retry reruns the authoritative provisioning decision in a fresh transaction.
+- Notification provider calls run after short eligibility/token preparation commits, with result persistence in a separate short transaction.
 
 Still deferred:
 - PostgreSQL/Testcontainers coverage for database-specific locking behavior remains a separate follow-up block. H2 service tests are not the final proof for PostgreSQL row-lock semantics.
 - The first-chat `ChatDecision` creation race is intentionally unchanged here. Android allows a manual retry immediately after the failed request completes and `actionLoading` is reset; there is no automatic or rapid-fire retry.
-- Notification delivery, unrelated scheduler batching/cadence, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
+- Exact notification delivery claiming/outbox/retries, unrelated scheduler batching/cadence, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
 - DB/object-storage consistency through durable profile-photo cleanup tasks is implemented. Presigned upload/direct-to-S3 architecture remains a separate future design.
 
 Before scale, keep explicit concurrency tests for:

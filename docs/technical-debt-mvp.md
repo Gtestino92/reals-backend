@@ -82,24 +82,33 @@ Backend concurrency hardening status:
 - Completed cleanup tasks are removed. `FAILED` cleanup tasks require operational inspection.
 - PostgreSQL/Testcontainers concurrency coverage remains deferred to a separate production-hardening block.
 - The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
-- Notification delivery, unrelated scheduler batching, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
+- Exact notification delivery claiming/outbox/retries, unrelated scheduler batching, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
 
 ### 6.1 Push notification delivery workflow cleanup
 
-Current notification event services intentionally keep their event-specific
-behavior explicit, but they repeat the same delivery workflow:
+Implemented notification transaction-boundary cleanup:
+
+- provider calls now run outside active database transactions;
+- event preparation and delivery-result persistence use short database transactions;
+- aggregate locks, including the `VisualReview` reminder lock, are released before FCM transport;
+- product-transaction notification call sites were inspected; current provider-call paths are scheduler/dev-job driven after product transitions have committed.
+
+Current notification event services intentionally keep their event-specific behavior explicit, but they still repeat related workflow shape:
 
 - check existing `PushNotificationDelivery` by user, notification type and aggregate id;
 - load active device tokens;
-- send through `PushNotificationSender`;
-- disable invalid tokens;
+- send through `PushNotificationSender` after commit;
+- disable invalid tokens after provider response;
 - save `SENT`, `FAILED` or `SKIPPED_NO_ACTIVE_TOKEN`;
 - catch per-user failures without failing the owning product transition.
 
-Planned cleanup:
+Remaining deferred cleanup:
 
 - Extract a shared `PushNotificationDeliveryService` under `service.notification`.
 - Keep event services responsible for eligibility, recipients and payload shape.
 - Keep provider transport under `service.notification.sender`.
 - Preserve existing idempotency semantics and delivery statuses.
 - Avoid changing notification timing, scheduler cadence or payload contents during the extraction.
+- Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. A duplicate push remains theoretically possible if two workers prepare before either persists a delivery row.
+- A prepared push can become stale if the user completes the action immediately after preparation and before transport. Exact delivery claiming, outbox, retries and backoff remain deferred.
+- PostgreSQL/Testcontainers lock verification remains deferred to the final concurrency-test block.

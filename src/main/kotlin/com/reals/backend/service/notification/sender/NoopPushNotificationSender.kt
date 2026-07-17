@@ -1,6 +1,5 @@
 package com.reals.backend.service.notification.sender
 
-import com.reals.backend.domain.PushDeviceToken
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
@@ -12,7 +11,7 @@ class NoopPushNotificationSender : PushNotificationSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun sendToTokens(
-        tokens: List<PushDeviceToken>,
+        tokens: List<PushNotificationToken>,
         notification: PushNotification
     ): PushSendResult {
         log.debug(
