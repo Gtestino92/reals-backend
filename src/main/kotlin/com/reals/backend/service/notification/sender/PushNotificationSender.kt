@@ -1,11 +1,16 @@
 package com.reals.backend.service.notification.sender
 
-import com.reals.backend.domain.PushDeviceToken
+import java.util.UUID
 
 data class PushNotification(
     val title: String,
     val body: String,
     val data: Map<String, String>
+)
+
+data class PushNotificationToken(
+    val id: UUID,
+    val token: String
 )
 
 data class PushSendResult(
@@ -17,7 +22,7 @@ data class PushSendResult(
 
 interface PushNotificationSender {
     fun sendToTokens(
-        tokens: List<PushDeviceToken>,
+        tokens: List<PushNotificationToken>,
         notification: PushNotification
     ): PushSendResult
 }
