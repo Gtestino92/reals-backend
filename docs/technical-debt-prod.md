@@ -68,13 +68,14 @@ Future work:
 
 ### 1.6 Firebase email verification
 
-Decision pending:
-- Whether backend should reject provisioning or profile activation when Firebase token has `email_verified=false`.
+Current behavior:
+- Profile activation requires the current Firebase ID token to have `emailVerified=true`.
+- Provisioning, profile creation/editing, photo operations and match-filter configuration do not require email verification.
+- Activation rejection uses stable code `EMAIL_NOT_VERIFIED`.
 
 Future work:
-- Add stable error such as `EMAIL_NOT_VERIFIED`.
 - Define Android resend/refresh flow.
-- Decide whether this is required only for production or also dev.
+- Decide whether additional production actions beyond activation should require a verified email.
 
 ---
 
@@ -637,11 +638,12 @@ Implemented first step:
 - Android can later poll `/api/me/home/status` and only call full Home when the version changes.
 - Full and pending Home now share one operational snapshot-loading path for blocked users, matches, visual reviews, chats, decisions, connections, negotiations and pending scheduling state.
 - First-chat `ChatDecision` reads for Home are batched by match id, removing the per-active-match N+1 read.
+- `reals.home.load` records full/pending Home service duration with bounded tags `variant` and `outcome`.
+- Hibernate Statistics query-count tests measure the current fixture shape without enabling production Hibernate statistics.
+- H2 fixture measurements from the production-readiness block: full/no-interaction `12`, pending/no-interaction `6`, full/one active first chat `16`, full/three active first chats `18`, pending/one active first chat `8`, pending/three active first chats `8`. These are test-fixture measurements, not production guarantees.
 
 Before scale:
-- Measure Home endpoint latency.
-- Review generated queries.
-- Avoid expensive repeated joins.
+- Continue reviewing generated queries against representative production data.
 - Reduce polling once push notifications are available.
 - Keep the persisted version semantics and invalidation hooks correct before introducing stronger caching or projections.
 
@@ -667,13 +669,15 @@ Implemented first step:
 - Initial legacy reads return the most recent bounded page as the existing JSON array, ordered chronologically.
 - Incremental reads use cursor pagination ordered by `sentAt ASC, id ASC`, request `limit + 1`, and set real `hasMore`.
 - The supporting index is `idx_chat_messages_session_sent_at_id` on `(chat_session_id, sent_at, id)`.
+- `reals.chat.messages.read` records initial/incremental read duration with bounded tags `mode` and `outcome`.
+- `reals.chat.messages.returned` records successful returned-message counts with bounded tag `mode`.
+- PostgreSQL/Testcontainers profile `postgres-it` includes a 5,000-message baseline for bounded initial and incremental reads, UUID tie-break pagination and V30 index presence. Local durations are diagnostic logs, not CI performance thresholds.
 
 Future work:
-- Add metrics:
+- Add broader product/traffic metrics only after there is real usage volume:
   - messages sent per minute;
-  - messages fetched per minute;
   - active chats;
-  - average message fetch latency.
+  - unread/recovery behavior if product adds it.
 
 ### 9.2 Push notifications
 
@@ -774,11 +778,17 @@ Current hardening:
 - Chat message writes now lock the target `Chat` row with a pessimistic write lock before final validation, `ChatMessage` insert, and `lastMessageAt` update. This serializes writes per chat while keeping different chats independent.
 - Firebase provisioning retries at most one concurrent UID/email unique-conflict attempt, and the retry reruns the authoritative provisioning decision in a fresh transaction.
 - Notification provider calls run after short eligibility/token preparation commits, with result persistence in a separate short transaction.
+- Targeted PostgreSQL/Testcontainers coverage now explicitly verifies:
+  - Home query-count shape on real PostgreSQL;
+  - bounded message reads and native cursor ordering on PostgreSQL;
+  - concurrent messages in one first chat;
+  - concurrent activation of one available second chat;
+  - concurrent Firebase provisioning with PostgreSQL unique constraints.
 
 Still deferred:
-- PostgreSQL/Testcontainers coverage for database-specific locking behavior remains a separate follow-up block. H2 service tests are not the final proof for PostgreSQL row-lock semantics.
 - The first-chat `ChatDecision` creation race is intentionally unchanged here. Android allows a manual retry immediately after the failed request completes and `actionLoading` is reset; there is no automatic or rapid-fire retry.
-- Exact notification delivery claiming/outbox/retries, observability, Home cleanup, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
+- Exhaustive PostgreSQL concurrency coverage remains deferred; H2 service tests are still not proof for every PostgreSQL lock interaction.
+- Exact notification delivery claiming/outbox/retries, broad observability, rate limiting and PostgreSQL/Testcontainers media-concurrency coverage are out of scope for this block.
 - DB/object-storage consistency through durable profile-photo cleanup tasks is implemented. Presigned upload/direct-to-S3 architecture remains a separate future design.
 
 Before scale, keep explicit concurrency tests for:
@@ -832,9 +842,20 @@ Future work:
 
 ## 12. Observability and alerting
 
+Implemented narrow diagnostics:
+- Custom Micrometer meters are enabled under `management.metrics.enable.reals=true` while `management.metrics.enable.all=false` remains the default stance.
+- `/actuator/health`, `/actuator/health/**` and `/actuator/info` remain public.
+- `/actuator/metrics` and `/actuator/metrics/**` require `ROLE_ADMIN`.
+- Current custom meters:
+  - `reals.home.load` with `variant=full|pending` and `outcome=success|error`;
+  - `reals.chat.messages.read` with `mode=initial|incremental` and `outcome=success|error`;
+  - `reals.chat.messages.returned` with `mode=initial|incremental`.
+- No user id, chat id, match id, cursor id, HTTP status, exception class or message count is used as a metric tag.
+- No Prometheus registry, Grafana dashboard, OTLP exporter, distributed tracing or production Hibernate statistics is configured.
+
 Before production scale:
-- Add structured logs with request/job identifiers.
-- Add metrics export.
+- Add structured logs with request/job identifiers where operationally useful.
+- Add metrics export only when the runtime target is selected.
 - Add alerts for:
   - matchmaking backlog;
   - job failures;

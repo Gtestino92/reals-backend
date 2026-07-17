@@ -6,11 +6,19 @@ Automated tests live under:
 src/test/kotlin/com/reals/backend/integration
 ```
 
-The suite uses Spring Boot integration tests with the `test` profile and H2 in-memory.
-PostgreSQL-specific behavior that H2 cannot model, such as row claiming with
-`FOR UPDATE SKIP LOCKED`, is covered by focused Testcontainers tests under the
-same suite. Those tests require Docker and are skipped when Docker is not
-available.
+The normal suite uses Spring Boot integration tests with the `test` profile and
+H2 in-memory PostgreSQL compatibility mode. It does not require Docker.
+
+PostgreSQL-specific verification is explicit:
+
+```bash
+./mvnw -Ppostgres-it verify
+```
+
+That profile uses Testcontainers with `postgres:16-alpine`, runs real Flyway
+migrations, validates the JPA schema with `ddl-auto=validate`, and fails when
+the explicitly requested PostgreSQL environment cannot run. The PostgreSQL
+suite is targeted rather than exhaustive.
 
 Structure:
 
@@ -113,8 +121,22 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
-The PostgreSQL concurrency coverage uses Testcontainers, so Docker must be
-running if you want that test to execute locally.
+
+Run the explicit PostgreSQL profile only when Docker is available:
+
+```text
+.\mvnw.cmd -Ppostgres-it verify
+```
+
+Use `./mvnw -Ppostgres-it verify` on Unix-like shells.
+
+The current PostgreSQL profile covers targeted production-readiness checks:
+
+- Home query-count shape on real PostgreSQL.
+- Bounded chat-message initial and incremental reads, including UUID tie-break pagination and V30 index presence.
+- Concurrent writes in one first chat.
+- Concurrent activation of one available second chat.
+- Concurrent Firebase provisioning with PostgreSQL unique constraints.
 
 GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
 `master` or `development`.

@@ -56,6 +56,7 @@ class MeHomeService(
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
     private val homeStatusService: HomeStatusService,
     private val userBlockService: UserBlockService,
+    private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.second-chat.duration-minutes:120}")
     private val secondChatDurationMinutes: Long
@@ -75,7 +76,12 @@ class MeHomeService(
     )
 
     @Transactional(readOnly = true)
-    fun getHome(userId: UUID): HomeResponse {
+    fun getHome(userId: UUID): HomeResponse =
+        readMetrics.recordHomeLoad(ReadMetrics.HOME_VARIANT_FULL) {
+            getHomeMeasured(userId)
+        }
+
+    private fun getHomeMeasured(userId: UUID): HomeResponse {
         val profileStatus = profileRepository.findByUserId(userId)?.status
         val inQueue = queueRepository.existsByUserId(userId)
         val snapshot = loadHomeOperationalSnapshot(userId)
@@ -157,7 +163,12 @@ class MeHomeService(
     }
 
     @Transactional
-    fun getPendingHomeState(userId: UUID): HomePendingStateResponse {
+    fun getPendingHomeState(userId: UUID): HomePendingStateResponse =
+        readMetrics.recordHomeLoad(ReadMetrics.HOME_VARIANT_PENDING) {
+            getPendingHomeStateMeasured(userId)
+        }
+
+    private fun getPendingHomeStateMeasured(userId: UUID): HomePendingStateResponse {
         val status = homeStatusService.getOrCreateStatus(userId = userId)
         val snapshot = loadHomeOperationalSnapshot(userId)
         val hasPendingSchedulingConnection = snapshot.pendingSchedulingConnections.isNotEmpty()

@@ -73,6 +73,7 @@ class SecurityConfig(
                     .requestMatchers("/api/ping").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/legal/documents/current").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                    .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole(SecurityRoles.ADMIN)
 
                 if (environmentExposurePolicy.localDevEndpointsAllowed()) {
                     // Local tooling executes system jobs; bearer auth only adds local friction.
