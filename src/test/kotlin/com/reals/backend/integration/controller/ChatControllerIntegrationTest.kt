@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
+import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
@@ -212,6 +213,158 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.messages", hasSize<Any>(1)))
             .andExpect(jsonPath("$.messages[0].content", equalTo("Segundo mensaje")))
             .andExpect(jsonPath("$.hasMore", equalTo(false)))
+    }
+
+    @Test
+    fun `initial message list returns latest default page as chronological legacy array`() {
+        val setup = createMatchWithFirstChat("messages-default-page")
+        insertMessages(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            count = 201
+        )
+
+        val body = mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$", hasSize<Any>(200)))
+            .andExpect(jsonPath("$[0].content", equalTo("message-001")))
+            .andExpect(jsonPath("$[199].content", equalTo("message-200")))
+            .andExpect(jsonPath("$.messages").doesNotExist())
+            .andReturn()
+            .response
+            .contentAsString
+
+        assertEquals(true, objectMapper.readTree(body).isArray)
+    }
+
+    @Test
+    fun `initial message list applies explicit limit and preserves chronological order`() {
+        val setup = createMatchWithFirstChat("messages-explicit-page")
+        insertMessages(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            count = 5
+        )
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?limit=3")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$", hasSize<Any>(3)))
+            .andExpect(jsonPath("$[0].content", equalTo("message-002")))
+            .andExpect(jsonPath("$[1].content", equalTo("message-003")))
+            .andExpect(jsonPath("$[2].content", equalTo("message-004")))
+    }
+
+    @Test
+    fun `incremental message list pages after cursor and reports hasMore`() {
+        val setup = createMatchWithFirstChat("messages-incremental-page")
+        val messages = insertMessages(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            count = 6
+        )
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=${messages[2].id}&limit=2")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(2)))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("message-003")))
+            .andExpect(jsonPath("$.messages[1].content", equalTo("message-004")))
+            .andExpect(jsonPath("$.hasMore", equalTo(true)))
+            .andExpect(jsonPath("$.serverTime").exists())
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=${messages[4].id}&limit=2")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(1)))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("message-005")))
+            .andExpect(jsonPath("$.hasMore", equalTo(false)))
+    }
+
+    @Test
+    fun `incremental message pagination uses id tie breaker for identical sentAt`() {
+        val setup = createMatchWithFirstChat("messages-tie-break")
+        val sentAt = OffsetDateTime.now().minusMinutes(1)
+        val messages = (1..5).map { index ->
+            ChatMessage(
+                id = UUID.fromString("00000000-0000-0000-0000-00000000000$index"),
+                chatSessionId = setup.firstChatId,
+                senderId = setup.userAId,
+                content = "tie-$index",
+                sentAt = sentAt
+            )
+        }
+        chatMessageRepository.saveAll(messages.reversed())
+        chatMessageRepository.flush()
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=${messages[1].id}&limit=2")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(2)))
+            .andExpect(jsonPath("$.messages[0].id", equalTo(messages[2].id.toString())))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("tie-3")))
+            .andExpect(jsonPath("$.messages[1].id", equalTo(messages[3].id.toString())))
+            .andExpect(jsonPath("$.messages[1].content", equalTo("tie-4")))
+            .andExpect(jsonPath("$.hasMore", equalTo(true)))
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?after=${messages[3].id}&limit=2")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.messages", hasSize<Any>(1)))
+            .andExpect(jsonPath("$.messages[0].id", equalTo(messages[4].id.toString())))
+            .andExpect(jsonPath("$.messages[0].content", equalTo("tie-5")))
+            .andExpect(jsonPath("$.hasMore", equalTo(false)))
+    }
+
+    @Test
+    fun `message list rejects invalid limits with validation response`() {
+        val setup = createMatchWithFirstChat("messages-invalid-limit")
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?limit=0")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages?limit=501")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `expired read only second chat remains readable through bounded message list`() {
+        val setup = createActiveSecondChat()
+        chatService.sendMessage(setup.secondChatId, setup.userAId, "Mensaje retenido")
+        chatRepository.updateTimeoutAt(
+            chatId = setup.secondChatId,
+            timeoutAt = OffsetDateTime.now().minusSeconds(1)
+        )
+        chatService.expireSecondChatToReadOnly(setup.secondChatId)
+
+        mockMvc.perform(
+            get("/api/chats/${setup.secondChatId}/messages?limit=1")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$", hasSize<Any>(1)))
+            .andExpect(jsonPath("$[0].content", equalTo("Mensaje retenido")))
     }
 
     @Test
@@ -623,4 +776,23 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 it.type == ChatExitRequestType.MUTUAL_CANCEL &&
                     it.status == ChatExitRequestStatus.PENDING
             }
+
+    private fun insertMessages(
+        chatId: UUID,
+        senderId: UUID,
+        count: Int
+    ): List<ChatMessage> {
+        val baseSentAt = OffsetDateTime.now().minusMinutes(count.toLong() + 1)
+        val messages = (0 until count).map { index ->
+            ChatMessage(
+                chatSessionId = chatId,
+                senderId = senderId,
+                content = "message-${index.toString().padStart(3, '0')}",
+                sentAt = baseSentAt.plusSeconds(index.toLong())
+            )
+        }
+        chatMessageRepository.saveAll(messages)
+        chatMessageRepository.flush()
+        return messages
+    }
 }

@@ -61,125 +61,28 @@ class MeHomeService(
     private val secondChatDurationMinutes: Long
 ) {
 
+    private data class HomeOperationalSnapshot(
+        val now: OffsetDateTime,
+        val blockedCounterpartIds: Set<UUID>,
+        val activeMatches: List<Match>,
+        val visualReviewByMatchId: Map<UUID, VisualReview>,
+        val firstChatsByMatchId: Map<UUID, Chat>,
+        val chatDecisionsByMatchId: Map<UUID, ChatDecision?>,
+        val visibleConnections: List<Connection>,
+        val pendingSchedulingConnections: List<Connection>,
+        val secondChatsByConnectionId: Map<UUID, Chat>,
+        val confirmedNegotiationsByConnectionId: Map<UUID, com.reals.backend.domain.ScheduleNegotiation>
+    )
+
     @Transactional(readOnly = true)
     fun getHome(userId: UUID): HomeResponse {
         val profileStatus = profileRepository.findByUserId(userId)?.status
         val inQueue = queueRepository.existsByUserId(userId)
-
-        val now = OffsetDateTime.now()
-        val blockedCounterpartIds = userBlockService.findBlockedCounterpartUserIds(userId)
-
-        val candidateMatches = matchRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(
-                    MatchState.CHAT_ACTIVE,
-                    MatchState.VISUAL_PHASE,
-                ),
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-
-        val visualReviewByMatchId = candidateMatches
-            .filter { it.state == MatchState.VISUAL_PHASE }
-            .takeIf { it.isNotEmpty() }
-            ?.let { visualMatches ->
-                visualReviewRepository
-                    .findByMatchIdIn(visualMatches.map { it.id })
-                    .associateBy { it.matchId }
-            }
-            ?: emptyMap()
-
-        val activeMatches = candidateMatches
-            .filter { match ->
-                if (match.state != MatchState.VISUAL_PHASE) {
-                    true
-                } else {
-                    val review = visualReviewByMatchId[match.id]
-                    review?.expiresAt?.isAfter(now) == true &&
-                        review.hasPendingDecisionFor(
-                            userId = userId,
-                            userAId = match.userAId,
-                            userBId = match.userBId
-                        )
-                }
-            }
-            .sortedByDescending { it.updatedAt }
-
-        val firstChatsByMatchId = if (activeMatches.isEmpty()) {
-            emptyMap()
-        } else {
-            chatRepository
-                .findByMatchIdInAndChatType(
-                    matchIds = activeMatches.map { it.id },
-                    chatType = ChatType.FIRST_CHAT
-                )
-                .associateBy { it.matchId }
-        }
-
-        val chatDecisionsByMatchId: Map<UUID, ChatDecision?> =
-            activeMatches
-                .filter { it.state == MatchState.CHAT_ACTIVE }
-                .associate { match ->
-                    match.id to chatDecisionRepository.findByMatchId(match.id)
-                }
-
-        val activeConnections = connectionRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(
-                    ConnectionState.SCHEDULING_PHASE,
-                    ConnectionState.SECOND_CHAT_SCHEDULED,
-                    ConnectionState.SECOND_CHAT_AVAILABLE,
-                    ConnectionState.SECOND_CHAT
-                )
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-            .sortedByDescending { it.updatedAt }
-
-        val dismissedConnectionIds =
-            if (activeConnections.isEmpty()) {
-                emptySet()
-            } else {
-                dismissalRepository
-                    .findDismissedConnectionIds(
-                        userId = userId,
-                        connectionIds = activeConnections.map { it.id }
-                    )
-                    .toSet()
-            }
-
-        val visibleConnections =
-            activeConnections.filter { it.id !in dismissedConnectionIds }
-
-        val pendingSchedulingConnections = pendingSchedulingConnections(
-            userId = userId,
-            blockedCounterpartIds = blockedCounterpartIds
-        )
-
-        val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
-            emptyMap()
-        } else {
-            chatRepository
-                .findByConnectionIdInAndChatType(
-                    connectionIds = visibleConnections.map { it.id },
-                    chatType = ChatType.SECOND_CHAT
-                )
-                .mapNotNull { chat ->
-                    chat.connectionId?.let { connectionId -> connectionId to chat }
-                }
-                .toMap()
-        }
-
-        val confirmedNegotiationsByConnectionId = if (visibleConnections.isEmpty()) {
-            emptyMap()
-        } else {
-            negotiationRepository
-                .findByConnectionIdIn(visibleConnections.map { it.id })
-                .filter { it.confirmedDateTime != null }
-                .associateBy { it.connectionId }
-        }
+        val snapshot = loadHomeOperationalSnapshot(userId)
 
         val partnerUserIds =
-            activeMatches.map { partnerUserId(it.userAId, it.userBId, userId) } +
-                visibleConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
+            snapshot.activeMatches.map { partnerUserId(it.userAId, it.userBId, userId) } +
+                snapshot.visibleConnections.map { partnerUserId(it.userAId, it.userBId, userId) }
 
         val partnerProfilesByUserId =
             if (partnerUserIds.isEmpty()) {
@@ -190,35 +93,35 @@ class MeHomeService(
                     .associateBy { it.userId }
             }
 
-        val pendingActions = activeMatches.mapNotNull { match ->
+        val pendingActions = snapshot.activeMatches.mapNotNull { match ->
             toPendingAction(
                 match = match,
                 currentUserId = userId,
-                firstChat = firstChatsByMatchId[match.id],
-                decision = chatDecisionsByMatchId[match.id],
-                visualReview = visualReviewByMatchId[match.id],
+                firstChat = snapshot.firstChatsByMatchId[match.id],
+                decision = snapshot.chatDecisionsByMatchId[match.id],
+                visualReview = snapshot.visualReviewByMatchId[match.id],
                 partner = partnerProfilesByUserId[
                     partnerUserId(match.userAId, match.userBId, userId)
                 ],
-                now = now
+                now = snapshot.now
             )
         }
 
-        val nextSteps = visibleConnections.mapNotNull { connection ->
+        val nextSteps = snapshot.visibleConnections.mapNotNull { connection ->
             toNextStep(
                 connection = connection,
-                secondChat = secondChatsByConnectionId[connection.id],
-                secondChatAvailableAt = confirmedNegotiationsByConnectionId[
+                secondChat = snapshot.secondChatsByConnectionId[connection.id],
+                secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
                     connection.id
                 ]?.confirmedDateTime,
                 partner = partnerProfilesByUserId[
                     partnerUserId(connection.userAId, connection.userBId, userId)
                 ],
-                now = now
+                now = snapshot.now
             )
         }
 
-        val hasPendingSchedulingConnection = pendingSchedulingConnections.isNotEmpty()
+        val hasPendingSchedulingConnection = snapshot.pendingSchedulingConnections.isNotEmpty()
 
         val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
             activeInitialCount = pendingActions.size,
@@ -255,8 +158,41 @@ class MeHomeService(
 
     @Transactional
     fun getPendingHomeState(userId: UUID): HomePendingStateResponse {
-        val now = OffsetDateTime.now()
         val status = homeStatusService.getOrCreateStatus(userId = userId)
+        val snapshot = loadHomeOperationalSnapshot(userId)
+        val hasPendingSchedulingConnection = snapshot.pendingSchedulingConnections.isNotEmpty()
+
+        return HomePendingStateResponse(
+            version = status.version,
+            pendingActions = snapshot.activeMatches.mapNotNull { match ->
+                toPendingActionLite(
+                    match = match,
+                    currentUserId = userId,
+                    firstChat = snapshot.firstChatsByMatchId[match.id],
+                    decision = snapshot.chatDecisionsByMatchId[match.id],
+                    visualReview = snapshot.visualReviewByMatchId[match.id],
+                    now = snapshot.now
+                )
+            },
+            nextSteps = snapshot.visibleConnections.mapNotNull { connection ->
+                toNextStepLite(
+                    connection = connection,
+                    secondChat = snapshot.secondChatsByConnectionId[connection.id],
+                    secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
+                        connection.id
+                    ]?.confirmedDateTime,
+                    now = snapshot.now
+                )
+            },
+            passiveNotices = passiveNoticesForPendingScheduling(
+                hasPendingSchedulingConnection
+            ),
+            serverTime = OffsetDateTime.now()
+        )
+    }
+
+    private fun loadHomeOperationalSnapshot(userId: UUID): HomeOperationalSnapshot {
+        val now = OffsetDateTime.now()
         val blockedCounterpartIds = userBlockService.findBlockedCounterpartUserIds(userId)
 
         val candidateMatches = matchRepository
@@ -305,16 +241,33 @@ class MeHomeService(
                 .associateBy { it.matchId }
         }
 
-        val chatDecisionsByMatchId: Map<UUID, ChatDecision?> =
-            activeMatches
-                .filter { it.state == MatchState.CHAT_ACTIVE }
-                .associate { match ->
-                    match.id to chatDecisionRepository.findByMatchId(match.id)
-                }
+        val chatDecisionsByMatchId = loadChatDecisionsByMatchId(activeMatches)
 
-        val visibleConnections = visibleConnectionsForPending(
+        val activeConnections = connectionRepository
+            .findByParticipantIdAndStateIn(
+                userId = userId,
+                states = listOf(
+                    ConnectionState.SCHEDULING_PHASE,
+                    ConnectionState.SECOND_CHAT_SCHEDULED,
+                    ConnectionState.SECOND_CHAT_AVAILABLE,
+                    ConnectionState.SECOND_CHAT
+                )
+            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
+            .sortedByDescending { it.updatedAt }
+
+        val visibleConnections = filterDismissedConnections(
             userId = userId,
-            blockedCounterpartIds = blockedCounterpartIds
+            connections = activeConnections
+        )
+
+        val pendingSchedulingConnections = filterDismissedConnections(
+            userId = userId,
+            connections = connectionRepository
+                .findByParticipantIdAndStateIn(
+                    userId = userId,
+                    states = listOf(ConnectionState.SCHEDULING_PENDING)
+                )
+                .filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
         )
 
         val secondChatsByConnectionId = if (visibleConnections.isEmpty()) {
@@ -340,38 +293,55 @@ class MeHomeService(
                 .associateBy { it.connectionId }
         }
 
-        val hasPendingSchedulingConnection = pendingSchedulingConnections(
-            userId = userId,
-            blockedCounterpartIds = blockedCounterpartIds
-        ).isNotEmpty()
-
-        return HomePendingStateResponse(
-            version = status.version,
-            pendingActions = activeMatches.mapNotNull { match ->
-                toPendingActionLite(
-                    match = match,
-                    currentUserId = userId,
-                    firstChat = firstChatsByMatchId[match.id],
-                    decision = chatDecisionsByMatchId[match.id],
-                    visualReview = visualReviewByMatchId[match.id],
-                    now = now
-                )
-            },
-            nextSteps = visibleConnections.mapNotNull { connection ->
-                toNextStepLite(
-                    connection = connection,
-                    secondChat = secondChatsByConnectionId[connection.id],
-                    secondChatAvailableAt = confirmedNegotiationsByConnectionId[
-                        connection.id
-                    ]?.confirmedDateTime,
-                    now = now
-                )
-            },
-            passiveNotices = passiveNoticesForPendingScheduling(
-                hasPendingSchedulingConnection
-            ),
-            serverTime = OffsetDateTime.now()
+        return HomeOperationalSnapshot(
+            now = now,
+            blockedCounterpartIds = blockedCounterpartIds,
+            activeMatches = activeMatches,
+            visualReviewByMatchId = visualReviewByMatchId,
+            firstChatsByMatchId = firstChatsByMatchId,
+            chatDecisionsByMatchId = chatDecisionsByMatchId,
+            visibleConnections = visibleConnections,
+            pendingSchedulingConnections = pendingSchedulingConnections,
+            secondChatsByConnectionId = secondChatsByConnectionId,
+            confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId
         )
+    }
+
+    private fun loadChatDecisionsByMatchId(
+        activeMatches: List<Match>
+    ): Map<UUID, ChatDecision?> {
+        val activeChatMatchIds = activeMatches
+            .filter { it.state == MatchState.CHAT_ACTIVE }
+            .map { it.id }
+
+        if (activeChatMatchIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        val foundDecisionsByMatchId =
+            chatDecisionRepository.findByMatchIdIn(activeChatMatchIds)
+                .associateBy { it.matchId }
+
+        return activeChatMatchIds.associateWith { foundDecisionsByMatchId[it] }
+    }
+
+    private fun filterDismissedConnections(
+        userId: UUID,
+        connections: List<Connection>
+    ): List<Connection> {
+        val dismissedConnectionIds =
+            if (connections.isEmpty()) {
+                emptySet()
+            } else {
+                dismissalRepository
+                    .findDismissedConnectionIds(
+                        userId = userId,
+                        connectionIds = connections.map { it.id }
+                    )
+                    .toSet()
+            }
+
+        return connections.filter { it.id !in dismissedConnectionIds }
     }
 
     private fun partnerUserId(
@@ -593,62 +563,6 @@ class MeHomeService(
                 availableAt = secondChatAvailableAt
             )
         )
-    }
-
-    private fun visibleConnectionsForPending(
-        userId: UUID,
-        blockedCounterpartIds: Set<UUID>
-    ): List<Connection> {
-        val activeConnections = connectionRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(
-                    ConnectionState.SCHEDULING_PHASE,
-                    ConnectionState.SECOND_CHAT_SCHEDULED,
-                    ConnectionState.SECOND_CHAT_AVAILABLE,
-                    ConnectionState.SECOND_CHAT
-                )
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-            .sortedByDescending { it.updatedAt }
-
-        val dismissedConnectionIds =
-            if (activeConnections.isEmpty()) {
-                emptySet()
-            } else {
-                dismissalRepository
-                    .findDismissedConnectionIds(
-                        userId = userId,
-                        connectionIds = activeConnections.map { it.id }
-                    )
-                    .toSet()
-            }
-
-        return activeConnections.filter { it.id !in dismissedConnectionIds }
-    }
-
-    private fun pendingSchedulingConnections(
-        userId: UUID,
-        blockedCounterpartIds: Set<UUID>
-    ): List<Connection> {
-        val pendingConnections = connectionRepository
-            .findByParticipantIdAndStateIn(
-                userId = userId,
-                states = listOf(ConnectionState.SCHEDULING_PENDING)
-            ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-
-        val dismissedConnectionIds =
-            if (pendingConnections.isEmpty()) {
-                emptySet()
-            } else {
-                dismissalRepository
-                    .findDismissedConnectionIds(
-                        userId = userId,
-                        connectionIds = pendingConnections.map { it.id }
-                    )
-                    .toSet()
-            }
-
-        return pendingConnections.filter { it.id !in dismissedConnectionIds }
     }
 
     private fun isScheduledSecondChatWindowExpired(

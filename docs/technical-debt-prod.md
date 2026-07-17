@@ -635,6 +635,8 @@ Implemented first step:
 - `GET /api/me/home/status` returns a persisted per-user Home `version`, `dirty` flag and `serverTime`.
 - Home-relevant state transitions bump the persisted version in PostgreSQL, so change detection works across multiple backend instances.
 - Android can later poll `/api/me/home/status` and only call full Home when the version changes.
+- Full and pending Home now share one operational snapshot-loading path for blocked users, matches, visual reviews, chats, decisions, connections, negotiations and pending scheduling state.
+- First-chat `ChatDecision` reads for Home are batched by match id, removing the per-active-match N+1 read.
 
 Before scale:
 - Measure Home endpoint latency.
@@ -660,11 +662,13 @@ Risk:
 - Chat polling and message history can create high read volume.
 - Fetching full message history does not scale well for long chats or frequent polling.
 
+Implemented first step:
+- Chat message reads accept optional `limit` with default 200 and maximum 500.
+- Initial legacy reads return the most recent bounded page as the existing JSON array, ordered chronologically.
+- Incremental reads use cursor pagination ordered by `sentAt ASC, id ASC`, request `limit + 1`, and set real `hasMore`.
+- The supporting index is `idx_chat_messages_session_sent_at_id` on `(chat_session_id, sent_at, id)`.
+
 Future work:
-- Add cursor-based pagination for chat messages.
-- Prefer message IDs or `(sentAt, id)` cursors.
-- Limit response sizes.
-- Add indexes by `chat_session_id`, `sent_at`, and possibly `id`.
 - Add metrics:
   - messages sent per minute;
   - messages fetched per minute;
