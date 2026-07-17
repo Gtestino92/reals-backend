@@ -73,7 +73,10 @@ class ChatService(
     private val firstChatInactivityThresholdMinutes: Long,
 
     @param:Value("\${user-reliability.second-chat.no-show-grace-minutes:10}")
-    private val secondChatNoShowGraceMinutes: Long
+    private val secondChatNoShowGraceMinutes: Long,
+
+    @param:Value("\${chat.messages.page-limit-default:200}")
+    private val defaultMessagePageLimit: Int
 ) {
 
     @PersistenceContext
@@ -81,11 +84,17 @@ class ChatService(
 
     private companion object {
         const val MESSAGE_MAX_LENGTH = 1000
+        const val MESSAGE_PAGE_LIMIT_MAX = 500
     }
 
     data class ParticipantDecisionStatuses(
         val myDecision: ChatParticipantDecisionStatus,
         val partnerDecision: ChatParticipantDecisionStatus
+    )
+
+    data class ChatMessagesPage(
+        val messages: List<ChatMessage>,
+        val hasMore: Boolean
     )
 
     fun findByIdOrThrow(chatId: UUID): Chat {
@@ -471,12 +480,18 @@ class ChatService(
 
     fun getMessages(
         chatId: UUID,
-        userId: UUID
+        userId: UUID,
+        limit: Int? = null
     ): List<ChatMessage> {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)
         validateChatReadable(chat)
-        return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
+        val pageLimit = resolveMessagePageLimit(limit)
+
+        return chatMessageRepository.findByChatSessionIdOrderBySentAtDescIdDesc(
+            chatSessionId = chatId,
+            pageable = PageRequest.of(0, pageLimit)
+        ).asReversed()
     }
 
     fun getFirstChatGuidanceState(
@@ -511,11 +526,13 @@ class ChatService(
     fun getMessagesAfter(
         chatId: UUID,
         userId: UUID,
-        afterMessageId: UUID
-    ): List<ChatMessage> {
+        afterMessageId: UUID,
+        limit: Int? = null
+    ): ChatMessagesPage {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)
         validateChatReadable(chat)
+        val pageLimit = resolveMessagePageLimit(limit)
 
         val afterMessage =
             chatMessageRepository.findById(afterMessageId)
@@ -527,9 +544,17 @@ class ChatService(
             throw chatNotAvailable()
         }
 
-        return chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId)
-            .dropWhile { it.id != afterMessageId }
-            .drop(1)
+        val page = chatMessageRepository.findPageAfterCursor(
+            chatSessionId = chatId,
+            cursorId = afterMessage.id,
+            messageId = afterMessage.id.toString(),
+            pageable = PageRequest.of(0, pageLimit + 1)
+        )
+
+        return ChatMessagesPage(
+            messages = page.take(pageLimit),
+            hasMore = page.size > pageLimit
+        )
     }
 
     fun getFirstChatDecisionStatuses(
@@ -1165,6 +1190,16 @@ class ChatService(
             code = DomainErrorCode.CHAT_MESSAGE_INVALID,
             message = "Chat message is invalid"
         )
+
+    private fun resolveMessagePageLimit(limit: Int?): Int {
+        val resolvedLimit = limit ?: defaultMessagePageLimit
+
+        require(resolvedLimit in 1..MESSAGE_PAGE_LIMIT_MAX) {
+            "Message limit must be between 1 and $MESSAGE_PAGE_LIMIT_MAX"
+        }
+
+        return resolvedLimit
+    }
 
     private fun chatDecisionNotAvailable(): DomainConflictException =
         DomainConflictException(

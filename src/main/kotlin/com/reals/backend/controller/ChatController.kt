@@ -7,13 +7,17 @@ import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import java.util.*
 
 @RestController
 @RequestMapping("/api/chats")
+@Validated
 class ChatController(
     private val chatService: ChatService,
     private val chatExitService: ChatExitService,
@@ -81,25 +85,34 @@ class ChatController(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID,
         @RequestParam(required = false) after: UUID?,
-        @RequestParam(required = false) afterMessageId: UUID?
+        @RequestParam(required = false) afterMessageId: UUID?,
+        @RequestParam(required = false)
+        @Min(1)
+        @Max(500)
+        limit: Int?
     ): ResponseEntity<Any> {
         val effectiveAfterMessageId = after ?: afterMessageId
 
         if (effectiveAfterMessageId != null) {
-            val messages = chatService.getMessagesAfter(
+            val page = chatService.getMessagesAfter(
                 chatId = chatId,
                 userId = userId,
-                afterMessageId = effectiveAfterMessageId
+                afterMessageId = effectiveAfterMessageId,
+                limit = limit
             )
 
             return ResponseEntity.ok<Any>(
-                ChatMessagesResponse.from(messages)
+                ChatMessagesResponse.from(
+                    messages = page.messages,
+                    hasMore = page.hasMore
+                )
             )
         }
 
         val messages = chatService.getMessages(
             chatId = chatId,
-            userId = userId
+            userId = userId,
+            limit = limit
         )
 
         return ResponseEntity.ok<Any>(
