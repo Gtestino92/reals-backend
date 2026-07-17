@@ -136,6 +136,27 @@ interface ScheduleNegotiationRepository :
              and c.state in :states
              and n.status = :status
              and n.confirmedDateTime is not null
+             and n.confirmedDateTime > :windowStartExclusive
+             and n.confirmedDateTime <= :windowEndInclusive
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findConfirmedSecondChatReminderRecoverableForWindow(
+        @Param("windowStartExclusive") windowStartExclusive: OffsetDateTime,
+        @Param("windowEndInclusive") windowEndInclusive: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED
+        ),
+        pageable: Pageable
+    ): List<ScheduleNegotiation>
+
+    @Query(
+        """select n from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
              and n.confirmedDateTime <= :dueBefore"""
     )
     fun findConfirmedSecondChatNoShowDue(
