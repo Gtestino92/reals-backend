@@ -4,22 +4,27 @@ import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.User
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.notification.SecondChatReminderNotificationService
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderProcessingResult
 import org.springframework.data.domain.Pageable
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -109,6 +114,146 @@ class LifecycleJobSummaryTest {
         Mockito.verify(schedulingService, Mockito.never()).activateSchedulingAndInitializeNegotiation(backlog)
         Mockito.verify(notificationService).notifySchedulingAvailable(changed)
         Mockito.verify(notificationService, Mockito.never()).notifySchedulingAvailable(failed)
+    }
+
+    @Test
+    fun `second chat reminder job round robins lead times within one bounded batch`() {
+        val negotiationRepository = Mockito.mock(ScheduleNegotiationRepository::class.java)
+        val reminderService = Mockito.mock(SecondChatReminderNotificationService::class.java)
+        val first120 = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T14:00:00Z"))
+        val second120 = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T14:01:00Z"))
+        val third120 = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T14:02:00Z"))
+        val first10 = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T12:10:00Z"))
+
+        Mockito.`when`(
+            negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
+                anyOffsetDateTime(),
+                anyOffsetDateTime(),
+                anyNegotiationStatus(),
+                anyConnectionStates(),
+                anyPageable()
+            )
+        )
+            .thenReturn(listOf(first120, second120, third120))
+            .thenReturn(listOf(first10))
+            .thenReturn(listOf(second120, third120))
+            .thenReturn(emptyList())
+
+        Mockito.`when`(
+            reminderService.notifySecondChatReminder(
+                eqValue(first120.connectionId),
+                eqValue(first120.confirmedDateTime!!),
+                eqValue(120)
+            )
+        ).thenThrow(RuntimeException("simulated reminder failure"))
+        Mockito.`when`(
+            reminderService.notifySecondChatReminder(
+                eqValue(first10.connectionId),
+                eqValue(first10.confirmedDateTime!!),
+                eqValue(10)
+            )
+        ).thenReturn(true)
+        Mockito.`when`(
+            reminderService.notifySecondChatReminder(
+                eqValue(second120.connectionId),
+                eqValue(second120.confirmedDateTime!!),
+                eqValue(120)
+            )
+        ).thenReturn(true)
+        Mockito.`when`(
+            reminderService.notifySecondChatReminder(
+                eqValue(third120.connectionId),
+                eqValue(third120.confirmedDateTime!!),
+                eqValue(120)
+            )
+        ).thenReturn(true)
+
+        val job =
+            SecondChatReminderNotificationJob(
+                negotiationRepository = negotiationRepository,
+                reminderNotificationService = reminderService,
+                fixedDelayMs = 60_000,
+                reminderLeadMinutes = listOf("120", "10"),
+                batchSize = 2
+            )
+
+        val firstRunSummary = job.processSecondChatReminders()
+
+        assertEquals(2, firstRunSummary.processed)
+        assertEquals(1, firstRunSummary.succeeded)
+        assertEquals(0, firstRunSummary.skipped)
+        assertEquals(1, firstRunSummary.failed)
+        val firstRunOrder = Mockito.inOrder(reminderService)
+        firstRunOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(first120.connectionId),
+            eqValue(first120.confirmedDateTime!!),
+            eqValue(120)
+        )
+        firstRunOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(first10.connectionId),
+            eqValue(first10.confirmedDateTime!!),
+            eqValue(10)
+        )
+        Mockito.verify(reminderService, Mockito.never()).notifySecondChatReminder(
+            eqValue(second120.connectionId),
+            eqValue(second120.confirmedDateTime!!),
+            eqValue(120)
+        )
+        Mockito.verify(reminderService, Mockito.never()).notifySecondChatReminder(
+            eqValue(third120.connectionId),
+            eqValue(third120.confirmedDateTime!!),
+            eqValue(120)
+        )
+
+        val secondRunSummary = job.processSecondChatReminders()
+
+        assertEquals(2, secondRunSummary.processed)
+        assertEquals(2, secondRunSummary.succeeded)
+        assertEquals(0, secondRunSummary.skipped)
+        assertEquals(0, secondRunSummary.failed)
+        val totalOrder = Mockito.inOrder(reminderService)
+        totalOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(first120.connectionId),
+            eqValue(first120.confirmedDateTime!!),
+            eqValue(120)
+        )
+        totalOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(first10.connectionId),
+            eqValue(first10.confirmedDateTime!!),
+            eqValue(10)
+        )
+        totalOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(second120.connectionId),
+            eqValue(second120.confirmedDateTime!!),
+            eqValue(120)
+        )
+        totalOrder.verify(reminderService).notifySecondChatReminder(
+            eqValue(third120.connectionId),
+            eqValue(third120.confirmedDateTime!!),
+            eqValue(120)
+        )
+    }
+
+    @Test
+    fun `second chat reminder job rejects batch smaller than distinct lead times`() {
+        val negotiationRepository = Mockito.mock(ScheduleNegotiationRepository::class.java)
+        val reminderService = Mockito.mock(SecondChatReminderNotificationService::class.java)
+
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                SecondChatReminderNotificationJob(
+                    negotiationRepository = negotiationRepository,
+                    reminderNotificationService = reminderService,
+                    fixedDelayMs = 60_000,
+                    reminderLeadMinutes = listOf("120", "10"),
+                    batchSize = 1
+                ).processSecondChatReminders()
+            }
+
+        assertTrue(
+            exception.message?.contains("batch-size must be at least the number of distinct configured reminder lead times") == true
+        )
+        Mockito.verifyNoInteractions(negotiationRepository, reminderService)
     }
 
     @Test
@@ -251,6 +396,13 @@ class LifecycleJobSummaryTest {
             schedulingExpiresAt = OffsetDateTime.now().minusMinutes(1)
         )
 
+    private fun confirmedNegotiation(confirmedDateTime: OffsetDateTime): ScheduleNegotiation =
+        ScheduleNegotiation(
+            connectionId = UUID.randomUUID(),
+            status = NegotiationStatus.CONFIRMED,
+            confirmedDateTime = confirmedDateTime
+        )
+
     private fun anyOffsetDateTime(): OffsetDateTime {
         Mockito.any(OffsetDateTime::class.java)
         return OffsetDateTime.now()
@@ -264,6 +416,16 @@ class LifecycleJobSummaryTest {
     private fun anyConnectionState(): ConnectionState {
         Mockito.any(ConnectionState::class.java)
         return ConnectionState.SCHEDULING_PENDING
+    }
+
+    private fun anyNegotiationStatus(): NegotiationStatus {
+        Mockito.any(NegotiationStatus::class.java)
+        return NegotiationStatus.CONFIRMED
+    }
+
+    private fun anyConnectionStates(): Collection<ConnectionState> {
+        Mockito.anyCollection<ConnectionState>()
+        return listOf(ConnectionState.SECOND_CHAT_SCHEDULED)
     }
 
     private fun <T> eqValue(value: T): T {
