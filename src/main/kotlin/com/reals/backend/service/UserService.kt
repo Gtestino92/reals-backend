@@ -13,10 +13,15 @@ import com.reals.backend.service.identity.FirebaseExternalAccountService
 import com.reals.backend.service.identity.ExternalAccountDeletionResult
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.OffsetDateTime
 import java.util.*
 
@@ -30,11 +35,13 @@ class UserService(
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    transactionManager: PlatformTransactionManager,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
+    private val transactionTemplate = TransactionTemplate(transactionManager)
 
     private companion object {
         private val EMAIL_PATTERN =
@@ -84,6 +91,7 @@ class UserService(
      * Returns the user with the given Firebase UID, creating one if it does not exist yet.
      * This is intentionally called only from the explicit Firebase provisioning endpoint.
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun provisionFromFirebase(
         firebaseUid: String,
         email: String? = null
@@ -94,6 +102,30 @@ class UserService(
 
         val normalizedEmail = normalizeOptionalEmail(email)
 
+        return try {
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+        } catch (ex: DataIntegrityViolationException) {
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+        } catch (ex: OptimisticLockingFailureException) {
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+        }
+    }
+
+    private fun provisionFromFirebaseInNewTransaction(
+        firebaseUid: String,
+        normalizedEmail: String?
+    ): User =
+        transactionTemplate.execute {
+            provisionFromFirebaseAttempt(
+                firebaseUid = firebaseUid,
+                normalizedEmail = normalizedEmail
+            )
+        }
+
+    private fun provisionFromFirebaseAttempt(
+        firebaseUid: String,
+        normalizedEmail: String?
+    ): User {
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
             if (existingByFirebaseUid.status == UserStatus.DELETED) {
@@ -117,7 +149,14 @@ class UserService(
                 if (existingByEmail.firebaseUid == null) {
                     existingByEmail.firebaseUid = firebaseUid
                     existingByEmail.updatedAt = OffsetDateTime.now()
-                    return userRepository.save(existingByEmail)
+                    return userRepository.saveAndFlush(existingByEmail)
+                }
+
+                if (existingByEmail.firebaseUid == firebaseUid) {
+                    return updateFirebaseUserEmailIfNeeded(
+                        user = existingByEmail,
+                        normalizedEmail = normalizedEmail
+                    )
                 }
 
                 check(false) {
@@ -126,7 +165,7 @@ class UserService(
             }
         }
 
-        return userRepository.save(
+        return userRepository.saveAndFlush(
             User(
                 firebaseUid = firebaseUid,
                 email = normalizedEmail,
@@ -322,7 +361,7 @@ class UserService(
 
         user.email = normalizedEmail
         user.updatedAt = OffsetDateTime.now()
-        return userRepository.save(user)
+        return userRepository.saveAndFlush(user)
     }
 
     private fun normalizeRequiredEmail(email: String): String {
