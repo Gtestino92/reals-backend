@@ -21,7 +21,9 @@ class InactivityCheckJob(
     private val chatMessageRepository: ChatMessageRepository,
     private val connectionRepository: ConnectionRepository,
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
-    private val inactivityThresholdMinutes: Long
+    private val inactivityThresholdMinutes: Long,
+    @param:Value("\${scheduler.inactivity-check-job.batch-size:100}")
+    private val batchSize: Int = 100
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -32,21 +34,30 @@ class InactivityCheckJob(
     )
     @SchedulerLock(name = "InactivityCheckJob", lockAtLeastFor = "PT15s", lockAtMostFor = "PT5M")
     fun run() {
+        processInactiveChats()
+    }
+
+    internal fun processInactiveChats(): JobRunSummary {
+        require(batchSize > 0) { "scheduler.inactivity-check-job.batch-size must be positive" }
         val startedAt = System.nanoTime()
 
-        val inactiveChats =
-            chatService.findInactiveChats(
-                inactivityThresholdMinutes
-            )
-
         val threshold = OffsetDateTime.now().minusMinutes(inactivityThresholdMinutes)
+        val batch =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findInactiveChatIds(
+                    threshold = threshold,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
 
         var succeeded = 0
         var skipped = 0
         var failed = 0
 
-        inactiveChats.forEach { chat: Chat ->
+        batch.items.forEach { chatId ->
             try {
+                val chat: Chat = chatService.findByIdOrThrow(chatId)
                 val abandonedUserIds: List<UUID> = if (chat.chatType == ChatType.SECOND_CHAT) {
                     resolveInactiveUsers(chat.id, chat.connectionId, threshold)
                 } else {
@@ -68,22 +79,31 @@ class InactivityCheckJob(
                 failed += 1
                 log.error(
                     "InactivityCheckJob - failed to abandon chat={}",
-                    chat.id,
+                    chatId,
                     ex
                 )
             }
         }
 
-        log.logJobSummary(
-            jobName = "InactivityCheckJob",
-            summary = JobRunSummary(
-                processed = inactiveChats.size,
+        val summary =
+            JobRunSummary(
+                processed = batch.items.size,
                 succeeded = succeeded,
                 skipped = skipped,
                 failed = failed
-            ),
+            )
+        log.logBatchComplete(
+            jobName = "InactivityCheckJob",
+            batchSize = batchSize,
+            fetched = batch.fetched,
+            backlogRemaining = batch.backlogRemaining
+        )
+        log.logJobSummary(
+            jobName = "InactivityCheckJob",
+            summary = summary,
             startedAt = startedAt
         )
+        return summary
     }
 
     private fun resolveInactiveUsers(chatId: UUID, connectionId: UUID?, threshold: OffsetDateTime): List<UUID> {

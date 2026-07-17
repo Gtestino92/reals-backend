@@ -21,7 +21,7 @@ class MatchmakingJob(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Scheduled(fixedDelayString = "\${scheduler.matchmaking-job.fixed-delay:60000}")
+    @Scheduled(fixedDelayString = "\${scheduler.matchmaking-job.fixed-delay:15000}")
     @SchedulerLock(
         name = "MatchmakingJob",
         lockAtLeastFor = "PT15S",

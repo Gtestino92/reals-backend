@@ -5,8 +5,10 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.service.ChatService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.OffsetDateTime
 
 /* Expires active first-chat sessions that have exceeded their absolute timeoutAt deadline.
     Second-chat timeout/read-only cleanup is owned by SecondChatLifecycleJob.
@@ -15,7 +17,9 @@ import org.springframework.stereotype.Component
  */
 @Component
 class ChatTimeoutJob(
-    private val chatService: ChatService
+    private val chatService: ChatService,
+    @param:Value("\${scheduler.chat-timeout-job.batch-size:100}")
+    private val batchSize: Int = 100
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -30,17 +34,26 @@ class ChatTimeoutJob(
         processTimedOutChats()
     }
 
-    private fun processTimedOutChats() {
+    internal fun processTimedOutChats(): JobRunSummary {
+        require(batchSize > 0) { "scheduler.chat-timeout-job.batch-size must be positive" }
         val startedAt = System.nanoTime()
-        val expiredChats = chatService.findTimedOutChats()
+        val now = OffsetDateTime.now()
+        val batch =
+            boundedSchedulerBatch(
+                fetchedCandidates = chatService.findTimedOutChatIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
         var succeeded = 0
         var skipped = 0
         var failed = 0
 
-        expiredChats.forEach { chat ->
+        batch.items.forEach { chatId ->
             try {
                 val changed = chatService.endChat(
-                    chatId = chat.id,
+                    chatId = chatId,
                     finalStatus = ChatStatus.EXPIRED,
                     endedReason = ChatEndReason.ABSOLUTE_TIMEOUT
                 )
@@ -53,21 +66,30 @@ class ChatTimeoutJob(
                 failed += 1
                 log.error(
                     "ChatTimeoutJob - failed to expire chat={}",
-                    chat.id,
+                    chatId,
                     ex
                 )
             }
         }
 
-        log.logJobSummary(
-            jobName = "ChatTimeoutJob",
-            summary = JobRunSummary(
-                processed = expiredChats.size,
+        val summary =
+            JobRunSummary(
+                processed = batch.items.size,
                 succeeded = succeeded,
                 skipped = skipped,
                 failed = failed
-            ),
+            )
+        log.logBatchComplete(
+            jobName = "ChatTimeoutJob",
+            batchSize = batchSize,
+            fetched = batch.fetched,
+            backlogRemaining = batch.backlogRemaining
+        )
+        log.logJobSummary(
+            jobName = "ChatTimeoutJob",
+            summary = summary,
             startedAt = startedAt
         )
+        return summary
     }
 }

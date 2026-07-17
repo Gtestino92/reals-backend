@@ -4,6 +4,7 @@ import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
@@ -67,6 +68,28 @@ interface ScheduleNegotiationRepository :
     ): List<ScheduleNegotiation>
 
     @Query(
+        """select n.connectionId from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state = :connectionState
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime <= :expiresBefore
+             and not exists (
+                 select chat.id from Chat chat
+                 where chat.connectionId = c.id
+                   and chat.chatType = 'SECOND_CHAT'
+             )
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findExpiredConfirmedScheduledNegotiationConnectionIdsWithoutSecondChat(
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("connectionState") connectionState: ConnectionState = ConnectionState.SECOND_CHAT_SCHEDULED,
+        @Param("expiresBefore") expiresBefore: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
         """select n from ScheduleNegotiation n
            , Connection c
            where c.id = n.connectionId
@@ -92,6 +115,27 @@ interface ScheduleNegotiationRepository :
              and c.state in :states
              and n.status = :status
              and n.confirmedDateTime is not null
+             and n.confirmedDateTime >= :windowStart
+             and n.confirmedDateTime <= :windowEnd
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findConfirmedSecondChatReminderDueForWindow(
+        @Param("windowStart") windowStart: OffsetDateTime,
+        @Param("windowEnd") windowEnd: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED
+        ),
+        pageable: Pageable
+    ): List<ScheduleNegotiation>
+
+    @Query(
+        """select n from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
              and n.confirmedDateTime <= :dueBefore"""
     )
     fun findConfirmedSecondChatNoShowDue(
@@ -103,6 +147,27 @@ interface ScheduleNegotiationRepository :
             ConnectionState.SECOND_CHAT
         )
     ): List<ScheduleNegotiation>
+
+    @Query(
+        """select n.connectionId from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime <= :dueBefore
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findConfirmedSecondChatNoShowDueConnectionIds(
+        @Param("dueBefore") dueBefore: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            ConnectionState.SECOND_CHAT
+        ),
+        pageable: Pageable
+    ): List<UUID>
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(

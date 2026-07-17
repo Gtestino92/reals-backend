@@ -1,17 +1,23 @@
 package com.reals.backend.scheduler
 
+import com.reals.backend.domain.ChatEndReason
+import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.User
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.service.ChatService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderProcessingResult
+import org.springframework.data.domain.Pageable
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -19,6 +25,91 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 class LifecycleJobSummaryTest {
+
+    @Test
+    fun `chat timeout job processes only one bounded batch`() {
+        val chatService = Mockito.mock(ChatService::class.java)
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val backlog = UUID.randomUUID()
+
+        Mockito.`when`(chatService.findTimedOutChatIds(anyOffsetDateTime(), eqValue(3)))
+            .thenReturn(listOf(first, second, backlog))
+        Mockito.`when`(
+            chatService.endChat(
+                eqValue(first),
+                eqValue(ChatStatus.EXPIRED),
+                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
+                Mockito.anyList()
+            )
+        ).thenReturn(true)
+        Mockito.`when`(
+            chatService.endChat(
+                eqValue(second),
+                eqValue(ChatStatus.EXPIRED),
+                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
+                Mockito.anyList()
+            )
+        ).thenReturn(false)
+
+        val summary = ChatTimeoutJob(chatService, batchSize = 2).processTimedOutChats()
+
+        assertEquals(2, summary.processed)
+        assertEquals(1, summary.succeeded)
+        assertEquals(1, summary.skipped)
+        assertEquals(0, summary.failed)
+        Mockito.verify(chatService, Mockito.never()).endChat(
+            eqValue(backlog),
+            eqValue(ChatStatus.EXPIRED),
+            eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
+            Mockito.anyList()
+        )
+    }
+
+    @Test
+    fun `scheduling activation job isolates candidate failures within bounded batch`() {
+        val connectionRepository = Mockito.mock(ConnectionRepository::class.java)
+        val schedulingService = Mockito.mock(SchedulingService::class.java)
+        val notificationService = Mockito.mock(SchedulingAvailableNotificationService::class.java)
+        val failed = UUID.randomUUID()
+        val changed = UUID.randomUUID()
+        val backlog = UUID.randomUUID()
+
+        Mockito.`when`(
+            connectionRepository.findSchedulingActivationDueIds(
+                anyConnectionState(),
+                anyConnectionState(),
+                anyOffsetDateTime(),
+                anyPageable()
+            )
+        ).thenReturn(listOf(failed, changed, backlog))
+        Mockito.`when`(schedulingService.activateSchedulingAndInitializeNegotiation(eqValue(failed)))
+            .thenThrow(RuntimeException("simulated activation failure"))
+        Mockito.`when`(schedulingService.activateSchedulingAndInitializeNegotiation(eqValue(changed)))
+            .thenReturn(
+                ScheduleNegotiation(
+                    connectionId = changed
+                )
+            )
+
+        val summary =
+            SchedulingActivationJob(
+                connectionRepository = connectionRepository,
+                schedulingService = schedulingService,
+                schedulingAvailableNotificationService = notificationService,
+                batchSize = 2
+            ).processSchedulingActivations()
+
+        assertEquals(2, summary.processed)
+        assertEquals(1, summary.succeeded)
+        assertEquals(0, summary.skipped)
+        assertEquals(1, summary.failed)
+        Mockito.verify(schedulingService).activateSchedulingAndInitializeNegotiation(failed)
+        Mockito.verify(schedulingService).activateSchedulingAndInitializeNegotiation(changed)
+        Mockito.verify(schedulingService, Mockito.never()).activateSchedulingAndInitializeNegotiation(backlog)
+        Mockito.verify(notificationService).notifySchedulingAvailable(changed)
+        Mockito.verify(notificationService, Mockito.never()).notifySchedulingAvailable(failed)
+    }
 
     @Test
     fun `penalty expiration job counts changed skipped and failed records`() {
@@ -163,6 +254,16 @@ class LifecycleJobSummaryTest {
     private fun anyOffsetDateTime(): OffsetDateTime {
         Mockito.any(OffsetDateTime::class.java)
         return OffsetDateTime.now()
+    }
+
+    private fun anyPageable(): Pageable {
+        Mockito.any(Pageable::class.java)
+        return Pageable.ofSize(1)
+    }
+
+    private fun anyConnectionState(): ConnectionState {
+        Mockito.any(ConnectionState::class.java)
+        return ConnectionState.SCHEDULING_PENDING
     }
 
     private fun <T> eqValue(value: T): T {

@@ -82,7 +82,16 @@ Backend concurrency hardening status:
 - Completed cleanup tasks are removed. `FAILED` cleanup tasks require operational inspection.
 - PostgreSQL/Testcontainers concurrency coverage remains deferred to a separate production-hardening block.
 - The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
-- Exact notification delivery claiming/outbox/retries, unrelated scheduler batching, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
+- Exact notification delivery claiming/outbox/retries, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
+
+Implemented scheduler hardening:
+
+- frequent lifecycle jobs now load bounded deterministic batches and leave backlog for later scheduled runs;
+- batch sizes are configurable per frequent job, with a default of `100`;
+- one candidate failure is isolated and does not abort the rest of the batch;
+- backlog is logged as a cheap `batchSize + 1` signal, not exposed as a public API;
+- matchmaking now checks the queue every `15000` ms by default while preserving `maxPairsPerRun`, candidate-pair limits and scalable queue claiming;
+- no scheduler drains an entire backlog in one run, and no parallel workers, queues or generic job framework were introduced.
 
 ### 6.1 Push notification delivery workflow cleanup
 
@@ -108,7 +117,7 @@ Remaining deferred cleanup:
 - Keep event services responsible for eligibility, recipients and payload shape.
 - Keep provider transport under `service.notification.sender`.
 - Preserve existing idempotency semantics and delivery statuses.
-- Avoid changing notification timing, scheduler cadence or payload contents during the extraction.
+- Avoid changing notification payload contents during the extraction.
 - Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. A duplicate push remains theoretically possible if two workers prepare before either persists a delivery row.
 - A prepared push can become stale if the user completes the action immediately after preparation and before transport. Exact delivery claiming, outbox, retries and backoff remain deferred.
 - PostgreSQL/Testcontainers lock verification remains deferred to the final concurrency-test block.
