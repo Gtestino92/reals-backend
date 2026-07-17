@@ -23,12 +23,15 @@ import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.util.UUID
 import javax.imageio.ImageIO
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
 
     @MockitoBean
@@ -213,6 +216,18 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
             contentType = MediaType.IMAGE_JPEG_VALUE,
             sizeBytes = jpegBytes().size.toLong()
         )
+        Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObject.bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObject.key)
+
         Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),

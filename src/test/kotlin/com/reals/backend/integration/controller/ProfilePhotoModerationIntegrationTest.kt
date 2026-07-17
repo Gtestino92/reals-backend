@@ -21,6 +21,8 @@ import org.mockito.Mockito
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -30,6 +32,7 @@ import java.time.LocalDate
 import java.util.UUID
 import javax.imageio.ImageIO
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfilePhotoModerationIntegrationTest : ControllerIT() {
 
     @MockitoBean
@@ -116,7 +119,7 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
 
         val updated = profilePhotoRepository.findById(photoId).orElseThrow()
         assertEquals(PhotoModerationStatus.NEEDS_REVIEW, updated.moderationStatus)
-        Mockito.verify(storageService).delete(oldObject.key)
+        Mockito.verify(storageService).deleteObject(oldObject.bucket, oldObject.key)
         Mockito.verify(analysisProvider, Mockito.times(2)).analyze(anyAnalysisRequest())
     }
 
@@ -257,6 +260,18 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         )
 
     private fun stubStorageUploads(vararg storedObjects: StoredObject) {
+        Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObjects.first().bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObjects.first().key, *storedObjects.drop(1).map { it.key }.toTypedArray())
+
         Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),

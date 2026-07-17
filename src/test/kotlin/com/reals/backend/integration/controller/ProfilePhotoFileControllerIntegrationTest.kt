@@ -14,6 +14,8 @@ import org.mockito.Mockito
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -26,6 +28,7 @@ import java.time.LocalDate
 import java.util.UUID
 import javax.imageio.ImageIO
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
 
     @MockitoBean
@@ -120,7 +123,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
 
         assertEquals(newObject.key, profileService.getPhotos(profile.id).single().storageKey)
-        Mockito.verify(storageService).delete(oldObject.key)
+        Mockito.verify(storageService).deleteObject(oldObject.bucket, oldObject.key)
     }
 
     @Test
@@ -153,7 +156,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.photoCount", equalTo(0)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
 
-        Mockito.verify(storageService).delete(storedObject.key)
+        Mockito.verify(storageService).deleteObject(storedObject.bucket, storedObject.key)
     }
 
     @Test
@@ -365,6 +368,18 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
     }
 
     private fun stubStorageUploads(vararg storedObjects: StoredObject) {
+        Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObjects.first().bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObjects.first().key, *storedObjects.drop(1).map { it.key }.toTypedArray())
+
         Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),

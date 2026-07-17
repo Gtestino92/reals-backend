@@ -23,6 +23,8 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
@@ -61,6 +63,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `adding a photo to an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-add-photo-${UUID.randomUUID()}@example.com",
@@ -91,6 +94,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `replacing a photo in an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-replace-photo-${UUID.randomUUID()}@example.com",
@@ -122,6 +126,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `deleting a photo from an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-delete-photo-${UUID.randomUUID()}@example.com",
@@ -142,6 +147,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `user cannot delete a photo from another profile`() {
         val ownerUserId = createActiveProfile(
             email = "photo-owner-${UUID.randomUUID()}@example.com",
@@ -357,6 +363,18 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     private fun stubStorageUpload(storedObject: StoredObject) {
+        Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObject.bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObject.key)
+
         Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),
