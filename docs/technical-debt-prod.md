@@ -743,7 +743,17 @@ Production preference:
 
 ## 11. Concurrency hardening
 
-Before scale, add explicit concurrency tests for:
+Current hardening:
+- Chat message writes now lock the target `Chat` row with a pessimistic write lock before final validation, `ChatMessage` insert, and `lastMessageAt` update. This serializes writes per chat while keeping different chats independent.
+- Firebase provisioning retries at most one concurrent UID/email unique-conflict attempt, and the retry reruns the authoritative provisioning decision in a fresh transaction.
+
+Still deferred:
+- PostgreSQL/Testcontainers coverage for database-specific locking behavior remains a separate follow-up block. H2 service tests are not the final proof for PostgreSQL row-lock semantics.
+- The first-chat `ChatDecision` creation race is intentionally unchanged here. Android allows a manual retry immediately after the failed request completes and `actionLoading` is reset; there is no automatic or rapid-fire retry.
+- Notification delivery, scheduler batching/cadence, observability, Home cleanup, media cleanup tasks and rate limiting are out of scope for this block.
+- DB/object-storage consistency through durable media cleanup tasks is approved, but intentionally deferred to a dedicated follow-up block.
+
+Before scale, keep explicit concurrency tests for:
 
 ### 11.1 Mutual visual approval
 
