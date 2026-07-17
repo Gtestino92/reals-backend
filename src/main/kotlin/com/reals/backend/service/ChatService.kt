@@ -31,6 +31,7 @@ import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import jakarta.transaction.Transactional
+import org.springframework.data.domain.PageRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
@@ -383,47 +384,88 @@ class ChatService(
             )
 
         var recorded = 0
-
         dueNegotiations.forEach { negotiation ->
-            val connection = connectionService.findByIdOrThrow(negotiation.connectionId)
-            val confirmedDateTime = negotiation.confirmedDateTime ?: return@forEach
-            val graceEndsAt = confirmedDateTime.plusMinutes(secondChatNoShowGraceMinutes)
-            val secondChat =
-                chatRepository.findByConnectionIdAndChatType(
-                    connectionId = connection.id,
-                    chatType = ChatType.SECOND_CHAT
-                )
-
-            listOf(connection.userAId, connection.userBId).forEach { participantId ->
-                val sentWithinGrace =
-                    secondChat != null &&
-                        chatMessageRepository.countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
-                            chatSessionId = secondChat.id,
-                            senderId = participantId,
-                            sentAt = graceEndsAt
-                        ) > 0
-
-                val eventType =
-                    if (sentWithinGrace) {
-                        UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED
-                    } else {
-                        UserReliabilityEventType.SECOND_CHAT_NO_SHOW
-                    }
-
-                val event =
-                    userReliabilityScoreService.recordEvent(
-                        userId = participantId,
-                        eventType = eventType,
-                        relatedMatchId = connection.matchId,
-                        relatedConnectionId = connection.id,
-                        relatedChatId = secondChat?.id
-                    )
-                if (event != null) {
-                    recorded += 1
-                }
-            }
+            recorded += evaluateSecondChatNoShow(
+                connectionId = negotiation.connectionId,
+                now = now
+            )
         }
 
+        return recorded
+    }
+
+    fun findSecondChatNoShowConnectionIds(
+        now: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Second-chat no-show candidate limit must be positive" }
+        return negotiationRepository.findConfirmedSecondChatNoShowDueConnectionIds(
+            dueBefore = now.minusMinutes(secondChatNoShowGraceMinutes),
+            pageable = PageRequest.of(0, limit)
+        )
+    }
+
+    fun evaluateSecondChatNoShow(
+        connectionId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Int {
+        val negotiation = negotiationRepository.findByConnectionId(connectionId)
+            ?: return 0
+        val confirmedDateTime = negotiation.confirmedDateTime ?: return 0
+        if (
+            negotiation.status != NegotiationStatus.CONFIRMED ||
+            confirmedDateTime > now.minusMinutes(secondChatNoShowGraceMinutes)
+        ) {
+            return 0
+        }
+
+        val connection = connectionService.findByIdOrThrow(negotiation.connectionId)
+        if (
+            connection.state !in setOf(
+                ConnectionState.SECOND_CHAT_SCHEDULED,
+                ConnectionState.SECOND_CHAT_AVAILABLE,
+                ConnectionState.SECOND_CHAT
+            )
+        ) {
+            return 0
+        }
+
+        val graceEndsAt = confirmedDateTime.plusMinutes(secondChatNoShowGraceMinutes)
+        val secondChat =
+            chatRepository.findByConnectionIdAndChatType(
+                connectionId = connection.id,
+                chatType = ChatType.SECOND_CHAT
+            )
+
+        var recorded = 0
+        listOf(connection.userAId, connection.userBId).forEach { participantId ->
+            val sentWithinGrace =
+                secondChat != null &&
+                    chatMessageRepository.countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
+                        chatSessionId = secondChat.id,
+                        senderId = participantId,
+                        sentAt = graceEndsAt
+                    ) > 0
+
+            val eventType =
+                if (sentWithinGrace) {
+                    UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED
+                } else {
+                    UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+                }
+
+            val event =
+                userReliabilityScoreService.recordEvent(
+                    userId = participantId,
+                    eventType = eventType,
+                    relatedMatchId = connection.matchId,
+                    relatedConnectionId = connection.id,
+                    relatedChatId = secondChat?.id
+                )
+            if (event != null) {
+                recorded += 1
+            }
+        }
         return recorded
     }
 
@@ -531,9 +573,31 @@ class ChatService(
         return chatRepository.findInactiveActiveChats(threshold)
     }
 
+    fun findInactiveChatIds(
+        threshold: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Inactive chat candidate limit must be positive" }
+        return chatRepository.findInactiveActiveChatIds(
+            threshold = threshold,
+            pageable = PageRequest.of(0, limit)
+        )
+    }
+
     fun findTimedOutChats(): List<Chat> {
         return chatRepository.findExpiredActiveFirstChats(
             now = OffsetDateTime.now()
+        )
+    }
+
+    fun findTimedOutChatIds(
+        now: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Timed-out chat candidate limit must be positive" }
+        return chatRepository.findExpiredActiveFirstChatIds(
+            now = now,
+            pageable = PageRequest.of(0, limit)
         )
     }
 
@@ -543,15 +607,48 @@ class ChatService(
         )
     }
 
+    fun findTimedOutActiveSecondChatIds(
+        now: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Timed-out active second-chat candidate limit must be positive" }
+        return chatRepository.findTimedOutActiveSecondChatIds(
+            now = now,
+            pageable = PageRequest.of(0, limit)
+        )
+    }
+
     fun findTimedOutAvailableSecondChats(): List<Chat> {
         return chatRepository.findTimedOutAvailableSecondChats(
             now = OffsetDateTime.now()
         )
     }
 
+    fun findTimedOutAvailableSecondChatIds(
+        now: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Timed-out available second-chat candidate limit must be positive" }
+        return chatRepository.findTimedOutAvailableSecondChatIds(
+            now = now,
+            pageable = PageRequest.of(0, limit)
+        )
+    }
+
     fun findExpiredReadOnlySecondChats(): List<Chat> {
         return chatRepository.findExpiredReadOnlySecondChats(
             now = OffsetDateTime.now()
+        )
+    }
+
+    fun findExpiredReadOnlySecondChatIds(
+        now: OffsetDateTime,
+        limit: Int
+    ): List<UUID> {
+        require(limit > 0) { "Expired read-only second-chat candidate limit must be positive" }
+        return chatRepository.findExpiredReadOnlySecondChatIds(
+            now = now,
+            pageable = PageRequest.of(0, limit)
         )
     }
 

@@ -2,6 +2,7 @@ package com.reals.backend.repository
 
 import com.reals.backend.domain.VisualReview
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
@@ -28,6 +29,18 @@ interface VisualReviewRepository :
     fun findByExpiresAtBefore(
         expiresAt: OffsetDateTime
     ): List<VisualReview>
+
+    @Query(
+        """
+        select v.matchId from VisualReview v
+        where v.expiresAt < :expiresAt
+        order by v.expiresAt asc, v.id asc
+        """
+    )
+    fun findExpiredMatchIds(
+        @Param("expiresAt") expiresAt: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
 
     @Query(
         """

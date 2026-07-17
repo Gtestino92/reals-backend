@@ -3,6 +3,7 @@ package com.reals.backend.repository
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
@@ -52,6 +53,31 @@ interface ConnectionRepository :
         @Param("phaseState") phaseState: ConnectionState = ConnectionState.SCHEDULING_PHASE,
         @Param("now") now: OffsetDateTime
     ): List<Connection>
+
+    @Query(
+        """
+        select c.id from Connection c
+        where c.schedulingAvailableAt is not null
+          and c.schedulingAvailableAt <= :now
+          and (
+            c.state = :pendingState
+            or (
+              c.state = :phaseState
+              and not exists (
+                select n.id from ScheduleNegotiation n
+                where n.connectionId = c.id
+              )
+            )
+          )
+        order by c.schedulingAvailableAt asc, c.id asc
+        """
+    )
+    fun findSchedulingActivationDueIds(
+        @Param("pendingState") pendingState: ConnectionState = ConnectionState.SCHEDULING_PENDING,
+        @Param("phaseState") phaseState: ConnectionState = ConnectionState.SCHEDULING_PHASE,
+        @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
 
     @Query(
         """

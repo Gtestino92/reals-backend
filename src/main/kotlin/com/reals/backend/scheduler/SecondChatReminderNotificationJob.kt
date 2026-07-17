@@ -6,6 +6,7 @@ import com.reals.backend.service.notification.SecondChatReminderNotificationServ
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.PageRequest
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -20,7 +21,10 @@ class SecondChatReminderNotificationJob(
     private val fixedDelayMs: Long = 60000,
 
     @param:Value("#{'\${notifications.second-chat-reminder.minutes-before:10}'.split(',')}")
-    private val reminderLeadMinutes: List<String> = listOf("10")
+    private val reminderLeadMinutes: List<String> = listOf("10"),
+
+    @param:Value("\${scheduler.second-chat-reminder-job.batch-size:100}")
+    private val batchSize: Int = 100
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -39,26 +43,50 @@ class SecondChatReminderNotificationJob(
         processSecondChatReminders()
     }
 
-    private fun processSecondChatReminders() {
+    internal fun processSecondChatReminders(): JobRunSummary {
         require(fixedDelayMs > 0) {
             "scheduler.second-chat-reminder-job.fixed-delay must be positive"
+        }
+        require(batchSize > 0) {
+            "scheduler.second-chat-reminder-job.batch-size must be positive"
         }
 
         val startedAt = System.nanoTime()
         val now = OffsetDateTime.now()
         val dueWindowEnd = now.plus(Duration.ofMillis(fixedDelayMs))
-        val dueReminderCandidates =
-            configuredReminderLeadMinutes().flatMap { minutesBefore ->
+        val dueReminderCandidates = mutableListOf<DueSecondChatReminder>()
+        var fetched = 0
+        var backlogRemaining = false
+
+        configuredReminderLeadMinutes().forEach { minutesBefore ->
+            if (dueReminderCandidates.size >= batchSize) {
+                backlogRemaining = true
+                return@forEach
+            }
+
+            val remainingCapacity = batchSize - dueReminderCandidates.size
+            val candidates =
                 negotiationRepository.findConfirmedSecondChatReminderDueForWindow(
                     windowStart = now.plusMinutes(minutesBefore),
-                    windowEnd = dueWindowEnd.plusMinutes(minutesBefore)
-                ).map { negotiation ->
+                    windowEnd = dueWindowEnd.plusMinutes(minutesBefore),
+                    pageable = PageRequest.of(0, remainingCapacity + 1)
+                )
+            fetched += candidates.size
+
+            val batch =
+                boundedSchedulerBatch(
+                    fetchedCandidates = candidates,
+                    batchSize = remainingCapacity
+                )
+            backlogRemaining = backlogRemaining || batch.backlogRemaining
+            dueReminderCandidates +=
+                batch.items.map { negotiation ->
                     DueSecondChatReminder(
                         negotiation = negotiation,
                         minutesBefore = minutesBefore
                     )
                 }
-            }
+        }
 
         var succeeded = 0
         var skipped = 0
@@ -92,16 +120,25 @@ class SecondChatReminderNotificationJob(
             }
         }
 
-        log.logJobSummary(
-            jobName = "SecondChatReminderNotificationJob",
-            summary = JobRunSummary(
+        val summary =
+            JobRunSummary(
                 processed = dueReminderCandidates.size,
                 succeeded = succeeded,
                 skipped = skipped,
                 failed = failed
-            ),
+            )
+        log.logBatchComplete(
+            jobName = "SecondChatReminderNotificationJob",
+            batchSize = batchSize,
+            fetched = fetched,
+            backlogRemaining = backlogRemaining
+        )
+        log.logJobSummary(
+            jobName = "SecondChatReminderNotificationJob",
+            summary = summary,
             startedAt = startedAt
         )
+        return summary
     }
 
     private fun configuredReminderLeadMinutes(): List<Long> {
