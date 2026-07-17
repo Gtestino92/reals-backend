@@ -32,6 +32,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -187,6 +189,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `scheduling activation job enables due pending connection`() {
         val setup = createMatchInVisualPhase()
 
