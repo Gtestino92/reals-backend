@@ -11,6 +11,8 @@ import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.domain.ProfilePhoto
+import com.reals.backend.domain.MediaCleanupTask
+import com.reals.backend.domain.StoredObject
 import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainConflictException
@@ -24,6 +26,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito
+import org.springframework.transaction.support.DefaultTransactionStatus
+import org.springframework.transaction.support.TransactionTemplate
+import org.springframework.transaction.support.AbstractPlatformTransactionManager
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.Optional
@@ -103,13 +108,31 @@ class ProfileServiceTest {
             .thenReturn(Optional.of(profile))
         Mockito.`when`(profilePhotoRepository.findById(photo.id))
             .thenReturn(Optional.of(photo))
+        Mockito.`when`(profilePhotoRepository.findByIdForUpdate(photo.id))
+            .thenReturn(photo)
         Mockito.`when`(profileRepository.save(anyProfile()))
             .thenAnswer { invocation -> invocation.getArgument<Profile>(0) }
+        val cleanupTaskService = Mockito.mock(MediaCleanupTaskService::class.java)
+        Mockito.`when`(
+            cleanupTaskService.createImmediateDeleteTaskInCurrentTransaction(
+                anyStoredObject(),
+                anyPhotoStorageProvider(),
+                anyOffsetDateTime()
+            )
+        )
+            .thenReturn(
+                MediaCleanupTask(
+                    bucket = "test-bucket",
+                    objectKey = photo.storageKey,
+                    nextAttemptAt = OffsetDateTime.now()
+                )
+            )
 
         val service = profileService(
             profileRepository = profileRepository,
             profilePhotoRepository = profilePhotoRepository,
-            auditEventService = auditEventService
+            auditEventService = auditEventService,
+            mediaCleanupTaskService = cleanupTaskService
         )
 
         val saved = service.deletePhoto(profile.id, photo.id)
@@ -127,7 +150,9 @@ class ProfileServiceTest {
         profileRepository: ProfileRepository,
         auditEventService: AuditEventService,
         profilePhotoRepository: ProfilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java),
-        storageService: S3StorageService = Mockito.mock(S3StorageService::class.java)
+        storageService: S3StorageService = Mockito.mock(S3StorageService::class.java),
+        mediaCleanupTaskService: MediaCleanupTaskService = Mockito.mock(MediaCleanupTaskService::class.java),
+        mediaCleanupProcessor: MediaCleanupProcessor = Mockito.mock(MediaCleanupProcessor::class.java)
     ): ProfileService =
         ProfileService(
             profileRepository = profileRepository,
@@ -141,6 +166,9 @@ class ProfileServiceTest {
                 failOnProviderError = false
             ),
             storageService = storageService,
+            mediaCleanupTaskService = mediaCleanupTaskService,
+            mediaCleanupProcessor = mediaCleanupProcessor,
+            transactionTemplate = TransactionTemplate(NoOpTransactionManager()),
             profilePhotoStorageProperties = ProfilePhotoStorageProperties(),
             auditEventService = auditEventService,
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
@@ -166,5 +194,38 @@ class ProfileServiceTest {
             city = "Buenos Aires",
             countryCode = "AR"
         )
+    }
+
+    private fun anyStoredObject(): StoredObject {
+        Mockito.any(StoredObject::class.java)
+        return StoredObject(
+            bucket = "test-bucket",
+            key = "any-key",
+            contentType = "application/octet-stream",
+            sizeBytes = 0
+        )
+    }
+
+    private fun anyPhotoStorageProvider(): PhotoStorageProvider {
+        Mockito.any(PhotoStorageProvider::class.java)
+        return PhotoStorageProvider.S3
+    }
+
+    private fun anyOffsetDateTime(): OffsetDateTime {
+        Mockito.any(OffsetDateTime::class.java)
+        return OffsetDateTime.now()
+    }
+
+    private class NoOpTransactionManager : AbstractPlatformTransactionManager() {
+        override fun doGetTransaction(): Any = Any()
+
+        override fun doBegin(
+            transaction: Any,
+            definition: org.springframework.transaction.TransactionDefinition
+        ) = Unit
+
+        override fun doCommit(status: DefaultTransactionStatus) = Unit
+
+        override fun doRollback(status: DefaultTransactionStatus) = Unit
     }
 }

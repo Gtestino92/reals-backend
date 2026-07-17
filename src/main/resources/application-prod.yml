@@ -77,6 +77,8 @@ scheduler:
     fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
   account-deletion-finalization-job:
     fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}
+  media-cleanup-job:
+    fixed-delay: ${SCHEDULER_MEDIA_CLEANUP_JOB_FIXED_DELAY:300000}
 
 account:
   deletion:
@@ -159,6 +161,13 @@ storage:
       - image/jpeg
       - image/png
       - image/webp
+  media-cleanup:
+    batch-size: ${STORAGE_MEDIA_CLEANUP_BATCH_SIZE:100}
+    lease-duration: ${STORAGE_MEDIA_CLEANUP_LEASE_DURATION:PT5M}
+    guard-delay: ${STORAGE_MEDIA_CLEANUP_GUARD_DELAY:PT30M}
+    initial-retry-delay: ${STORAGE_MEDIA_CLEANUP_INITIAL_RETRY_DELAY:PT1M}
+    max-retry-delay: ${STORAGE_MEDIA_CLEANUP_MAX_RETRY_DELAY:PT1H}
+    max-attempts: ${STORAGE_MEDIA_CLEANUP_MAX_ATTEMPTS:10}
 
 notifications:
   second-chat-reminder:
