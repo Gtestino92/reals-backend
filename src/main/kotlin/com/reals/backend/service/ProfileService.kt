@@ -17,10 +17,12 @@ import com.reals.backend.service.photo.PhotoPlacement
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import com.reals.backend.validation.PlainText
 import com.reals.backend.validation.SingleLinePlainText
-import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.Period
@@ -35,6 +37,9 @@ class ProfileService(
     private val profilePhotoAnalysisService: ProfilePhotoAnalysisService,
     private val profileAuthenticityVerificationService: ProfileAuthenticityVerificationService,
     private val storageService: S3StorageService,
+    private val mediaCleanupTaskService: MediaCleanupTaskService,
+    private val mediaCleanupProcessor: MediaCleanupProcessor,
+    private val transactionTemplate: TransactionTemplate,
     private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
@@ -393,73 +398,75 @@ class ProfileService(
         return profileRepository.save(profile)
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun deletePhoto(
         profileId: UUID,
         photoId: UUID
     ): Profile {
+        val result = transactionTemplate.execute {
+            val profile = findByIdOrThrow(profileId)
 
-        val profile = findByIdOrThrow(profileId)
+            val existing = profilePhotoRepository.findByIdForUpdate(photoId)
+                ?: throw profilePhotoNotFound(photoId)
 
-        val existing = profilePhotoRepository.findById(photoId)
-            .orElseThrow {
-                profilePhotoNotFound(photoId)
+            if (existing.profileId != profileId) {
+                throw profilePhotoNotFound(photoId)
             }
 
-        if (existing.profileId != profileId) {
-            throw profilePhotoNotFound(photoId)
-        }
+            val oldObject = storedObjectFor(existing)
+            profilePhotoRepository.delete(existing)
+            profilePhotoRepository.flush()
+            val cleanupTask = mediaCleanupTaskService.createImmediateDeleteTaskInCurrentTransaction(oldObject)
 
-        val storageKey = existing.storageKey
+            val authenticityOldStatus = profile.authenticityVerificationStatus
+            val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
+            val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
 
-        profilePhotoRepository.delete(existing)
+            profile.updatedAt = OffsetDateTime.now()
 
-        runCatching {
-            storageService.delete(storageKey)
-        }
-
-        val authenticityOldStatus = profile.authenticityVerificationStatus
-        val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
-        val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
-
-        profile.updatedAt = OffsetDateTime.now()
-
-        val savedProfile = profileRepository.save(profile)
-        auditEventService.record(
-            eventType = AuditEventType.PROFILE_PHOTO_DELETED,
-            aggregateType = AuditAggregateType.PROFILE_PHOTO,
-            aggregateId = existing.id,
-            actorUserId = profile.userId,
-            metadata = mapOf(
-                "profileId" to profile.id,
-                "position" to existing.position,
-                "validationStatus" to existing.validationStatus.name,
-                "moderationStatus" to existing.moderationStatus.name
+            val savedProfile = profileRepository.save(profile)
+            auditEventService.record(
+                eventType = AuditEventType.PROFILE_PHOTO_DELETED,
+                aggregateType = AuditAggregateType.PROFILE_PHOTO,
+                aggregateId = existing.id,
+                actorUserId = profile.userId,
+                metadata = mapOf(
+                    "profileId" to profile.id,
+                    "position" to existing.position,
+                    "validationStatus" to existing.validationStatus.name,
+                    "moderationStatus" to existing.moderationStatus.name
+                )
             )
-        )
-        if (authenticityInvalidated) {
-            recordProfileAuthenticityVerificationUpdated(
+            if (authenticityInvalidated) {
+                recordProfileAuthenticityVerificationUpdated(
+                    profile = savedProfile,
+                    oldStatus = authenticityOldStatus,
+                    reason = "PROFILE_PHOTO_MUTATED"
+                )
+            }
+            if (movedToDraft) {
+                homeStateInvalidationService.bump(
+                    userId = savedProfile.userId,
+                    reason = "profile_moved_to_draft"
+                )
+            }
+            PhotoDeleteResult(
                 profile = savedProfile,
-                oldStatus = authenticityOldStatus,
-                reason = "PROFILE_PHOTO_MUTATED"
+                cleanupTaskId = cleanupTask.id
             )
         }
-        if (movedToDraft) {
-            homeStateInvalidationService.bump(
-                userId = savedProfile.userId,
-                reason = "profile_moved_to_draft"
-            )
-        }
-        return savedProfile
+
+        mediaCleanupProcessor.processTask(result.cleanupTaskId)
+        return result.profile
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun replacePhoto(
         profileId: UUID,
         photoId: UUID,
         contentType: String?,
         bytes: ByteArray
     ): ProfilePhoto {
-
         val profile = findByIdOrThrow(profileId)
 
         val existingPhoto = profilePhotoRepository.findById(photoId)
@@ -490,9 +497,16 @@ class ProfileService(
             contentType = normalizedContentType,
             bytes = bytes
         )
-
-        var newUploadedKey: String? = null
-        val oldStorageKey = existingPhoto.storageKey
+        val newStorageKey = storageService.profilePhotoObjectKey(
+            userId = profile.userId,
+            objectId = newObjectPhotoId,
+            contentType = normalizedContentType
+        )
+        val guardTask = mediaCleanupTaskService.createGuardTask(
+            storageProvider = PhotoStorageProvider.S3,
+            bucket = storageService.profilePhotoBucket(),
+            objectKey = newStorageKey
+        )
 
         try {
             val storedObject = storageService.uploadProfilePhoto(
@@ -502,61 +516,71 @@ class ProfileService(
                 bytes = bytes
             )
 
-            newUploadedKey = storedObject.key
+            val result = transactionTemplate.execute {
+                val authoritativeProfile = findByIdOrThrow(profileId)
+                val authoritativePhoto = profilePhotoRepository.findByIdForUpdate(photoId)
+                    ?: throw profilePhotoNotFound(photoId)
 
-            existingPhoto.storageProvider = PhotoStorageProvider.S3
-            existingPhoto.storageBucket = storedObject.bucket
-            existingPhoto.storageKey = storedObject.key
-            existingPhoto.isPersonPhoto = analysis.validation.isPersonPhoto
-            existingPhoto.isFullBody = analysis.validation.isFullBody
-            existingPhoto.validationStatus = analysis.validation.status
-            existingPhoto.moderationStatus = analysis.moderation.status
+                if (authoritativePhoto.profileId != profileId) {
+                    throw profilePhotoNotFound(photoId)
+                }
 
-            val saved = profilePhotoRepository.save(existingPhoto)
+                val oldObject = storedObjectFor(authoritativePhoto)
 
-            runCatching {
-                storageService.delete(oldStorageKey)
-            }
+                authoritativePhoto.storageProvider = PhotoStorageProvider.S3
+                authoritativePhoto.storageBucket = storedObject.bucket
+                authoritativePhoto.storageKey = storedObject.key
+                authoritativePhoto.isPersonPhoto = analysis.validation.isPersonPhoto
+                authoritativePhoto.isFullBody = analysis.validation.isFullBody
+                authoritativePhoto.validationStatus = analysis.validation.status
+                authoritativePhoto.moderationStatus = analysis.moderation.status
 
-            val authenticityOldStatus = profile.authenticityVerificationStatus
-            val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
-            val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
+                val saved = profilePhotoRepository.saveAndFlush(authoritativePhoto)
+                val oldCleanupTask = mediaCleanupTaskService.createImmediateDeleteTaskInCurrentTransaction(oldObject)
+                mediaCleanupTaskService.deleteTaskInCurrentTransaction(guardTask.id)
 
-            auditEventService.record(
-                eventType = AuditEventType.PROFILE_PHOTO_REPLACED,
-                aggregateType = AuditAggregateType.PROFILE_PHOTO,
-                aggregateId = saved.id,
-                actorUserId = profile.userId,
-                metadata = photoAuditMetadata(saved)
-            )
-            if (authenticityInvalidated) {
-                recordProfileAuthenticityVerificationUpdated(
-                    profile = profile,
-                    oldStatus = authenticityOldStatus,
-                    reason = "PROFILE_PHOTO_MUTATED"
+                val authenticityOldStatus = authoritativeProfile.authenticityVerificationStatus
+                val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(authoritativeProfile)
+                val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(authoritativeProfile)
+                authoritativeProfile.updatedAt = OffsetDateTime.now()
+                profileRepository.save(authoritativeProfile)
+
+                auditEventService.record(
+                    eventType = AuditEventType.PROFILE_PHOTO_REPLACED,
+                    aggregateType = AuditAggregateType.PROFILE_PHOTO,
+                    aggregateId = saved.id,
+                    actorUserId = authoritativeProfile.userId,
+                    metadata = photoAuditMetadata(saved)
+                )
+                if (authenticityInvalidated) {
+                    recordProfileAuthenticityVerificationUpdated(
+                        profile = authoritativeProfile,
+                        oldStatus = authenticityOldStatus,
+                        reason = "PROFILE_PHOTO_MUTATED"
+                    )
+                }
+                if (movedToDraft) {
+                    homeStateInvalidationService.bump(
+                        userId = authoritativeProfile.userId,
+                        reason = "profile_moved_to_draft"
+                    )
+                }
+
+                PhotoReplaceResult(
+                    photo = saved,
+                    oldCleanupTaskId = oldCleanupTask.id
                 )
             }
-            if (movedToDraft) {
-                homeStateInvalidationService.bump(
-                    userId = profile.userId,
-                    reason = "profile_moved_to_draft"
-                )
-            }
 
-            return saved
+            mediaCleanupProcessor.processTask(result.oldCleanupTaskId)
+            return result.photo
 
         } catch (ex: Exception) {
-            newUploadedKey?.let { key ->
-                runCatching {
-                    storageService.delete(key)
-                }
-            }
-
             throw ex
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun uploadPhoto(
         profileId: UUID,
         position: Int,
@@ -589,8 +613,16 @@ class ProfileService(
             contentType = normalizedContentType,
             bytes = bytes
         )
-
-        var uploadedKey: String? = null
+        val storageKey = storageService.profilePhotoObjectKey(
+            userId = profile.userId,
+            objectId = photoId,
+            contentType = normalizedContentType
+        )
+        val guardTask = mediaCleanupTaskService.createGuardTask(
+            storageProvider = PhotoStorageProvider.S3,
+            bucket = storageService.profilePhotoBucket(),
+            objectKey = storageKey
+        )
 
         try {
             val storedObject = storageService.uploadProfilePhoto(
@@ -600,60 +632,81 @@ class ProfileService(
                 bytes = bytes
             )
 
-            uploadedKey = storedObject.key
+            val photo = transactionTemplate.execute {
+                val authoritativeProfile = findByIdOrThrow(profileId)
+                validatePhotoCount(profileId, position)
 
-            val photo = profilePhotoRepository.save(
-                ProfilePhoto(
-                    id = photoId,
-                    profileId = profileId,
-                    storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = storedObject.bucket,
-                    storageKey = storedObject.key,
-                    position = position,
-                    isPersonPhoto = analysis.validation.isPersonPhoto,
-                    isFullBody = analysis.validation.isFullBody,
-                    validationStatus = analysis.validation.status,
-                    moderationStatus = analysis.moderation.status
+                val savedPhoto = profilePhotoRepository.saveAndFlush(
+                    ProfilePhoto(
+                        id = photoId,
+                        profileId = profileId,
+                        storageProvider = PhotoStorageProvider.S3,
+                        storageBucket = storedObject.bucket,
+                        storageKey = storedObject.key,
+                        position = position,
+                        isPersonPhoto = analysis.validation.isPersonPhoto,
+                        isFullBody = analysis.validation.isFullBody,
+                        validationStatus = analysis.validation.status,
+                        moderationStatus = analysis.moderation.status
+                    )
                 )
-            )
+                mediaCleanupTaskService.deleteTaskInCurrentTransaction(guardTask.id)
 
-            val authenticityOldStatus = profile.authenticityVerificationStatus
-            val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(profile)
-            val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(profile)
+                val authenticityOldStatus = authoritativeProfile.authenticityVerificationStatus
+                val authenticityInvalidated = invalidateProfileAuthenticityAfterPhotoMutation(authoritativeProfile)
+                val movedToDraft = moveActiveProfileToDraftAfterPhotoMutation(authoritativeProfile)
+                authoritativeProfile.updatedAt = OffsetDateTime.now()
 
-            auditEventService.record(
-                eventType = AuditEventType.PROFILE_PHOTO_UPLOADED,
-                aggregateType = AuditAggregateType.PROFILE_PHOTO,
-                aggregateId = photo.id,
-                actorUserId = profile.userId,
-                metadata = photoAuditMetadata(photo)
-            )
-            if (authenticityInvalidated) {
-                recordProfileAuthenticityVerificationUpdated(
-                    profile = profile,
-                    oldStatus = authenticityOldStatus,
-                    reason = "PROFILE_PHOTO_MUTATED"
+                profileRepository.save(authoritativeProfile)
+
+                auditEventService.record(
+                    eventType = AuditEventType.PROFILE_PHOTO_UPLOADED,
+                    aggregateType = AuditAggregateType.PROFILE_PHOTO,
+                    aggregateId = savedPhoto.id,
+                    actorUserId = authoritativeProfile.userId,
+                    metadata = photoAuditMetadata(savedPhoto)
                 )
-            }
-            if (movedToDraft) {
-                homeStateInvalidationService.bump(
-                    userId = profile.userId,
-                    reason = "profile_moved_to_draft"
-                )
+                if (authenticityInvalidated) {
+                    recordProfileAuthenticityVerificationUpdated(
+                        profile = authoritativeProfile,
+                        oldStatus = authenticityOldStatus,
+                        reason = "PROFILE_PHOTO_MUTATED"
+                    )
+                }
+                if (movedToDraft) {
+                    homeStateInvalidationService.bump(
+                        userId = authoritativeProfile.userId,
+                        reason = "profile_moved_to_draft"
+                    )
+                }
+
+                savedPhoto
             }
 
             return photo
 
         } catch (ex: Exception) {
-            uploadedKey?.let { key ->
-                runCatching {
-                    storageService.delete(key)
-                }
-            }
-
             throw ex
         }
     }
+
+    private data class PhotoDeleteResult(
+        val profile: Profile,
+        val cleanupTaskId: UUID
+    )
+
+    private data class PhotoReplaceResult(
+        val photo: ProfilePhoto,
+        val oldCleanupTaskId: UUID
+    )
+
+    private fun storedObjectFor(photo: ProfilePhoto): StoredObject =
+        StoredObject(
+            bucket = photo.storageBucket ?: storageService.profilePhotoBucket(),
+            key = photo.storageKey,
+            contentType = "application/octet-stream",
+            sizeBytes = 0
+        )
 
     fun resolvePhotoReadUrlForResponse(photo: ProfilePhoto): String {
         return resolvePhotoReadUrl(photo)

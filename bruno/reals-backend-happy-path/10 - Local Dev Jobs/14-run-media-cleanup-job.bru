@@ -1,0 +1,21 @@
+meta {
+  name: 14 Run Media Cleanup Job
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/media-cleanup/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "MediaCleanupJob") {
+    throw new Error("Expected MediaCleanupJob to run.");
+  }
+}
+
+docs {
+  Processes due durable profile-photo object deletion tasks for local development.
+}

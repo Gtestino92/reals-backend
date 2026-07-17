@@ -76,9 +76,13 @@ The following are intentionally not MVP blockers:
 Backend concurrency hardening status:
 - Message sends are serialized per `Chat` row with a pessimistic database lock.
 - Firebase provisioning retries one concurrent UID/email unique-conflict attempt in a fresh transaction.
+- Durable profile-photo DB/object-storage consistency is implemented with `media_cleanup_tasks`.
+- PostgreSQL remains authoritative for profile-photo references; new objects are protected by delayed cleanup guards until DB finalization commits.
+- Old profile-photo objects are deleted only after the referencing DB transaction commits; deletion is idempotent, durable and retryable.
+- Completed cleanup tasks are removed. `FAILED` cleanup tasks require operational inspection.
 - PostgreSQL/Testcontainers concurrency coverage remains deferred to a separate production-hardening block.
 - The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
-- Notification delivery, scheduler batching, observability, Home cleanup, media cleanup tasks, rate limiting and durable media cleanup-task implementation are out of scope for this MVP block.
+- Notification delivery, unrelated scheduler batching, observability, Home cleanup, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
 
 ### 6.1 Push notification delivery workflow cleanup
 
