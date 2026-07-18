@@ -10,15 +10,15 @@ import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.FilterType
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
 @WebMvcTest(
-    controllers = [EndpointExposureDevTest.ProbeController::class],
+    controllers = [LocalDevEndpointExposureLocalNodbTest.ProbeController::class],
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
@@ -26,44 +26,53 @@ import org.springframework.web.bind.annotation.RestController
         )
     ]
 )
-@Import(SecurityConfig::class, EnvironmentExposurePolicy::class, EndpointExposureDevTest.ProbeController::class)
-@ActiveProfiles("dev")
-class EndpointExposureDevTest {
+@Import(SecurityConfig::class, EnvironmentExposurePolicy::class, LocalDevEndpointExposureLocalNodbTest.ProbeController::class)
+@ActiveProfiles("local-nodb")
+class LocalDevEndpointExposureLocalNodbTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `local-dev endpoints require admin in dev when a handler is registered`() {
+    fun `local-dev endpoints are allowed without authentication in local-nodb`() {
         mockMvc.perform(get("/api/local-dev/probe"))
-            .andExpect(status().isUnauthorized)
-
-        mockMvc.perform(get("/api/local-dev/probe").with(user("user").roles("USER")))
-            .andExpect(status().isForbidden)
-
-        mockMvc.perform(get("/api/local-dev/probe").with(user("admin").roles("ADMIN")))
             .andExpect(status().isOk)
-    }
-
-    @Test
-    fun `h2 console cannot execute in dev even for admin if a handler is registered`() {
-        mockMvc.perform(get("/h2-console/probe"))
-            .andExpect(status().isUnauthorized)
-
-        mockMvc.perform(get("/h2-console/probe").with(user("user").roles("USER")))
-            .andExpect(status().isForbidden)
-
-        mockMvc.perform(get("/h2-console/probe").with(user("admin").roles("ADMIN")))
-            .andExpect(status().isForbidden)
+            .andExpect(content().string("executed"))
     }
 
     @RestController
     class ProbeController {
-
         @GetMapping("/api/local-dev/probe")
         fun localDevProbe(): String = "executed"
+    }
+}
 
-        @GetMapping("/h2-console/probe")
-        fun h2ConsoleProbe(): String = "executed"
+@WebMvcTest(
+    controllers = [LocalDevEndpointExposureLocalPostgresTest.ProbeController::class],
+    excludeFilters = [
+        ComponentScan.Filter(
+            type = FilterType.ASSIGNABLE_TYPE,
+            classes = [FirebaseTokenFilter::class, RateLimitFilter::class]
+        )
+    ]
+)
+@Import(SecurityConfig::class, EnvironmentExposurePolicy::class, LocalDevEndpointExposureLocalPostgresTest.ProbeController::class)
+@ActiveProfiles("local-postgres")
+class LocalDevEndpointExposureLocalPostgresTest {
+
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
+    @Test
+    fun `local-dev endpoints are allowed without authentication in local-postgres`() {
+        mockMvc.perform(get("/api/local-dev/probe"))
+            .andExpect(status().isOk)
+            .andExpect(content().string("executed"))
+    }
+
+    @RestController
+    class ProbeController {
+        @GetMapping("/api/local-dev/probe")
+        fun localDevProbe(): String = "executed"
     }
 }
