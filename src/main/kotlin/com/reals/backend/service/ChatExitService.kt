@@ -85,7 +85,7 @@ class ChatExitService(
         reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
         details: String? = null
     ): ChatExitRequestCreationResult {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, requesterUserId)
         val responderUserId = resolvePartnerUserId(chat, requesterUserId)
@@ -439,6 +439,13 @@ class ChatExitService(
                 )
             }
     }
+
+    private fun findChatForUpdateOrThrow(chatId: UUID): Chat =
+        chatRepository.findByIdForUpdate(chatId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.CHAT_NOT_FOUND,
+                message = "Chat was not found"
+            )
 
     private fun findExitRequestOrThrow(requestId: UUID): ChatExitRequest =
         chatExitRequestRepository.findById(requestId)

@@ -205,6 +205,7 @@ class ChatService(
         requireChatPairNotBlocked(chat)
         validateActiveChatWindow(chat)
         validateChatParticipant(chat, senderId)
+        requireNoPendingMutualCancellation(chat.id)
 
         val message =
             chatMessageRepository.save(
@@ -237,23 +238,9 @@ class ChatService(
             throw chatDecisionNotAvailable()
         }
 
-        val chat = findActiveFirstChatOrThrow(
-            matchId = matchId,
-            unavailableCode = DomainErrorCode.CHAT_DECISION_NOT_AVAILABLE
-        )
+        val chat = findActiveFirstChatForUpdateOrThrow(matchId)
 
-        if (
-            chatExitRequestRepository.findByChatIdAndStatusAndType(
-                chatId = chat.id,
-                status = ChatExitRequestStatus.PENDING,
-                type = ChatExitRequestType.MUTUAL_CANCEL
-            ) != null
-        ) {
-            throw DomainConflictException(
-                code = DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING,
-                message = "A mutual cancellation request is pending"
-            )
-        }
+        requireNoPendingMutualCancellation(chat.id)
 
         if (decision == ChatContinueDecision.REJECTED) {
             chatExitService.cancelChatUnilaterally(
@@ -526,7 +513,7 @@ class ChatService(
         chatId: UUID,
         userId: UUID
     ): FirstChatGuidanceState {
-        val chat = findByIdOrThrow(chatId)
+        val chat = findByIdForUpdateOrThrow(chatId)
         requireChatPairNotBlocked(chat)
         validateChatParticipant(chat, userId)
 
@@ -535,6 +522,7 @@ class ChatService(
         }
 
         validateActiveChatWindow(chat)
+        requireNoPendingMutualCancellation(chat.id)
 
         return firstChatGuidanceService.requestNext(
             chat = chat,
@@ -1043,6 +1031,40 @@ class ChatService(
     private fun findByIdForUpdateOrThrow(chatId: UUID): Chat =
         chatRepository.findByIdForUpdate(chatId)
             ?: throw chatNotFound()
+
+    private fun findActiveFirstChatForUpdateOrThrow(matchId: UUID): Chat {
+        val chat =
+            chatRepository.findByMatchIdAndChatType(matchId, ChatType.FIRST_CHAT)
+                ?: throw chatNotFound()
+
+        val lockedChat = findByIdForUpdateOrThrow(chat.id)
+
+        if (lockedChat.status != ChatStatus.ACTIVE) {
+            throw chatUnavailableForStatus(
+                status = lockedChat.status,
+                fallbackCode = DomainErrorCode.CHAT_DECISION_NOT_AVAILABLE
+            )
+        }
+
+        validateActiveChatWindow(lockedChat)
+
+        return lockedChat
+    }
+
+    private fun requireNoPendingMutualCancellation(chatId: UUID) {
+        if (
+            chatExitRequestRepository.findByChatIdAndStatusAndType(
+                chatId = chatId,
+                status = ChatExitRequestStatus.PENDING,
+                type = ChatExitRequestType.MUTUAL_CANCEL
+            ) != null
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING,
+                message = "A mutual cancellation request is pending"
+            )
+        }
+    }
 
     private fun transitionConnectionToSecondChat(connectionId: UUID) {
         val connection = connectionService.findByIdOrThrow(connectionId)

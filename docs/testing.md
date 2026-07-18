@@ -69,8 +69,21 @@ For those cases, service-level integration tests catch more realistic regression
 
 - mutual first-chat cancellation without penalties
 - mutual cancellation rejection and timeout closing the chat without penalties
+- pending mutual cancellation blocking requester/responder message sends without creating messages or changing `lastMessageAt`
+- pending mutual cancellation preserving message reads, exit-request reads and same-requester idempotency
 - safety cancellation and reported-user penalty
 - unilateral second-chat cancellation penalty behavior
+
+`FirstChatGuidanceIntegrationTest` covers:
+
+- first-chat guidance initialization, deterministic catalog selection, advancement and completion
+- pending mutual cancellation blocking guidance next requests without changing guidance state
+
+`ChatMessageConcurrencyIntegrationTest` covers:
+
+- serialized concurrent message writes in one active first chat
+- single activation when concurrent messages enter an available second chat
+- message sends racing mutual cancellation request creation through the shared chat-row lock
 
 `UserSoftDeleteIntegrationTest` covers:
 
@@ -121,6 +134,10 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
+
+For the mutual-exit chat-locking change, focused chat integration tests passed
+locally and the full Maven test suite was run by the user with `.\mvnw.cmd test`
+and passed.
 
 Run the explicit PostgreSQL profile only when Docker is available:
 

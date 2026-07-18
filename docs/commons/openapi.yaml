@@ -622,6 +622,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
+      description: Sends a message as the authenticated chat participant. While a `MUTUAL_CANCEL` exit request is `PENDING`, sends are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and no message is persisted.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -685,7 +686,7 @@ paths:
     post:
       tags: [Chats]
       summary: Request next first-chat guidance question
-      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned.
+      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       responses:
@@ -703,7 +704,7 @@ paths:
     post:
       tags: [Chats]
       summary: Request mutual chat cancellation
-      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict.
+      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict. A pending mutual cancellation pauses new message sends and first-chat guidance advancement, while message reads, exit-request polling, acceptance, rejection, timeout, unilateral cancellation and safety cancellation remain available.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1435,7 +1436,7 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable. Active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
+      description: Chat is not currently readable or writable. Message sends may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1456,8 +1457,13 @@ components:
                 code: CHAT_EXPIRED
                 error: Conflict
                 message: Chat has expired
+            mutualCancellationPending:
+              value:
+                code: CHAT_MUTUAL_CANCELLATION_PENDING
+                error: Conflict
+                message: A mutual cancellation request is pending
     FirstChatGuidanceConflict:
-      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `LEGAL_ACTION_REQUIRED`.
+      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING` or `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1488,6 +1494,11 @@ components:
                 code: CHAT_NOT_AVAILABLE
                 error: Conflict
                 message: Chat is not available
+            mutualCancellationPending:
+              value:
+                code: CHAT_MUTUAL_CANCELLATION_PENDING
+                error: Conflict
+                message: A mutual cancellation request is pending
     ChatDecisionConflict:
       description: First-chat continuation decision is not currently available. APPROVED may also return `LEGAL_ACTION_REQUIRED`; REJECTED remains available without legal compliance.
       content:
