@@ -345,10 +345,18 @@ Use the local dev endpoints for deterministic manual testing:
 POST /api/local-dev/jobs/{job}/run
 ```
 
-`/api/local-dev/**` endpoints are profile-gated local tooling and do not
-require a user bearer token in `local-nodb`, `local-postgres` or
-`local-firebase`. Spring Security explicitly denies them in `dev`, `prod` and
-`test`, even if a local-dev controller is accidentally registered.
+`/api/local-dev/**` endpoints are profile-gated tooling for controlled
+Bruno/manual verification. The path name is retained for compatibility. They
+execute system-level mutations or jobs and must never be called by the Android
+application.
+
+In `local-nodb`, `local-postgres` and `local-firebase`, these endpoints are
+available without authentication. In hosted `dev`, the same paths are
+registered but require `Authorization: Bearer <Firebase ID token>` for an
+active user with `ROLE_ADMIN`; that role is assigned through the existing
+`BACKOFFICE_ADMIN_EMAILS` allowlist. In `prod`, the real `Dev*` controllers are
+not registered and Spring Security explicitly denies `/api/local-dev/**`, even
+if a local-dev handler is accidentally registered.
 
 The Bruno collection includes direct triggers under:
 

@@ -410,15 +410,21 @@ participant identity or the confirmed time; payload data includes `type`,
 
 ## Local Dev Tooling Endpoints
 
-These endpoints are profile-gated for local manual testing:
+These endpoints are profile-gated tooling for controlled Bruno/manual testing:
 
 - `POST /api/local-dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
 - `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
 - `GET /api/local-dev/user-reliability/{userId}`: inspect the internal user reliability score breakdown and active contributing events without mutating state.
 
-These local-dev endpoints execute system tooling and do not require a user
-bearer token. They are not available in `dev` or `prod`.
+These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`
+path name is retained for compatibility and must never be called by the Android
+application. In `local-nodb`, `local-postgres` and `local-firebase`, they are
+available without authentication. In hosted `dev`, they are registered but
+require `ROLE_ADMIN`; Firebase-authenticated users receive that role only when
+they exist locally as active users and their email is listed in
+`backoffice.admin-emails`/`BACKOFFICE_ADMIN_EMAILS`. In `prod`, the controllers
+are not registered and the route prefix is explicitly denied.
 
 Supported local job triggers:
 
