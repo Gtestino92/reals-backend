@@ -22,6 +22,7 @@ import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
+import com.reals.backend.service.notification.schedulingAvailableAggregateId
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -211,26 +212,61 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         pushDeviceTokenService.registerToken(setup.userAId, "scheduling-job-token-a", PushPlatform.ANDROID)
         pushDeviceTokenService.registerToken(setup.userBId, "scheduling-job-token-b", PushPlatform.ANDROID)
 
+        val beforeActivation = OffsetDateTime.now()
         SchedulingActivationJob(
             connectionRepository = connectionRepository,
             schedulingService = schedulingService,
             schedulingAvailableNotificationService = schedulingAvailableNotificationService
         ).run()
+        val afterActivation = OffsetDateTime.now()
 
-        assertEquals(
-            ConnectionState.SCHEDULING_PHASE,
-            connectionRepository.findById(connection.id).orElseThrow().state
-        )
+        val activatedConnection = connectionRepository.findById(connection.id).orElseThrow()
+        assertEquals(ConnectionState.SCHEDULING_PHASE, activatedConnection.state)
+        assertFalse(activatedConnection.schedulingExpiresAt.isBefore(beforeActivation.plusMinutes(2880)))
+        assertFalse(activatedConnection.schedulingExpiresAt.isAfter(afterActivation.plusMinutes(2880).plusSeconds(1)))
         assertNotNull(schedulingService.findNegotiationOrNull(connection.id))
         val deliveries =
-            pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
-                notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                aggregateId = connection.id
-            )
+            listOf(setup.userAId, setup.userBId).flatMap { userId ->
+                pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+                    notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
+                    aggregateId = schedulingAvailableAggregateId(
+                        userId = userId,
+                        connectionIds = listOf(connection.id)
+                    )
+                )
+            }
         assertEquals(2, deliveries.size)
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `scheduling activation job leaves pending connection before available timestamp`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        connectionRepository.updateSchedulingAvailableAt(
+            connectionId = connection.id,
+            availableAt = OffsetDateTime.now().plusHours(1)
+        )
+
+        val summary =
+            SchedulingActivationJob(
+                connectionRepository = connectionRepository,
+                schedulingService = schedulingService,
+                schedulingAvailableNotificationService = schedulingAvailableNotificationService
+            ).processSchedulingActivations()
+
+        assertEquals(0, summary.processed)
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connectionRepository.findById(connection.id).orElseThrow().state)
+        assertNull(schedulingService.findNegotiationOrNull(connection.id))
     }
 
     @Test

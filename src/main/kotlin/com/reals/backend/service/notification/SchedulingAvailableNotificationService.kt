@@ -3,7 +3,7 @@ package com.reals.backend.service.notification
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.PushNotificationType
-import com.reals.backend.service.ConnectionService
+import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.service.notification.sender.PushNotification
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -13,7 +13,7 @@ import java.util.UUID
 
 @Service
 class SchedulingAvailableNotificationService(
-    private val connectionService: ConnectionService,
+    private val connectionRepository: ConnectionRepository,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
@@ -21,49 +21,72 @@ class SchedulingAvailableNotificationService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun notifySchedulingAvailable(connectionId: UUID) {
+    fun notifySchedulingAvailable(connectionIds: Collection<UUID>) {
+        if (connectionIds.isEmpty()) {
+            return
+        }
+
         try {
-            val prepared = prepareSchedulingAvailable(connectionId)
+            val prepared = prepareSchedulingAvailable(connectionIds)
             prepared.commands.forEach { command ->
                 sendAndPersist(command)
             }
         } catch (ex: Exception) {
             log.warn(
-                "Failed to process scheduling available push notifications for connection {}: {}",
-                connectionId,
-                ex.message,
+                "Failed to process scheduling available push notifications for connections={}",
+                connectionIds,
                 ex
             )
         }
     }
 
-    private fun prepareSchedulingAvailable(connectionId: UUID): PreparedPushBatch =
+    private fun prepareSchedulingAvailable(connectionIds: Collection<UUID>): PreparedPushBatch =
         transactionTemplate.execute {
-            val connection = connectionService.findByIdOrThrow(connectionId)
+            val actionableConnections =
+                connectionRepository.findAllById(connectionIds.toSet())
+                    .filter { connection -> connection.state == ConnectionState.SCHEDULING_PHASE }
 
-            if (connection.state != ConnectionState.SCHEDULING_PHASE) {
+            if (actionableConnections.isEmpty()) {
                 return@execute PreparedPushBatch(skipped = 1)
             }
 
-            prepareRecipients(
-                connection = connection,
+            prepareUserGroups(
+                connections = actionableConnections,
                 now = OffsetDateTime.now()
             )
         }
 
-    private fun prepareRecipients(
-        connection: Connection,
+    private fun prepareUserGroups(
+        connections: List<Connection>,
         now: OffsetDateTime
     ): PreparedPushBatch {
         val commands = mutableListOf<PreparedPushCommand>()
         var skipped = 0
+        val connectionsByUser =
+            connections
+                .flatMap { connection ->
+                    listOf(
+                        connection.userAId to connection.id,
+                        connection.userBId to connection.id
+                    )
+                }
+                .groupBy(
+                    keySelector = { it.first },
+                    valueTransform = { it.second }
+                )
 
-        listOf(connection.userAId, connection.userBId).forEach { userId ->
+        connectionsByUser.forEach { (userId, userConnectionIds) ->
+            val aggregateId =
+                schedulingAvailableAggregateId(
+                    userId = userId,
+                    connectionIds = userConnectionIds
+                )
+
             if (
                 deliveryPersistenceService.deliveryExists(
                     userId = userId,
                     notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                    aggregateId = connection.id
+                    aggregateId = aggregateId
                 )
             ) {
                 skipped += 1
@@ -75,7 +98,7 @@ class SchedulingAvailableNotificationService(
                 deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
                     userId = userId,
                     notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                    aggregateId = connection.id,
+                    aggregateId = aggregateId,
                     now = now
                 )
                 skipped += 1
@@ -85,9 +108,9 @@ class SchedulingAvailableNotificationService(
             commands += PreparedPushCommand(
                 userId = userId,
                 notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                aggregateId = connection.id,
+                aggregateId = aggregateId,
                 tokens = activeTokens,
-                notification = schedulingAvailableNotification(connection),
+                notification = schedulingAvailableNotification(),
                 preparedAt = now
             )
         }
@@ -99,17 +122,24 @@ class SchedulingAvailableNotificationService(
     }
 
     private fun sendAndPersist(command: PreparedPushCommand) {
-        preparedPushCommandProcessor.process(command)
+        try {
+            preparedPushCommandProcessor.process(command)
+        } catch (ex: Exception) {
+            log.warn(
+                "Scheduling available push command failed for user={} aggregate={}",
+                command.userId,
+                command.aggregateId,
+                ex
+            )
+        }
     }
 
-    private fun schedulingAvailableNotification(connection: Connection): PushNotification =
+    private fun schedulingAvailableNotification(): PushNotification =
         PushNotification(
-            title = "Ya pueden coordinar horarios",
-            body = "La coordinación para la segunda charla ya está disponible.",
+            title = "Ya podés coordinar",
+            body = "Tenés coordinaciones disponibles para la segunda charla.",
             data = mapOf(
-                "type" to PushNotificationType.SCHEDULING_AVAILABLE.name,
-                "connectionId" to connection.id.toString(),
-                "matchId" to connection.matchId.toString()
+                "type" to PushNotificationType.SCHEDULING_AVAILABLE.name
             )
         )
 }

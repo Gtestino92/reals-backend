@@ -54,6 +54,7 @@ class SchedulingActivationJob(
         var succeeded = 0
         var skipped = 0
         var failed = 0
+        val activatedConnectionIds = mutableListOf<UUID>()
 
         batch.items.forEach { connectionId ->
             try {
@@ -61,8 +62,7 @@ class SchedulingActivationJob(
                     connectionId = connectionId
                 )
 
-                notifySchedulingAvailable(connectionId)
-
+                activatedConnectionIds += connectionId
                 succeeded += 1
                 log.info(
                     "SchedulingActivationJob - activated scheduling for connection={}",
@@ -85,6 +85,8 @@ class SchedulingActivationJob(
             }
         }
 
+        notifySchedulingAvailable(activatedConnectionIds)
+
         val summary =
             JobRunSummary(
                 processed = batch.items.size,
@@ -106,13 +108,17 @@ class SchedulingActivationJob(
         return summary
     }
 
-    private fun notifySchedulingAvailable(connectionId: UUID) {
+    private fun notifySchedulingAvailable(connectionIds: Collection<UUID>) {
+        if (connectionIds.isEmpty()) {
+            return
+        }
+
         try {
-            schedulingAvailableNotificationService.notifySchedulingAvailable(connectionId)
+            schedulingAvailableNotificationService.notifySchedulingAvailable(connectionIds)
         } catch (ex: Exception) {
             log.warn(
-                "SchedulingActivationJob - scheduling available notification failed for connection={}",
-                connectionId,
+                "SchedulingActivationJob - scheduling available notification failed for connections={}",
+                connectionIds,
                 ex
             )
         }
