@@ -40,6 +40,9 @@ class EnvironmentExposurePolicy private constructor(
     fun localDevEndpointsAllowed(): Boolean =
         activeExecutionProfiles().any { it in LOCAL_EXECUTION_PROFILES }
 
+    fun devAdminToolingAllowed(): Boolean =
+        activeExecutionProfiles() == setOf(DEV_PROFILE)
+
     fun h2ConsoleAllowed(): Boolean =
         activeExecutionProfiles() == setOf(LOCAL_NODB_PROFILE)
 
@@ -48,6 +51,7 @@ class EnvironmentExposurePolicy private constructor(
 
     companion object {
         const val LOCAL_NODB_PROFILE = "local-nodb"
+        const val DEV_PROFILE = "dev"
         const val PROD_PROFILE = "prod"
 
         val LOCAL_EXECUTION_PROFILES = setOf(
@@ -57,7 +61,7 @@ class EnvironmentExposurePolicy private constructor(
         )
 
         val EXECUTION_PROFILES = LOCAL_EXECUTION_PROFILES + setOf(
-            "dev",
+            DEV_PROFILE,
             PROD_PROFILE,
             "test"
         )

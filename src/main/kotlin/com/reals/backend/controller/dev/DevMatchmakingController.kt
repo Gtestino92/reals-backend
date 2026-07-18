@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@Profile("local-nodb", "local-postgres", "local-firebase")
+@Profile("local-nodb", "local-postgres", "local-firebase", "dev")
 @RequestMapping("/api/local-dev/matchmaking")
 class DevMatchmakingController(
     private val matchmakingProcessorService: MatchmakingProcessorService

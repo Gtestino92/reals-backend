@@ -7,7 +7,7 @@ Production and shared development profiles should receive environment-specific v
 - `local-firebase`: local Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
-- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and local-only `/api/local-dev/**` controllers disabled.
+- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and `/api/local-dev/**` tooling registered for authenticated `ROLE_ADMIN` users.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
 
@@ -29,10 +29,13 @@ profile is active or when more than one execution profile is active, for example
 `prod,local-firebase` or `dev,prod`. Auxiliary profiles are allowed as long as
 they do not add a second execution profile.
 
-`/api/local-dev/**` is local tooling only. It remains unauthenticated in
-`local-nodb`, `local-postgres` and `local-firebase`, and Spring Security
-explicitly denies it in `dev`, `prod` and `test` even if a handler is
-accidentally registered.
+`/api/local-dev/**` is tooling for controlled Bruno/manual verification. It
+remains unauthenticated in `local-nodb`, `local-postgres` and
+`local-firebase`. Hosted `dev` registers the same paths but requires an
+authenticated `ROLE_ADMIN` user. Admin role assignment uses the existing
+Firebase-backed local user plus `BACKOFFICE_ADMIN_EMAILS` allowlist. `prod` and
+`test` deny the route prefix, and `prod` does not register the real `Dev*`
+controllers.
 
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
 denies `/h2-console/**` for every other execution profile.

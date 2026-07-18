@@ -75,11 +75,17 @@ class SecurityConfig(
                     .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                     .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole(SecurityRoles.ADMIN)
 
-                if (environmentExposurePolicy.localDevEndpointsAllowed()) {
-                    // Local tooling executes system jobs; bearer auth only adds local friction.
-                    auth.requestMatchers("/api/local-dev/**").permitAll()
-                } else {
-                    auth.requestMatchers("/api/local-dev/**").denyAll()
+                when {
+                    environmentExposurePolicy.localDevEndpointsAllowed() -> {
+                        // Local tooling executes system jobs; bearer auth only adds local friction.
+                        auth.requestMatchers("/api/local-dev/**").permitAll()
+                    }
+                    environmentExposurePolicy.devAdminToolingAllowed() -> {
+                        auth.requestMatchers("/api/local-dev/**").hasRole(SecurityRoles.ADMIN)
+                    }
+                    else -> {
+                        auth.requestMatchers("/api/local-dev/**").denyAll()
+                    }
                 }
 
                 if (environmentExposurePolicy.h2ConsoleAllowed()) {
