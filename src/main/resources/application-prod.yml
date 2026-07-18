@@ -80,7 +80,7 @@ scheduler:
   scheduling-timeout-job:
     fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:900000}
   scheduling-activation-job:
-    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:21600000}
     batch-size: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_BATCH_SIZE:100}
   account-deletion-finalization-job:
     fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}

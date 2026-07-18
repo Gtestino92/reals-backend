@@ -114,8 +114,8 @@ class LifecycleJobSummaryTest {
         Mockito.verify(schedulingService).activateSchedulingAndInitializeNegotiation(failed)
         Mockito.verify(schedulingService).activateSchedulingAndInitializeNegotiation(changed)
         Mockito.verify(schedulingService, Mockito.never()).activateSchedulingAndInitializeNegotiation(backlog)
-        Mockito.verify(notificationService).notifySchedulingAvailable(changed)
-        Mockito.verify(notificationService, Mockito.never()).notifySchedulingAvailable(failed)
+        Mockito.verify(notificationService).notifySchedulingAvailable(listOf(changed))
+        Mockito.verify(notificationService, Mockito.never()).notifySchedulingAvailable(listOf(failed))
     }
 
     @Test
