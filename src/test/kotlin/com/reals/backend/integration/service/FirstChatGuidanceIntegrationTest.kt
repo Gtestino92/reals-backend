@@ -225,6 +225,33 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `pending mutual cancellation blocks first chat guidance next without mutation`() {
+        val setup = createMatchWithFirstChat("guidance-mutual-pending")
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(40))
+        val before = firstChatGuidanceRepository.findByChatId(setup.firstChatId)
+            ?: error("Expected guidance")
+
+        chatExitService.requestMutualCancellation(
+            chatId = setup.firstChatId,
+            requesterUserId = setup.userAId
+        )
+
+        val exception =
+            assertThrows(DomainConflictException::class.java) {
+                chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
+            }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, exception.code)
+
+        val after = firstChatGuidanceRepository.findByChatId(setup.firstChatId)
+            ?: error("Expected guidance")
+        assertEquals(before.currentQuestionId, after.currentQuestionId)
+        assertEquals(before.currentQuestionOrdinal, after.currentQuestionOrdinal)
+        assertEquals(before.currentQuestionActivatedAt, after.currentQuestionActivatedAt)
+        assertNull(after.userANextRequestedAt)
+        assertNull(after.userBNextRequestedAt)
+    }
+
+    @Test
     fun `chat cannot have duplicate guidance rows`() {
         val setup = createMatchWithFirstChat("guidance-unique")
         val existing = firstChatGuidanceRepository.findByChatId(setup.firstChatId)

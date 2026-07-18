@@ -165,6 +165,94 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `pending mutual cancellation blocks requester and responder messages without mutating chat`() {
+        val setup = createMatchWithFirstChat()
+        val lastMessageAtBefore = chatService.findByIdOrThrow(setup.firstChatId).lastMessageAt
+
+        chatExitService.requestMutualCancellation(
+            chatId = setup.firstChatId,
+            requesterUserId = setup.userAId
+        )
+
+        val requesterException = assertThrows<DomainConflictException> {
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                content = "Requester message after pending mutual cancellation"
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, requesterException.code)
+
+        val responderException = assertThrows<DomainConflictException> {
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userBId,
+                content = "Responder message after pending mutual cancellation"
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, responderException.code)
+
+        assertEquals(0, chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(setup.firstChatId).size)
+        assertEquals(lastMessageAtBefore, chatService.findByIdOrThrow(setup.firstChatId).lastMessageAt)
+    }
+
+    @Test
+    fun `pending mutual cancellation still allows message and exit request reads`() {
+        val setup = createMatchWithFirstChat()
+        val message =
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                content = "Message before mutual cancellation"
+            )
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+
+        val messages = chatService.getMessages(setup.firstChatId, setup.userBId)
+        val exitRequests = chatExitService.findExitRequests(setup.firstChatId, setup.userBId)
+
+        assertEquals(listOf(message.id), messages.map { it.id })
+        assertEquals(listOf(exitRequest.id), exitRequests.map { it.id })
+    }
+
+    @Test
+    fun `same requester repeating pending mutual cancellation remains idempotent`() {
+        val setup = createMatchWithFirstChat()
+
+        val first =
+            chatExitService.requestMutualCancellationWithResult(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId,
+                reason = ChatExitReason.OTHER,
+                details = "Original details"
+            )
+        val repeated =
+            chatExitService.requestMutualCancellationWithResult(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId,
+                reason = ChatExitReason.HARASSMENT,
+                details = "Replacement details"
+            )
+
+        assertTrue(first.created)
+        assertFalse(repeated.created)
+        assertEquals(first.exitRequest.id, repeated.exitRequest.id)
+        assertEquals(ChatExitReason.OTHER, repeated.exitRequest.reason)
+        assertEquals("Original details", repeated.exitRequest.details)
+        assertEquals(
+            1,
+            chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(setup.firstChatId)
+                .count {
+                    it.type == ChatExitRequestType.MUTUAL_CANCEL &&
+                        it.status == ChatExitRequestStatus.PENDING
+                }
+        )
+    }
+
+    @Test
     fun `timeout mutual cancellation fails before timeout`() {
         val setup = createMatchWithFirstChat()
         val exitRequest =
