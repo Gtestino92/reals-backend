@@ -10,6 +10,7 @@ import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.service.reliability.UserReliabilityScoreService
+import org.springframework.context.ApplicationEventPublisher
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -29,6 +30,7 @@ class SchedulingService(
     private val connectionService: ConnectionService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
+    private val eventPublisher: ApplicationEventPublisher,
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
@@ -158,10 +160,25 @@ class SchedulingService(
             relatedConnectionId = connectionId
         )
 
-        tryAutoConfirmOverlap(
+        val autoConfirmed = tryAutoConfirmOverlap(
             connection = connection,
-            negotiation = negotiation
+            negotiation = negotiation,
+            triggeringUserId = userId
         )
+
+        if (!autoConfirmed) {
+            eventPublisher.publishEvent(
+                SchedulingProposalsReceivedEvent(
+                    connectionId = connectionId,
+                    triggeringUserId = userId,
+                    recipientUserId = partnerUserId(
+                        connection = connection,
+                        userId = userId
+                    ),
+                    roundNumber = negotiation.roundNumber
+                )
+            )
+        }
 
         return saved
     }
@@ -187,9 +204,10 @@ class SchedulingService(
      */
     private fun tryAutoConfirmOverlap(
         connection: Connection,
-        negotiation: ScheduleNegotiation
-    ) {
-        if (negotiation.status != NegotiationStatus.PENDING) return
+        negotiation: ScheduleNegotiation,
+        triggeringUserId: UUID
+    ): Boolean {
+        if (negotiation.status != NegotiationStatus.PENDING) return false
 
         val now = OffsetDateTime.now()
         val pending =
@@ -200,7 +218,7 @@ class SchedulingService(
 
         val byUser = pending.groupBy { it.userId }
 
-        if (byUser.size < 2) return
+        if (byUser.size < 2) return false
 
         val proposalsA = byUser[connection.userAId].orEmpty()
         val proposalsB = byUser[connection.userBId].orEmpty()
@@ -209,7 +227,7 @@ class SchedulingService(
             proposalsA = proposalsA,
             proposalsB = proposalsB,
             now = now
-        ) ?: return
+        ) ?: return false
 
         confirmWith(
             accepted = listOf(overlap.proposalA, overlap.proposalB),
@@ -217,6 +235,15 @@ class SchedulingService(
             negotiation = negotiation,
             connectionId = connection.id
         )
+
+        eventPublisher.publishEvent(
+            SchedulingConfirmedEvent(
+                connectionId = connection.id,
+                triggeringUserId = triggeringUserId
+            )
+        )
+
+        return true
     }
 
     internal fun selectBestFutureOverlap(
@@ -326,6 +353,13 @@ class SchedulingService(
             pending = pending,
             negotiation = negotiation,
             connectionId = connectionId
+        )
+
+        eventPublisher.publishEvent(
+            SchedulingConfirmedEvent(
+                connectionId = connectionId,
+                triggeringUserId = acceptorUserId
+            )
         )
 
         return negotiation
@@ -553,6 +587,16 @@ class SchedulingService(
             }
         }
     }
+
+    private fun partnerUserId(
+        connection: Connection,
+        userId: UUID
+    ): UUID =
+        if (userId == connection.userAId) {
+            connection.userBId
+        } else {
+            connection.userAId
+        }
 
     private fun schedulingNotAvailable(): DomainConflictException =
         DomainConflictException(
