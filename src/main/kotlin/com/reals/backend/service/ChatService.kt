@@ -56,6 +56,7 @@ class ChatService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
+    private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -482,6 +483,24 @@ class ChatService(
         chatId: UUID,
         userId: UUID,
         limit: Int? = null
+    ): List<ChatMessage> =
+        readMetrics.recordChatMessageRead(ReadMetrics.CHAT_MODE_INITIAL) {
+            val messages = getMessagesMeasured(
+                chatId = chatId,
+                userId = userId,
+                limit = limit
+            )
+            readMetrics.recordReturnedChatMessages(
+                mode = ReadMetrics.CHAT_MODE_INITIAL,
+                count = messages.size
+            )
+            messages
+        }
+
+    private fun getMessagesMeasured(
+        chatId: UUID,
+        userId: UUID,
+        limit: Int?
     ): List<ChatMessage> {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)
@@ -528,6 +547,26 @@ class ChatService(
         userId: UUID,
         afterMessageId: UUID,
         limit: Int? = null
+    ): ChatMessagesPage =
+        readMetrics.recordChatMessageRead(ReadMetrics.CHAT_MODE_INCREMENTAL) {
+            val page = getMessagesAfterMeasured(
+                chatId = chatId,
+                userId = userId,
+                afterMessageId = afterMessageId,
+                limit = limit
+            )
+            readMetrics.recordReturnedChatMessages(
+                mode = ReadMetrics.CHAT_MODE_INCREMENTAL,
+                count = page.messages.size
+            )
+            page
+        }
+
+    private fun getMessagesAfterMeasured(
+        chatId: UUID,
+        userId: UUID,
+        afterMessageId: UUID,
+        limit: Int?
     ): ChatMessagesPage {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, userId)

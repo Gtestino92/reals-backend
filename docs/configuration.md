@@ -285,6 +285,7 @@ Dev and prod use the same MVP scheduler defaults:
 | `UserReliabilityEventCleanupJob` | `3600000` ms | Delete expired internal reliability events after their scoring window. |
 | `SchedulingNegotiationTimeoutJob` | `900000` ms | Close scheduling negotiations after their deadline. |
 | `AccountDeletionFinalizationJob` | `3600000` ms | Finalize deleted accounts after the recovery window. |
+| `MediaCleanupJob` | `300000` ms | Retry durable profile-photo object cleanup tasks. |
 
 These defaults are intentionally more frequent for user-visible bottlenecks and
 less frequent for hour/day-scale cleanup. Local profiles keep
@@ -479,3 +480,37 @@ Use the manual `Smoke check` GitHub Actions workflow after a runtime update. For
 the dev environment, set `expected_image_repository` to
 `ghcr.io/gtestino92/reals-backend`, `expected_image_tag` to `development` and
 `expected_image_revision` to the deployed commit SHA or its prefix.
+
+## Diagnostic Metrics
+
+The backend keeps metrics restrictive by default:
+
+```yaml
+management:
+  metrics:
+    enable:
+      all: false
+      reals: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+```
+
+Public unauthenticated Actuator access is limited to `/actuator/health`,
+`/actuator/health/**` and `/actuator/info`. `/actuator/metrics` and
+`/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
+
+Current custom read meters:
+
+- `reals.home.load`: timer for full service execution of Home reads. Tags:
+  `variant=full|pending`, `outcome=success|error`.
+- `reals.chat.messages.read`: timer for authorized chat-message reads. Tags:
+  `mode=initial|incremental`, `outcome=success|error`.
+- `reals.chat.messages.returned`: distribution summary for successful returned
+  message counts. Tags: `mode=initial|incremental`.
+
+These meters intentionally avoid user ids, chat ids, match ids, cursor ids,
+HTTP status, exception class and message count as tags. No Prometheus registry,
+OTLP exporter, distributed tracing or production Hibernate statistics are
+configured in this block.

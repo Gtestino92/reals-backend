@@ -34,10 +34,11 @@ management:
   metrics:
     enable:
       all: false
+      reals: true
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
 
 server:
   port: ${PORT:8080}

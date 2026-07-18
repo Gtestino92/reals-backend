@@ -3,6 +3,7 @@ package com.reals.backend.integration.controller
 import com.reals.backend.domain.ActiveEngagementLock
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.QueueStatus
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasKey
@@ -18,6 +19,12 @@ class AdminDiagnosticsControllerIntegrationTest : ControllerIT() {
     @Test
     fun `admin can read aggregate matchmaking diagnostics`() {
         val admin = userService.createUser("admin-diagnostics-${UUID.randomUUID()}@example.com")
+        val initialQueueWaitingCount =
+            matchmakingQueueRepository.countByStatus(QueueStatus.WAITING)
+        val initialQueueTotalCount = matchmakingQueueRepository.count()
+        val initialActiveMatchLocks = lockRepository.countByEngagementType(EngagementType.MATCH)
+        val initialActiveConnectionLocks = lockRepository.countByEngagementType(EngagementType.CONNECTION)
+
         val queuedUser = createActiveProfile(
             email = "diagnostics-queued-${UUID.randomUUID()}@example.com",
             displayName = "Diagnostics Queued",
@@ -46,10 +53,10 @@ class AdminDiagnosticsControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAsAdmin(admin.id))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.queueWaitingCount", equalTo(1)))
-            .andExpect(jsonPath("$.queueTotalCount", equalTo(1)))
-            .andExpect(jsonPath("$.activeMatchLocks", equalTo(1)))
-            .andExpect(jsonPath("$.activeConnectionLocks", equalTo(1)))
+            .andExpect(jsonPath("$.queueWaitingCount", equalTo((initialQueueWaitingCount + 1).toInt())))
+            .andExpect(jsonPath("$.queueTotalCount", equalTo((initialQueueTotalCount + 1).toInt())))
+            .andExpect(jsonPath("$.activeMatchLocks", equalTo((initialActiveMatchLocks + 1).toInt())))
+            .andExpect(jsonPath("$.activeConnectionLocks", equalTo((initialActiveConnectionLocks + 1).toInt())))
             .andExpect(jsonPath("$.oldestQueueEntryEnteredAt").exists())
             .andExpect(jsonPath("$.oldestActiveLockCreatedAt").exists())
             .andExpect(jsonPath("$", not(hasKey("userId"))))
