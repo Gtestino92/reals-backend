@@ -257,13 +257,22 @@ does not include the connection in `nextSteps`; clients can see it only through
 `activeInteractionsSummary.hasPendingSchedulingConnection` and one generic
 count-free passive notice `SCHEDULING_PREPARING`. This intentionally does not
 expose the exact number of internal pending scheduling connections.
+Production runs the activation job on a six-hour fixed-delay cadence by default;
+base/dev profiles keep a one-minute cadence, and local profiles keep scheduler
+execution manual.
 
 `SchedulingNegotiationTimeoutJob` applies only after activation, while the
 connection is in `SCHEDULING_PHASE`. The `schedulingExpiresAt` value created
 with `SCHEDULING_PENDING` is provisional; activation recalculates the actionable
-deadline from the moment scheduling becomes available. In local profiles, where
+deadline from the actual activation time. In local profiles, where
 schedulers are disabled, run `SchedulingActivationJob` manually before testing
 scheduling proposals or scheduling timeout.
+
+Scheduling proposal submissions and confirmations emit after-commit push events.
+`SCHEDULING_PROPOSALS_RECEIVED` goes only to the partner for one connection and
+round, and is skipped when the submission immediately confirms an overlap.
+`SCHEDULING_CONFIRMED` goes only to the non-triggering participant. Both visible
+messages are privacy-safe and omit identities and times.
 
 Once active, users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 

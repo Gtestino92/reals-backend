@@ -387,11 +387,26 @@ After mutual visual approval the backend creates a connection in
 active connection limit, but scheduling endpoints are not actionable until
 `SchedulingActivationJob` moves it to `SCHEDULING_PHASE` and initializes the
 negotiation. At that point the backend sends one privacy-safe
-`SCHEDULING_AVAILABLE` push per participant and connection. Notification taps
-should refresh/open Home for MVP; the payload contains only `type`,
-`connectionId` and `matchId`. In local profiles, if Home shows only
+`SCHEDULING_AVAILABLE` push per participant group per activation job execution.
+Notification taps should refresh/open Home for MVP; the payload is generic and
+contains only `type=SCHEDULING_AVAILABLE`. Android may need a small follow-up if
+it currently assumes `connectionId` or `matchId` are always present on this
+notification type. In local profiles, if Home shows only
 `SCHEDULING_PREPARING`/`hasPendingSchedulingConnection`, run the local
 scheduling activation job before testing scheduling proposal or timeout flows.
+
+Submitting one ordered scheduling proposal list sends
+`SCHEDULING_PROPOSALS_RECEIVED` to the partner only, at most once per connection
+and round. The visible text does not include participant identity or proposed
+times; payload data includes `type`, `connectionId`, `matchId` and
+`roundNumber`. If the submission immediately auto-confirms an overlap, the
+proposal-received push is skipped.
+
+When scheduling becomes confirmed, either by automatic overlap or explicit
+acceptance, the backend sends `SCHEDULING_CONFIRMED` only to the participant who
+did not perform the confirming action. The visible text does not include
+participant identity or the confirmed time; payload data includes `type`,
+`connectionId`, `matchId` and `availableAt`.
 
 ## Local Dev Tooling Endpoints
 
