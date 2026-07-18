@@ -27,6 +27,11 @@ The first request generates unique test emails and a future half-hour second-cha
 - `10 Local Dev Jobs`: local-only manual triggers for periodic jobs, including user reliability cleanup.
 - `12 User Reliability Debug`: local/dev-only Firebase sign-in/provision setup and read requests for `GET /api/local-dev/user-reliability/{userId}`.
 
+Hosted `dev` keeps the `/api/local-dev/**` path for compatibility, but requires
+`Authorization: Bearer {{firebase_admin_id_token}}` from an active Firebase user
+whose email is listed in `BACKOFFICE_ADMIN_EMAILS`. Local profiles keep
+`auth: none` for these tooling requests.
+
 ## Happy Path Covered Flow
 
 - create two compatible profiles

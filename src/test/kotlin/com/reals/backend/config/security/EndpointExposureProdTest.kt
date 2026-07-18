@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController
         )
     ]
 )
-@Import(SecurityConfig::class, EnvironmentExposurePolicy::class)
+@Import(SecurityConfig::class, EnvironmentExposurePolicy::class, EndpointExposureProdTest.ProbeController::class)
 @ActiveProfiles("prod")
 class EndpointExposureProdTest {
 
@@ -34,11 +34,14 @@ class EndpointExposureProdTest {
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `local-dev endpoints cannot execute in prod even if a handler is registered`() {
+    fun `local-dev endpoints cannot execute in prod even for admin if a handler is registered`() {
         mockMvc.perform(get("/api/local-dev/probe"))
             .andExpect(status().isUnauthorized)
 
         mockMvc.perform(get("/api/local-dev/probe").with(user("user").roles("USER")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/api/local-dev/probe").with(user("admin").roles("ADMIN")))
             .andExpect(status().isForbidden)
     }
 

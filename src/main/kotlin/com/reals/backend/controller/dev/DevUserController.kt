@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@Profile("local-nodb", "local-postgres", "local-firebase")
+@Profile("local-nodb", "local-postgres", "local-firebase", "dev")
 @RequestMapping("/api/local-dev/users")
 class DevUserController(
     private val userService: UserService

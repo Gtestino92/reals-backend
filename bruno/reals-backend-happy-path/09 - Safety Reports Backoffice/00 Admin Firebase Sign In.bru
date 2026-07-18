@@ -22,11 +22,6 @@ body:json {
   }
 }
 
-vars:pre-request {
-  firebase_admin_email: gtestino1992@gmail.com
-  firebase_admin_password: federer92
-}
-
 script:post-response {
   const body = res.getBody();
   if (!body || !body.idToken) {
