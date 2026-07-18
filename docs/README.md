@@ -5,18 +5,26 @@ This directory is the canonical documentation set for the project.
 ## Files
 
 - `architecture.md`: backend structure, layers and infrastructure boundaries.
-- `domain.md`: entities, enums, relationships and core invariants.
-- `state-machine.md`: allowed state transitions and lock behavior.
-- `user-flow.md`: end-to-end backend flow from profile creation to connection closure.
-- `local-development.md`: local profile, H2, auth and run notes.
-- `dev-deployment.md`: first dev deployment shape, GHCR image, PostgreSQL and Firebase runtime variables.
 - `configuration.md`: profile and environment variable reference.
+- `data-retention.md`: account, media and safety-data retention behavior.
+- `dev-deployment.md`: first dev deployment shape, GHCR image, PostgreSQL and Firebase runtime variables.
+- `lifecycle-job-manual-test-plan.md`: manual checks for lifecycle jobs.
+- `local-development.md`: local profiles, H2/PostgreSQL, auth and run notes.
+- `matchmaking-ranking.md`: matching ranking modes and calibration notes.
+- `operational-state-model.md`: persisted operational state and lifecycle notes.
+- `security-mvp.md`: MVP security posture and explicit limitations.
 - `storage-r2-configuration.md`: S3-compatible setup for shared/dev/prod-like profile photo storage, including R2 and hosted MinIO.
+- `technical-debt-mvp.md`: known pending decisions and intentionally unimplemented behavior for MVP.
+- `technical-debt-prod.md`: known pending decisions and intentionally unimplemented behavior for production hardening.
 - `testing.md`: automated test strategy and commands.
-- `api.md`: current HTTP endpoints exposed by controllers.
-- `openapi.yaml`: formal OpenAPI contract for API clients and tooling.
-- `technical-debt-mvp.md`: known pending decisions and intentionally unimplemented behavior for mvp.
-- `technical-debt-prod.md`: known pending decisions and intentionally unimplemented behavior for prod.
-- `local-h2-fixes.md`: local H2 repair snippets for old development schemas.
+- `user-reliability-score.md`: reliability-score model and disabled-by-default status.
+
+## Commons
+
+- `commons/api.md`: current HTTP endpoints exposed by controllers.
+- `commons/domain.md`: entities, enums, relationships and core invariants.
+- `commons/openapi.yaml`: formal OpenAPI contract for API clients and tooling.
+- `commons/state-machine.md`: allowed state transitions and lock behavior.
+- `commons/user-flow.md`: end-to-end backend flow from profile creation to connection closure.
 
 `AGENTS.md` at the repository root is the primary instruction file for AI coding agents. `.aiassistant/rules/` contains JetBrains AI Assistant rules derived from the same source of truth.

@@ -1,5 +1,6 @@
 package com.reals.backend.integration.controller
 
+import com.jayway.jsonpath.JsonPath
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.EngagementType
@@ -9,6 +10,7 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.hamcrest.Matchers.nullValue
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -708,20 +710,19 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("ACTIVE")))
-            .andExpect(
-                jsonPath(
-                    "$.nextSteps[0].secondChat.availableAt",
-                    equalTo(DateTimeFormatter.ISO_INSTANT.format(availableAt.toInstant()))
-                )
-            )
-            .andExpect(
-                jsonPath(
-                    "$.nextSteps[0].secondChat.expiresAt",
-                    equalTo(DateTimeFormatter.ISO_INSTANT.format(activeSecondChat.timeoutAt.toInstant()))
-                )
-            )
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(availableSetup.userBId.toString())))
+            .andExpect { result ->
+                val body = result.response.contentAsString
+                val actualAvailableAt = OffsetDateTime.parse(
+                    JsonPath.read(body, "$.nextSteps[0].secondChat.availableAt")
+                )
+                val actualExpiresAt = OffsetDateTime.parse(
+                    JsonPath.read(body, "$.nextSteps[0].secondChat.expiresAt")
+                )
+                assertEquals(availableAt.toInstant(), actualAvailableAt.toInstant())
+                assertEquals(activeSecondChat.timeoutAt.toInstant(), actualExpiresAt.toInstant())
+            }
     }
 
     @Test

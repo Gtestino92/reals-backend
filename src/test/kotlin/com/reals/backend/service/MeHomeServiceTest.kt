@@ -20,6 +20,7 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.matching.MatchmakingAvailability
 import com.reals.backend.service.matching.MatchmakingAvailabilityService
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.time.OffsetDateTime
@@ -40,6 +41,7 @@ class MeHomeServiceTest {
     private val matchmakingAvailabilityService = Mockito.mock(MatchmakingAvailabilityService::class.java)
     private val homeStatusService = Mockito.mock(HomeStatusService::class.java)
     private val userBlockService = Mockito.mock(UserBlockService::class.java)
+    private val readMetrics = ReadMetrics(SimpleMeterRegistry())
 
     private val service = MeHomeService(
         profileRepository = profileRepository,
@@ -54,6 +56,7 @@ class MeHomeServiceTest {
         matchmakingAvailabilityService = matchmakingAvailabilityService,
         homeStatusService = homeStatusService,
         userBlockService = userBlockService,
+        readMetrics = readMetrics,
         secondChatDurationMinutes = 120
     )
 
