@@ -2,7 +2,8 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatEndReason
-import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatExitRequestStatus
+import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
@@ -113,6 +114,53 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
         assertEquals(ChatStatus.EXPIRED, chatRepository.findById(setup.firstChatId).orElseThrow().status)
     }
 
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `message send and mutual cancellation request serialize through chat lock`() {
+        val setup = createMatchWithFirstChat("concurrent-mutual-exit")
+
+        val outcomes = runConcurrently(
+            {
+                chatService.sendMessage(
+                    chatId = setup.firstChatId,
+                    senderId = setup.userAId,
+                    content = "message racing mutual cancellation"
+                )
+            },
+            {
+                chatExitService.requestMutualCancellationWithResult(
+                    chatId = setup.firstChatId,
+                    requesterUserId = setup.userBId
+                )
+            }
+        )
+
+        assertTrue(outcomes.any { it.value != null }, outcomes.toString())
+        outcomes.filter { it.throwable != null }.forEach {
+            assertTrue(it.throwable is DomainConflictException, outcomes.toString())
+            assertEquals(
+                DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING,
+                (it.throwable as DomainConflictException).code
+            )
+        }
+
+        val messages = chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(setup.firstChatId)
+        val pendingRequest =
+            chatExitRequestRepository.findByChatIdAndStatusAndType(
+                chatId = setup.firstChatId,
+                status = ChatExitRequestStatus.PENDING,
+                type = ChatExitRequestType.MUTUAL_CANCEL
+            ) ?: error("Expected pending mutual cancellation request")
+
+        assertTrue(messages.size <= 1)
+        messages.forEach { message ->
+            assertTrue(
+                !message.sentAt.isAfter(pendingRequest.createdAt),
+                "No message may commit after a pending request is visible"
+            )
+        }
+    }
+
     private fun createAvailableSecondChat(): ActiveSecondChatFixture {
         return TransactionTemplate(transactionManager).execute {
             val setup = createScheduledSecondChatReadyToEnter()
@@ -140,7 +188,7 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
         }
     }
 
-    private fun runConcurrently(vararg actions: () -> ChatMessage): List<ConcurrentOutcome> {
+    private fun runConcurrently(vararg actions: () -> Any): List<ConcurrentOutcome> {
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(actions.size)
 
@@ -166,7 +214,7 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
     }
 
     private data class ConcurrentOutcome(
-        val value: ChatMessage?,
+        val value: Any?,
         val throwable: Throwable?
     )
 }
