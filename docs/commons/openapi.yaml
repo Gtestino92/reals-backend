@@ -383,7 +383,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Add a profile photo at a position
-      description: Multipart file upload is the only supported profile photo creation flow.
+      description: Multipart file upload is the only supported profile photo creation flow. Requires verified Firebase email. Server accepts actual JPEG or PNG only, rejects WebP and mismatched content types, normalizes accepted input to metadata-stripped image/jpeg, and applies the shared photo-upload concurrency and authenticated rate limits.
       requestBody:
         $ref: '#/components/requestBodies/AddPhoto'
       responses:
@@ -395,6 +395,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ProfilePhotoUploadBusy'
     get:
       tags: [Profiles]
       summary: List authenticated user's profile photos
@@ -452,6 +454,7 @@ paths:
     put:
       tags: [Profiles]
       summary: Replace a profile photo file by id
+      description: Requires verified Firebase email. Server accepts actual JPEG or PNG only, rejects WebP and mismatched content types, normalizes accepted input to metadata-stripped image/jpeg, and applies the shared photo-upload concurrency and authenticated rate limits.
       requestBody:
         $ref: '#/components/requestBodies/ReplacePhotoFile'
       responses:
@@ -463,6 +466,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ProfilePhotoUploadBusy'
   /api/matchmaking/queue:
     post:
       tags: [Matchmaking]
@@ -1414,6 +1419,22 @@ components:
                 code: LEGAL_ACTION_REQUIRED
                 error: Conflict
                 message: Current legal document actions are required before continuing
+    ProfilePhotoUploadBusy:
+      description: Profile photo upload or replacement capacity is temporarily exhausted. Stable code `PROFILE_PHOTO_UPLOAD_BUSY`; response includes `Retry-After`.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            format: int64
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: PROFILE_PHOTO_UPLOAD_BUSY
+            error: Service Unavailable
+            message: Profile photo upload capacity is temporarily exhausted. Please retry later.
     ChatMessageInvalid:
       description: "Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`."
       content:
@@ -2113,6 +2134,7 @@ components:
         file:
           type: string
           format: binary
+          description: Actual JPEG or PNG bytes only. WebP and other formats are rejected server-side.
         position: { type: integer, minimum: 1, maximum: 9 }
     ReplacePhotoFileRequest:
       type: object
@@ -2121,6 +2143,7 @@ components:
         file:
           type: string
           format: binary
+          description: Actual JPEG or PNG bytes only. WebP and other formats are rejected server-side.
     ReorderProfilePhotosRequest:
       type: object
       required: [placements]

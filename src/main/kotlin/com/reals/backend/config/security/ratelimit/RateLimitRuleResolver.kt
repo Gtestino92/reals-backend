@@ -28,7 +28,7 @@ class RateLimitRuleResolver(
                     refillPeriodSeconds = properties.messageRefillPeriodSeconds
                 )
 
-            RateLimitGroup.PROFILE_PHOTOS ->
+            RateLimitGroup.PROFILE_PHOTO_UPLOADS ->
                 RateLimitRule(
                     id = group.id,
                     capacity = properties.profilePhotoCapacity,
@@ -67,9 +67,11 @@ class RateLimitRuleResolver(
                 path.endsWith("/messages") ->
                 RateLimitGroup.MESSAGES
 
-            method in PROFILE_PHOTO_MUTATION_METHODS &&
-                path.startsWith("/api/me/profile/photos") ->
-                RateLimitGroup.PROFILE_PHOTOS
+            method == "POST" && path == "/api/me/profile/photos" ->
+                RateLimitGroup.PROFILE_PHOTO_UPLOADS
+
+            method == "PUT" && PROFILE_PHOTO_REPLACEMENT_PATH.matches(path) ->
+                RateLimitGroup.PROFILE_PHOTO_UPLOADS
 
             method == "POST" && path == "/api/safety/reports" ->
                 RateLimitGroup.SAFETY_REPORTS
@@ -92,7 +94,7 @@ enum class RateLimitGroup(
     DEFAULT("default"),
     PROVISION("provision"),
     MESSAGES("messages"),
-    PROFILE_PHOTOS("profile-photos"),
+    PROFILE_PHOTO_UPLOADS("profile-photo-uploads"),
     SAFETY_REPORTS("safety-reports")
 }
 
@@ -101,4 +103,4 @@ fun HttpServletRequest.normalizedPath(): String =
         requestURI.removePrefix(contextPath)
     }
 
-private val PROFILE_PHOTO_MUTATION_METHODS = setOf("POST", "PUT", "DELETE")
+private val PROFILE_PHOTO_REPLACEMENT_PATH = Regex("^/api/me/profile/photos/[^/]+/file$")

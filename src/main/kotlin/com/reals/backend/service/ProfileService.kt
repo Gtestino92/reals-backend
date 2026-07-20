@@ -1,6 +1,6 @@
 package com.reals.backend.service
 
-import com.reals.backend.config.s3.ProfilePhotoStorageProperties
+import com.reals.backend.config.s3.ProfilePhotoValidationProperties
 import com.reals.backend.controller.dto.PhotoResponse
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ProfilePhotoRepository
@@ -17,6 +17,7 @@ import com.reals.backend.service.photo.PhotoPlacement
 import com.reals.backend.service.photo.ProfilePhotoAnalysisService
 import com.reals.backend.validation.PlainText
 import com.reals.backend.validation.SingleLinePlainText
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -33,14 +34,14 @@ import java.util.*
 class ProfileService(
     private val profileRepository: ProfileRepository,
     private val profilePhotoRepository: ProfilePhotoRepository,
-    private val profilePhotoValidationService: ProfilePhotoValidationService,
+    private val profilePhotoNormalizer: ProfilePhotoNormalizer,
     private val profilePhotoAnalysisService: ProfilePhotoAnalysisService,
     private val profileAuthenticityVerificationService: ProfileAuthenticityVerificationService,
     private val storageService: S3StorageService,
     private val mediaCleanupTaskService: MediaCleanupTaskService,
     private val mediaCleanupProcessor: MediaCleanupProcessor,
     private val transactionTemplate: TransactionTemplate,
-    private val profilePhotoStorageProperties: ProfilePhotoStorageProperties,
+    private val profilePhotoValidationProperties: ProfilePhotoValidationProperties,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val countryReferenceService: CountryReferenceService,
@@ -66,6 +67,7 @@ class ProfileService(
     @param:Value("\${profile.authenticity-verification.require-for-activation:false}")
     private val requireAuthenticityVerificationForActivation: Boolean
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
 
     private companion object {
         const val DISPLAY_NAME_MIN_LENGTH = 2
@@ -483,24 +485,22 @@ class ProfileService(
             sizeBytes = bytes.size.toLong()
         )
 
-        val normalizedContentType = contentType!!.lowercase()
         val newObjectPhotoId = UUID.randomUUID()
-        profilePhotoValidationService.validateUploadedPhoto(
-            contentType = normalizedContentType,
-            bytes = bytes,
-            replacingPhoto = existingPhoto
+        val normalizedPhoto = profilePhotoNormalizer.normalize(
+            contentType = contentType!!,
+            bytes = bytes
         )
         val analysis = analyzeUploadedPhotoOrThrow(
             userId = profile.userId,
             profileId = profileId,
             photoId = newObjectPhotoId,
-            contentType = normalizedContentType,
-            bytes = bytes
+            contentType = normalizedPhoto.contentType,
+            bytes = normalizedPhoto.bytes
         )
         val newStorageKey = storageService.profilePhotoObjectKey(
             userId = profile.userId,
             objectId = newObjectPhotoId,
-            contentType = normalizedContentType
+            contentType = normalizedPhoto.contentType
         )
         val guardTask = mediaCleanupTaskService.createGuardTask(
             storageProvider = PhotoStorageProvider.S3,
@@ -508,13 +508,15 @@ class ProfileService(
             objectKey = newStorageKey
         )
 
+        var storedObject: StoredObject? = null
         try {
-            val storedObject = storageService.uploadProfilePhoto(
+            val uploadedObject = storageService.uploadProfilePhoto(
                 userId = profile.userId,
                 photoId = newObjectPhotoId,
-                contentType = normalizedContentType,
-                bytes = bytes
+                contentType = normalizedPhoto.contentType,
+                bytes = normalizedPhoto.bytes
             )
+            storedObject = uploadedObject
 
             val result = transactionTemplate.execute {
                 val authoritativeProfile = findByIdOrThrow(profileId)
@@ -528,8 +530,8 @@ class ProfileService(
                 val oldObject = storedObjectFor(authoritativePhoto)
 
                 authoritativePhoto.storageProvider = PhotoStorageProvider.S3
-                authoritativePhoto.storageBucket = storedObject.bucket
-                authoritativePhoto.storageKey = storedObject.key
+                authoritativePhoto.storageBucket = uploadedObject.bucket
+                authoritativePhoto.storageKey = uploadedObject.key
                 authoritativePhoto.isPersonPhoto = analysis.validation.isPersonPhoto
                 authoritativePhoto.isFullBody = analysis.validation.isFullBody
                 authoritativePhoto.validationStatus = analysis.validation.status
@@ -576,6 +578,12 @@ class ProfileService(
             return result.photo
 
         } catch (ex: Exception) {
+            storedObject?.let {
+                cleanupNewObjectAfterFailure(
+                    storedObject = it,
+                    guardTaskId = guardTask.id
+                )
+            }
             throw ex
         }
     }
@@ -599,24 +607,22 @@ class ProfileService(
 
         validatePhotoCount(profileId, position)
 
-        val normalizedContentType = contentType!!.lowercase()
         val photoId = UUID.randomUUID()
-        profilePhotoValidationService.validateUploadedPhoto(
-            contentType = normalizedContentType,
-            bytes = bytes,
-            replacingPhoto = null
+        val normalizedPhoto = profilePhotoNormalizer.normalize(
+            contentType = contentType!!,
+            bytes = bytes
         )
         val analysis = analyzeUploadedPhotoOrThrow(
             userId = profile.userId,
             profileId = profileId,
             photoId = photoId,
-            contentType = normalizedContentType,
-            bytes = bytes
+            contentType = normalizedPhoto.contentType,
+            bytes = normalizedPhoto.bytes
         )
         val storageKey = storageService.profilePhotoObjectKey(
             userId = profile.userId,
             objectId = photoId,
-            contentType = normalizedContentType
+            contentType = normalizedPhoto.contentType
         )
         val guardTask = mediaCleanupTaskService.createGuardTask(
             storageProvider = PhotoStorageProvider.S3,
@@ -624,13 +630,15 @@ class ProfileService(
             objectKey = storageKey
         )
 
+        var storedObject: StoredObject? = null
         try {
-            val storedObject = storageService.uploadProfilePhoto(
+            val uploadedObject = storageService.uploadProfilePhoto(
                 userId = profile.userId,
                 photoId = photoId,
-                contentType = normalizedContentType,
-                bytes = bytes
+                contentType = normalizedPhoto.contentType,
+                bytes = normalizedPhoto.bytes
             )
+            storedObject = uploadedObject
 
             val photo = transactionTemplate.execute {
                 val authoritativeProfile = findByIdOrThrow(profileId)
@@ -641,8 +649,8 @@ class ProfileService(
                         id = photoId,
                         profileId = profileId,
                         storageProvider = PhotoStorageProvider.S3,
-                        storageBucket = storedObject.bucket,
-                        storageKey = storedObject.key,
+                        storageBucket = uploadedObject.bucket,
+                        storageKey = uploadedObject.key,
                         position = position,
                         isPersonPhoto = analysis.validation.isPersonPhoto,
                         isFullBody = analysis.validation.isFullBody,
@@ -686,6 +694,12 @@ class ProfileService(
             return photo
 
         } catch (ex: Exception) {
+            storedObject?.let {
+                cleanupNewObjectAfterFailure(
+                    storedObject = it,
+                    guardTaskId = guardTask.id
+                )
+            }
             throw ex
         }
     }
@@ -707,6 +721,25 @@ class ProfileService(
             contentType = "application/octet-stream",
             sizeBytes = 0
         )
+
+    private fun cleanupNewObjectAfterFailure(
+        storedObject: StoredObject,
+        guardTaskId: UUID
+    ) {
+        try {
+            storageService.deleteObject(
+                bucket = storedObject.bucket,
+                key = storedObject.key
+            )
+            mediaCleanupTaskService.completeTask(guardTaskId)
+        } catch (cleanupFailure: Exception) {
+            log.warn(
+                "Failed to clean up newly uploaded profile-photo object after persistence failure; cleanup task={}",
+                guardTaskId,
+                cleanupFailure
+            )
+        }
+    }
 
     fun resolvePhotoReadUrlForResponse(photo: ProfilePhoto): String {
         return resolvePhotoReadUrl(photo)
@@ -935,7 +968,7 @@ class ProfileService(
 
         val normalizedContentType = contentType.lowercase()
 
-        if (!profilePhotoStorageProperties.allowedContentTypes.contains(normalizedContentType)) {
+        if (!profilePhotoValidationProperties.allowedContentTypes.contains(normalizedContentType)) {
             throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Unsupported photo content type: $contentType"
@@ -949,7 +982,7 @@ class ProfileService(
             )
         }
 
-        if (sizeBytes > profilePhotoStorageProperties.maxSizeBytes) {
+        if (sizeBytes > profilePhotoValidationProperties.maxFileSizeBytes) {
             throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_PROFILE_PHOTO,
                 message = "Photo exceeds maximum size"

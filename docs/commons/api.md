@@ -242,8 +242,20 @@ returned to clients. For private S3/R2/MinIO storage these URLs may be presigned
 and time-limited, so clients should use them for display and refetch photo
 responses when needed instead of persisting URLs permanently.
 
+Adding a profile photo and replacing an existing photo file require the current
+Firebase email to be verified. List, read, delete, reorder and non-photo profile
+edits do not gain this verified-email gate from photo upload hardening.
+
 Photo upload validation has two separate fields. `validationStatus` is the
 blocking technical upload result for file type, size, decoding and dimensions.
+The server accepts only actual JPEG and PNG content whose declared multipart
+content type matches the detected format. WebP and other formats are rejected.
+Accepted images are normalized server-side to metadata-stripped `image/jpeg`;
+EXIF orientation is applied, transparent PNG pixels use a fixed neutral
+background, and neither object storage nor moderation receives original source
+bytes when normalization changes them. Defaults are 5 MiB compressed size, 6000
+input width, 6000 input height, 20,000,000 input pixels, 2048 maximum output
+dimension and JPEG quality `0.88`.
 Successful technical image validation is not semantic person/full-body
 validation. Outside `prod`, the temporary MVP shortcut still returns
 `isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
@@ -295,6 +307,14 @@ Automatic provider moderation does not create safety reports, child-safety
 reports, blocks, penalties, bans or account deletions. Production defaults to requiring
 `moderationStatus=APPROVED` for activation through
 `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION=true`.
+
+Upload and replacement share a single-instance global concurrency guard. With
+the default limit of two pipelines, an additional concurrent request fails
+immediately with `503 PROFILE_PHOTO_UPLOAD_BUSY` and `Retry-After: 1`. Upload
+and replacement also share the authenticated post-auth rate-limit group
+`profile-photo-uploads`, keyed by backend user id, defaulting to 12 requests per
+60 seconds. Delete and reorder do not consume that bucket. The concurrency guard
+and rate-limit buckets are single-instance/in-memory controls.
 
 `PhotoValidationStatus.PENDING` and `PhotoModerationStatus.NEEDS_REVIEW` are
 separate states. Validation `PENDING` means semantic person/full-body analysis
@@ -497,7 +517,7 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
 - `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
 - `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
-- `EMAIL_NOT_VERIFIED`: profile activation or legacy backend-account linking requires a verified email in the current Firebase ID token.
+- `EMAIL_NOT_VERIFIED`: profile activation, profile-photo upload/replacement, or legacy backend-account linking requires a verified email in the current Firebase ID token.
 - `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
 - `PROFILE_FULL_BODY_PHOTO_REQUIRED`: activation requires a full-body photo.
@@ -510,6 +530,7 @@ Selected stable frontend-facing domain codes:
 - `PHOTO_POSITION_INVALID`: requested photo position is outside the configured range.
 - `PHOTO_POSITION_OCCUPIED`: requested photo position is already used.
 - `INVALID_PROFILE_PHOTO`: uploaded profile photo file is invalid.
+- `PROFILE_PHOTO_UPLOAD_BUSY`: profile-photo upload/replacement capacity is temporarily exhausted; retry after the response `Retry-After` value.
 - `PROFILE_PHOTO_NOT_FOUND`: requested profile photo does not belong to the current profile.
 - `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.
 - `CHAT_EXPIRED`: chat action was attempted after the absolute chat deadline.

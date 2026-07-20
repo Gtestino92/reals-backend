@@ -136,12 +136,6 @@ storage:
     path-style-access-enabled: true
     signed-url-duration-minutes: 15
     read-url-mode: PRESIGNED
-  profile-photos:
-    max-size-bytes: 5242880
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
   media-cleanup:
     batch-size: 2
     lease-duration: PT5M

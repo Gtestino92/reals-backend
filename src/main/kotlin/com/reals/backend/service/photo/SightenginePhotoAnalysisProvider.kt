@@ -71,7 +71,6 @@ class SightenginePhotoAnalysisProvider(
         when (contentType.lowercase()) {
             MediaType.IMAGE_JPEG_VALUE -> "profile-photo.jpg"
             MediaType.IMAGE_PNG_VALUE -> "profile-photo.png"
-            "image/webp" -> "profile-photo.webp"
             else -> "profile-photo"
         }
 

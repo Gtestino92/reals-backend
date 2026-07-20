@@ -203,6 +203,24 @@ profile:
 
     require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:false}
 
+    upload:
+      max-concurrent: ${PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT:2}
+      permit-wait-duration: ${PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION:PT0S}
+      retry-after-seconds: ${PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS:1}
+
+    validation:
+      max-file-size-bytes: ${PROFILE_PHOTO_MAX_FILE_SIZE_BYTES:${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}}
+      allowed-content-types:
+        - image/jpeg
+        - image/png
+      max-input-width: ${PROFILE_PHOTO_MAX_INPUT_WIDTH:6000}
+      max-input-height: ${PROFILE_PHOTO_MAX_INPUT_HEIGHT:6000}
+      max-input-pixels: ${PROFILE_PHOTO_MAX_INPUT_PIXELS:20000000}
+
+    normalization:
+      max-output-dimension: ${PROFILE_PHOTO_MAX_OUTPUT_DIMENSION:2048}
+      jpeg-quality: ${PROFILE_PHOTO_JPEG_QUALITY:0.88}
+
     moderation:
       provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
       fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
@@ -286,8 +304,8 @@ security:
     message-capacity: ${RATE_LIMIT_MESSAGE_CAPACITY:60}
     message-refill-tokens: ${RATE_LIMIT_MESSAGE_REFILL_TOKENS:60}
     message-refill-period-seconds: ${RATE_LIMIT_MESSAGE_REFILL_PERIOD_SECONDS:60}
-    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:30}
-    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:30}
+    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:12}
+    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:12}
     profile-photo-refill-period-seconds: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_PERIOD_SECONDS:60}
     safety-report-capacity: ${RATE_LIMIT_SAFETY_REPORT_CAPACITY:5}
     safety-report-refill-tokens: ${RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS:5}

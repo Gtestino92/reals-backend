@@ -137,7 +137,6 @@ class S3StorageService(
         return when (contentType.lowercase()) {
             "image/jpeg" -> "jpg"
             "image/png" -> "png"
-            "image/webp" -> "webp"
             else -> throw IllegalArgumentException("Unsupported content type: $contentType")
         }
     }

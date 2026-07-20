@@ -145,7 +145,10 @@ STORAGE_S3_READ_URL_MODE=PRESIGNED
 ```
 
 No public bucket or `STORAGE_S3_PUBLIC_BASE_URL` is required in `PRESIGNED` mode.
-`PUBLIC` mode should be reserved for intentionally public media.
+`PUBLIC` mode should be reserved for intentionally public media outside
+production. The backend refuses to start with `SPRING_PROFILES_ACTIVE=prod` and
+`STORAGE_S3_READ_URL_MODE=PUBLIC`; production profile-photo reads must use
+`PRESIGNED`.
 
 ## Current Non-Goals
 

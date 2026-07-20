@@ -6,6 +6,7 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.exception.ObjectStorageException
+import com.reals.backend.service.ProfilePhotoUploadBusyException
 import jakarta.validation.ConstraintViolationException
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
@@ -15,6 +16,7 @@ import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -280,6 +282,20 @@ class GlobalExceptionHandler {
                 )
             )
     }
+
+    @ExceptionHandler(ProfilePhotoUploadBusyException::class)
+    fun handleProfilePhotoUploadBusy(
+        ex: ProfilePhotoUploadBusyException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_BUSY.name,
+                    error = "Service Unavailable",
+                    message = "Profile photo upload capacity is temporarily exhausted. Please retry later."
+                )
+            )
 
     @ExceptionHandler(NoSuchElementException::class)
     fun handleNotFound(
