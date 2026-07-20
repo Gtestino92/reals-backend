@@ -3,6 +3,7 @@ package com.reals.backend.config.firebase
 import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -65,4 +66,8 @@ class FirebaseConfig(
     @Bean
     fun firebaseMessaging(firebaseApp: FirebaseApp): FirebaseMessaging =
         FirebaseMessaging.getInstance(firebaseApp)
+
+    @Bean
+    fun firebaseAuth(firebaseApp: FirebaseApp): FirebaseAuth =
+        FirebaseAuth.getInstance(firebaseApp)
 }
