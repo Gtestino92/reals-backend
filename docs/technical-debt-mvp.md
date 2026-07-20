@@ -47,7 +47,7 @@ MVP task:
 
 Acceptance criteria:
 - Smoke check runs against the deployed backend.
-- `/actuator/health` and `/actuator/info` are aligned with deployed image metadata.
+- `/actuator/health` remains public and `/actuator/info` is aligned with deployed image metadata for authenticated administrators.
 
 ---
 

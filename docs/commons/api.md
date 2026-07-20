@@ -314,11 +314,11 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 - `GET /api/matches/{matchId}`: fetch match details and linked connection id if present. Includes `visualExpiresAt` when a visual review deadline exists for the match.
 - `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt` and nullable `guidance` metadata. New first chats initialize guidance; legacy rows may return `guidance = null`.
-- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile for visual phase or later. Includes partner photos with freshly generated read URLs, `visualExpiresAt` and `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
+- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile only while visual content is available. During `VISUAL_PHASE`, the visual review must exist and its `visualExpiresAt` deadline must still be in the future by server time. After `VISUAL_APPROVED`, a non-closed connection for the same match must exist and include the requester. Blocked pairs, unrelated users, `CHAT_ACTIVE`, `CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches are denied. The response includes partner photos with freshly generated read URLs, `visualExpiresAt` and `myPersonalMessageSubmitted`, which tells whether the authenticated user has already sent their visual personal message.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
-- `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
-- `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message from `VISUAL_PHASE` onwards. If present, it must be read before any visual decision.
+- `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message while visual content is available. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
+- `GET /api/matches/{matchId}/personal-messages/partner`: get the partner's personal message while visual content is available. If present, it must be read before any visual decision. Denied reads do not mark the message as read.
 
 ## Chats
 
@@ -351,10 +351,11 @@ First-chat guidance is backend-owned for MVP:
 - `POST /api/safety/reports`: create a user safety report without necessarily closing an active chat. Supported contexts are `CHAT`, `VISUAL_PROFILE`, `PERSONAL_MESSAGE` and `PROFILE_PHOTO`. The backend validates that the authenticated reporter and reported user are the two participants in the referenced chat or visual-phase match; `PROFILE_PHOTO` also requires the reported photo to belong to the matched partner. Duplicate reports for the same reporter, reported user, context type and context id return `200 OK` with the existing report; new reports return `201 Created`. Every report creates or reuses a directional `UserBlock` from reporter to reported, and matchmaking treats any block between two users as a bidirectional exclusion.
 - `CHILD_SAFETY_CONCERN` is accepted by direct user reports, chat safety cancellations and admin-created reports. It records a broad concern as a normal `PENDING` report; it does not establish a violation and does not automatically create a penalty or ban. Existing user-created block and active-interaction containment behavior is unchanged.
 - User-facing report creation uses the safety-report-specific rate-limit rule under `security.rate-limit.safety-report-*`.
+- Rate limiting has two single-instance Caffeine stages. Pre-authentication buckets use `pre-auth:{endpoint-group}:ip:{request.remoteAddr}` before Firebase verification. Post-authentication buckets use `post-auth:{endpoint-group}:user:{backend-user-id}`, `post-auth:{endpoint-group}:firebase:{firebase-uid}` or `post-auth:{endpoint-group}:local-dev:{dev-user-id}` after authentication. Production reverse proxies must be configured so the servlet container resolves the real client IP from trusted proxy infrastructure; the application does not trust arbitrary forwarded-IP headers.
 
 ## Admin Safety Reports
 
-All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated users receive this role only when they exist locally as active users and their email is listed in `backoffice.admin-emails`.
+All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated users receive this role only when the verified Firebase UID resolves to an active backend user, the backend user's persisted `firebaseUid` matches the token UID, the Firebase token email is verified, and the normalized Firebase token email is listed in `backoffice.admin-emails`/`BACKOFFICE_ADMIN_EMAILS`. The backend user's persisted local email is not used as an allowlist fallback, and unprovisioned Firebase principals are never administrators.
 
 - `GET /api/admin/safety-reports?status=PENDING&source=USER&reportedUserId=...&reporterUserId=...`: list safety reports. `status` defaults to `PENDING`; other filters are optional. Summary DTOs omit report details, verdict notes, raw email and Firebase UID. They include non-null, read-only `priorityReview`, derived as `status == PENDING && reason == CHILD_SAFETY_CONCERN` and never persisted. After filtering, results are ordered by `priorityReview DESC`, then `createdAt DESC`, before the 100-result limit.
 - `POST /api/admin/safety-reports`: create an admin safety report. `contextType=USER` creates a general report about the reported user with `contextId = reportedUserId` and no match/chat context. Contextual admin reports can reference chat, visual profile, personal message or profile photo contexts. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties.
@@ -421,10 +422,10 @@ These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`
 path name is retained for compatibility and must never be called by the Android
 application. In `local-nodb`, `local-postgres` and `local-firebase`, they are
 available without authentication. In hosted `dev`, they are registered but
-require `ROLE_ADMIN`; Firebase-authenticated users receive that role only when
-they exist locally as active users and their email is listed in
-`backoffice.admin-emails`/`BACKOFFICE_ADMIN_EMAILS`. In `prod`, the controllers
-are not registered and the route prefix is explicitly denied.
+require `ROLE_ADMIN`; Firebase-authenticated users receive that role only under
+the Firebase-token-email allowlist rules documented for admin endpoints. In
+`prod`, the controllers are not registered and the route prefix is explicitly
+denied.
 
 Supported local job triggers:
 
@@ -496,7 +497,7 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
 - `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
 - `PROFILE_NOT_ACTIVATABLE`: profile cannot be activated from its current status.
-- `EMAIL_NOT_VERIFIED`: profile activation requires a verified email in the current Firebase ID token.
+- `EMAIL_NOT_VERIFIED`: profile activation or legacy backend-account linking requires a verified email in the current Firebase ID token.
 - `PROFILE_PHOTOS_REQUIRED`: activation requires more profile photos.
 - `PROFILE_PERSON_PHOTO_REQUIRED`: activation requires more person photos.
 - `PROFILE_FULL_BODY_PHOTO_REQUIRED`: activation requires a full-body photo.
@@ -512,6 +513,7 @@ Selected stable frontend-facing domain codes:
 - `PROFILE_PHOTO_NOT_FOUND`: requested profile photo does not belong to the current profile.
 - `USER_NOT_FOUND`: authenticated user id could not be locked for a state-changing operation.
 - `CHAT_EXPIRED`: chat action was attempted after the absolute chat deadline.
+- `VISUAL_CONTENT_NOT_AVAILABLE`: visual profile or personal-message content is not available for the current match/connection state.
 - `CHAT_ABANDONED`: first-chat action was attempted after the inactivity deadline.
 - `CHAT_MUTUAL_CANCELLATION_PENDING`: message sending, first-chat guidance advancement or first-chat continuation decision was attempted while a mutual cancellation request is pending.
 - `FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED`: the requester has not yet sent enough persisted characters during the current first-chat guidance question interval.

@@ -2,6 +2,7 @@ package com.reals.backend.config.security
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
+import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import com.reals.backend.controller.dev.DevJobController
 import com.reals.backend.controller.dev.DevMatchmakingController
@@ -42,7 +43,7 @@ import java.util.UUID
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = [FirebaseTokenFilter::class, RateLimitFilter::class]
+            classes = [FirebaseTokenFilter::class, RateLimitFilter::class, PostAuthenticationRateLimitFilter::class]
         )
     ]
 )

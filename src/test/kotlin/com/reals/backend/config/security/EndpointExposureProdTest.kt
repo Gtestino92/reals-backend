@@ -2,6 +2,7 @@ package com.reals.backend.config.security
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
+import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -22,7 +23,11 @@ import org.springframework.web.bind.annotation.RestController
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = [FirebaseTokenFilter::class, RateLimitFilter::class]
+            classes = [
+                FirebaseTokenFilter::class,
+                RateLimitFilter::class,
+                PostAuthenticationRateLimitFilter::class
+            ]
         )
     ]
 )
@@ -54,6 +59,54 @@ class EndpointExposureProdTest {
             .andExpect(status().isForbidden)
     }
 
+    @Test
+    fun `actuator health remains public in prod`() {
+        mockMvc.perform(get("/actuator/health"))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(get("/actuator/health/readiness"))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `actuator info requires admin in prod`() {
+        mockMvc.perform(get("/actuator/info"))
+            .andExpect(status().isUnauthorized)
+
+        mockMvc.perform(get("/actuator/info").with(user("user").roles("USER")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/actuator/info").with(user("admin").roles("ADMIN")))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `actuator metrics require admin in prod`() {
+        mockMvc.perform(get("/actuator/metrics"))
+            .andExpect(status().isUnauthorized)
+
+        mockMvc.perform(get("/actuator/metrics").with(user("user").roles("USER")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/actuator/metrics").with(user("admin").roles("ADMIN")))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `admin endpoints require admin in prod`() {
+        mockMvc.perform(get("/api/admin/probe"))
+            .andExpect(status().isUnauthorized)
+
+        mockMvc.perform(get("/api/admin/probe").with(user("firebase").roles("FIREBASE_AUTHENTICATED")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/api/admin/probe").with(user("user").roles("USER")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/api/admin/probe").with(user("admin").roles("ADMIN")))
+            .andExpect(status().isOk)
+    }
+
     @RestController
     class ProbeController {
 
@@ -62,5 +115,20 @@ class EndpointExposureProdTest {
 
         @GetMapping("/h2-console/probe")
         fun h2ConsoleProbe(): String = "executed"
+
+        @GetMapping("/actuator/health")
+        fun actuatorHealth(): String = "executed"
+
+        @GetMapping("/actuator/health/readiness")
+        fun actuatorReadiness(): String = "executed"
+
+        @GetMapping("/actuator/info")
+        fun actuatorInfo(): String = "executed"
+
+        @GetMapping("/actuator/metrics")
+        fun actuatorMetrics(): String = "executed"
+
+        @GetMapping("/api/admin/probe")
+        fun adminProbe(): String = "executed"
     }
 }

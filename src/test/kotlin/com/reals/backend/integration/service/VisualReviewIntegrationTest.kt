@@ -14,10 +14,136 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.springframework.security.access.AccessDeniedException
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class VisualReviewIntegrationTest : BaseIT() {
+
+    @Test
+    fun `visual content access is allowed in visual phase before expiration`() {
+        val setup = createMatchInVisualPhase()
+
+        val access = visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+
+        assertEquals(setup.matchId, access.match.id)
+        assertEquals(setup.matchId, access.review.matchId)
+    }
+
+    @Test
+    fun `visual content access is denied in visual phase after wall clock expiration`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_EXPIRED, exception.code)
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = ConnectionState::class,
+        names = [
+            "SCHEDULING_PENDING",
+            "SCHEDULING_PHASE",
+            "SECOND_CHAT_SCHEDULED",
+            "SECOND_CHAT_AVAILABLE",
+            "SECOND_CHAT"
+        ]
+    )
+    fun `visual content access is allowed after visual approval for active connection states`(
+        connectionState: ConnectionState
+    ) {
+        val setup = createVisualApprovedConnection(connectionState)
+
+        val access = visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+
+        assertEquals(connectionState, access.connection?.state)
+    }
+
+    @Test
+    fun `visual content access is denied after visual approval for closed connection`() {
+        val setup = createVisualApprovedConnection(ConnectionState.CLOSED)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+    }
+
+    @Test
+    fun `visual content access is denied after visual approval without connection`() {
+        val setup = createMatchInVisualPhase()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = MatchState.VISUAL_APPROVED
+        matchRepository.saveAndFlush(match)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = MatchState::class,
+        names = ["CHAT_ACTIVE", "CHAT_REJECTED", "VISUAL_REJECTED", "EXPIRED"]
+    )
+    fun `visual content access is denied for terminal or pre visual match states`(
+        matchState: MatchState
+    ) {
+        val setup = createMatchInVisualPhase()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = matchState
+        matchRepository.saveAndFlush(match)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+    }
+
+    @Test
+    fun `visual content access is denied for blocked participant pair`() {
+        val setup = createMatchInVisualPhase()
+        userBlockService.blockUser(setup.userAId, setup.userBId, com.reals.backend.domain.UserBlockSource.MANUAL)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.USER_PAIR_BLOCKED, exception.code)
+    }
+
+    @Test
+    fun `visual content access is denied for unrelated user`() {
+        val setup = createMatchInVisualPhase()
+        val stranger = userService.createUser("visual-policy-stranger-${UUID.randomUUID()}@example.com")
+
+        assertThrows<AccessDeniedException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, stranger.id)
+        }
+    }
+
+    @Test
+    fun `denied partner message read does not mutate read timestamp`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        assertThrows<DomainConflictException> {
+            visualReviewService.getPartnerMessage(setup.matchId, setup.userAId)
+        }
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageBReadByAAt)
+    }
 
     @Test
     fun `record personal message stores first message for user A`() {
@@ -235,6 +361,28 @@ class VisualReviewIntegrationTest : BaseIT() {
         assertNoMatchLocks(setup.userAId, setup.userBId)
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    private fun createVisualApprovedConnection(
+        connectionState: ConnectionState
+    ): ConnectionFixture {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+        connection.state = connectionState
+        connection.updatedAt = OffsetDateTime.now()
+        connectionRepository.saveAndFlush(connection)
+
+        return ConnectionFixture(
+            userAId = setup.userAId,
+            userBId = setup.userBId,
+            matchId = setup.matchId,
+            connectionId = connection.id
+        )
     }
 
 }

@@ -60,6 +60,74 @@ MVP APK distribution:
 These checks require real deployment secrets and real Firebase tokens, so they
 remain operational validation unless explicitly executed in that environment.
 
+## Firebase Authorization Boundaries
+
+`ROLE_USER` is granted to an existing active backend user found by verified
+Firebase UID. Firebase email verification is not required for ordinary linked
+user sign-in.
+
+`ROLE_ADMIN` is granted only when all conditions are true:
+
+- the verified Firebase UID resolves to a backend user;
+- that backend user is `ACTIVE`;
+- the backend user's persisted `firebaseUid` exactly matches the token UID;
+- the Firebase token email is verified;
+- the normalized Firebase token email is present in `BACKOFFICE_ADMIN_EMAILS`.
+
+The allowlist decision uses only the Firebase token email. The backend user's
+persisted local email is not a fallback for administrator authority, and an
+unprovisioned Firebase principal never receives `ROLE_ADMIN`.
+
+Provisioning links an existing legacy backend row by email only when the
+Firebase token reports `emailVerified=true`. An unverified Firebase email can
+still create a brand-new backend user and can still load an already-linked
+backend user by Firebase UID. Existing linked users do not have their persisted
+email overwritten from an unverified Firebase token email.
+
+## Rate Limiting Boundaries
+
+Rate limiting is in-memory and single-instance only. Buckets are backed by
+Caffeine and are not shared across app replicas. Infrastructure-level WAF,
+gateway or distributed limiting remains a deployment concern.
+
+The pre-authentication limiter runs before Firebase token verification and keys
+only by endpoint group plus `request.remoteAddr`:
+
+- `pre-auth:{endpoint-group}:ip:{client-ip}`
+
+It never uses bearer token text, bearer-token hashes or unverified Firebase
+claims.
+
+The post-authentication limiter runs after authentication and keys by endpoint
+group plus a stable authenticated identity:
+
+- `post-auth:{endpoint-group}:user:{backend-user-id}`
+- `post-auth:{endpoint-group}:firebase:{firebase-uid}`
+- `post-auth:{endpoint-group}:local-dev:{dev-user-id}`
+
+Production deployments must configure the trusted reverse proxy or servlet
+container so `request.remoteAddr` is the real client IP only when forwarded by
+trusted infrastructure. The application filter does not parse or trust arbitrary
+`X-Forwarded-For`, `Forwarded`, `X-Real-IP` or similar request headers.
+
+## Visual Content Boundaries
+
+Visual-profile and personal-message reads/writes are allowed only after the
+requesting user is validated as a match participant and the participant pair is
+not blocked.
+
+Allowed match states:
+
+- `VISUAL_PHASE`: the visual review must exist and its `expiresAt` must still
+  be in the future according to server time.
+- `VISUAL_APPROVED`: the visual review must exist, a connection for the match
+  must exist, the requester must belong to that connection, and the connection
+  must be in an active non-closed state.
+
+Denied match states include `CHAT_ACTIVE`, `CHAT_REJECTED`,
+`VISUAL_REJECTED` and `EXPIRED`. Denied partner-message reads do not update
+read timestamps.
+
 ## Sensitive Log Policy
 
 Do not log:
