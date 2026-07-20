@@ -84,6 +84,14 @@ still create a brand-new backend user and can still load an already-linked
 backend user by Firebase UID. Existing linked users do not have their persisted
 email overwritten from an unverified Firebase token email.
 
+`POST /api/me/local-dev/email-verification` is a local-only Firebase Admin
+helper for the `local-firebase` profile and must remain absent from hosted
+`dev` and `prod`. It requires a provisioned authenticated backend user with
+`ROLE_USER`, derives the Firebase UID only from the authenticated principal, and
+sets that Firebase Auth account's `emailVerified=true`. It does not persist
+email verification in PostgreSQL, activate profiles, weaken upload or activation
+guards, accept arbitrary UIDs/emails, issue tokens or add custom claims.
+
 ## Rate Limiting Boundaries
 
 Rate limiting is in-memory and single-instance only. Buckets are backed by

@@ -114,6 +114,10 @@ firebase:
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
 
+local-dev:
+  firebase:
+    email-auto-verification-enabled: ${LOCAL_DEV_FIREBASE_EMAIL_AUTO_VERIFICATION_ENABLED:true}
+
 profile:
   photos:
     max-count: 9
