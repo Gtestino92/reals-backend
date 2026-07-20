@@ -66,7 +66,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `upload finalization failure leaves durable guard without dangling reference`() {
+    fun `upload finalization failure attempts cleanup without dangling reference`() {
         val profileId = createDraftProfile()
         val storedObject = storedObject("orphan-after-race.jpg")
         stubStorageUpload(storedObject)
@@ -104,9 +104,8 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         }
 
         assertFalse(profilePhotoRepository.findByProfileId(profileId).any { it.storageKey == storedObject.key })
-        val task = mediaCleanupTaskRepository.findAll().single()
-        assertEquals(storedObject.key, task.objectKey)
-        assertEquals(MediaCleanupTaskStatus.PENDING, task.status)
+        assertTrue(mediaCleanupTaskRepository.findAll().isEmpty())
+        Mockito.verify(storageService).deleteObject(storedObject.bucket, storedObject.key)
     }
 
     @Test

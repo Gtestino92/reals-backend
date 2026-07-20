@@ -10,6 +10,7 @@ import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
 import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.ProfilePhotoUploadGuard
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -40,7 +41,8 @@ import java.util.UUID
 @Validated
 class ProfileController(
     private val profileService: ProfileService,
-    private val legalComplianceService: LegalComplianceService
+    private val legalComplianceService: LegalComplianceService,
+    private val profilePhotoUploadGuard: ProfilePhotoUploadGuard
 ) {
 
     /**
@@ -212,7 +214,7 @@ class ProfileController(
         consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
     )
     fun uploadPhoto(
-        @CurrentUserId userId: UUID,
+        @CurrentUserAuth authContext: CurrentUserAuthContext,
 
         @RequestPart("file")
         file: MultipartFile,
@@ -221,16 +223,19 @@ class ProfileController(
         @Min(1)
         position: Int
     ): ResponseEntity<PhotoResponse> {
-        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        requireVerifiedEmailForPhotoUpload(authContext)
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
 
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
-        val photo = profileService.uploadPhoto(
-            profileId = profile.id,
-            position = position,
-            contentType = file.contentType,
-            bytes = file.bytes
-        )
+        val photo = profilePhotoUploadGuard.withPermit {
+            profileService.uploadPhoto(
+                profileId = profile.id,
+                position = position,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() }
+            )
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             PhotoResponse.from(
@@ -326,23 +331,26 @@ class ProfileController(
         consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
     )
     fun replacePhotoFile(
-        @CurrentUserId userId: UUID,
+        @CurrentUserAuth authContext: CurrentUserAuthContext,
 
         @PathVariable photoId: UUID,
 
         @RequestPart("file")
         file: MultipartFile
     ): ResponseEntity<PhotoResponse> {
-        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        requireVerifiedEmailForPhotoUpload(authContext)
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
 
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
-        val photo = profileService.replacePhoto(
-            profileId = profile.id,
-            photoId = photoId,
-            contentType = file.contentType,
-            bytes = file.bytes
-        )
+        val photo = profilePhotoUploadGuard.withPermit {
+            profileService.replacePhoto(
+                profileId = profile.id,
+                photoId = photoId,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() }
+            )
+        }
 
         return ResponseEntity.ok(
             PhotoResponse.from(
@@ -358,4 +366,13 @@ class ProfileController(
                 code = DomainErrorCode.PROFILE_NOT_FOUND,
                 message = "Profile not found for current user"
             )
+
+    private fun requireVerifiedEmailForPhotoUpload(authContext: CurrentUserAuthContext) {
+        if (!authContext.emailVerified) {
+            throw DomainConflictException(
+                code = DomainErrorCode.EMAIL_NOT_VERIFIED,
+                message = "Verificá tu email antes de subir fotos de perfil."
+            )
+        }
+    }
 }

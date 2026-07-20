@@ -189,6 +189,68 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `post auth upload and replacement share profile photo upload bucket`() {
+        val properties = RateLimitProperties(
+            profilePhotoCapacity = 1,
+            profilePhotoRefillTokens = 1,
+            profilePhotoRefillPeriodSeconds = 60
+        )
+        val filter = PostAuthenticationRateLimitFilter(
+            properties,
+            RateLimitRuleResolver(properties),
+            exposurePolicy
+        )
+        setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "firebase-user", null, true))
+
+        assertEquals(200, runPostAuth(filter, profilePhotoUploadRequest()))
+        assertEquals(429, runPostAuth(filter, profilePhotoReplacementRequest()))
+    }
+
+    @Test
+    fun `post auth token refresh for same backend user does not reset upload bucket`() {
+        val properties = RateLimitProperties(
+            profilePhotoCapacity = 1,
+            profilePhotoRefillTokens = 1,
+            profilePhotoRefillPeriodSeconds = 60
+        )
+        val resolver = RateLimitRuleResolver(properties)
+        val filter = PostAuthenticationRateLimitFilter(properties, resolver, exposurePolicy)
+        val userId = UUID.randomUUID()
+
+        setPrincipal(CurrentUserAuthContext(userId, "firebase-old-token", null, true))
+        assertEquals(200, runPostAuth(filter, profilePhotoUploadRequest(bearerToken = "token-1")))
+
+        setPrincipal(CurrentUserAuthContext(userId, "firebase-new-token", null, true))
+        assertEquals(429, runPostAuth(filter, profilePhotoReplacementRequest(bearerToken = "token-2")))
+        assertEquals(
+            "post-auth:profile-photo-uploads:user:$userId",
+            filter.rateLimitKey(resolver.resolve(profilePhotoUploadRequest()), filter.principalIdentity()!!)
+        )
+    }
+
+    @Test
+    fun `post auth delete and reorder do not consume profile photo upload bucket`() {
+        val properties = RateLimitProperties(
+            profilePhotoCapacity = 1,
+            profilePhotoRefillTokens = 1,
+            profilePhotoRefillPeriodSeconds = 60,
+            defaultCapacity = 10,
+            defaultRefillTokens = 10
+        )
+        val filter = PostAuthenticationRateLimitFilter(
+            properties,
+            RateLimitRuleResolver(properties),
+            exposurePolicy
+        )
+        setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "firebase-user", null, true))
+
+        assertEquals(200, runPostAuth(filter, profilePhotoDeleteRequest()))
+        assertEquals(200, runPostAuth(filter, profilePhotoReorderRequest()))
+        assertEquals(200, runPostAuth(filter, profilePhotoUploadRequest()))
+        assertEquals(429, runPostAuth(filter, profilePhotoReplacementRequest()))
+    }
+
+    @Test
     fun `post auth supports local dev string principal`() {
         val filter = postAuthFilter()
         setPrincipal("00000000-0000-0000-0000-000000000001")
@@ -225,6 +287,32 @@ class RateLimitFilterTest {
     private fun safetyReportRequest(remoteAddr: String, bearerToken: String): MockHttpServletRequest =
         apiRequest(remoteAddr, bearerToken, "/api/safety/reports").apply {
             method = "POST"
+        }
+
+    private fun profilePhotoUploadRequest(
+        remoteAddr: String = "10.0.0.1",
+        bearerToken: String = "token"
+    ): MockHttpServletRequest =
+        apiRequest(remoteAddr, bearerToken, "/api/me/profile/photos").apply {
+            method = "POST"
+        }
+
+    private fun profilePhotoReplacementRequest(
+        remoteAddr: String = "10.0.0.1",
+        bearerToken: String = "token"
+    ): MockHttpServletRequest =
+        apiRequest(remoteAddr, bearerToken, "/api/me/profile/photos/${UUID.randomUUID()}/file").apply {
+            method = "PUT"
+        }
+
+    private fun profilePhotoDeleteRequest(): MockHttpServletRequest =
+        apiRequest(path = "/api/me/profile/photos/${UUID.randomUUID()}").apply {
+            method = "DELETE"
+        }
+
+    private fun profilePhotoReorderRequest(): MockHttpServletRequest =
+        apiRequest(path = "/api/me/profile/photos/reorder").apply {
+            method = "PUT"
         }
 
     private fun apiRequest(

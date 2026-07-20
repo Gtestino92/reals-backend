@@ -162,12 +162,6 @@ storage:
     path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
     signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
     read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
-  profile-photos:
-    max-size-bytes: ${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
   media-cleanup:
     batch-size: ${STORAGE_MEDIA_CLEANUP_BATCH_SIZE:100}
     lease-duration: ${STORAGE_MEDIA_CLEANUP_LEASE_DURATION:PT5M}

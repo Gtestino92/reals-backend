@@ -64,9 +64,17 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. Legacy fallback: `S3_PROFILE_PHOTOS_BUCKET`. |
 | `STORAGE_S3_PUBLIC_BASE_URL` | only with `STORAGE_S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. Not required for private R2 buckets in `PRESIGNED` mode. Legacy fallback: `S3_PUBLIC_BASE_URL`. |
 | `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
-| `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media. Legacy fallback: `S3_READ_URL_MODE`. |
+| `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media outside `prod`. `prod` refuses to start with `PUBLIC`. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
-| `PROFILE_PHOTO_MAX_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. |
+| `PROFILE_PHOTO_MAX_FILE_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. Defaults to `5242880` bytes. Legacy fallback: `PROFILE_PHOTO_MAX_SIZE_BYTES`. |
+| `PROFILE_PHOTO_MAX_INPUT_WIDTH` | no | Maximum decoded input image width. Defaults to `6000`. |
+| `PROFILE_PHOTO_MAX_INPUT_HEIGHT` | no | Maximum decoded input image height. Defaults to `6000`. |
+| `PROFILE_PHOTO_MAX_INPUT_PIXELS` | no | Maximum decoded input pixel count. Defaults to `20000000`. |
+| `PROFILE_PHOTO_MAX_OUTPUT_DIMENSION` | no | Maximum normalized JPEG width or height. Defaults to `2048`. |
+| `PROFILE_PHOTO_JPEG_QUALITY` | no | JPEG quality for server-normalized profile photos. Defaults to `0.88`; must be `> 0` and `<= 1`. |
+| `PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly photo upload/replacement pipelines. Defaults to `2`. |
+| `PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an upload waits for a photo pipeline permit. Defaults to `PT0S` for immediate 503. |
+| `PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `PROFILE_PHOTO_UPLOAD_BUSY`. Defaults to `1`. |
 | `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` in `prod` to enable one Sightengine multipart request per upload/replacement. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
@@ -372,13 +380,39 @@ are not semantic person/full-body validation. `application-prod.yml` defaults
 preserving the `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION`
 override.
 
+Profile photo upload and replacement require the authenticated Firebase email to
+be verified before the backend reads or processes the uploaded file. The server
+accepts only actual JPEG and PNG bytes whose declared multipart content type
+matches the detected format; WebP, GIF, BMP, TIFF, SVG, HEIC, AVIF, PDF,
+malformed images and content-type mismatches are rejected with
+`INVALID_PROFILE_PHOTO`. Defaults are 5 MiB compressed size, 6000 input width,
+6000 input height and 20,000,000 input pixels.
+
+Every accepted image is normalized before analysis or storage: EXIF orientation
+is applied when present, the image is resized to fit within 2048 pixels on its
+largest side, transparent PNG pixels are rendered over a fixed neutral
+background, and the output is re-encoded as `image/jpeg` at quality `0.88`.
+Source EXIF, GPS, XMP, IPTC, thumbnails and other client-supplied metadata are
+not preserved. Moderation/semantic analysis and object storage receive the same
+normalized JPEG byte array and content type.
+
+Costly upload and replacement pipelines share a single-instance semaphore. By
+default at most two pipelines run concurrently, there is no permit wait, and a
+third concurrent request returns `503 PROFILE_PHOTO_UPLOAD_BUSY` with
+`Retry-After: 1` before analysis or storage. This is intentionally process-local
+and not a Redis/distributed limiter. The authenticated post-auth rate-limit
+bucket for photo upload and replacement is `profile-photo-uploads`, keyed by
+backend user id, with a default quota of 12 requests per 60 seconds. Delete,
+list and reorder do not consume that bucket; the broad pre-auth IP limiter is
+unchanged. Current rate-limit buckets are in-memory and single-instance.
+
 Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` to use Sightengine
 for profile-photo analysis. Non-production execution profiles ignore this
 provider selection and use the provider `none` compatibility path. In `prod`,
 the backend sends one synchronous multipart request to
 `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` per technically valid upload or
-replacement. The request uses the uploaded bytes directly as the `media` part
-before object storage and includes the fixed MVP model list:
+replacement. The request uses the server-normalized JPEG bytes as the `media`
+part before object storage and includes the fixed MVP model list:
 `face-analysis,nudity-2.1,violence,gore-2.0,offensive-2.0`. Operators must
 verify that the configured Sightengine account can use this model set before
 production deployment; account plan/model restrictions are treated as provider

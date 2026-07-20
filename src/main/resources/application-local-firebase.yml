@@ -36,13 +36,6 @@ storage:
     signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
     read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
 
-  profile-photos:
-    max-size-bytes: 5242880
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
-
 scheduler:
   enabled: false
   matchmaking-job:

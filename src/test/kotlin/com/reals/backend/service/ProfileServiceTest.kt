@@ -1,7 +1,7 @@
 package com.reals.backend.service
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
-import com.reals.backend.config.s3.ProfilePhotoStorageProperties
+import com.reals.backend.config.s3.ProfilePhotoValidationProperties
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
@@ -157,7 +157,7 @@ class ProfileServiceTest {
         ProfileService(
             profileRepository = profileRepository,
             profilePhotoRepository = profilePhotoRepository,
-            profilePhotoValidationService = Mockito.mock(ProfilePhotoValidationService::class.java),
+            profilePhotoNormalizer = Mockito.mock(ProfilePhotoNormalizer::class.java),
             profilePhotoAnalysisService = Mockito.mock(ProfilePhotoAnalysisService::class.java),
             profileAuthenticityVerificationService = ProfileAuthenticityVerificationService(
                 provider = NoopProfileAuthenticityVerificationProvider(),
@@ -169,7 +169,7 @@ class ProfileServiceTest {
             mediaCleanupTaskService = mediaCleanupTaskService,
             mediaCleanupProcessor = mediaCleanupProcessor,
             transactionTemplate = TransactionTemplate(NoOpTransactionManager()),
-            profilePhotoStorageProperties = ProfilePhotoStorageProperties(),
+            profilePhotoValidationProperties = ProfilePhotoValidationProperties(),
             auditEventService = auditEventService,
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
             countryReferenceService = CountryReferenceService(),
