@@ -96,7 +96,14 @@ only by endpoint group plus `request.remoteAddr`:
 - `pre-auth:{endpoint-group}:ip:{client-ip}`
 
 It never uses bearer token text, bearer-token hashes or unverified Firebase
-claims.
+claims. It uses dedicated broad quotas, not endpoint-specific user/business
+quotas. Current defaults are `security.rate-limit.pre-auth-capacity=600`,
+`security.rate-limit.pre-auth-refill-tokens=600` and
+`security.rate-limit.pre-auth-refill-period-seconds=60`.
+
+Pre-auth limiting applies to protected API traffic and to protected Actuator
+authentication surfaces: `/actuator/info`, `/actuator/metrics` and
+`/actuator/metrics/**`. Health endpoints remain public and excluded.
 
 The post-authentication limiter runs after authentication and keys by endpoint
 group plus a stable authenticated identity:
@@ -118,8 +125,8 @@ not blocked.
 
 Allowed match states:
 
-- `VISUAL_PHASE`: the visual review must exist and its `expiresAt` must still
-  be in the future according to server time.
+- `VISUAL_PHASE`: the visual review must exist, `expiresAt` must be non-null,
+  and `expiresAt` must still be in the future according to server time.
 - `VISUAL_APPROVED`: the visual review must exist, a connection for the match
   must exist, the requester must belong to that connection, and the connection
   must be in an active non-closed state.

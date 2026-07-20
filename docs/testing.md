@@ -182,11 +182,9 @@ The `Smoke check` GitHub Actions workflow is manual and is intended for a
 deployed environment. Provide the backend base URL and it checks:
 
 - `GET /actuator/health/readiness`
-- `GET /actuator/info` with an administrator bearer token in hosted environments
 - `GET /api/ping`
 
-It does not deploy anything. Hosted environments require application
-credentials for `/actuator/info`. Optional inputs `expected_image_tag` and
-`expected_image_revision` validate the image metadata exposed by
-`/actuator/info`, so the same workflow can be wired into deploy automation
-later.
+It does not deploy anything and intentionally checks only public operational
+endpoints. `/actuator/info` is administrator-only in hosted environments; image
+metadata can be inspected manually with a fresh administrator bearer token when
+needed.

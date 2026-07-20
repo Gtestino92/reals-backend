@@ -461,17 +461,17 @@ Runtime liveness checks should call:
 GET /actuator/health/liveness
 ```
 
-Post-deploy smoke checks should verify readiness, ping and the image metadata
-served by `/actuator/info`. The info endpoint is not public in hosted
-environments; call it with an authenticated administrator token:
+Post-deploy automated smoke checks should verify readiness and ping:
 
 ```http
-GET /actuator/info
+GET /actuator/health/readiness
 GET /api/ping
 ```
 
 `/actuator/info` includes Docker image metadata when the application is started
-from a CI-built image:
+from a CI-built image, but the endpoint is administrator-only in hosted
+environments. Inspect image metadata manually with a fresh administrator bearer
+token when needed:
 
 ```json
 {
@@ -484,9 +484,8 @@ from a CI-built image:
 ```
 
 Use the manual `Smoke check` GitHub Actions workflow after a runtime update. For
-the dev environment, set `expected_image_repository` to
-`ghcr.io/gtestino92/reals-backend`, `expected_image_tag` to `development` and
-`expected_image_revision` to the deployed commit SHA or its prefix.
+the dev environment, pass the deployed backend base URL. The workflow validates
+only public operational endpoints.
 
 ## Diagnostic Metrics
 

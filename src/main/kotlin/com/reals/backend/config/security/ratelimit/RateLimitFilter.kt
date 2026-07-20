@@ -33,7 +33,7 @@ class RateLimitFilter(
         val path = request.normalizedPath()
 
         return request.method.equals("OPTIONS", ignoreCase = true) ||
-            !path.startsWith("/api/") ||
+            !path.isPreAuthRateLimitedPath() ||
             path == "/api/ping" ||
             (
                 request.method.equals("GET", ignoreCase = true) &&
@@ -51,7 +51,7 @@ class RateLimitFilter(
         filterChain: FilterChain
     ) {
         val now = Instant.now()
-        val rule = ruleResolver.resolve(request)
+        val rule = preAuthenticationRule(request)
         val bucketKey = rateLimitKey(request, rule)
         val bucket = buckets.get(bucketKey) { _ ->
             TokenBucket(
@@ -78,8 +78,18 @@ class RateLimitFilter(
         }
     }
 
-    internal fun rateLimitKey(request: HttpServletRequest, rule: RateLimitRule = ruleResolver.resolve(request)): String =
+    internal fun rateLimitKey(request: HttpServletRequest, rule: RateLimitRule = preAuthenticationRule(request)): String =
         "pre-auth:${rule.id}:ip:${request.remoteAddr ?: "unknown"}"
+
+    internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
+        val group = ruleResolver.resolveGroup(request)
+        return RateLimitRule(
+            id = group.id,
+            capacity = properties.preAuthCapacity,
+            refillTokens = properties.preAuthRefillTokens,
+            refillPeriodSeconds = properties.preAuthRefillPeriodSeconds
+        )
+    }
 
     private fun writeRateLimitExceeded(
         response: HttpServletResponse,
@@ -93,4 +103,10 @@ class RateLimitFilter(
             """{"code":"RATE_LIMIT_EXCEEDED","error":"Too Many Requests","message":"Too many requests. Try again later."}"""
         )
     }
+
+    private fun String.isPreAuthRateLimitedPath(): Boolean =
+        startsWith("/api/") ||
+            this == "/actuator/info" ||
+            this == "/actuator/metrics" ||
+            startsWith("/actuator/metrics/")
 }
