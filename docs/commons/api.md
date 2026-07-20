@@ -314,7 +314,10 @@ immediately with `503 PROFILE_PHOTO_UPLOAD_BUSY` and `Retry-After: 1`. Upload
 and replacement also share the authenticated post-auth rate-limit group
 `profile-photo-uploads`, keyed by backend user id, defaulting to 12 requests per
 60 seconds. Delete and reorder do not consume that bucket. The concurrency guard
-and rate-limit buckets are single-instance/in-memory controls.
+and rate-limit buckets are single-instance/in-memory controls. Servlet
+multipart parsing happens before the controller acquires the semaphore, so
+deployment gateways should enforce an equivalent request-body limit before the
+request reaches the application.
 
 `PhotoValidationStatus.PENDING` and `PhotoModerationStatus.NEEDS_REVIEW` are
 separate states. Validation `PENDING` means semantic person/full-body analysis
