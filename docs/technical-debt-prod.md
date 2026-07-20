@@ -844,8 +844,8 @@ Future work:
 
 Implemented narrow diagnostics:
 - Custom Micrometer meters are enabled under `management.metrics.enable.reals=true` while `management.metrics.enable.all=false` remains the default stance.
-- `/actuator/health`, `/actuator/health/**` and `/actuator/info` remain public.
-- `/actuator/metrics` and `/actuator/metrics/**` require `ROLE_ADMIN`.
+- `/actuator/health` and `/actuator/health/**` remain public.
+- `/actuator/info`, `/actuator/metrics` and `/actuator/metrics/**` require `ROLE_ADMIN`.
 - Current custom meters:
   - `reals.home.load` with `variant=full|pending` and `outcome=success|error`;
   - `reals.chat.messages.read` with `mode=initial|incremental` and `outcome=success|error`;

@@ -35,8 +35,8 @@ Already in place:
   pushes to `development`.
 - The `dev` Spring profile uses managed PostgreSQL, Firebase auth, Flyway,
   Hibernate schema validation and automatic schedulers.
-- Public readiness, liveness, ping and image metadata endpoints exist for smoke
-  checks.
+- Public readiness, liveness and ping endpoints exist for smoke checks. Image
+  metadata is available through administrator-only `/actuator/info`.
 - Cloudflare R2/S3-compatible storage configuration is documented separately in
   `docs/storage-r2-configuration.md`.
 
@@ -238,7 +238,7 @@ The deployment platform should pull `:development` for the dev environment.
 Use a `sha-*` tag when you need an immutable rollback target.
 
 The Docker image embeds runtime metadata in environment variables and exposes it
-through `GET /actuator/info`:
+through `GET /actuator/info` for authenticated administrators:
 
 ```json
 {
@@ -271,14 +271,14 @@ The endpoint is public by design and should return:
 `/api/local-dev/**` endpoints are local-only and are not available in the cloud `dev`
 profile. Scheduled jobs run automatically in `dev`.
 
-After updating a deployed environment, run the manual GitHub Actions workflow
-`Smoke check` with the environment base URL. The workflow verifies readiness,
-ping and Docker image metadata exposed by `/actuator/info`. It accepts optional
-expected image repository, tag and Git revision values so it can fail fast when
-the runtime is serving an old or unintended container image. It checks:
+After updating a deployed environment, run the automated smoke workflow with
+the environment base URL. It checks only public operational endpoints:
 
 ```http
 GET /actuator/health/readiness
-GET /actuator/info
 GET /api/ping
 ```
+
+Docker image metadata is exposed by `/actuator/info`, but that endpoint is
+administrator-only in hosted environments. Inspect it manually with a fresh
+administrator bearer token when needed.

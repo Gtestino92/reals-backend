@@ -33,9 +33,10 @@ they do not add a second execution profile.
 remains unauthenticated in `local-nodb`, `local-postgres` and
 `local-firebase`. Hosted `dev` registers the same paths but requires an
 authenticated `ROLE_ADMIN` user. Admin role assignment uses the existing
-Firebase-backed local user plus `BACKOFFICE_ADMIN_EMAILS` allowlist. `prod` and
-`test` deny the route prefix, and `prod` does not register the real `Dev*`
-controllers.
+Firebase-backed local user plus the verified Firebase token email in the
+`BACKOFFICE_ADMIN_EMAILS` allowlist. The persisted backend email is not an
+administrator allowlist fallback. `prod` and `test` deny the route prefix, and
+`prod` does not register the real `Dev*` controllers.
 
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
 denies `/h2-console/**` for every other execution profile.
@@ -460,16 +461,17 @@ Runtime liveness checks should call:
 GET /actuator/health/liveness
 ```
 
-Post-deploy smoke checks should verify readiness, ping and the image metadata
-served by `/actuator/info`:
+Post-deploy automated smoke checks should verify readiness and ping:
 
 ```http
-GET /actuator/info
+GET /actuator/health/readiness
 GET /api/ping
 ```
 
 `/actuator/info` includes Docker image metadata when the application is started
-from a CI-built image:
+from a CI-built image, but the endpoint is administrator-only in hosted
+environments. Inspect image metadata manually with a fresh administrator bearer
+token when needed:
 
 ```json
 {
@@ -482,9 +484,8 @@ from a CI-built image:
 ```
 
 Use the manual `Smoke check` GitHub Actions workflow after a runtime update. For
-the dev environment, set `expected_image_repository` to
-`ghcr.io/gtestino92/reals-backend`, `expected_image_tag` to `development` and
-`expected_image_revision` to the deployed commit SHA or its prefix.
+the dev environment, pass the deployed backend base URL. The workflow validates
+only public operational endpoints.
 
 ## Diagnostic Metrics
 
@@ -502,8 +503,8 @@ management:
         include: health,info,metrics
 ```
 
-Public unauthenticated Actuator access is limited to `/actuator/health`,
-`/actuator/health/**` and `/actuator/info`. `/actuator/metrics` and
+Public unauthenticated Actuator access is limited to `/actuator/health` and
+`/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
 `/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
 
 Current custom read meters:

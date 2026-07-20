@@ -24,6 +24,7 @@ class VisualReviewService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
+    private val visualResourceAccessPolicy: VisualResourceAccessPolicy,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long,
@@ -45,6 +46,15 @@ class VisualReviewService(
 
     fun visualExpiresAt(matchId: UUID): OffsetDateTime? =
         findByMatchIdOrNull(matchId)?.expiresAt
+
+    fun requireVisualContentAccess(
+        matchId: UUID,
+        userId: UUID
+    ): VisualResourceAccess =
+        visualResourceAccessPolicy.requireCanAccess(
+            matchId = matchId,
+            requestingUserId = userId
+        )
 
     fun initializeForMatch(matchId: UUID): VisualReview {
         val match = matchService.findByIdOrThrow(matchId)
@@ -200,19 +210,10 @@ class VisualReviewService(
         userId: UUID,
         message: String
     ) {
+        val access = requireVisualContentAccess(matchId, userId)
+        val match = access.match
+        val review = access.review
         val normalizedMessage = normalizePersonalMessage(message)
-
-        val match = matchService.findByIdOrThrow(matchId)
-        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
-        val review = findByMatchIdOrThrow(matchId)
-
-        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
-            "Personal messages are only available during visual review or scheduling"
-        }
-
-        if (match.state == MatchState.VISUAL_PHASE) {
-            requireVisualReviewNotExpired(review)
-        }
 
         when (userId) {
 
@@ -249,12 +250,9 @@ class VisualReviewService(
         matchId: UUID,
         requestingUserId: UUID
     ): String? {
-        val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
-
-        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
-            "Partner message is only available during visual review or scheduling"
-        }
+        val access = requireVisualContentAccess(matchId, requestingUserId)
+        val match = access.match
+        val review = access.review
 
         val message = when (requestingUserId) {
             match.userAId -> {
@@ -286,8 +284,9 @@ class VisualReviewService(
         matchId: UUID,
         userId: UUID
     ): Boolean {
-        val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
+        val access = requireVisualContentAccess(matchId, userId)
+        val match = access.match
+        val review = access.review
 
         return when (userId) {
             match.userAId -> review.personalMessageA != null
@@ -302,15 +301,11 @@ class VisualReviewService(
         matchId: UUID,
         userId: UUID
     ): VisualReviewPersonalMessageStatus {
-        val match = matchService.findByIdForUserOrThrow(
-            matchId = matchId,
-            userId = userId
-        )
-        val review = findByMatchIdOrThrow(matchId)
+        val access = requireVisualContentAccess(matchId, userId)
 
         return personalMessageStatusFor(
-            match = match,
-            review = review,
+            match = access.match,
+            review = access.review,
             userId = userId
         )
     }

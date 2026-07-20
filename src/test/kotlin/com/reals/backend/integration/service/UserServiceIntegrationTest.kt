@@ -6,6 +6,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
@@ -44,12 +45,102 @@ class UserServiceIntegrationTest : BaseIT() {
 
         val linked = userService.provisionFromFirebase(
             firebaseUid = firebaseUid,
-            email = existing.email
+            email = existing.email,
+            emailVerified = true
         )
 
         assertEquals(existing.id, linked.id)
         assertEquals(firebaseUid, linked.firebaseUid)
         assertEquals(existing.email, linked.email)
+    }
+
+    @Test
+    fun `provision from firebase rejects unverified legacy email link without mutation`() {
+        val existing = userService.createUser("unverified-link-${UUID.randomUUID()}@example.com")
+        val firebaseUid = "firebase-${UUID.randomUUID()}"
+
+        val exception = assertThrows<DomainConflictException> {
+            userService.provisionFromFirebase(
+                firebaseUid = firebaseUid,
+                email = existing.email,
+                emailVerified = false
+            )
+        }
+
+        assertEquals(DomainErrorCode.EMAIL_NOT_VERIFIED, exception.code)
+        val unchanged = userRepository.findById(existing.id).orElseThrow()
+        assertNull(unchanged.firebaseUid)
+        assertEquals(existing.email, unchanged.email)
+    }
+
+    @Test
+    fun `provision from firebase creates new user with unverified email`() {
+        val firebaseUid = "firebase-unverified-new-${UUID.randomUUID()}"
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = "unverified-new-${UUID.randomUUID()}@example.com",
+            emailVerified = false
+        )
+
+        assertEquals(firebaseUid, user.firebaseUid)
+        assertNotNull(user.email)
+    }
+
+    @Test
+    fun `provision from firebase existing uid does not require verified email`() {
+        val firebaseUid = "firebase-existing-unverified-${UUID.randomUUID()}"
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = "existing-unverified-${UUID.randomUUID()}@example.com",
+            emailVerified = false
+        )
+
+        val loaded = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = user.email,
+            emailVerified = false
+        )
+
+        assertEquals(user.id, loaded.id)
+    }
+
+    @Test
+    fun `provision from firebase does not sync unverified changed email for existing uid`() {
+        val firebaseUid = "firebase-unverified-change-${UUID.randomUUID()}"
+        val originalEmail = "original-${UUID.randomUUID()}@example.com"
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = originalEmail,
+            emailVerified = false
+        )
+
+        userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = "changed-${UUID.randomUUID()}@example.com",
+            emailVerified = false
+        )
+
+        assertEquals(originalEmail, userRepository.findById(user.id).orElseThrow().email)
+    }
+
+    @Test
+    fun `provision from firebase syncs verified changed email when unique`() {
+        val firebaseUid = "firebase-verified-change-${UUID.randomUUID()}"
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = "verified-original-${UUID.randomUUID()}@example.com",
+            emailVerified = false
+        )
+        val changedEmail = "verified-changed-${UUID.randomUUID()}@example.com"
+
+        val updated = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = changedEmail,
+            emailVerified = true
+        )
+
+        assertEquals(user.id, updated.id)
+        assertEquals(changedEmail, userRepository.findById(user.id).orElseThrow().email)
     }
 
     @Test
@@ -73,8 +164,8 @@ class UserServiceIntegrationTest : BaseIT() {
         val firebaseUid = "firebase-concurrent-link-${UUID.randomUUID()}"
 
         val outcomes = runProvisioningConcurrently(
-            { userService.provisionFromFirebase(firebaseUid, existing.email) },
-            { userService.provisionFromFirebase(firebaseUid, existing.email) }
+            { userService.provisionFromFirebase(firebaseUid, existing.email, emailVerified = true) },
+            { userService.provisionFromFirebase(firebaseUid, existing.email, emailVerified = true) }
         )
 
         assertTrue(outcomes.all { it.value != null }, outcomes.toString())

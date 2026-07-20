@@ -70,6 +70,39 @@ class RateLimitIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `safety report rate limit is per authenticated user behind same ip`() {
+        val userAId = UUID.randomUUID()
+        val userBId = UUID.randomUUID()
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .header("Authorization", "Bearer token-a-1")
+                .with(authenticatedAs(userAId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isBadRequest)
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .header("Authorization", "Bearer token-a-2")
+                .with(authenticatedAs(userAId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isTooManyRequests)
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .header("Authorization", "Bearer token-b-1")
+                .with(authenticatedAs(userBId))
+                .contentType(jsonContentType)
+                .content("""{"details":"missing required fields"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `admin safety report endpoint does not use safety report specific rate limit`() {
         val token = "admin-safety-report-rate-limit-${UUID.randomUUID()}"
         val adminUserId = UUID.randomUUID()

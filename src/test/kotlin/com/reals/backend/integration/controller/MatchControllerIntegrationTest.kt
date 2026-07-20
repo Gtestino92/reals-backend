@@ -1,7 +1,10 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.UserBlockSource
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.equalTo
@@ -167,6 +170,72 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
             .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+    }
+
+    @Test
+    fun `visual profile is denied after visual expiration even before scheduler runs`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_EXPIRED")))
+    }
+
+    @Test
+    fun `visual profile is denied after visual approval with closed connection`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+        connection.state = ConnectionState.CLOSED
+        connectionRepository.saveAndFlush(connection)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+    }
+
+    @Test
+    fun `partner message read is denied for blocked pair and does not mark read`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+        userBlockService.blockUser(setup.userAId, setup.userBId, UserBlockSource.MANUAL)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/personal-messages/partner")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("USER_PAIR_BLOCKED")))
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `personal message write is denied for rejected visual match`() {
+        val setup = createMatchInVisualPhase()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = MatchState.VISUAL_REJECTED
+        matchRepository.saveAndFlush(match)
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"No debe guardarse"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageA)
     }
 
     @Test

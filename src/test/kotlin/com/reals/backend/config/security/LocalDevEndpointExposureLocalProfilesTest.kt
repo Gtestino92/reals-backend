@@ -2,6 +2,7 @@ package com.reals.backend.config.security
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
+import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -22,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = [FirebaseTokenFilter::class, RateLimitFilter::class]
+            classes = [FirebaseTokenFilter::class, RateLimitFilter::class, PostAuthenticationRateLimitFilter::class]
         )
     ]
 )
@@ -52,7 +53,7 @@ class LocalDevEndpointExposureLocalNodbTest {
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = [FirebaseTokenFilter::class, RateLimitFilter::class]
+            classes = [FirebaseTokenFilter::class, RateLimitFilter::class, PostAuthenticationRateLimitFilter::class]
         )
     ]
 )

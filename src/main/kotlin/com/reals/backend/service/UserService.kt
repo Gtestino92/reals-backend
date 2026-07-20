@@ -94,7 +94,8 @@ class UserService(
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun provisionFromFirebase(
         firebaseUid: String,
-        email: String? = null
+        email: String? = null,
+        emailVerified: Boolean = false
     ): User {
         require(firebaseUid.isNotBlank()) {
             "Firebase UID is required"
@@ -103,28 +104,31 @@ class UserService(
         val normalizedEmail = normalizeOptionalEmail(email)
 
         return try {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
         } catch (ex: DataIntegrityViolationException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
         } catch (ex: OptimisticLockingFailureException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
         }
     }
 
     private fun provisionFromFirebaseInNewTransaction(
         firebaseUid: String,
-        normalizedEmail: String?
+        normalizedEmail: String?,
+        emailVerified: Boolean
     ): User =
         transactionTemplate.execute {
             provisionFromFirebaseAttempt(
                 firebaseUid = firebaseUid,
-                normalizedEmail = normalizedEmail
+                normalizedEmail = normalizedEmail,
+                emailVerified = emailVerified
             )
         }
 
     private fun provisionFromFirebaseAttempt(
         firebaseUid: String,
-        normalizedEmail: String?
+        normalizedEmail: String?,
+        emailVerified: Boolean
     ): User {
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
@@ -134,7 +138,8 @@ class UserService(
 
             return updateFirebaseUserEmailIfNeeded(
                 user = existingByFirebaseUid,
-                normalizedEmail = normalizedEmail
+                normalizedEmail = normalizedEmail,
+                emailVerified = emailVerified
             )
         }
 
@@ -147,6 +152,12 @@ class UserService(
                 }
 
                 if (existingByEmail.firebaseUid == null) {
+                    if (!emailVerified) {
+                        throw DomainConflictException(
+                            code = DomainErrorCode.EMAIL_NOT_VERIFIED,
+                            message = "Verify your email before linking an existing account"
+                        )
+                    }
                     existingByEmail.firebaseUid = firebaseUid
                     existingByEmail.updatedAt = OffsetDateTime.now()
                     return userRepository.saveAndFlush(existingByEmail)
@@ -155,7 +166,8 @@ class UserService(
                 if (existingByEmail.firebaseUid == firebaseUid) {
                     return updateFirebaseUserEmailIfNeeded(
                         user = existingByEmail,
-                        normalizedEmail = normalizedEmail
+                        normalizedEmail = normalizedEmail,
+                        emailVerified = emailVerified
                     )
                 }
 
@@ -349,9 +361,11 @@ class UserService(
 
     private fun updateFirebaseUserEmailIfNeeded(
         user: User,
-        normalizedEmail: String?
+        normalizedEmail: String?,
+        emailVerified: Boolean
     ): User {
         if (
+            !emailVerified ||
             normalizedEmail == null ||
             user.email == normalizedEmail ||
             userRepository.existsByEmail(normalizedEmail)
