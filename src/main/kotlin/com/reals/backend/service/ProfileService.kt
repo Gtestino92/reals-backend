@@ -509,7 +509,7 @@ class ProfileService(
         )
 
         var storedObject: StoredObject? = null
-        try {
+        val result = try {
             val uploadedObject = storageService.uploadProfilePhoto(
                 userId = profile.userId,
                 photoId = newObjectPhotoId,
@@ -518,7 +518,7 @@ class ProfileService(
             )
             storedObject = uploadedObject
 
-            val result = transactionTemplate.execute {
+            transactionTemplate.execute {
                 val authoritativeProfile = findByIdOrThrow(profileId)
                 val authoritativePhoto = profilePhotoRepository.findByIdForUpdate(photoId)
                     ?: throw profilePhotoNotFound(photoId)
@@ -573,10 +573,6 @@ class ProfileService(
                     oldCleanupTaskId = oldCleanupTask.id
                 )
             }
-
-            mediaCleanupProcessor.processTask(result.oldCleanupTaskId)
-            return result.photo
-
         } catch (ex: Exception) {
             storedObject?.let {
                 cleanupNewObjectAfterFailure(
@@ -586,6 +582,18 @@ class ProfileService(
             }
             throw ex
         }
+
+        try {
+            mediaCleanupProcessor.processTask(result.oldCleanupTaskId)
+        } catch (ex: Exception) {
+            log.warn(
+                "Immediate old profile-photo cleanup failed after replacement persistence; scheduled retry remains for task={}",
+                result.oldCleanupTaskId,
+                ex
+            )
+        }
+
+        return result.photo
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

@@ -75,6 +75,8 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly photo upload/replacement pipelines. Defaults to `2`. |
 | `PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an upload waits for a photo pipeline permit. Defaults to `PT0S` for immediate 503. |
 | `PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `PROFILE_PHOTO_UPLOAD_BUSY`. Defaults to `1`. |
+| `PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE` | no | Servlet multipart parser file-size limit for profile-photo uploads. Defaults to `5MB`; keep aligned with the 5 MiB product limit. |
+| `PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE` | no | Servlet multipart parser request-size limit. Defaults to `6MB` to leave room for multipart headers and the `position` field. |
 | `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` in `prod` to enable one Sightengine multipart request per upload/replacement. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
@@ -399,12 +401,18 @@ normalized JPEG byte array and content type.
 Costly upload and replacement pipelines share a single-instance semaphore. By
 default at most two pipelines run concurrently, there is no permit wait, and a
 third concurrent request returns `503 PROFILE_PHOTO_UPLOAD_BUSY` with
-`Retry-After: 1` before analysis or storage. This is intentionally process-local
-and not a Redis/distributed limiter. The authenticated post-auth rate-limit
-bucket for photo upload and replacement is `profile-photo-uploads`, keyed by
-backend user id, with a default quota of 12 requests per 60 seconds. Delete,
-list and reorder do not consume that bucket; the broad pre-auth IP limiter is
-unchanged. Current rate-limit buckets are in-memory and single-instance.
+`Retry-After: 1` before analysis or storage. Servlet multipart parsing happens
+before controller-level semaphore acquisition, so the semaphore protects byte
+materialization from `MultipartFile`, decoding, moderation, storage,
+persistence and compensation, but not initial HTTP-body reception by the
+servlet container. Hosted deployments should configure an equivalent
+request-body limit at the reverse proxy, gateway or WAF. This is intentionally
+process-local and not a Redis/distributed limiter. The authenticated post-auth
+rate-limit bucket for photo upload and replacement is `profile-photo-uploads`,
+keyed by backend user id, with a default quota of 12 requests per 60 seconds.
+Delete, list and reorder do not consume that bucket; the broad pre-auth IP
+limiter is unchanged. Current rate-limit buckets are in-memory and
+single-instance.
 
 Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` to use Sightengine
 for profile-photo analysis. Non-production execution profiles ignore this
