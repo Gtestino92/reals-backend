@@ -10,6 +10,7 @@ import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.repository.MediaCleanupTaskRepository
+import com.reals.backend.service.MediaCleanupProcessor
 import com.reals.backend.service.S3StorageService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.ObjectStorageException
@@ -24,11 +25,13 @@ import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.util.UUID
 import javax.imageio.ImageIO
 
@@ -40,6 +43,9 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
 
     @MockitoBean
     private lateinit var storageService: S3StorageService
+
+    @MockitoSpyBean
+    private lateinit var mediaCleanupProcessor: MediaCleanupProcessor
 
     @BeforeEach
     fun cleanMediaCleanupState() {
@@ -146,6 +152,44 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `replacement returns when immediate old cleanup throws after persistence`() {
+        val profileId = createDraftProfile()
+        val oldPhoto = profilePhotoRepository.saveAndFlush(
+            ProfilePhoto(
+                profileId = profileId,
+                storageProvider = PhotoStorageProvider.S3,
+                storageBucket = "test-bucket",
+                storageKey = "old-after-persist-failure.jpg",
+                position = 1,
+                isPersonPhoto = true,
+                isFullBody = true,
+                validationStatus = PhotoValidationStatus.VALIDATED,
+                moderationStatus = PhotoModerationStatus.APPROVED
+            )
+        )
+        val newObject = storedObject("new-after-persist-failure.jpg")
+        stubStorageUpload(newObject)
+        Mockito.doThrow(RuntimeException("unexpected cleanup failure"))
+            .`when`(mediaCleanupProcessor).processTask(anyUuid(), anyOffsetDateTime())
+
+        val replaced = profileService.replacePhoto(
+            profileId = profileId,
+            photoId = oldPhoto.id,
+            contentType = MediaType.IMAGE_JPEG_VALUE,
+            bytes = jpegBytes()
+        )
+
+        assertEquals(oldPhoto.id, replaced.id)
+        assertEquals(newObject.key, profilePhotoRepository.findById(oldPhoto.id).orElseThrow().storageKey)
+        Mockito.verify(storageService, Mockito.never()).deleteObject(newObject.bucket, newObject.key)
+
+        val task = mediaCleanupTaskRepository.findAll().single()
+        assertEquals(oldPhoto.storageKey, task.objectKey)
+        assertEquals(0, task.attemptCount)
+        assertEquals(MediaCleanupTaskStatus.PENDING, task.status)
+    }
+
+    @Test
     fun `delete commits database state when storage deletion fails and leaves retryable task`() {
         val profileId = createDraftProfile()
         val photo = profilePhotoRepository.saveAndFlush(
@@ -239,5 +283,10 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
     private fun eqString(value: String): String {
         Mockito.eq(value)
         return value
+    }
+
+    private fun anyOffsetDateTime(): OffsetDateTime {
+        Mockito.any(OffsetDateTime::class.java)
+        return OffsetDateTime.now()
     }
 }
