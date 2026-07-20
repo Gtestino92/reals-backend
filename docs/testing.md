@@ -125,6 +125,13 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 
 Most `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. The matchmaking processor endpoint is also exposed for `local-firebase` so Android/Firebase manual flows can process queued pairs locally. Local-dev endpoints must not be enabled in cloud dev or production.
 
+`POST /api/me/local-dev/email-verification` is different: it is a local
+Firebase helper under the authenticated `/api/me/**` boundary, not the
+unauthenticated `/api/local-dev/**` tooling namespace. Focused tests cover its
+`local-firebase` plus property exposure gate, absence from non-local-Firebase
+profiles, Firebase Admin update delegation, and the existing verified-email
+guards for photo upload/replacement and profile activation.
+
 ## Running Tests
 
 From a shell with Java configured:
