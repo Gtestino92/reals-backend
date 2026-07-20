@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
+import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
@@ -53,7 +54,6 @@ class FirebaseTokenFilter(
             ) ||
             path == "/actuator/health" ||
             path.startsWith("/actuator/health/") ||
-            path == "/actuator/info" ||
             path.startsWith("/h2-console/")
     }
 
@@ -121,7 +121,8 @@ class FirebaseTokenFilter(
                     UsernamePasswordAuthenticationToken(
                         FirebasePrincipal(
                             uid = decoded.uid,
-                            email = decoded.email
+                            email = decoded.email,
+                            emailVerified = decoded.isEmailVerified
                         ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
@@ -136,8 +137,10 @@ class FirebaseTokenFilter(
                         ),
                         null,
                         authoritiesForActiveUser(
-                            localEmail = user.email,
-                            firebaseEmail = decoded.email
+                            user = user,
+                            firebaseUid = decoded.uid,
+                            firebaseEmail = decoded.email,
+                            firebaseEmailVerified = decoded.isEmailVerified
                         )
                     )
                 }
@@ -172,18 +175,27 @@ class FirebaseTokenFilter(
         )
     }
 
-    private fun authoritiesForActiveUser(
-        localEmail: String?,
-        firebaseEmail: String?
+    internal fun authoritiesForActiveUser(
+        user: User,
+        firebaseUid: String,
+        firebaseEmail: String?,
+        firebaseEmailVerified: Boolean
     ): List<SimpleGrantedAuthority> {
         val authorities =
             mutableListOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
 
-        val candidateEmails =
-            listOfNotNull(firebaseEmail, localEmail)
-                .map { it.trim().lowercase() }
+        val normalizedFirebaseEmail = firebaseEmail
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
 
-        if (candidateEmails.any { it in adminEmails }) {
+        if (
+            user.status == UserStatus.ACTIVE &&
+            user.firebaseUid == firebaseUid &&
+            firebaseEmailVerified &&
+            normalizedFirebaseEmail != null &&
+            normalizedFirebaseEmail in adminEmails
+        ) {
             authorities += SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
         }
 

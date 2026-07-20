@@ -121,10 +121,11 @@ class MatchController(
         @PathVariable matchId: UUID
     ): ResponseEntity<VisualProfileResponse> {
 
-        val match = matchService.findByIdForUserOrThrow(
+        val access = visualReviewService.requireVisualContentAccess(
             matchId = matchId,
             userId = userId
         )
+        val match = access.match
 
         val partnerId =
             when (userId) {

@@ -49,8 +49,7 @@ paths:
   /actuator/info:
     get:
       tags: [Health]
-      summary: Build and image metadata
-      security: []
+      summary: Build and image metadata for authenticated administrators
       responses:
         '200':
           description: Application info
@@ -61,7 +60,7 @@ paths:
   /api/me/provision:
     post:
       tags: [Me]
-      summary: Provision or link the authenticated Firebase identity
+      summary: Provision or link the authenticated Firebase identity; legacy email linking requires verified Firebase email
       responses:
         '200':
           description: Existing local dev user

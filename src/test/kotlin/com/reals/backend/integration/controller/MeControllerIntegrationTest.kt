@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -38,6 +40,40 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.email", equalTo(email)))
 
         assertNotNull(userService.findByFirebaseUid(firebaseUid))
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `provision me links legacy user only with verified firebase email`() {
+        val existing = userService.createUser("provision-verified-link-${UUID.randomUUID()}@example.com")
+        userRepository.flush()
+        val firebaseUid = "firebase-${UUID.randomUUID()}"
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(authenticatedWithFirebase(firebaseUid, existing.email, emailVerified = true))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id", equalTo(existing.id.toString())))
+
+        assertEquals(firebaseUid, userRepository.findById(existing.id).orElseThrow().firebaseUid)
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `provision me rejects unverified firebase email legacy link`() {
+        val existing = userService.createUser("provision-unverified-link-${UUID.randomUUID()}@example.com")
+        userRepository.flush()
+        val firebaseUid = "firebase-${UUID.randomUUID()}"
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(authenticatedWithFirebase(firebaseUid, existing.email, emailVerified = false))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("EMAIL_NOT_VERIFIED")))
+
+        kotlin.test.assertNull(userRepository.findById(existing.id).orElseThrow().firebaseUid)
     }
 
     @Test

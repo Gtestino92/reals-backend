@@ -125,7 +125,8 @@ class MeController(
 
         val user = userService.provisionFromFirebase(
             firebaseUid = firebasePrincipal.uid,
-            email = firebasePrincipal.email
+            email = firebasePrincipal.email,
+            emailVerified = firebasePrincipal.emailVerified
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(

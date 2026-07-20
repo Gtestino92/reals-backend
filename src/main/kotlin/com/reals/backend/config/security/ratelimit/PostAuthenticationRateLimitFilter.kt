@@ -2,11 +2,14 @@ package com.reals.backend.config.security.ratelimit
 
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
+import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import java.time.Duration
@@ -14,7 +17,7 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 @Component
-class RateLimitFilter(
+class PostAuthenticationRateLimitFilter(
     private val properties: RateLimitProperties,
     private val ruleResolver: RateLimitRuleResolver,
     private val environmentExposurePolicy: EnvironmentExposurePolicy
@@ -33,7 +36,7 @@ class RateLimitFilter(
         val path = request.normalizedPath()
 
         return request.method.equals("OPTIONS", ignoreCase = true) ||
-            !path.isPreAuthRateLimitedPath() ||
+            !path.startsWith("/api/") ||
             path == "/api/ping" ||
             (
                 request.method.equals("GET", ignoreCase = true) &&
@@ -50,9 +53,15 @@ class RateLimitFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        val principalIdentity = principalIdentity()
+        if (principalIdentity == null) {
+            filterChain.doFilter(request, response)
+            return
+        }
+
         val now = Instant.now()
-        val rule = preAuthenticationRule(request)
-        val bucketKey = rateLimitKey(request, rule)
+        val rule = ruleResolver.resolve(request)
+        val bucketKey = rateLimitKey(rule, principalIdentity)
         val bucket = buckets.get(bucketKey) { _ ->
             TokenBucket(
                 capacity = rule.capacity,
@@ -70,25 +79,29 @@ class RateLimitFilter(
             }
 
             is RateLimitDecision.Rejected -> {
-                writeRateLimitExceeded(
-                    response = response,
-                    retryAfterSeconds = decision.retryAfterSeconds
-                )
+                writeRateLimitExceeded(response, decision.retryAfterSeconds)
             }
         }
     }
 
-    internal fun rateLimitKey(request: HttpServletRequest, rule: RateLimitRule = preAuthenticationRule(request)): String =
-        "pre-auth:${rule.id}:ip:${request.remoteAddr ?: "unknown"}"
+    internal fun rateLimitKey(
+        rule: RateLimitRule,
+        principalIdentity: PrincipalRateLimitIdentity
+    ): String =
+        "post-auth:${rule.id}:${principalIdentity.type}:${principalIdentity.stableId}"
 
-    internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
-        val group = ruleResolver.resolveGroup(request)
-        return RateLimitRule(
-            id = group.id,
-            capacity = properties.preAuthCapacity,
-            refillTokens = properties.preAuthRefillTokens,
-            refillPeriodSeconds = properties.preAuthRefillPeriodSeconds
-        )
+    internal fun principalIdentity(): PrincipalRateLimitIdentity? {
+        val authentication = SecurityContextHolder.getContext().authentication
+        if (authentication?.isAuthenticated != true) {
+            return null
+        }
+
+        return when (val principal = authentication.principal) {
+            is CurrentUserAuthContext -> PrincipalRateLimitIdentity("user", principal.userId.toString())
+            is FirebasePrincipal -> PrincipalRateLimitIdentity("firebase", principal.uid)
+            is String -> PrincipalRateLimitIdentity("local-dev", principal)
+            else -> null
+        }
     }
 
     private fun writeRateLimitExceeded(
@@ -103,10 +116,9 @@ class RateLimitFilter(
             """{"code":"RATE_LIMIT_EXCEEDED","error":"Too Many Requests","message":"Too many requests. Try again later."}"""
         )
     }
-
-    private fun String.isPreAuthRateLimitedPath(): Boolean =
-        startsWith("/api/") ||
-            this == "/actuator/info" ||
-            this == "/actuator/metrics" ||
-            startsWith("/actuator/metrics/")
 }
+
+data class PrincipalRateLimitIdentity(
+    val type: String,
+    val stableId: String
+)
