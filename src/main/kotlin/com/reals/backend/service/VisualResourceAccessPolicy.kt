@@ -70,13 +70,14 @@ class VisualResourceAccessPolicy(
     }
 
     private fun requireVisualReviewNotExpired(review: VisualReview, now: OffsetDateTime) {
-        review.expiresAt?.let { expiresAt ->
-            if (!now.isBefore(expiresAt)) {
-                throw DomainConflictException(
-                    code = DomainErrorCode.VISUAL_REVIEW_EXPIRED,
-                    message = "Visual content is no longer available"
-                )
-            }
+        val expiresAt = review.expiresAt
+            ?: throw visualContentNotAvailable()
+
+        if (!now.isBefore(expiresAt)) {
+            throw DomainConflictException(
+                code = DomainErrorCode.VISUAL_REVIEW_EXPIRED,
+                message = "Visual content is no longer available"
+            )
         }
     }
 

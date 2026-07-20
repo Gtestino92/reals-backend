@@ -21,6 +21,9 @@ import java.util.UUID
 class RateLimitFilterTest {
 
     private val properties = RateLimitProperties(
+        preAuthCapacity = 1,
+        preAuthRefillTokens = 1,
+        preAuthRefillPeriodSeconds = 60,
         defaultCapacity = 1,
         defaultRefillTokens = 1,
         defaultRefillPeriodSeconds = 60,
@@ -71,6 +74,51 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `pre auth uses broad capacity instead of safety report capacity`() {
+        val broadPreAuthProperties = RateLimitProperties(
+            preAuthCapacity = 2,
+            preAuthRefillTokens = 2,
+            preAuthRefillPeriodSeconds = 60,
+            safetyReportCapacity = 1,
+            safetyReportRefillTokens = 1,
+            safetyReportRefillPeriodSeconds = 86_400
+        )
+        val filter = RateLimitFilter(
+            broadPreAuthProperties,
+            RateLimitRuleResolver(broadPreAuthProperties),
+            exposurePolicy
+        )
+
+        assertEquals(200, runPreAuth(filter, safetyReportRequest("10.0.0.1", "invalid-token-1")))
+        assertEquals(200, runPreAuth(filter, safetyReportRequest("10.0.0.1", "invalid-token-2")))
+        assertEquals(429, runPreAuth(filter, safetyReportRequest("10.0.0.1", "invalid-token-3")))
+    }
+
+    @Test
+    fun `pre auth excludes actuator health`() {
+        val filter = preAuthFilter()
+
+        assertEquals(200, runPreAuth(filter, apiRequest("10.0.0.1", "token-1", "/actuator/health")))
+        assertEquals(200, runPreAuth(filter, apiRequest("10.0.0.1", "token-2", "/actuator/health/readiness")))
+    }
+
+    @Test
+    fun `pre auth limits actuator info using same ip bucket across bearer values`() {
+        val filter = preAuthFilter()
+
+        assertEquals(200, runPreAuth(filter, apiRequest("10.0.0.1", "invalid-token-1", "/actuator/info")))
+        assertEquals(429, runPreAuth(filter, apiRequest("10.0.0.1", "invalid-token-2", "/actuator/info")))
+    }
+
+    @Test
+    fun `pre auth limits actuator metrics`() {
+        val filter = preAuthFilter()
+
+        assertEquals(200, runPreAuth(filter, apiRequest("10.0.0.1", "invalid-token-1", "/actuator/metrics")))
+        assertEquals(429, runPreAuth(filter, apiRequest("10.0.0.1", "invalid-token-2", "/actuator/metrics/jvm.memory.used")))
+    }
+
+    @Test
     fun `post auth uses backend user id for provisioned principals across token rotations`() {
         val filter = postAuthFilter()
         val userId = UUID.randomUUID()
@@ -107,6 +155,20 @@ class RateLimitFilterTest {
 
         setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "firebase-b", null, false))
         assertEquals(200, runPostAuth(filter, apiRequest("10.0.0.1", "token-b", "/api/me")))
+    }
+
+    @Test
+    fun `post auth safety report quota is user specific behind same ip`() {
+        val filter = postAuthFilter()
+        val userA = UUID.randomUUID()
+        val userB = UUID.randomUUID()
+
+        setPrincipal(CurrentUserAuthContext(userA, "firebase-a", null, false))
+        assertEquals(200, runPostAuth(filter, safetyReportRequest("10.0.0.1", "token-a-1")))
+        assertEquals(429, runPostAuth(filter, safetyReportRequest("10.0.0.1", "token-a-2")))
+
+        setPrincipal(CurrentUserAuthContext(userB, "firebase-b", null, false))
+        assertEquals(200, runPostAuth(filter, safetyReportRequest("10.0.0.1", "token-b-1")))
     }
 
     @Test
@@ -157,6 +219,11 @@ class RateLimitFilterTest {
 
     private fun provisionRequest(remoteAddr: String, bearerToken: String): MockHttpServletRequest =
         apiRequest(remoteAddr, bearerToken, "/api/me/provision").apply {
+            method = "POST"
+        }
+
+    private fun safetyReportRequest(remoteAddr: String, bearerToken: String): MockHttpServletRequest =
+        apiRequest(remoteAddr, bearerToken, "/api/safety/reports").apply {
             method = "POST"
         }
 

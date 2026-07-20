@@ -5,6 +5,7 @@ import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.VisualResourceAccessPolicy
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -25,6 +26,7 @@ class VisualReviewIntegrationTest : BaseIT() {
     @Test
     fun `visual content access is allowed in visual phase before expiration`() {
         val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().plusMinutes(5))
 
         val access = visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
 
@@ -42,6 +44,36 @@ class VisualReviewIntegrationTest : BaseIT() {
         }
 
         assertEquals(DomainErrorCode.VISUAL_REVIEW_EXPIRED, exception.code)
+    }
+
+    @Test
+    fun `visual content access is denied in visual phase at exact expiration`() {
+        val setup = createMatchInVisualPhase()
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualResourceAccessPolicyForTest().requireCanAccess(
+                matchId = setup.matchId,
+                requestingUserId = setup.userAId,
+                now = review.expiresAt ?: error("Visual review expiration was not set")
+            )
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_EXPIRED, exception.code)
+    }
+
+    @Test
+    fun `visual content access is denied in visual phase with null expiration`() {
+        val setup = createMatchInVisualPhase()
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        review.expiresAt = null
+        visualReviewRepository.saveAndFlush(review)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
     }
 
     @ParameterizedTest
@@ -137,6 +169,21 @@ class VisualReviewIntegrationTest : BaseIT() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
         visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        assertThrows<DomainConflictException> {
+            visualReviewService.getPartnerMessage(setup.matchId, setup.userAId)
+        }
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `denied partner message read with null visual expiration does not mutate read timestamp`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        review.expiresAt = null
+        visualReviewRepository.saveAndFlush(review)
 
         assertThrows<DomainConflictException> {
             visualReviewService.getPartnerMessage(setup.matchId, setup.userAId)
@@ -384,5 +431,13 @@ class VisualReviewIntegrationTest : BaseIT() {
             connectionId = connection.id
         )
     }
+
+    private fun visualResourceAccessPolicyForTest(): VisualResourceAccessPolicy =
+        VisualResourceAccessPolicy(
+            matchService = matchService,
+            visualReviewRepository = visualReviewRepository,
+            connectionRepository = connectionRepository,
+            userBlockService = userBlockService
+        )
 
 }

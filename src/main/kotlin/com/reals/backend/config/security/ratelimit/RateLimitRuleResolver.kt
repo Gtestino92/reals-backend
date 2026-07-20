@@ -9,52 +9,72 @@ class RateLimitRuleResolver(
 ) {
 
     fun resolve(request: HttpServletRequest): RateLimitRule {
-        val path = request.normalizedPath()
-        val method = request.method.uppercase()
+        val group = resolveGroup(request)
 
-        return when {
-            method == "POST" && path == "/api/me/provision" ->
+        return when (group) {
+            RateLimitGroup.PROVISION ->
                 RateLimitRule(
-                    id = "provision",
+                    id = group.id,
                     capacity = properties.provisionCapacity,
                     refillTokens = properties.provisionRefillTokens,
                     refillPeriodSeconds = properties.provisionRefillPeriodSeconds
                 )
 
-            method == "POST" &&
-                path.startsWith("/api/chats/") &&
-                path.endsWith("/messages") ->
+            RateLimitGroup.MESSAGES ->
                 RateLimitRule(
-                    id = "messages",
+                    id = group.id,
                     capacity = properties.messageCapacity,
                     refillTokens = properties.messageRefillTokens,
                     refillPeriodSeconds = properties.messageRefillPeriodSeconds
                 )
 
-            method in PROFILE_PHOTO_MUTATION_METHODS &&
-                path.startsWith("/api/me/profile/photos") ->
+            RateLimitGroup.PROFILE_PHOTOS ->
                 RateLimitRule(
-                    id = "profile-photos",
+                    id = group.id,
                     capacity = properties.profilePhotoCapacity,
                     refillTokens = properties.profilePhotoRefillTokens,
                     refillPeriodSeconds = properties.profilePhotoRefillPeriodSeconds
                 )
 
-            method == "POST" && path == "/api/safety/reports" ->
+            RateLimitGroup.SAFETY_REPORTS ->
                 RateLimitRule(
-                    id = "safety-reports",
+                    id = group.id,
                     capacity = properties.safetyReportCapacity,
                     refillTokens = properties.safetyReportRefillTokens,
                     refillPeriodSeconds = properties.safetyReportRefillPeriodSeconds
                 )
 
-            else ->
+            RateLimitGroup.DEFAULT ->
                 RateLimitRule(
-                    id = "default",
+                    id = group.id,
                     capacity = properties.defaultCapacity,
                     refillTokens = properties.defaultRefillTokens,
                     refillPeriodSeconds = properties.defaultRefillPeriodSeconds
                 )
+        }
+    }
+
+    fun resolveGroup(request: HttpServletRequest): RateLimitGroup {
+        val path = request.normalizedPath()
+        val method = request.method.uppercase()
+
+        return when {
+            method == "POST" && path == "/api/me/provision" ->
+                RateLimitGroup.PROVISION
+
+            method == "POST" &&
+                path.startsWith("/api/chats/") &&
+                path.endsWith("/messages") ->
+                RateLimitGroup.MESSAGES
+
+            method in PROFILE_PHOTO_MUTATION_METHODS &&
+                path.startsWith("/api/me/profile/photos") ->
+                RateLimitGroup.PROFILE_PHOTOS
+
+            method == "POST" && path == "/api/safety/reports" ->
+                RateLimitGroup.SAFETY_REPORTS
+
+            else -> RateLimitGroup.DEFAULT
         }
     }
 }
@@ -65,6 +85,16 @@ data class RateLimitRule(
     val refillTokens: Int,
     val refillPeriodSeconds: Long
 )
+
+enum class RateLimitGroup(
+    val id: String
+) {
+    DEFAULT("default"),
+    PROVISION("provision"),
+    MESSAGES("messages"),
+    PROFILE_PHOTOS("profile-photos"),
+    SAFETY_REPORTS("safety-reports")
+}
 
 fun HttpServletRequest.normalizedPath(): String =
     servletPath.ifBlank {

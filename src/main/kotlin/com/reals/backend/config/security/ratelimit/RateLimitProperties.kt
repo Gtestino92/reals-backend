@@ -5,6 +5,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "security.rate-limit")
 data class RateLimitProperties(
     val enabled: Boolean = true,
+    val preAuthCapacity: Int = 600,
+    val preAuthRefillTokens: Int = 600,
+    val preAuthRefillPeriodSeconds: Long = 60,
     val defaultCapacity: Int = 180,
     val defaultRefillTokens: Int = 180,
     val defaultRefillPeriodSeconds: Long = 60,
@@ -22,6 +25,7 @@ data class RateLimitProperties(
     val safetyReportRefillPeriodSeconds: Long = 86_400,
 ) {
     init {
+        validateRule("pre-auth", preAuthCapacity, preAuthRefillTokens, preAuthRefillPeriodSeconds)
         validateRule("default", defaultCapacity, defaultRefillTokens, defaultRefillPeriodSeconds)
         validateRule("provision", provisionCapacity, provisionRefillTokens, provisionRefillPeriodSeconds)
         validateRule("messages", messageCapacity, messageRefillTokens, messageRefillPeriodSeconds)
