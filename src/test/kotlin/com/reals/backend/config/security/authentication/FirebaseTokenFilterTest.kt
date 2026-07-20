@@ -1,12 +1,19 @@
 package com.reals.backend.config.security.authentication
 
+import com.google.firebase.ErrorCode
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.AuthErrorCode
+import com.google.firebase.auth.FirebaseToken
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
@@ -178,6 +185,81 @@ class FirebaseTokenFilterTest {
         )
 
         assertEquals(401, response.status)
+    }
+
+    @Test
+    fun `local firebase email verification endpoint is not a local-dev authentication bypass`() {
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            MockHttpServletRequest("POST", "/api/me/local-dev/email-verification"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(401, response.status)
+    }
+
+    @Test
+    fun `invalid firebase token cannot call local firebase email verification endpoint`() {
+        val firebaseAuth = mock(FirebaseAuth::class.java)
+
+        Mockito.mockStatic(FirebaseAuth::class.java).use { mockedFirebaseAuth ->
+            mockedFirebaseAuth.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }
+                .thenReturn(firebaseAuth)
+            `when`(firebaseAuth.verifyIdToken("invalid-token", true))
+                .thenThrow(
+                    FirebaseAuthException(
+                        ErrorCode.UNAUTHENTICATED,
+                        "invalid token",
+                        null,
+                        null,
+                        AuthErrorCode.INVALID_ID_TOKEN
+                    )
+                )
+
+            val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
+            request.addHeader("Authorization", "Bearer invalid-token")
+            val response = MockHttpServletResponse()
+
+            localFilter.doFilter(request, response, MockFilterChain())
+
+            assertEquals(401, response.status)
+            assertTrue(response.contentAsString.contains("INVALID_TOKEN"))
+        }
+    }
+
+    @Test
+    fun `deleted backend user cannot call local firebase email verification endpoint`() {
+        val firebaseAuth = mock(FirebaseAuth::class.java)
+        val decodedToken = mock(FirebaseToken::class.java)
+
+        Mockito.mockStatic(FirebaseAuth::class.java).use { mockedFirebaseAuth ->
+            mockedFirebaseAuth.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }
+                .thenReturn(firebaseAuth)
+            `when`(firebaseAuth.verifyIdToken("valid-token", true))
+                .thenReturn(decodedToken)
+            `when`(decodedToken.uid).thenReturn("firebase-deleted")
+            `when`(decodedToken.email).thenReturn("deleted@example.com")
+            `when`(decodedToken.isEmailVerified).thenReturn(true)
+            `when`(userService.findByFirebaseUid("firebase-deleted"))
+                .thenReturn(
+                    user(
+                        firebaseUid = "firebase-deleted",
+                        email = "deleted@example.com",
+                        status = UserStatus.DELETED
+                    )
+                )
+
+            val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
+            request.addHeader("Authorization", "Bearer valid-token")
+            val response = MockHttpServletResponse()
+
+            localFilter.doFilter(request, response, MockFilterChain())
+
+            assertEquals(401, response.status)
+            assertTrue(response.contentAsString.contains("ACCOUNT_DELETED"))
+        }
     }
 
     private fun user(

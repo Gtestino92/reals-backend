@@ -159,6 +159,58 @@ S3_ENDPOINT=http://localhost:9000
 S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 ```
 
+### Local Firebase Email Verification Helper
+
+`local-firebase` includes an authenticated helper for local Android/Firebase
+testing with fictitious email addresses:
+
+```http
+POST /api/me/local-dev/email-verification
+Authorization: Bearer <Firebase ID token>
+```
+
+It returns `204 No Content` and has no request body. The endpoint is not under
+`/api/local-dev/**` because that namespace is intentionally unauthenticated in
+local profiles. It stays inside `/api/me/**`, so the normal Firebase token
+filter, `ROLE_USER` authorization and pre/post-auth rate limits apply.
+
+Exposure is double-gated:
+
+- Spring profile: `local-firebase`.
+- Property: `local-dev.firebase.email-auto-verification-enabled=true`.
+- Environment variable: `LOCAL_DEV_FIREBASE_EMAIL_AUTO_VERIFICATION_ENABLED`
+  defaults to `true` only in `application-local-firebase.yml`.
+
+The endpoint is absent from hosted `dev`, `prod`, `local-nodb`, `local-postgres`
+and ordinary `test` runs. Shared remote development continues requiring real
+Firebase email verification.
+
+Call it only after `POST /api/me/provision` has created or loaded the backend
+user. The helper derives the Firebase UID from the authenticated principal and
+updates that same Firebase Auth user through Firebase Admin with
+`emailVerified=true`. It does not change the Firebase email, PostgreSQL user,
+profile status, profile-photo rows, custom claims or any backend profile state.
+It does not activate the profile and does not bypass the verified-email checks
+on profile-photo upload, profile-photo replacement or profile activation.
+
+After a `204`, the client must reload the current Firebase user and force a new
+ID token before calling the normal upload and activation endpoints:
+
+```text
+Firebase sign-in or sign-up
+→ POST /api/me/provision
+→ POST /api/me/local-dev/email-verification
+→ Firebase user reload
+→ forced Firebase ID-token refresh
+→ normal profile-photo upload/replacement
+→ normal profile activation
+```
+
+In Bruno, sign in again with the existing Firebase sign-in request after the
+helper returns `204`; the backend response intentionally does not return or
+mutate an ID token. Manual PostgreSQL profile activation is no longer the
+recommended local workflow for Firebase-backed Android testing.
+
 ## Local Auto-Auth
 
 With `local-nodb`, no authorization header is needed. `DevAutoAuthFilter` injects:

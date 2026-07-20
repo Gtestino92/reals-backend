@@ -1,0 +1,27 @@
+meta {
+  name: 01b Local Email Verification
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/me/local-dev/email-verification
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+}
+
+docs {
+  Local-firebase only. Run after provisioning the Firebase user.
+  After 204, sign in again with 00 Sign In Firebase to obtain a fresh Firebase ID token before uploading photos or activating the profile.
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 204) {
+    throw new Error(`Expected 204 No Content from local email verification, got ${status}.`);
+  }
+}

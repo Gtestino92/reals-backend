@@ -7,6 +7,7 @@ import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.exception.ObjectStorageException
 import com.reals.backend.service.ProfilePhotoUploadBusyException
+import com.reals.backend.service.localdev.LocalFirebaseEmailVerificationFailedException
 import jakarta.validation.ConstraintViolationException
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
@@ -279,6 +280,25 @@ class GlobalExceptionHandler {
                     code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_FAILED.name,
                     error = "Bad Gateway",
                     message = "Profile photo upload failed. Please retry."
+                )
+            )
+    }
+
+    @ExceptionHandler(LocalFirebaseEmailVerificationFailedException::class)
+    fun handleLocalFirebaseEmailVerificationFailure(
+        ex: LocalFirebaseEmailVerificationFailedException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn(
+            "Local Firebase email verification update failed: {}",
+            ex.cause?.javaClass?.simpleName ?: ex.javaClass.simpleName
+        )
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(
+                ErrorResponse(
+                    code = "LOCAL_FIREBASE_EMAIL_VERIFICATION_FAILED",
+                    error = "Bad Gateway",
+                    message = "Firebase email verification update failed. Please retry."
                 )
             )
     }

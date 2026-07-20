@@ -190,6 +190,24 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/me/local-dev/email-verification:
+    post:
+      tags: [Me]
+      summary: Local-only Firebase email verification helper
+      description: Local-firebase only and additionally gated by local-dev.firebase.email-auto-verification-enabled=true. Requires a provisioned authenticated Firebase-backed ROLE_USER. Marks only the authenticated Firebase UID emailVerified=true in Firebase Auth through Firebase Admin. Does not mutate PostgreSQL, activate profiles, bypass upload or activation checks, return tokens, accept arbitrary UIDs or emails, or exist in hosted dev/prod. After 204, clients must reload the Firebase user and force-refresh the ID token before using normal profile-photo upload/replacement and profile activation.
+      responses:
+        '204':
+          description: Authenticated Firebase user marked email verified in Firebase Auth, or already verified
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Firebase Admin update failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/legal/documents/current:
     get:
       tags: [Legal]
@@ -314,7 +332,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Activate authenticated user's profile
-      description: Requires the current Firebase ID token to have emailVerified=true. Email verification is not required for profile creation, editing, photo upload, photo replacement, photo deletion or match-filter configuration.
+      description: Requires the current Firebase ID token to have emailVerified=true. Email verification is not required for profile creation, editing, photo deletion, photo reorder or match-filter configuration.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
