@@ -235,6 +235,15 @@ before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
 `visualStartedAt` and `visualExpiresAt` for the currently actionable phase. New
 visual decisions after that deadline are rejected by the backend.
 
+Visual-profile and visual personal-message content is also request-time guarded.
+During `VISUAL_PHASE`, the visual review must exist and the server clock must
+still be before `visualExpiresAt`; the scheduler does not have to run first for
+expired content to be denied. During `VISUAL_APPROVED`, the backend requires an
+existing non-closed connection for the match and requester. `CHAT_ACTIVE`,
+`CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches do not expose visual
+content. Blocked pairs are denied, and denied partner-message reads do not set
+read timestamps.
+
 Visual-review reminder eligibility is persisted as `VisualReview.reminderEligibleAt`
 when the visual review is created. The default configuration makes the reminder
 eligible when 40% of the visual-review duration remains. The backend no longer

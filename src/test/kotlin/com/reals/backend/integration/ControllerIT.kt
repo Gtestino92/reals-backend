@@ -67,13 +67,15 @@ abstract class ControllerIT : BaseIT() {
 
     protected fun authenticatedWithFirebase(
         firebaseUid: String,
-        email: String?
+        email: String?,
+        emailVerified: Boolean = false
     ): RequestPostProcessor =
         SecurityMockMvcRequestPostProcessors.authentication(
             UsernamePasswordAuthenticationToken(
                 FirebasePrincipal(
                     uid = firebaseUid,
-                    email = email
+                    email = email,
+                    emailVerified = emailVerified
                 ),
                 null,
                 listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))

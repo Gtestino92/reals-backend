@@ -3,6 +3,8 @@ package com.reals.backend.config.security
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.DevAutoAuthFilter
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
+import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
+import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -20,7 +22,9 @@ import org.springframework.security.web.header.writers.frameoptions.XFrameOption
 class SecurityConfig(
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val devAutoAuthFilter: DevAutoAuthFilter?,
-    private val firebaseTokenFilter: FirebaseTokenFilter?
+    private val firebaseTokenFilter: FirebaseTokenFilter?,
+    private val rateLimitFilter: RateLimitFilter?,
+    private val postAuthenticationRateLimitFilter: PostAuthenticationRateLimitFilter?
 ) {
 
     @Bean
@@ -72,8 +76,12 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/ping").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/legal/documents/current").permitAll()
-                    .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
-                    .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole(SecurityRoles.ADMIN)
+                    .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                    .requestMatchers(
+                        "/actuator/info",
+                        "/actuator/metrics",
+                        "/actuator/metrics/**"
+                    ).hasRole(SecurityRoles.ADMIN)
 
                 when {
                     environmentExposurePolicy.localDevEndpointsAllowed() -> {
@@ -102,18 +110,33 @@ class SecurityConfig(
                     .anyRequest().denyAll()
             }
 
-        devAutoAuthFilter?.let {
-            http.addFilterBefore(
-                it,
-                UsernamePasswordAuthenticationFilter::class.java
-            )
+        rateLimitFilter?.let {
+            http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
         }
 
         firebaseTokenFilter?.let {
-            http.addFilterBefore(
-                it,
-                UsernamePasswordAuthenticationFilter::class.java
-            )
+            if (rateLimitFilter != null) {
+                http.addFilterAfter(it, RateLimitFilter::class.java)
+            } else {
+                http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
+            }
+        }
+
+        devAutoAuthFilter?.let {
+            if (rateLimitFilter != null) {
+                http.addFilterAfter(it, RateLimitFilter::class.java)
+            } else {
+                http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
+            }
+        }
+
+        postAuthenticationRateLimitFilter?.let {
+            when {
+                firebaseTokenFilter != null -> http.addFilterAfter(it, FirebaseTokenFilter::class.java)
+                devAutoAuthFilter != null -> http.addFilterAfter(it, DevAutoAuthFilter::class.java)
+                rateLimitFilter != null -> http.addFilterAfter(it, RateLimitFilter::class.java)
+                else -> http.addFilterAfter(it, UsernamePasswordAuthenticationFilter::class.java)
+            }
         }
 
         return http.build()

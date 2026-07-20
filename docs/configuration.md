@@ -33,9 +33,10 @@ they do not add a second execution profile.
 remains unauthenticated in `local-nodb`, `local-postgres` and
 `local-firebase`. Hosted `dev` registers the same paths but requires an
 authenticated `ROLE_ADMIN` user. Admin role assignment uses the existing
-Firebase-backed local user plus `BACKOFFICE_ADMIN_EMAILS` allowlist. `prod` and
-`test` deny the route prefix, and `prod` does not register the real `Dev*`
-controllers.
+Firebase-backed local user plus the verified Firebase token email in the
+`BACKOFFICE_ADMIN_EMAILS` allowlist. The persisted backend email is not an
+administrator allowlist fallback. `prod` and `test` deny the route prefix, and
+`prod` does not register the real `Dev*` controllers.
 
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
 denies `/h2-console/**` for every other execution profile.
@@ -461,7 +462,8 @@ GET /actuator/health/liveness
 ```
 
 Post-deploy smoke checks should verify readiness, ping and the image metadata
-served by `/actuator/info`:
+served by `/actuator/info`. The info endpoint is not public in hosted
+environments; call it with an authenticated administrator token:
 
 ```http
 GET /actuator/info
@@ -502,8 +504,8 @@ management:
         include: health,info,metrics
 ```
 
-Public unauthenticated Actuator access is limited to `/actuator/health`,
-`/actuator/health/**` and `/actuator/info`. `/actuator/metrics` and
+Public unauthenticated Actuator access is limited to `/actuator/health` and
+`/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
 `/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
 
 Current custom read meters:
