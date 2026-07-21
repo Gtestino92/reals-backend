@@ -3,6 +3,28 @@
 This file summarizes the current controller surface for human readers.
 The formal OpenAPI contract lives in `openapi.yaml`.
 
+## Security Headers
+
+Most Android-facing `/api/**` calls use two independent security headers:
+
+```http
+X-Firebase-AppCheck: <token>
+Authorization: Bearer <Firebase ID token>
+```
+
+Firebase App Check attests the calling app and Firebase Authentication
+identifies the user. App Check does not replace user authentication,
+authorization, rate limiting, legal gates, TLS or domain validation. Stable App
+Check failures are `401 MISSING_APP_CHECK_TOKEN`, `401 INVALID_APP_CHECK_TOKEN`
+and `503 APP_CHECK_VERIFICATION_UNAVAILABLE`, using the normal JSON error
+shape.
+
+The App Check token must not be sent through query parameters, URLs, cookies or
+request bodies. The header may also be present on `/api/ping`; the backend may
+ignore it there. `APP_CHECK_VERIFICATION_UNAVAILABLE` is recoverable and clients
+should not retry it in a tight loop. Replay protection and limited-use tokens
+are intentionally deferred.
+
 ## Health
 
 - `GET /api/ping`: returns `{ "status": "ok" }`.
@@ -18,7 +40,7 @@ The formal OpenAPI contract lives in `openapi.yaml`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
 - `POST /api/me/local-dev/email-verification`: local-only `local-firebase` helper gated by `local-dev.firebase.email-auto-verification-enabled=true`. Requires an authenticated provisioned Firebase-backed `ROLE_USER`, marks only the caller's Firebase Auth account `emailVerified=true` through Firebase Admin, returns `204`, and does not mutate PostgreSQL or profile state. The client must reload Firebase user state and force-refresh the ID token before using normal photo upload/replacement and profile activation.
-- `GET /api/legal/documents/current`: public endpoint that returns the current configured legal document catalog. It may return an empty `documents` array.
+- `GET /api/legal/documents/current`: unauthenticated endpoint that returns the current configured legal document catalog. When App Check is enabled, it still requires `X-Firebase-AppCheck`. It may return an empty `documents` array.
 - `GET /api/me/legal-status`: authenticated authoritative status for current configured legal document versions only.
 - `POST /api/me/legal-document-actions`: authenticated factual record that the current user performed `ACCEPTED` or `ACKNOWLEDGED` for a configured legal document type/version. Returns `201 Created` for a new row and `200 OK` for an identical replay.
 

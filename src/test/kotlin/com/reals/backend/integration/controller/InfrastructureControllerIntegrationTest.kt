@@ -57,8 +57,23 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `actuator info is available without authentication`() {
+    fun `actuator info requires admin role`() {
+        val user = userService.createUser("info-user-${UUID.randomUUID()}@example.com")
+        val admin = userService.createUser("info-admin-${UUID.randomUUID()}@example.com")
+
         mockMvc.perform(get("/actuator/info"))
+            .andExpect(status().isUnauthorized)
+
+        mockMvc.perform(
+            get("/actuator/info")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(
+            get("/actuator/info")
+                .with(authenticatedAsAdmin(admin.id))
+        )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.app.name", equalTo("reals-backend")))
             .andExpect(jsonPath("$.image").exists())
