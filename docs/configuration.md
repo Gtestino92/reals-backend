@@ -41,6 +41,18 @@ administrator allowlist fallback. `prod` and `test` deny the route prefix, and
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
 denies `/h2-console/**` for every other execution profile.
 
+Firebase App Check mode defaults are profile-specific:
+
+- `local-firebase`: `DISABLED`; may be explicitly set to `MONITOR` or
+  `ENFORCED` for local Android debug-provider end-to-end testing, using normal
+  token verification.
+- `dev`: `DISABLED`; intended rollout is configure Firebase project number and
+  accepted dev Firebase App ID, switch to `MONITOR`, deploy Android App Check,
+  inspect results, then switch to `ENFORCED`.
+- `prod`: `ENFORCED`; startup fails if mode is not `ENFORCED`, the Firebase
+  project number is blank or nonnumeric, the Firebase App ID allowlist is empty,
+  or the JWKS URI is blank/invalid.
+
 ## Placeholder Reference
 
 `deploy/helm/values-dev.yaml` and `deploy/helm/values-prod.yaml` are temporary Helm-style values references. Their exact role is still undecided because the final Helm chart may live in a separate infrastructure repository.
@@ -57,6 +69,10 @@ Non-sensitive runtime configuration:
 | `SPRING_PROFILES_ACTIVE` | yes | Use `dev` or `prod` outside local development. |
 | `DATABASE_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/reals`. |
 | `DATABASE_USERNAME` | yes | PostgreSQL user. |
+| `FIREBASE_APP_CHECK_MODE` | prod: yes, dev/local: no | `DISABLED`, `MONITOR` or `ENFORCED`. Defaults to `DISABLED` in `local-firebase`/`dev` and `ENFORCED` in `prod`; prod rejects any non-`ENFORCED` value. |
+| `FIREBASE_PROJECT_NUMBER` | prod and enabled App Check | Numeric Firebase project number used for App Check issuer and audience checks. This is not the Firebase project ID. |
+| `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | prod and enabled App Check | Comma-separated Firebase App IDs accepted from the App Check token subject. These are not Android package names. |
+| `FIREBASE_APP_CHECK_JWKS_URI` | no | App Check JWKS URI. Defaults to `https://firebaseappcheck.googleapis.com/v1/jwks`; override only for controlled testing. |
 | `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
 | `STORAGE_S3_ENDPOINT` | when media upload is enabled | S3-compatible API endpoint used by the backend for object operations. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |
 | `STORAGE_S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Endpoint used only when generating presigned read URLs. For R2 this usually matches `STORAGE_S3_ENDPOINT`; for Android Emulator local MinIO it may be `http://10.0.2.2:9000`. Legacy fallback: `S3_PRESIGNED_URL_ENDPOINT`. |
@@ -557,8 +573,12 @@ Current custom read meters:
   `mode=initial|incremental`, `outcome=success|error`.
 - `reals.chat.messages.returned`: distribution summary for successful returned
   message counts. Tags: `mode=initial|incremental`.
+- `reals.app_check.requests`: counter for App Check decisions when the filter
+  runs. Tags: `mode=monitor|enforced`, `outcome=missing|valid|invalid|unavailable`,
+  `endpoint_group=api|admin|legal|profile-photo|provision`, and bounded
+  `exception` class or `none`.
 
 These meters intentionally avoid user ids, chat ids, match ids, cursor ids,
-HTTP status, exception class and message count as tags. No Prometheus registry,
-OTLP exporter, distributed tracing or production Hibernate statistics are
-configured in this block.
+raw paths, tokens, JWT claims, HTTP status and message count as tags. No
+Prometheus registry, OTLP exporter, distributed tracing or production Hibernate
+statistics are configured in this block.

@@ -290,6 +290,11 @@ notifications:
     remaining-percentage: 40
 
 security:
+  app-check:
+    mode: ${FIREBASE_APP_CHECK_MODE:DISABLED}
+    project-number: ${FIREBASE_PROJECT_NUMBER:}
+    allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
+    jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
     pre-auth-capacity: ${RATE_LIMIT_PRE_AUTH_CAPACITY:600}

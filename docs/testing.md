@@ -132,6 +132,20 @@ unauthenticated `/api/local-dev/**` tooling namespace. Focused tests cover its
 profiles, Firebase Admin update delegation, and the existing verified-email
 guards for photo upload/replacement and profile activation.
 
+Firebase App Check has focused unit and WebMvc tests for JWT verification,
+filter modes, route exclusions, filter ordering and profile startup behavior.
+They generate local RSA keys and never contact Firebase JWKS. Use:
+
+```text
+.\mvnw.cmd "-Dtest=FirebaseAppCheck*Test,NimbusFirebaseAppCheckVerifierTest" test
+```
+
+The App Check filter is expected between the pre-authentication rate limiter
+and `FirebaseTokenFilter`. In `DISABLED` mode it does not require or verify the
+header. In `MONITOR` it allows missing, invalid and temporarily unverifiable
+tokens while recording bounded diagnostics. In `ENFORCED` it returns stable
+`401`/`503` errors before Firebase authentication.
+
 ## Running Tests
 
 From a shell with Java configured:

@@ -174,6 +174,27 @@ Pending before the first dev deploy:
 - Store it in the deployment platform as `FIREBASE_SERVICE_ACCOUNT_BASE64`.
 - Rotate/delete any local copy that is no longer needed.
 
+## Firebase App Check Rollout For Dev
+
+The `dev` profile defaults App Check to `DISABLED` so this backend change can
+deploy before the Android client starts sending App Check tokens.
+
+Rollout sequence:
+
+1. In Firebase Console, enable App Check for the Android app and identify the
+   numeric Firebase project number plus the dev Firebase Android App ID.
+2. Configure the backend runtime with `FIREBASE_PROJECT_NUMBER` and
+   `FIREBASE_APP_CHECK_ALLOWED_APP_IDS`.
+3. Set `FIREBASE_APP_CHECK_MODE=MONITOR` and deploy the backend.
+4. Deploy Android with `X-Firebase-AppCheck: <token>` on API requests.
+5. Inspect logs and `reals.app_check.requests` outcomes for missing, invalid or
+   unavailable verification.
+6. Set `FIREBASE_APP_CHECK_MODE=ENFORCED` only after dev traffic is clean.
+
+Local `local-firebase` testing can use the Android debug provider, but the
+backend still verifies the real App Check JWT against Firebase JWKS when mode is
+`MONITOR` or `ENFORCED`. Do not commit debug provider secrets or tokens.
+
 ## Render First Deploy Notes
 
 Use either a Docker build from this repository or a prebuilt GHCR image.

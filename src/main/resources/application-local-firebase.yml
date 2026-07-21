@@ -118,6 +118,13 @@ local-dev:
   firebase:
     email-auto-verification-enabled: ${LOCAL_DEV_FIREBASE_EMAIL_AUTO_VERIFICATION_ENABLED:true}
 
+security:
+  app-check:
+    mode: ${FIREBASE_APP_CHECK_MODE:DISABLED}
+    project-number: ${FIREBASE_PROJECT_NUMBER:}
+    allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
+    jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
+
 profile:
   photos:
     max-count: 9
