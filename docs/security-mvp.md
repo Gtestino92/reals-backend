@@ -12,6 +12,7 @@ Never commit:
 - Firebase Web API keys.
 - Firebase test user passwords.
 - Firebase ID tokens.
+- Firebase App Check debug provider secrets or App Check tokens.
 - Firebase service-account JSON.
 - Deployment secrets.
 - S3/R2/MinIO access keys or secret keys for shared environments.
@@ -59,6 +60,54 @@ MVP APK distribution:
 
 These checks require real deployment secrets and real Firebase tokens, so they
 remain operational validation unless explicitly executed in that environment.
+
+## Firebase App Check Boundary
+
+Firebase App Check is an application-attestation boundary for Android-facing
+API traffic. It is separate from Firebase Authentication: App Check identifies
+an accepted Firebase App ID, while Firebase Auth still identifies the user and
+still performs ID-token verification with revocation checks.
+
+Android sends App Check through exactly one header:
+
+```http
+X-Firebase-AppCheck: <token>
+```
+
+The backend does not accept App Check tokens in query parameters, cookies or
+request bodies. On successful verification, the filter may attach only the
+validated Firebase App ID as a request attribute; it never becomes a user
+principal, role or authorization decision.
+
+When enabled, App Check applies to `/api/**`, including provisioning,
+authenticated user/profile/photo endpoints, legal catalog endpoints and
+`/api/me/local-dev/email-verification`. Exclusions are `OPTIONS`, `/api/ping`,
+`/api/local-dev/**`, `/actuator/health`, `/actuator/health/**`,
+`/actuator/info`, `/actuator/metrics`, `/actuator/metrics/**` and
+`/h2-console/**`. The `/api/local-dev/**` exclusion is only for system/developer
+tooling and does not cover `/api/me/local-dev/email-verification`.
+
+Stable App Check failures use the normal JSON error shape:
+
+- `401 MISSING_APP_CHECK_TOKEN`
+- `401 INVALID_APP_CHECK_TOKEN`
+- `503 APP_CHECK_VERIFICATION_UNAVAILABLE`
+
+Verification requires a Firebase App Check JWT signed by Firebase keys from
+`https://firebaseappcheck.googleapis.com/v1/jwks`, `alg=RS256`, `typ=JWT`, the
+issuer `https://firebaseappcheck.googleapis.com/{firebaseProjectNumber}`, a
+non-expired token, audience `projects/{firebaseProjectNumber}`, a nonblank
+subject and a subject present in the configured Firebase App ID allowlist. The
+allowlist contains Firebase App IDs, not package names.
+
+JWKS retrieval uses the JWT library's remote JWK handling and caches keys
+instead of fetching them for every request. Firebase key rotation is therefore
+handled through JWKS refresh rather than hardcoded public keys.
+
+Replay protection and limited-use App Check tokens are intentionally deferred
+from this MVP. App Check reduces abuse from unofficial clients, but it does not
+replace Firebase Authentication, authorization, rate limiting, domain
+validation, TLS, moderation or operational monitoring.
 
 ## Firebase Authorization Boundaries
 
@@ -148,7 +197,10 @@ read timestamps.
 Do not log:
 
 - Firebase ID tokens.
+- Firebase App Check tokens.
 - `Authorization` headers.
+- JWT signatures or complete JWT claims.
+- App Check debug provider secrets.
 - Private media URLs or presigned URLs.
 - Raw request bodies containing chat or personal-message content.
 - Passwords or test credentials.

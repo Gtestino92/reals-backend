@@ -70,6 +70,7 @@ The following are intentionally not MVP blockers:
 - Geohash/spatial indexing.
 - CDN/cache strategy for media.
 - Application-level message encryption.
+- Firebase App Check replay protection or limited-use tokens.
 - Parallel matchmaking workers.
 - Kubernetes/Helm/Terraform unless the chosen platform requires them.
 
