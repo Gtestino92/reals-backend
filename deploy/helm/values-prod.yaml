@@ -67,12 +67,18 @@ autoscaling:
 env:
   - name: SPRING_PROFILES_ACTIVE
     value: prod
+  - name: FIREBASE_APP_CHECK_MODE
+    value: ENFORCED
 
 configRefs:
   - name: DATABASE_URL
     key: database_url
   - name: DATABASE_USERNAME
     key: database_username
+  - name: FIREBASE_PROJECT_NUMBER
+    key: firebase_project_number
+  - name: FIREBASE_APP_CHECK_ALLOWED_APP_IDS
+    key: firebase_app_check_allowed_app_ids
   - name: S3_PROFILE_PHOTOS_BUCKET
     key: reals-prod-profile-photos
   - name: PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER

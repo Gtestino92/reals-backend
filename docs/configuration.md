@@ -59,6 +59,12 @@ Firebase App Check mode defaults are profile-specific:
 
 If these values files are kept, they should contain deploy-time concerns such as image tag, replicas, probes, resource limits, service/ingress settings and references to config or secret keys. Application behavior settings such as scheduler cadence, chat durations and product limits are defined directly in `src/main/resources/application-dev.yml` and `src/main/resources/application-prod.yml`.
 
+The Helm-style values references expose App Check deployment inputs without
+real identifiers: dev declares the safe initial `DISABLED` mode, prod declares
+`ENFORCED`, and both reference the Firebase project number plus accepted
+Firebase App IDs through `configRefs`. Local Docker Compose also accepts
+optional App Check overrides while remaining disabled by default.
+
 Use the deployment platform to inject non-sensitive configuration values, and
 use its secret manager for sensitive values.
 
