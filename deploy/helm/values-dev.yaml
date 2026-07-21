@@ -66,12 +66,19 @@ env:
     value: dev
   - name: PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER
     value: none
+  # Dev App Check rollout is DISABLED -> MONITOR -> ENFORCED after Android and traffic validation.
+  - name: FIREBASE_APP_CHECK_MODE
+    value: DISABLED
 
 configRefs:
   - name: DATABASE_URL
     key: database_url
   - name: DATABASE_USERNAME
     key: database_username
+  - name: FIREBASE_PROJECT_NUMBER
+    key: firebase_project_number
+  - name: FIREBASE_APP_CHECK_ALLOWED_APP_IDS
+    key: firebase_app_check_allowed_app_ids
   - name: S3_PROFILE_PHOTOS_BUCKET
     key: reals-dev-profile-photos
 
