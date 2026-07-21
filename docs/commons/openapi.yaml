@@ -9,7 +9,8 @@ servers:
   - url: http://localhost:8080
     description: Local backend from the same machine
 security:
-  - bearerAuth: []
+  - firebaseAppCheck: []
+    bearerAuth: []
 tags:
   - name: Health
   - name: Me
@@ -50,6 +51,8 @@ paths:
     get:
       tags: [Health]
       summary: Build and image metadata for authenticated administrators
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Application info
@@ -212,8 +215,9 @@ paths:
     get:
       tags: [Legal]
       summary: List current configured legal documents
-      description: Public informational catalog. An empty configured catalog returns an empty documents array.
-      security: []
+      description: Unauthenticated informational catalog. When Firebase App Check is enabled, this endpoint still requires X-Firebase-AppCheck. An empty configured catalog returns an empty documents array.
+      security:
+        - firebaseAppCheck: []
       responses:
         '200':
           description: Current configured legal documents
@@ -221,6 +225,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CurrentLegalDocumentsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/AppCheckUnavailable'
   /api/me/legal-status:
     get:
       tags: [Legal]
@@ -1183,6 +1191,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: Firebase ID token
+    firebaseAppCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: Firebase App Check token for Android-facing API requests.
   parameters:
     MatchId:
       name: matchId
@@ -1408,11 +1421,39 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Missing or invalid bearer token
+      description: Missing or invalid Firebase ID token or Firebase App Check token
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missingAppCheckToken:
+              value:
+                code: MISSING_APP_CHECK_TOKEN
+                error: Unauthorized
+                message: Missing Firebase App Check token
+            invalidAppCheckToken:
+              value:
+                code: INVALID_APP_CHECK_TOKEN
+                error: Unauthorized
+                message: Invalid Firebase App Check token
+            missingAuthorizationHeader:
+              value:
+                code: MISSING_AUTHORIZATION_HEADER
+                error: Unauthorized
+                message: Missing Authorization header
+    AppCheckUnavailable:
+      description: Firebase App Check verification infrastructure is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            appCheckVerificationUnavailable:
+              value:
+                code: APP_CHECK_VERIFICATION_UNAVAILABLE
+                error: Service Unavailable
+                message: Firebase App Check verification is temporarily unavailable
     Forbidden:
       description: Authenticated user is not allowed to access this resource
       content:

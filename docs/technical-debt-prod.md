@@ -849,8 +849,9 @@ Implemented narrow diagnostics:
 - Current custom meters:
   - `reals.home.load` with `variant=full|pending` and `outcome=success|error`;
   - `reals.chat.messages.read` with `mode=initial|incremental` and `outcome=success|error`;
-  - `reals.chat.messages.returned` with `mode=initial|incremental`.
-- No user id, chat id, match id, cursor id, HTTP status, exception class or message count is used as a metric tag.
+  - `reals.chat.messages.returned` with `mode=initial|incremental`;
+  - `reals.app_check.requests` with bounded `mode`, `outcome`, `endpoint_group` and `exception` tags.
+- No user id, chat id, match id, cursor id, raw path, token, complete JWT claim set, HTTP status or message count is used as a metric tag.
 - No Prometheus registry, Grafana dashboard, OTLP exporter, distributed tracing or production Hibernate statistics is configured.
 
 Before production scale:
@@ -885,11 +886,14 @@ Core product metrics:
 Risk:
 - Auth verification and local user lookup happen on many API requests, especially with polling.
 - The current `FirebaseTokenFilter` uses `verifyIdToken(token, true)`, so revocation checking occurs on protected requests and may add Firebase/network verification cost.
+- Firebase App Check adds one JWT verification step before Firebase Authentication when enabled. JWKS keys are library-cached and rotated through Firebase JWKS, but first use or key refresh can still depend on Firebase JWKS availability.
 
 Before scale:
 - Measure auth-filter latency and the cost of revocation verification under expected request volume.
+- Measure App Check verification latency and unavailable rates after `MONITOR` rollout.
 - Do not remove revocation checking casually: deletion/session invalidation relies on rejected revoked tokens.
 - Monitor 401/403 rates by reason.
+- Monitor App Check `missing`, `invalid` and `unavailable` outcomes before enforcing.
 - Avoid Android refresh loops.
 - Consider short-lived caching of local user/session metadata if DB reads become excessive.
 

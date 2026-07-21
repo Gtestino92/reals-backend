@@ -3,6 +3,7 @@ package com.reals.backend.config.security
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.DevAutoAuthFilter
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
+import com.reals.backend.config.security.appcheck.FirebaseAppCheckFilter
 import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import jakarta.servlet.http.HttpServletResponse
@@ -22,6 +23,7 @@ import org.springframework.security.web.header.writers.frameoptions.XFrameOption
 class SecurityConfig(
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val devAutoAuthFilter: DevAutoAuthFilter?,
+    private val firebaseAppCheckFilter: FirebaseAppCheckFilter?,
     private val firebaseTokenFilter: FirebaseTokenFilter?,
     private val rateLimitFilter: RateLimitFilter?,
     private val postAuthenticationRateLimitFilter: PostAuthenticationRateLimitFilter?
@@ -114,8 +116,18 @@ class SecurityConfig(
             http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
         }
 
-        firebaseTokenFilter?.let {
+        firebaseAppCheckFilter?.let {
             if (rateLimitFilter != null) {
+                http.addFilterAfter(it, RateLimitFilter::class.java)
+            } else {
+                http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
+            }
+        }
+
+        firebaseTokenFilter?.let {
+            if (firebaseAppCheckFilter != null) {
+                http.addFilterAfter(it, FirebaseAppCheckFilter::class.java)
+            } else if (rateLimitFilter != null) {
                 http.addFilterAfter(it, RateLimitFilter::class.java)
             } else {
                 http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
