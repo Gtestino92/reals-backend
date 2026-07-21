@@ -98,6 +98,14 @@ Implemented scheduler hardening:
 
 Implemented notification transaction-boundary cleanup:
 
+- Firebase Cloud Messaging sender integration is active in `local-firebase`,
+  `dev` and `prod` profiles;
+- authenticated users can register or refresh Android FCM tokens through
+  `PUT /api/me/push-tokens`;
+- token registration is an upsert by registration token: the row is associated
+  with the current user, re-enabled and `lastSeenAt` is refreshed;
+- multiple active tokens per user are supported so multiple legitimate devices
+  can receive the same logical user-level reminder;
 - provider calls now run outside active database transactions;
 - event preparation and delivery-result persistence use short database transactions;
 - aggregate locks, including the `VisualReview` reminder lock, are released before FCM transport;
@@ -122,3 +130,15 @@ Remaining deferred cleanup:
 - Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. A duplicate push remains theoretically possible if two workers prepare before either persists a delivery row.
 - A prepared push can become stale if the user completes the action immediately after preparation and before transport. Exact delivery claiming, outbox, retries and backoff remain deferred.
 - Exhaustive PostgreSQL/Testcontainers lock verification remains deferred beyond the targeted production-readiness suite.
+
+Observed local smoke gap to investigate:
+
+- During the July 21, 2026 `local-firebase` smoke, two provider attempts returned
+  textual `NotRegistered` results.
+- After the run, the corresponding database rows were still observed as
+  enabled.
+- Current code is intended to disable provider-declared invalid tokens, but this
+  observation means the provider exception mapping or cleanup path needs focused
+  investigation.
+- Do not collapse this into one-token-per-user behavior; multiple legitimate
+  devices per user must remain possible.

@@ -113,9 +113,10 @@ immediate availability push. At `VisualReview` creation time it persists
 that the reminder becomes eligible when 40% of the phase remains. The
 `VisualReviewReminderNotificationJob` runs approximately every 30 minutes and
 attempts a privacy-safe external push with type `VISUAL_REVIEW_REMINDER` only
-for each participant whose own visual decision is still pending. The push
-payload includes only `type` and `matchId`; tap behavior remains a client
-concern and Home remains the source of actionable state. Delivery is
+for each participant whose own visual decision is still pending. The provider
+payload includes a display title/body plus data fields; the data contract
+contains only `type` and `matchId`. Tap behavior remains a client concern and
+Home remains the source of actionable state. Delivery is
 deduplicated per user, notification type and match id. Legacy visual reviews
 whose `reminderEligibleAt` is `null` are ignored unless manually backfilled
 outside Flyway. There is no internal notification inbox, notification bell or
@@ -128,8 +129,9 @@ attempts privacy-safe external push reminders per participant before
 (default `[10]`). Overdue reminder targets may be recovered while still useful:
 an older, larger lead time stops being eligible once the next closer configured
 reminder range applies, and no reminder is sent after the confirmed start time.
-The notification type is `SECOND_CHAT_REMINDER`; the payload includes only
-`type`, `connectionId` and `availableAt`. Delivery is deduplicated per user,
+The notification type is `SECOND_CHAT_REMINDER`; the provider payload includes
+a display title/body plus data fields. The data contract contains only `type`,
+`connectionId` and `availableAt`. Delivery is deduplicated per user,
 notification type, connection id and lead time.
 
 Home returns `matchmaking` for search UX:
@@ -487,6 +489,7 @@ Supported local job triggers:
 - `POST /api/local-dev/jobs/penalty-expiration/run`
 - `POST /api/local-dev/jobs/user-reliability-cleanup/run`
 - `POST /api/local-dev/jobs/account-deletion-finalization/run`
+- `POST /api/local-dev/jobs/media-cleanup/run`
 
 The second-chat confirmed time can be moved into the past for local testing with:
 

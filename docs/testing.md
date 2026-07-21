@@ -123,7 +123,12 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
 - `04 Timeout Outcomes`: local-only manual checks for deadline-driven jobs. These use `/api/local-dev/timeouts/...` to move deadlines into the past and `/api/local-dev/jobs/.../run` to trigger the real jobs deterministically.
 
-Most `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. The matchmaking processor endpoint is also exposed for `local-firebase` so Android/Firebase manual flows can process queued pairs locally. Local-dev endpoints must not be enabled in cloud dev or production.
+`/api/local-dev/...` endpoints are exposed for `local-nodb`,
+`local-postgres`, `local-firebase` and `dev`. They are unauthenticated only in
+local execution profiles, including `local-firebase`, so Android/Firebase
+manual flows can process queued pairs and trigger jobs locally. In hosted
+`dev`, the same tooling requires an authenticated Firebase-backed `ROLE_ADMIN`
+user. Local-dev endpoints must not be enabled in production.
 
 `POST /api/me/local-dev/email-verification` is different: it is a local
 Firebase helper under the authenticated `/api/me/**` boundary, not the
@@ -209,3 +214,19 @@ It does not deploy anything and intentionally checks only public operational
 endpoints. `/actuator/info` is administrator-only in hosted environments; image
 metadata can be inspected manually with a fresh administrator bearer token when
 needed.
+
+## Representative FCM Smoke Verification
+
+On July 21, 2026, the backend was manually smoke-tested with the
+`local-firebase` profile against a signed optimized Android `localRelease`
+installation. Firebase Authentication and Firebase App Check verification
+worked, the Android client registered an FCM device token in
+`push_device_tokens`, and the visual-review reminder job was triggered through
+the local-dev job path.
+
+Firebase accepted provider delivery to currently valid registration tokens, a
+representative notification reached the physical Android device, and the
+persisted delivery record was `SENT` because at least one provider delivery
+succeeded. This representative local smoke does not prove production delivery
+rates, Play Integrity behavior, all OEM background modes, retry behavior or any
+remote deployment.
