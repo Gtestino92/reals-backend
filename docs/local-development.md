@@ -436,6 +436,7 @@ Supported local job triggers:
 ```http
 POST /api/local-dev/jobs/scheduling-activation/run
 POST /api/local-dev/jobs/second-chat-reminder/run
+POST /api/local-dev/jobs/visual-review-reminder/run
 POST /api/local-dev/jobs/second-chat-lifecycle/run
 POST /api/local-dev/jobs/chat-timeout/run
 POST /api/local-dev/jobs/visual-phase-expiration/run
@@ -443,7 +444,9 @@ POST /api/local-dev/jobs/match-expiration/run
 POST /api/local-dev/jobs/scheduling-timeout/run
 POST /api/local-dev/jobs/inactivity-check/run
 POST /api/local-dev/jobs/penalty-expiration/run
+POST /api/local-dev/jobs/user-reliability-cleanup/run
 POST /api/local-dev/jobs/account-deletion-finalization/run
+POST /api/local-dev/jobs/media-cleanup/run
 ```
 
 To move a confirmed second-chat time into the past for manual entry testing:

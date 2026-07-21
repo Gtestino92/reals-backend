@@ -146,8 +146,9 @@ is `[10]` minutes and is configured through
 `scheduler.second-chat-reminder-job.fixed-delay`. A reminder is due only when
 `confirmedDateTime - minutesBefore` falls within the current job window, so lead
 times already in the past are skipped. Delivery is deduplicated per user,
-notification type, connection id and lead time. The payload contains only
-`type`, `connectionId` and `availableAt`.
+notification type, connection id and lead time. The provider payload includes a
+display title/body plus data fields; the data contract contains only `type`,
+`connectionId` and `availableAt`.
 
 `VisualReviewReminderNotificationJob` sends privacy-safe external push reminders
 for active visual reviews whose persisted `reminderEligibleAt` is due and whose
@@ -164,7 +165,12 @@ backfilled outside Flyway.
 after their scoring window ends. User reliability is feature-flagged off by
 default and recomputed from active events instead of a cache.
 
-Local auto-auth profiles expose `/api/local-dev/jobs/.../run` endpoints to trigger the same job beans manually, plus `/api/local-dev/timeouts/...` endpoints to move selected deadlines into the past for deterministic manual testing. The local matchmaking processor endpoint is also available in `local-firebase` for Android/Firebase manual flows. These endpoints are profile-gated and are not part of the cloud dev or production API.
+Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
+trigger the same job beans manually, plus `/api/local-dev/timeouts/...`
+endpoints to move selected deadlines into the past for deterministic manual
+testing. Hosted `dev` registers the same tooling as authenticated
+administrator-only operational endpoints. These endpoints are profile-gated and
+are not part of the production API.
 
 ## Non-Goals
 

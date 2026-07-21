@@ -289,8 +289,11 @@ The endpoint is public by design and should return:
 {"status":"UP"}
 ```
 
-`/api/local-dev/**` endpoints are local-only and are not available in the cloud `dev`
-profile. Scheduled jobs run automatically in `dev`.
+`/api/local-dev/**` endpoints are registered in the cloud `dev` profile only as
+administrator tooling: they require an authenticated Firebase-backed
+`ROLE_ADMIN` user and must not be called by Android clients. Scheduled jobs run
+automatically in `dev`; use manual job triggers only for controlled operational
+checks.
 
 After updating a deployed environment, run the automated smoke workflow with
 the environment base URL. It checks only public operational endpoints:

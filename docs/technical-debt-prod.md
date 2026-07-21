@@ -644,7 +644,8 @@ Implemented first step:
 
 Before scale:
 - Continue reviewing generated queries against representative production data.
-- Reduce polling once push notifications are available.
+- Reduce polling only after the implemented push paths are reliable enough for
+  the relevant product surfaces; polling remains the source-of-truth fallback.
 - Keep the persisted version semantics and invalidation hooks correct before introducing stronger caching or projections.
 
 Future options:
@@ -681,22 +682,91 @@ Future work:
 
 ### 9.2 Push notifications
 
-Current hardening:
+Implemented:
+- Firebase Cloud Messaging sender integration is active in `local-firebase`,
+  `dev` and `prod` profiles.
+- `PUT /api/me/push-tokens` persists Android FCM registration tokens for the
+  authenticated user.
+- Token registration has refresh/upsert semantics by registration token: it
+  reassigns the token to the current user, re-enables it and refreshes
+  `lastSeenAt`.
+- Multiple active tokens per user are supported; one logical user-level
+  reminder can result in multiple provider sends.
+- Delivery results are persisted in `push_notification_deliveries` as `SENT`,
+  `FAILED` or `SKIPPED_NO_ACTIVE_TOKEN`; `SENT` means at least one provider
+  delivery succeeded.
+- Delivery deduplication uses the existing unique key over user, notification
+  type and aggregate id.
+- The visual-review reminder job and manual local-dev trigger are implemented.
+- Second-chat reminder, scheduling-available, scheduling-proposals-received and
+  scheduling-confirmed notification paths are implemented where their current
+  services prove eligibility and payload behavior.
 - FCM/provider transport calls execute outside active database transactions.
 - Notification preparation and delivery-result persistence use short transactions.
 - Aggregate locks are released before transport; this specifically prevents the visual-review reminder from holding the `VisualReview` pessimistic lock while Firebase is called.
 - Current provider-call entry points are scheduler/dev-job driven after product transitions commit.
-- `SENT`, `FAILED` and `SKIPPED_NO_ACTIVE_TOKEN` semantics are unchanged; invalid tokens are disabled only after provider response.
-- Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. Duplicate push delivery remains theoretically possible if concurrent workers prepare before either persists a delivery row.
-- A push can become stale after preparation if the user completes the action before transport. Exact delivery claiming, outbox, `PENDING` state, retries and backoff remain deferred.
+- Android-compatible string data contracts are present for implemented
+  notification types. The backend also supplies display title/body through the
+  FCM notification payload.
 
-Before larger production usage:
-- Register device tokens.
-- Handle token refresh.
-- Add notification tap routing.
-- Keep Home refresh as source of truth after notification taps.
-- Keep polling as fallback.
-- Reduce unnecessary polling once push is reliable.
+Representative verification:
+- On July 21, 2026, a `local-firebase` smoke with a signed optimized Android
+  `localRelease` installation verified Firebase Authentication, Firebase App
+  Check verification, Android FCM token registration, manual visual-review
+  reminder execution through the local-dev job path, representative provider
+  delivery and Android device reception.
+- That evidence does not verify production delivery rates, Play Integrity, all
+  OEM background modes, retries or remote deployment.
+
+Still deferred or incomplete:
+- Exact delivery claiming/outbox semantics, a `PENDING` state, retries and
+  backoff remain deferred.
+- Delivery deduplication remains best effort through the existing
+  `(userId, notificationType, aggregateId)` unique key. Duplicate push delivery
+  remains theoretically possible if concurrent workers prepare before either
+  persists a delivery row.
+- A push can become stale after preparation if the user completes the action
+  before transport.
+- Production delivery observability, dashboards and alerts remain deferred.
+- Notification-open analytics and routing instrumentation remain deferred; Home
+  refresh remains the source of truth after notification taps.
+- Broader notification event coverage remains deferred beyond the currently
+  implemented MVP event paths.
+- Foreground/background presentation consistency remains deferred.
+- Old-token lifecycle policy, including device/session ownership and cleanup
+  after refresh/logout, remains deferred.
+- Production remote-environment FCM and App Check verification remains
+  unverified.
+
+Observed stale-token cleanup gap:
+- During the July 21, 2026 `local-firebase` smoke, two provider attempts returned
+  textual `NotRegistered`.
+- After the run, the corresponding database rows were still observed as enabled.
+- Current code is intended to disable provider-declared invalid tokens, but the
+  observed result indicates that the mapping or cleanup path requires focused
+  investigation.
+- The precise root cause is not asserted here; verify it against the pinned
+  Firebase Admin SDK exception and error-code forms before changing code.
+- Do not enforce one token per user as a fix because multiple legitimate
+  devices per user must remain possible.
+
+Acceptance criteria for the later cleanup fix:
+- Provider-declared unregistered or invalid tokens are deterministically
+  disabled.
+- Valid tokens for the same user remain enabled.
+- Partial success is persisted without losing invalid-token cleanup.
+- Tests cover the actual Firebase exception and error-code forms used by the
+  pinned SDK.
+- No raw registration token is logged.
+
+Notification-copy contract debt:
+- The backend currently supplies display title/body plus data fields for the
+  implemented notification types.
+- Android may render recognized data notifications using its own fixed copy, so
+  one logical notification type can have different foreground/background copy.
+- This is non-blocking for the completed local smoke.
+- A later task must explicitly choose either unified mixed-payload copy or a
+  data-only presentation contract.
 
 ### 9.3 Realtime transport
 
