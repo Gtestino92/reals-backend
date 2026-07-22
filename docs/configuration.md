@@ -80,12 +80,13 @@ Non-sensitive runtime configuration:
 | `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | prod and enabled App Check | Comma-separated Firebase App IDs accepted from the App Check token subject. These are not Android package names. |
 | `FIREBASE_APP_CHECK_JWKS_URI` | no | App Check JWKS URI. Defaults to `https://firebaseappcheck.googleapis.com/v1/jwks`; override only for controlled testing. |
 | `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
-| `STORAGE_S3_ENDPOINT` | when media upload is enabled | S3-compatible API endpoint used by the backend for object operations. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |
-| `STORAGE_S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Endpoint used only when generating presigned read URLs. For R2 this usually matches `STORAGE_S3_ENDPOINT`; for Android Emulator local MinIO it may be `http://10.0.2.2:9000`. Legacy fallback: `S3_PRESIGNED_URL_ENDPOINT`. |
-| `STORAGE_S3_REGION` | when media upload is enabled | Use `auto` for R2. Legacy fallback: `S3_REGION`. |
+| `STORAGE_S3_CREDENTIALS_MODE` | no | S3 credential mode. Defaults to `STATIC` for backward compatibility. Use `DEFAULT_CHAIN` for AWS-hosted EC2/ECS runtimes that should consume the AWS SDK default credential provider chain. Legacy fallback: `S3_CREDENTIALS_MODE`. |
+| `STORAGE_S3_ENDPOINT` | S3-compatible providers only | Optional S3-compatible API endpoint used by the backend for object operations. Set it for MinIO/R2. Leave it absent/blank for native Amazon S3 so the AWS SDK resolves the normal regional endpoint. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |
+| `STORAGE_S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Optional endpoint used only when generating presigned read URLs. Precedence is this value, then `STORAGE_S3_ENDPOINT`, then the AWS regional endpoint. For R2 this usually matches `STORAGE_S3_ENDPOINT`; for Android Emulator local MinIO it may be `http://10.0.2.2:9000`. Legacy fallback: `S3_PRESIGNED_URL_ENDPOINT`. |
+| `STORAGE_S3_REGION` | when media upload is enabled | Required and nonblank. Use a real AWS Region such as `us-east-1` when `STORAGE_S3_ENDPOINT` is absent. Use `auto` only with an explicit S3-compatible endpoint such as R2. Legacy fallback: `S3_REGION`. |
 | `STORAGE_S3_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. Legacy fallback: `S3_PROFILE_PHOTOS_BUCKET`. |
 | `STORAGE_S3_PUBLIC_BASE_URL` | only with `STORAGE_S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. Not required for private R2 buckets in `PRESIGNED` mode. Legacy fallback: `S3_PUBLIC_BASE_URL`. |
-| `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
+| `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Native Amazon S3 should normally use `false`. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media outside `prod`. `prod` refuses to start with `PUBLIC`. Legacy fallback: `S3_READ_URL_MODE`. |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_FILE_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. Defaults to `5242880` bytes. Legacy fallback: `PROFILE_PHOTO_MAX_SIZE_BYTES`. |
@@ -268,22 +269,100 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
 | `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API user. Required only when the production provider is selected. Do not commit real values. |
 | `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API secret. Required only when the production provider is selected. Do not commit or log it. |
-| `STORAGE_S3_ACCESS_KEY_ID` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible access key. Legacy fallback: `S3_ACCESS_KEY_ID`. |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | when S3 credentials are not provided by the runtime | MinIO/R2/S3-compatible secret key. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
+| `STORAGE_S3_ACCESS_KEY_ID` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible access key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_ACCESS_KEY_ID`. |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible secret key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
+| `STORAGE_S3_SESSION_TOKEN` | only for explicit temporary credentials in `STATIC` mode | Optional AWS session token used with `STORAGE_S3_ACCESS_KEY_ID` and `STORAGE_S3_SECRET_ACCESS_KEY`. Must not be configured alone or in `DEFAULT_CHAIN`. Legacy fallback: `S3_SESSION_TOKEN`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_API_KEY` | when a future non-`none` provider exists | Reserved for a future profile authenticity provider; keep empty while provider is `none`. |
 
-S3-compatible storage has two endpoint concerns. `STORAGE_S3_ENDPOINT` is where the
-backend writes and deletes objects. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
+S3-compatible storage has two optional endpoint concerns. `STORAGE_S3_ENDPOINT`
+is where the backend writes and deletes objects when using MinIO, R2 or another
+explicit S3-compatible API. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
 embedded in returned presigned URLs and must be reachable by the client that
-renders the image. Profile photo rows store storage metadata, including the
-object key, and response URLs are generated from that key when the API returns a
-photo DTO.
+renders the image. Presigner endpoint precedence is:
+
+1. `STORAGE_S3_PRESIGNED_URL_ENDPOINT`;
+2. `STORAGE_S3_ENDPOINT`;
+3. no endpoint override, which lets the AWS SDK use the normal Amazon S3
+   regional endpoint.
+
+Profile photo rows store storage metadata, including the object key, and
+response URLs are generated from that key when the API returns a photo DTO.
+
+Credential modes:
+
+- `STATIC`: default mode. Requires `STORAGE_S3_ACCESS_KEY_ID` and
+  `STORAGE_S3_SECRET_ACCESS_KEY`. If `STORAGE_S3_SESSION_TOKEN` is nonblank, the
+  backend uses AWS session credentials; otherwise it uses basic static
+  credentials. Use this for MinIO, R2 and explicitly configured S3-compatible
+  providers.
+- `DEFAULT_CHAIN`: uses the AWS SDK v2 default credential provider chain. Use
+  this for preferred AWS deployments on EC2 instance profiles, ECS task roles,
+  standard AWS environment credentials or standard shared AWS configuration. Do
+  not inject `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` or
+  `STORAGE_S3_SESSION_TOKEN` in this mode.
+
+Native Amazon S3 example for AWS-hosted `dev`/`prod`:
+
+```text
+STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN
+STORAGE_S3_REGION=<real-aws-region>
+STORAGE_S3_BUCKET=<private-bucket-name>
+STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=false
+STORAGE_S3_READ_URL_MODE=PRESIGNED
+```
+
+Leave these absent or blank in the native Amazon S3 role-based configuration:
+
+```text
+STORAGE_S3_ENDPOINT
+STORAGE_S3_PRESIGNED_URL_ENDPOINT
+STORAGE_S3_ACCESS_KEY_ID
+STORAGE_S3_SECRET_ACCESS_KEY
+STORAGE_S3_SESSION_TOKEN
+```
+
+MinIO example:
+
+```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
+STORAGE_S3_ENDPOINT=http://minio:9000
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_BUCKET=reals-profile-photos
+STORAGE_S3_ACCESS_KEY_ID=<minio-access-key>
+STORAGE_S3_SECRET_ACCESS_KEY=<minio-secret-key>
+STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=true
+STORAGE_S3_READ_URL_MODE=PRESIGNED
+```
+
+R2 example:
+
+```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
+STORAGE_S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+STORAGE_S3_REGION=auto
+STORAGE_S3_BUCKET=<r2-bucket-name>
+STORAGE_S3_ACCESS_KEY_ID=<r2-access-key-id>
+STORAGE_S3_SECRET_ACCESS_KEY=<r2-secret-access-key>
+STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=true
+STORAGE_S3_READ_URL_MODE=PRESIGNED
+```
+
+Startup validation rejects blank bucket/region, incomplete static credentials,
+session tokens without key and secret, static credential fields in
+`DEFAULT_CHAIN`, `auto` region without an endpoint override, and public read mode
+in `prod`. Error messages identify property names and do not include credential
+values.
 
 For Cloudflare R2, hosted MinIO and other S3-compatible shared/dev/prod-like
 environments, see `docs/storage-r2-configuration.md`. Buckets should stay
 private and use `STORAGE_S3_READ_URL_MODE=PRESIGNED` for MVP.
 
-For AWS deployments, prefer IAM roles for S3 access instead of long-lived access keys. In that setup the application usually only needs the bucket setting; AWS credentials come from the runtime role.
+For AWS deployments, prefer `STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN` and IAM
+roles for S3 access instead of long-lived access keys. EC2 instance profiles and
+ECS task roles can be consumed through the AWS SDK default chain; no access key
+should be injected for the preferred AWS deployment.
 
 ## Helm Chart Location
 

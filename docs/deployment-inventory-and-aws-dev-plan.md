@@ -23,8 +23,8 @@ Largest remaining unknowns:
 - Firebase dev project layout, Play Console availability, Android signing-key custody, and whether `devRelease` will be distributed through Google Play Internal Testing/Internal App Sharing.
 
 Recommended first hosted-dev direction:
-- After `BACK-AWS-0`, start with one `linux/amd64` EC2 instance running the backend container, Amazon RDS PostgreSQL when budget allows, one private Amazon S3 bucket, ECR or GHCR as the image registry, and one explicit TLS path. For lowest fixed cost, provisionally prefer EC2 host TLS with Caddy/Nginx and ACME/Let's Encrypt; use ALB plus a normal ACM public certificate only if the operator accepts ALB and public IPv4 cost. If the budget is very tight, use the same x86_64 EC2 instance for the container and a colocated PostgreSQL volume only as a temporary dev compromise.
-- Before `BACK-AWS-0`, the backend can be planned and guardrails can be prepared, but AWS runtime deployment against Amazon S3 would require long-lived static access keys, which is not the preferred target architecture.
+- With `BACK-AWS-0` implemented in code, start with one `linux/amd64` EC2 instance running the backend container, Amazon RDS PostgreSQL when budget allows, one private Amazon S3 bucket, ECR or GHCR as the image registry, and one explicit TLS path. For lowest fixed cost, provisionally prefer EC2 host TLS with Caddy/Nginx and ACME/Let's Encrypt; use ALB plus a normal ACM public certificate only if the operator accepts ALB and public IPv4 cost. If the budget is very tight, use the same x86_64 EC2 instance for the container and a colocated PostgreSQL volume only as a temporary dev compromise.
+- No AWS environment has been deployed yet, and EC2 instance profiles/ECS task roles still need real runtime validation during AWS-1/AWS-2.
 
 Why this is proportionate:
 - The backend currently expects one JVM process with in-process rate limiting, database-backed ShedLock, a single S3-compatible object store, and no evidence of traffic requiring autoscaling. Evidence: `src/main/kotlin/com/reals/backend/config/security/ratelimit/RateLimitProperties.kt`, `src/main/kotlin/com/reals/backend/config/ShedLockConfig.kt`, `src/main/resources/application-dev.yml`.
@@ -48,7 +48,7 @@ Decisions that must remain open until AWS account and Region constraints are ver
 | PostgreSQL | `dev`/`prod` require `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`; local compose uses PostgreSQL 16. | `src/main/resources/application-dev.yml`, `docker-compose.yml` | Ready against PostgreSQL. | Choose RDS vs colocated PostgreSQL for dev. | High |
 | Flyway | Enabled in `dev`/`prod`; 30 migrations currently present; V1 creates `pgcrypto` and `shedlock`; latest migration is V30 by version number. | `src/main/resources/application-dev.yml`, `src/main/resources/db/migration/` | Ready, but startup migrations are operationally sensitive. | Define backup and rollback before migrations. | High |
 | Connection pool | Hikari settings in `dev`/`prod`: 5s connection timeout, 2s validation timeout, 30m max lifetime, 5m keepalive. | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | Ready for small dev. | Tune only after observing RDS/EC2 latency. | Medium |
-| Object storage | AWS SDK S3 client and presigner require explicit endpoint, region, bucket, access key, secret key, and path-style flag; both clients are built with `StaticCredentialsProvider` and `AwsBasicCredentials`. | `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`, `src/main/resources/application-dev.yml` | Compatible with S3-like APIs using static credentials, but not AWS-native role credentials. | `BACK-AWS-0` required before preferred AWS runtime deployment: current code cannot consume EC2 instance profiles, ECS task roles, or session-based temporary credentials. | High |
+| Object storage | AWS SDK S3 client and presigner support `STATIC` credentials for MinIO/R2/S3-compatible providers and `DEFAULT_CHAIN` for native AWS runtime credentials. Endpoint override is optional; presigner endpoint precedence is presigned endpoint, main endpoint, then AWS regional endpoint. | `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`, `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | Code-ready for native Amazon S3 configuration and existing MinIO/R2 behavior. | AWS IAM role, bucket policy, and real EC2/ECS runtime validation remain future AWS-1/AWS-2 work. | High |
 | Presigned photo URLs | Read URLs use `PRESIGNED` or `PUBLIC`; `prod` rejects `PUBLIC`; presigned duration defaults to 15 minutes. | `src/main/kotlin/com/reals/backend/service/S3StorageService.kt`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Ready for private object reads. | Configure S3 virtual-host/path-style behavior for AWS. | High |
 | Media cleanup | DB-backed cleanup tasks delete storage objects outside active DB transactions; scheduled `MediaCleanupJob` processes due tasks. | `src/main/kotlin/com/reals/backend/service/MediaCleanupTaskService.kt`, `src/main/kotlin/com/reals/backend/service/MediaCleanupProcessor.kt`, `src/main/kotlin/com/reals/backend/scheduler/MediaCleanupJob.kt`, `src/main/resources/db/migration/V29__media_cleanup_tasks.sql` | Ready. | Need alarm/log review for failed cleanup tasks. | Medium |
 | Firebase Admin | Active in `local-firebase`, `dev`, `prod`; credentials loaded from path, raw JSON, base64, or Google ADC. | `src/main/kotlin/com/reals/backend/config/firebase/FirebaseConfig.kt`, `src/main/resources/application-dev.yml` | Ready. | Choose secret injection method; avoid service-account file in image. | High |
@@ -125,12 +125,14 @@ Backend matrix:
 | `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | Required before App Check `MONITOR`/`ENFORCED`; prod startup requires non-empty | Sensitive identifier | Empty | SSM Parameter | App Check verification rejects tokens or prod startup fails | Backend |
 | `FIREBASE_APP_CHECK_MODE` | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | `DISABLED -> MONITOR -> ENFORCED` for dev; `ENFORCED` in prod | No | `DISABLED` in dev, `ENFORCED` in prod | Runtime env | Invalid value fails binding; prod rejects non-`ENFORCED` | Backend |
 | `FIREBASE_APP_CHECK_JWKS_URI` | `src/main/resources/application.yml`, `src/main/resources/application-dev.yml` | Optional override | No | Firebase JWKS URL | Runtime env/parameter only if overriding | Invalid URI can fail prod startup | Backend |
-| `STORAGE_S3_ENDPOINT` / `S3_ENDPOINT` | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | Required by current S3 config | Sensitive-ish | None in dev/prod | SSM Parameter until `BACK-AWS-0`; then optional for native Amazon S3 and required for MinIO/R2 | S3 client bean creation fails | Backend |
+| `STORAGE_S3_CREDENTIALS_MODE` / `S3_CREDENTIALS_MODE` | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | `STATIC` for MinIO/R2; `DEFAULT_CHAIN` for AWS-hosted role credentials | No | `STATIC` | SSM Parameter/env | Invalid value or ambiguous credentials fail startup | Backend |
+| `STORAGE_S3_ENDPOINT` / `S3_ENDPOINT` | `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml` | Required for MinIO/R2; absent/blank for native Amazon S3 | Sensitive-ish | Empty in dev/prod | SSM Parameter when needed | Native S3 uses AWS regional endpoint; S3-compatible providers need explicit endpoint | Backend |
 | `STORAGE_S3_PRESIGNED_URL_ENDPOINT` / `S3_PRESIGNED_URL_ENDPOINT` | `src/main/resources/application-dev.yml` | Optional when same as endpoint | Sensitive-ish | Empty -> main endpoint | SSM Parameter | Uses main endpoint | Backend |
-| `STORAGE_S3_REGION` / `S3_REGION` | `src/main/resources/application-dev.yml` | Required logically | No | `auto` in dev/prod config | SSM Parameter/env | AWS `Region.of` must accept value; invalid fails startup | Backend |
+| `STORAGE_S3_REGION` / `S3_REGION` | `src/main/resources/application-dev.yml` | Required logically | No | `auto` in dev/prod config | SSM Parameter/env | `auto` is accepted with explicit S3-compatible endpoint and rejected for native Amazon S3 without endpoint | Backend |
 | `STORAGE_S3_BUCKET` / `S3_PROFILE_PHOTOS_BUCKET` | `src/main/resources/application-dev.yml` | Required | Sensitive identifier | None | SSM Parameter | S3 client exists but operations fail or config binding fails | Backend |
-| `STORAGE_S3_ACCESS_KEY_ID` / `S3_ACCESS_KEY_ID` | `src/main/resources/application-dev.yml`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Required by current code | Secret | None | Deployment blocker for preferred AWS runtime: current code requires a static key; storing a long-lived IAM user key in SSM/Secrets Manager is a temporary dev exception, not the target architecture | Startup/config binding fails | Backend |
-| `STORAGE_S3_SECRET_ACCESS_KEY` / `S3_SECRET_ACCESS_KEY` | `src/main/resources/application-dev.yml`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Required by current code | Secret | None | Same blocker; `BACK-AWS-0` should allow SDK default credential chain for AWS-hosted environments | Startup/config binding fails | Backend |
+| `STORAGE_S3_ACCESS_KEY_ID` / `S3_ACCESS_KEY_ID` | `src/main/resources/application-dev.yml`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Required only with `STATIC`; must be blank in `DEFAULT_CHAIN` | Secret | Empty in dev/prod | SSM/Secrets Manager only for static providers | Startup fails when incomplete or ambiguous | Backend |
+| `STORAGE_S3_SECRET_ACCESS_KEY` / `S3_SECRET_ACCESS_KEY` | `src/main/resources/application-dev.yml`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Required only with `STATIC`; must be blank in `DEFAULT_CHAIN` | Secret | Empty in dev/prod | SSM/Secrets Manager only for static providers | Startup fails when incomplete or ambiguous | Backend |
+| `STORAGE_S3_SESSION_TOKEN` / `S3_SESSION_TOKEN` | `src/main/resources/application-dev.yml`, `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt` | Optional only with complete `STATIC` credentials; must be blank in `DEFAULT_CHAIN` | Secret | Empty | Secret store only if explicit temporary credentials are chosen | Startup fails without both key and secret | Backend |
 | `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` / `S3_PATH_STYLE_ACCESS_ENABLED` | `src/main/resources/application-dev.yml` | Required decision | No | `true` | SSM Parameter/env | Defaults to path-style; AWS S3 usually works better with virtual-hosted style unless endpoint requires path-style | Backend |
 | `STORAGE_S3_READ_URL_MODE` / `S3_READ_URL_MODE` | `src/main/resources/application-dev.yml` | Should be `PRESIGNED` | No | `PRESIGNED` | Runtime env | `PUBLIC` allowed in dev but rejected in prod; public mode requires public base URL | Backend |
 | `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` / `S3_SIGNED_URL_DURATION_MINUTES` | `src/main/resources/application-dev.yml` | Optional | No | `15` | Runtime env | Uses default | Backend |
@@ -165,7 +167,7 @@ Android/CI matrix:
 
 Proposed variables not currently implemented:
 - `AWS_REGION`, `REALS_ENV`, `S3_BUCKET_NAME`, `DB_SECRET_ARN`, `FIREBASE_SECRET_ARN`, and IaC-specific names are not current application variables. They are operator/infrastructure variables only and must not be represented as application requirements unless future infrastructure code introduces them.
-- `AWS_SESSION_TOKEN` is recognized by the AWS SDK default credential chain but is not represented by the current `storage.s3.*` properties. Add explicit session-token support only if `BACK-AWS-0` selects explicit temporary credentials instead of the SDK default chain.
+- `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` are standard AWS SDK/default-chain inputs, not Reals `storage.s3.*` properties. In `DEFAULT_CHAIN`, do not copy them into application-specific S3 properties.
 
 ## 5. AWS architecture options
 
@@ -186,10 +188,10 @@ TLS alternatives for EC2-hosted dev:
 
 | Option | Fixed cost drivers | Free Tier/credit compatibility | Ops complexity | HTTPS/domain | Private networking | Secrets | DB connectivity | S3 integration | Logs/metrics | Deploy/rollback | One-operator fit | Production path | Lock-in | Failure modes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A. Single x86_64 EC2 container + RDS + S3 | EC2 instance/EBS, public IPv4, optional ALB, RDS, S3, CloudWatch logs, Route 53, Secrets/SSM. Public IPv4 is charged hourly per AWS VPC pricing. | For new 2026 accounts, verify Free Plan service access and credit coverage; do not assume legacy 12-month RDS allowance. RDS Free Plan access uses credits and permitted classes such as `db.t3.micro`/`db.t4g.micro`. Sources: AWS Free Tier, Amazon RDS Free Tier, VPC pricing. | Moderate; operator manages OS/container updates. | EC2 host TLS with Caddy/Nginx plus ACME/Let's Encrypt is lowest fixed cost; ALB+normal ACM certificate is cleaner but adds ALB/public IPv4 cost; exportable ACM-on-EC2 is a distinct paid certificate path. | Strong if RDS private subnet/security group; EC2 can be public only on 443/22 or use SSM Session Manager. | SSM/Secrets Manager -> env file/systemd/container; avoid long-lived S3 IAM user keys after `BACK-AWS-0`. | Direct private RDS endpoint. | Not preferred until `BACK-AWS-0`; current code requires explicit S3 access keys and cannot consume instance profile credentials. | CloudWatch agent/log driver or Docker logs; Actuator endpoints. | Pull immutable amd64 image tag, restart service; rollback by previous tag. | Best cost/control tradeoff if operator accepts server management. | Migrate container to ECS/App Runner later; keep RDS/S3; add multi-platform CI before ARM/Graviton. | Low-medium. | Instance loss if no automation; RDS mitigates DB loss; Free Plan closure makes resources inaccessible if not upgraded; colocated Docker process is single point of failure. |
-| B. Single x86_64 EC2 container + colocated PostgreSQL + S3 | EC2/EBS, public IPv4, S3, backups/snapshots, optional Route 53. Avoids RDS fixed cost. | EC2/S3 credit compatibility requires verification under the actual Free/Paid plan. | Higher risk; operator owns DB backups, patching, disk growth, restore. | Same TLS alternatives as option A. | DB not publicly exposed if bound to local Docker network/localhost. | Same as option A. | Local PostgreSQL volume. | Same S3 blocker as option A until `BACK-AWS-0`. | Host logs plus DB logs. | Image rollback easy; DB rollback harder. | Lowest initial cost but more fragile. | Must migrate to RDS before production; add multi-platform CI before ARM/Graviton. | Low. | EC2 disk/instance loss affects app and DB together; restore quality depends on snapshots/dumps; Free Plan closure can make the account inaccessible. |
-| C. ECS/Fargate + RDS + S3 + ALB/ECR | Fargate vCPU/memory per second, ALB hourly+LCU, public IPv4 for tasks/load balancer where applicable, RDS, S3, ECR, CloudWatch. Fargate also charges for additional ephemeral storage beyond default. Sources: AWS Fargate pricing, ELB pricing, VPC pricing, ECR pricing. | Requires verification, especially Free Plan service access and credit coverage. | Moderate-high upfront; lower OS maintenance. | ALB+normal ACM certificate standard pattern. | Good with private subnets/security groups; NAT/VPC endpoints may add cost. | ECS can inject Secrets Manager secrets as env vars; rotated secrets need task restart. Source: ECS Secrets Manager docs. | Direct RDS endpoint. | Not preferred until `BACK-AWS-0`; task roles are the target but current code needs explicit keys. | Native CloudWatch logs and ECS metrics. | New task definition revision; rollback previous revision. | Good once set up, but more moving parts than current need. | Strong production path. | Medium to AWS ECS constructs. | ALB/NAT/RDS fixed costs continue even at low traffic; misconfigured health checks can churn tasks. |
-| D. AWS App Runner + RDS + S3 | App Runner provisioned memory while deployed, active vCPU/memory during requests, automated deployment fee/build fee if enabled, RDS, S3, VPC connector if private RDS. Source: App Runner pricing. | Requires verification for account plan/credits/service access. | Lower runtime management. | Built-in HTTPS and custom domains. | Private RDS requires VPC connector; networking must be checked. | Supports runtime env/secrets, but exact secret source and rotation behavior must be verified before implementation. | Possible through VPC connector. | Not preferred until `BACK-AWS-0`; current code can use only explicit S3 credentials. | Built-in logs/metrics. | Deploy new image; pause/resume helps cost. | Good if service access and costs fit. | Acceptable for dev; migration to ECS possible later. | Medium-high to App Runner behavior. | Less direct host control; VPC connector/RDS networking issues; provisioned cost while warm. |
+| A. Single x86_64 EC2 container + RDS + S3 | EC2 instance/EBS, public IPv4, optional ALB, RDS, S3, CloudWatch logs, Route 53, Secrets/SSM. Public IPv4 is charged hourly per AWS VPC pricing. | For new 2026 accounts, verify Free Plan service access and credit coverage; do not assume legacy 12-month RDS allowance. RDS Free Plan access uses credits and permitted classes such as `db.t3.micro`/`db.t4g.micro`. Sources: AWS Free Tier, Amazon RDS Free Tier, VPC pricing. | Moderate; operator manages OS/container updates. | EC2 host TLS with Caddy/Nginx plus ACME/Let's Encrypt is lowest fixed cost; ALB+normal ACM certificate is cleaner but adds ALB/public IPv4 cost; exportable ACM-on-EC2 is a distinct paid certificate path. | Strong if RDS private subnet/security group; EC2 can be public only on 443/22 or use SSM Session Manager. | SSM/Secrets Manager -> env file/systemd/container; use `DEFAULT_CHAIN` with instance profile for S3. | Direct private RDS endpoint. | Code supports native S3 without endpoint override or static keys; IAM role and bucket policy still need real AWS validation. | CloudWatch agent/log driver or Docker logs; Actuator endpoints. | Pull immutable amd64 image tag, restart service; rollback by previous tag. | Best cost/control tradeoff if operator accepts server management. | Migrate container to ECS/App Runner later; keep RDS/S3; add multi-platform CI before ARM/Graviton. | Low-medium. | Instance loss if no automation; RDS mitigates DB loss; Free Plan closure makes resources inaccessible if not upgraded; colocated Docker process is single point of failure. |
+| B. Single x86_64 EC2 container + colocated PostgreSQL + S3 | EC2/EBS, public IPv4, S3, backups/snapshots, optional Route 53. Avoids RDS fixed cost. | EC2/S3 credit compatibility requires verification under the actual Free/Paid plan. | Higher risk; operator owns DB backups, patching, disk growth, restore. | Same TLS alternatives as option A. | DB not publicly exposed if bound to local Docker network/localhost. | Same as option A. | Local PostgreSQL volume. | Same native S3 support as option A; IAM role and bucket policy still need AWS validation. | Host logs plus DB logs. | Image rollback easy; DB rollback harder. | Lowest initial cost but more fragile. | Must migrate to RDS before production; add multi-platform CI before ARM/Graviton. | Low. | EC2 disk/instance loss affects app and DB together; restore quality depends on snapshots/dumps; Free Plan closure can make the account inaccessible. |
+| C. ECS/Fargate + RDS + S3 + ALB/ECR | Fargate vCPU/memory per second, ALB hourly+LCU, public IPv4 for tasks/load balancer where applicable, RDS, S3, ECR, CloudWatch. Fargate also charges for additional ephemeral storage beyond default. Sources: AWS Fargate pricing, ELB pricing, VPC pricing, ECR pricing. | Requires verification, especially Free Plan service access and credit coverage. | Moderate-high upfront; lower OS maintenance. | ALB+normal ACM certificate standard pattern. | Good with private subnets/security groups; NAT/VPC endpoints may add cost. | ECS can inject Secrets Manager secrets as env vars; rotated secrets need task restart. Source: ECS Secrets Manager docs. | Direct RDS endpoint. | Code supports `DEFAULT_CHAIN`; ECS task role behavior still needs real runtime validation. | Native CloudWatch logs and ECS metrics. | New task definition revision; rollback previous revision. | Good once set up, but more moving parts than current need. | Strong production path. | Medium to AWS ECS constructs. | ALB/NAT/RDS fixed costs continue even at low traffic; misconfigured health checks can churn tasks. |
+| D. AWS App Runner + RDS + S3 | App Runner provisioned memory while deployed, active vCPU/memory during requests, automated deployment fee/build fee if enabled, RDS, S3, VPC connector if private RDS. Source: App Runner pricing. | Requires verification for account plan/credits/service access. | Lower runtime management. | Built-in HTTPS and custom domains. | Private RDS requires VPC connector; networking must be checked. | Supports runtime env/secrets, but exact secret source and rotation behavior must be verified before implementation. | Possible through VPC connector. | Code supports no endpoint override and default-chain credentials; App Runner role/credential behavior still needs platform review. | Built-in logs/metrics. | Deploy new image; pause/resume helps cost. | Good if service access and costs fit. | Acceptable for dev; migration to ECS possible later. | Medium-high to App Runner behavior. | Less direct host control; VPC connector/RDS networking issues; provisioned cost while warm. |
 | E. Elastic Beanstalk Docker + RDS + S3 | EC2/EBS, load balancer depending environment type, RDS, S3, CloudWatch; Beanstalk itself has no separate service charge but underlying resources bill. | Requires verification. | Medium; managed deployment wrapper around EC2. | Supports managed load balancer/ACM patterns. | Good if configured into VPC/private RDS. | Env vars and platform secrets patterns need deliberate setup. | Direct RDS endpoint. | Same as EC2. | CloudWatch integration. | Application versions and environment rollback. | Reasonable, but less transparent than simple EC2. | Can be production stepping stone, though ECS is more modern for containers. | Medium. | Platform abstraction drift; hidden EC2/ALB costs. |
 
 Do not select EKS/Kubernetes now:
@@ -215,10 +217,10 @@ Production-required change:
 ## 7. Object-storage decision
 
 Observed S3-compatible behavior:
-- Endpoint is required by code and always passed to both `S3Client` and `S3Presigner`. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`.
+- Endpoint override is optional. When `storage.s3.endpoint` is nonblank, it is passed to `S3Client`; when blank, native Amazon S3 uses the AWS SDK regional endpoint. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`.
 - Region is configured with `Region.of(properties.region)`. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`.
-- Credentials are required application properties and both `S3Client` and `S3Presigner` use `StaticCredentialsProvider` with `AwsBasicCredentials`. EC2 instance profiles and ECS task roles cannot currently be consumed by this implementation. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`.
-- Session-based temporary credentials are not represented by current properties; there is no current session-token property. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`, `src/main/resources/application-dev.yml`.
+- Credential mode is explicit. `STATIC` uses configured access key/secret and optional session token; `DEFAULT_CHAIN` uses the AWS SDK default credentials provider chain for EC2 instance profiles, ECS task roles and standard AWS credential sources. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`.
+- Session-based temporary credentials are represented by `storage.s3.session-token` only in `STATIC` mode with complete key and secret. Evidence: `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`, `src/main/resources/application-dev.yml`.
 - Path-style addressing is controlled by `storage.s3.path-style-access-enabled`, defaulting to `true` in current dev/prod config. Evidence: `src/main/resources/application-dev.yml`, `src/main/resources/application-prod.yml`.
 - Bucket name is configured, not created by the app. Evidence: `src/main/resources/application-dev.yml`, `docs/storage-r2-configuration.md`.
 - Objects should remain private and profile reads should use generated renderable URLs, not expose storage keys or bucket names. Evidence: `docs/storage-r2-configuration.md`, `docs/commons/api.md`.
@@ -229,11 +231,11 @@ Observed S3-compatible behavior:
 Mapping to Amazon S3:
 - Use one private dev bucket, for example `reals-dev-profile-photos-<operator-suffix>`; exact name is an operator decision and must not be committed.
 - Enable Block Public Access and keep `STORAGE_S3_READ_URL_MODE=PRESIGNED`.
-- For AWS S3, prefer virtual-hosted addressing (`STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=false`) unless testing proves the configured endpoint requires path-style. This is a configuration decision because current local MinIO/R2 docs default to path-style.
-- Use the regional S3 endpoint for `STORAGE_S3_ENDPOINT`; leave `STORAGE_S3_PRESIGNED_URL_ENDPOINT` empty unless a separate client-reachable endpoint is required.
+- For AWS S3, prefer virtual-hosted addressing (`STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=false`) unless testing proves path-style is required. This is a configuration decision because current local MinIO/R2 docs default to path-style.
+- For native Amazon S3, leave `STORAGE_S3_ENDPOINT` and `STORAGE_S3_PRESIGNED_URL_ENDPOINT` absent/blank unless a selected design requires an explicit endpoint override. Do not fabricate a regional S3 endpoint manually.
 - Required IAM policy shape: allow `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` for `arn:aws:s3:::<dev-bucket>/users/*/profile-photos/*`; allow minimal bucket-level actions only if SDK calls require them after testing. Do not grant public access or broad `s3:*`.
 - Preferred target architecture: EC2 instance profile or ECS task role credentials through the AWS SDK default credential chain, with no committed or long-lived IAM user access key.
-- Current deployment blocker: existing code requires explicit `accessKeyId` and `secretAccessKey`, so role-based AWS credential-chain support requires `BACK-AWS-0` before AWS runtime deployment. Storing a long-lived IAM user access key in SSM/Secrets Manager is a temporary dev exception only if the operator explicitly accepts it; it is not acceptable for production.
+- Long-lived IAM user access keys remain a temporary dev exception only if the operator explicitly accepts them; they are not acceptable for production.
 - Consider lifecycle rules for failed/abandoned objects only after validating media cleanup behavior; do not use lifecycle rules that delete current profile photos by age.
 
 ## 8. Firebase and Android dev-distribution plan
@@ -276,7 +278,7 @@ Preferred architecture:
 - Network boundaries: public HTTPS only; backend HTTP `8080` private to host/load balancer; PostgreSQL private; S3 private bucket with presigned reads; outbound internet to Firebase, App Check JWKS, FCM, S3, and registry.
 - Replica count: one backend instance.
 - Database: RDS PostgreSQL for clean backups/migration path; colocated PostgreSQL only as a temporary cost compromise.
-- Storage: Amazon S3 private dev bucket with presigned reads and least-privilege IAM after `BACK-AWS-0`; current code still requires static S3 keys and cannot use EC2 instance profile credentials.
+- Storage: Amazon S3 private dev bucket with presigned reads, `STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN`, no endpoint override, and least-privilege IAM role after AWS resources are created.
 - Image registry: keep GHCR initially if pull auth is simple; use ECR if private AWS-native pulls and lifecycle policies are preferred.
 - TLS/DNS: use real `api-dev.<domain>` with HTTPS before Android `dev` validation. Provisional preference is EC2 host TLS with ACME/Let's Encrypt for low fixed cost. If using ALB, terminate HTTPS on ALB with a normal ACM non-exportable public certificate and accept ALB/public IPv4 cost. If using ACM directly on EC2, use an explicitly exportable ACM certificate and operate certificate deployment/renewal; do not install a normal non-exportable ACM certificate on EC2.
 - Secrets: use SSM Parameter Store standard parameters for non-secret config where possible; use SSM SecureString or Secrets Manager for secrets. AWS Systems Manager standard parameters have no additional charge; Secrets Manager is priced per secret and API calls. Sources retrieved 2026-07-21: `https://aws.amazon.com/systems-manager/pricing/`, `https://aws.amazon.com/secrets-manager/pricing/`.
@@ -289,9 +291,9 @@ Preferred architecture:
 What can be implemented immediately:
 - AWS-0 account guardrails, account-plan verification, budget alerts, Region/domain decisions, and documentation/runbook preparation.
 - Current CI can build and publish an amd64 container image from a known SHA.
-- Runtime secrets can be designed, but AWS S3 runtime deployment should wait for `BACK-AWS-0` unless the operator explicitly accepts a temporary static-key exception.
+- Runtime secrets can be designed without S3 static AWS keys when the selected runtime provides AWS SDK default-chain credentials.
 
-What requires `BACK-AWS-0`:
+What `BACK-AWS-0` implements in code:
 - AWS SDK default credential-chain support for Amazon S3 so EC2 instance profiles or ECS task roles can be used.
 - Optional endpoint override behavior so native Amazon S3 does not require a custom endpoint while MinIO/R2 still can.
 - Test coverage for S3 client and presigner configuration modes.
@@ -345,20 +347,23 @@ Dependencies on later decisions:
 
 ### BACK-AWS-0 — AWS-native S3 credentials and endpoint compatibility
 
+Status after this code change:
+- Implemented in backend code, tests and documentation. No AWS resources were created, and no EC2/ECS/App Runner runtime has validated real IAM role credentials yet.
+
 Purpose:
 - Remove the current S3 credential blocker before preferred AWS runtime deployment.
 
 Prerequisites:
-- AWS-0 complete; runtime target known enough to choose EC2 instance profile, ECS task role, or explicit temporary credentials.
+- None for the code change; AWS-0 and runtime target selection remain prerequisites for real deployment validation.
 
 Files likely to change:
-- Future backend S3 configuration code and tests, plus `docs/configuration.md`; not changed in this planning task.
+- Implemented in `src/main/kotlin/com/reals/backend/config/s3/S3Config.kt`, profile YAML, focused S3 configuration tests, `docs/configuration.md`, `docs/storage-r2-configuration.md`, and this plan.
 
 AWS resources affected:
-- None directly during implementation; later IAM role/policy design depends on the result.
+- None during implementation; later IAM role/policy design depends on the result.
 
 Secrets involved:
-- Existing static S3 credentials for MinIO/R2 remain supported; AWS-hosted dev should use instance/task role credentials after this change.
+- Existing static S3 credentials for MinIO/R2 remain supported; AWS-hosted dev should use instance/task role credentials through `DEFAULT_CHAIN`.
 
 Validation:
 - `S3Client` and `S3Presigner` configuration tests cover AWS SDK default credential chain, explicit static credentials, optional session credentials if selected, optional endpoint override for native Amazon S3, and explicit endpoint override for MinIO/R2.
@@ -367,7 +372,7 @@ Rollback:
 - Keep explicit static-credential mode working for local MinIO and non-AWS S3-compatible providers.
 
 Completion criteria:
-- Environment-variable contract documents AWS-hosted role-based mode, static MinIO/R2 mode, optional temporary-credential mode if implemented, native S3 endpoint behavior, and presigner behavior.
+- Environment-variable contract documents AWS-hosted role-based mode, static MinIO/R2 mode, optional temporary-credential mode, native S3 endpoint behavior, and presigner behavior.
 
 Dependencies on later decisions:
 - If the operator chooses ECS/Fargate instead of EC2, this phase still targets the AWS SDK default credential chain so task roles work without committed access keys.
@@ -378,7 +383,7 @@ Purpose:
 - Create isolated network, DNS/TLS decisions, database, bucket, secrets, and IAM roles.
 
 Prerequisites:
-- AWS-0 complete; selected architecture approved. `BACK-AWS-0` must be scheduled before runtime deployment if Amazon S3 is used without a temporary static-key exception.
+- AWS-0 complete; selected architecture approved.
 
 Files likely to change:
 - Future docs/runbook only; no Terraform/CDK in this task.
@@ -387,7 +392,7 @@ AWS resources affected:
 - VPC/subnets/security groups or default VPC decision, RDS or EC2 volume, S3 bucket, SSM/Secrets Manager, IAM role/policy, optional Route 53/ACM/ALB.
 
 Secrets involved:
-- DB credentials, Firebase Admin credential, temporary S3 static credentials only if explicitly approved before `BACK-AWS-0`, admin allowlist, optional Sightengine credentials.
+- DB credentials, Firebase Admin credential, no S3 static AWS key when `DEFAULT_CHAIN` is used, admin allowlist, optional Sightengine credentials.
 
 Validation:
 - DB private; S3 public access blocked; secrets not visible in image/repo; selected TLS path validates; no normal non-exportable ACM certificate is assumed installable on EC2.
@@ -407,7 +412,7 @@ Purpose:
 - Run one backend container from a known image tag.
 
 Prerequisites:
-- AWS-1 complete; immutable amd64 image exists from backend CI; `BACK-AWS-0` complete unless the operator has explicitly approved a short-lived static S3 key exception.
+- AWS-1 complete; immutable amd64 image exists from backend CI; runtime IAM role or equivalent default-chain credential source selected for Amazon S3.
 
 Files likely to change:
 - Deployment runbook; no application code in this planning task.
@@ -565,7 +570,7 @@ Dependencies on later decisions:
 - Least-privilege IAM for runtime, registry pulls, logs, S3, and secrets.
 - No public PostgreSQL; DB security group allows only backend.
 - Private S3 bucket; Block Public Access enabled.
-- AWS-hosted S3 access uses instance profile/task role after `BACK-AWS-0`; long-lived IAM user keys are not acceptable for production.
+- AWS-hosted S3 access uses `DEFAULT_CHAIN` with an instance profile/task role or equivalent runtime credential source; long-lived IAM user keys are not acceptable for production.
 - TLS only for Android dev/prod API traffic.
 - No Firebase service-account file in image or Git.
 - Secret rotation process for DB, Firebase, S3 access keys if used, and signing credentials.
@@ -605,7 +610,7 @@ Pre-deployment:
 - AWS account plan, credits, Region, and budget verified.
 - Free Plan expiration/credit-exhaustion closure risk and Paid upgrade deadline documented.
 - Database backup/snapshot plan exists before first Flyway run.
-- `BACK-AWS-0` completed before preferred AWS S3 runtime deployment, or a short-lived static-key exception explicitly approved and documented.
+- `STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN` configured for preferred AWS S3 runtime deployment, or a short-lived static-key exception explicitly approved and documented.
 - Required backend env/secrets present and no real values committed.
 - S3 bucket private and public access blocked.
 - Firebase Admin credential belongs to dev project.
@@ -639,7 +644,7 @@ Post-deployment:
 - Runtime platform: EC2, ECS/Fargate, App Runner, or Beanstalk.
 - TLS path: EC2 ACME/Let's Encrypt, ALB plus normal ACM certificate, or EC2 plus exportable ACM certificate.
 - x86_64 EC2 initially versus future multi-platform CI before ARM/Graviton.
-- Timing and acceptance criteria for `BACK-AWS-0`.
+- Real AWS runtime validation criteria for `DEFAULT_CHAIN` on the selected platform.
 - Infrastructure-as-code timing.
 - CI deployment credentials or GitHub OIDC.
 - Signing-key custody and Play App Signing strategy.
@@ -654,7 +659,7 @@ Post-deployment:
 
 - Free Plan closure: for post-transition accounts, the Free Plan ends at six months or credit exhaustion, whichever comes first. AWS closes the account at that point, workload resources become inaccessible, and account content is currently retained for 90 days before permanent deletion. Upgrade to Paid before expiration if hosted dev and its data must continue.
 - Backup continuity: do not rely exclusively on an expiring Free Plan account for recoverability. Keep restore procedures and any critical exports independent enough to survive loss of account access.
-- S3 credential model: current backend code cannot consume EC2 instance profiles or ECS task roles for S3, so preferred AWS runtime deployment depends on `BACK-AWS-0`. Long-lived static S3 keys are a temporary dev compromise only.
+- S3 credential model: backend code now supports the AWS SDK default credential chain, but real EC2 instance profile/ECS task role behavior is unproven until AWS-1/AWS-2 runtime validation. Long-lived static S3 keys are a temporary dev compromise only.
 - TLS ambiguity: EC2 host TLS requires ACME/Let's Encrypt or an explicitly exportable certificate; a normal non-exportable ACM certificate belongs on integrated services such as ALB, not directly on a standard EC2 host.
 - Image architecture: current CI output should be treated as `linux/amd64`. Do not select ARM/Graviton until CI publishes a verified arm64 image or multi-platform manifest.
 - RDS model: do not assume the legacy 750-hours-per-month/12-month RDS allowance applies to a new 2026 account; verify credit use, eligible classes, and selected Region before DB creation.
