@@ -112,6 +112,7 @@ Good first options:
 Minimum R2-style variables:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_REGION=auto
@@ -131,6 +132,7 @@ Railway has MinIO templates/volumes. In that setup, keep the backend and MinIO
 in the same project/region when possible, and configure:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=<backend-reachable MinIO S3 API URL>
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=<client-reachable MinIO S3 API URL>
 STORAGE_S3_REGION=us-east-1

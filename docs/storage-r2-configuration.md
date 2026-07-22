@@ -60,6 +60,7 @@ Required R2 setup:
 R2 environment variables:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_REGION=auto
@@ -77,6 +78,9 @@ URLs.
 
 `STORAGE_S3_REGION=auto` is the preferred R2 value. `us-east-1` can also work as
 an S3 compatibility alias, but `auto` makes the provider intent explicit.
+
+R2 uses explicit static credentials. Keep `STORAGE_S3_CREDENTIALS_MODE=STATIC`
+and do not use `DEFAULT_CHAIN` for R2.
 
 ## Option B: Hosted MinIO
 
@@ -115,6 +119,7 @@ MinIO setup requirements:
 MinIO environment variables:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=<backend-reachable MinIO S3 API URL>
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=<client-reachable MinIO S3 API URL>
 STORAGE_S3_REGION=us-east-1
@@ -135,6 +140,8 @@ ports, use the S3 API endpoint here, not the console URL.
 
 Legacy `S3_*` environment variable names are still accepted as fallbacks. Prefer
 the `STORAGE_S3_*` names for new shared/dev/prod-like deployments.
+The legacy credential-mode fallback is `S3_CREDENTIALS_MODE`; new
+configuration should use `STORAGE_S3_CREDENTIALS_MODE`.
 
 ## MVP Read Mode
 

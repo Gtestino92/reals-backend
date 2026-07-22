@@ -155,6 +155,7 @@ If the host-run app uses Docker Compose MinIO, also use a host-reachable S3
 endpoint:
 
 ```text
+S3_CREDENTIALS_MODE=STATIC
 S3_ENDPOINT=http://localhost:9000
 S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 ```
@@ -354,6 +355,7 @@ docker compose down
 The Docker Compose setup also runs MinIO for profile photo uploads:
 
 ```text
+S3_CREDENTIALS_MODE=STATIC
 S3_ENDPOINT=http://minio:9000
 S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 S3_READ_URL_MODE=PRESIGNED
