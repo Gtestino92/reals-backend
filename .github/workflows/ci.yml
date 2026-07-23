@@ -50,6 +50,13 @@ jobs:
       - name: Validate Compose config
         run: docker compose config --quiet
 
+      - name: Validate AWS deployment scripts
+        shell: bash
+        run: |
+          bash -n ops/aws/deploy-backend.sh
+          bash -n ops/aws/test-deploy-backend.sh
+          ops/aws/test-deploy-backend.sh
+
       - name: Build backend image
         run: |
           docker build \
