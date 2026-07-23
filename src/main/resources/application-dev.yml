@@ -120,8 +120,8 @@ scheduling:
 profile:
   photos:
     max-count: 9
-    required-count: 9
-    min-person-photos: 3
+    required-count: ${PROFILE_PHOTOS_REQUIRED_COUNT:2}
+    min-person-photos: ${PROFILE_PHOTOS_MIN_PERSON_PHOTOS:1}
     min-full-body-photos: ${PROFILE_MIN_FULL_BODY_PHOTOS:1}
   authenticity-verification:
     provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
