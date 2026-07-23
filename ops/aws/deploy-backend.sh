@@ -225,7 +225,9 @@ deploy() {
 }
 
 main() {
-  [[ $# -eq 2 ]] || fail "usage: $0 sha-0123456 0123456789abcdef0123456789abcdef01234567"
+  [[ $# -eq 2 ]] ||
+    fail "INVALID_ARGUMENT_COUNT" \
+      "usage: $0 sha-0123456 0123456789abcdef0123456789abcdef01234567"
   deploy "$1" "$2"
 }
 
