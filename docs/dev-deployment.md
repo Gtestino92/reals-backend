@@ -1,81 +1,82 @@
 # Dev Deployment
 
-The dev environment should run the backend image against a managed PostgreSQL
-database. Do not package PostgreSQL into the backend image.
+The current shared dev backend target is AWS. The application runs as a Docker
+container on EC2, behind Nginx HTTPS, using private PostgreSQL and S3-compatible
+storage. GitHub Actions builds and publishes images; deployment is a separate
+manual workflow.
 
-## Target Shape
+## Current Shape
 
 ```text
 GitHub Actions
-  -> build and test
-  -> publish ghcr.io/gtestino92/reals-backend:development
+  -> test, scan, publish GHCR image
 
-Dev runtime
-  -> backend container from GHCR
-  -> managed PostgreSQL database
-  -> Firebase real auth
+Manual Deploy AWS Dev workflow
+  -> GitHub OIDC
+  -> AWS deployment role
+  -> SSM Run Command
+  -> EC2 Docker container
+  -> Nginx HTTPS
+  -> private RDS PostgreSQL
+  -> private Amazon S3
 ```
 
-The local `docker-compose.yml` keeps PostgreSQL in Docker only for local
-development convenience.
+The local `docker-compose.yml` keeps PostgreSQL and MinIO in Docker only for
+local development convenience.
 
-No cloud deployment automation exists yet. At this stage GitHub Actions builds,
-tests, scans and publishes the container image; the runtime platform still needs
-to be chosen and configured separately.
+## Deploying Dev
 
-## Current Readiness
+Normal flow:
 
-The repository is ready for a manual first dev deployment on Render or Railway,
-but not for a one-click deploy.
+1. Merge the change into `development`.
+2. Wait for the existing `CI` workflow to pass on `development`.
+3. Open GitHub Actions and run `Deploy AWS Dev` from the `development` branch.
+4. Leave the optional `revision` input blank for the selected `development`
+   HEAD.
+5. Review the workflow summary for the resolved full revision, immutable image
+   tag, SSM result, readiness, ping, and rollback status.
 
-Already in place:
-
-- Dockerfile builds a Java 21/Kotlin backend image.
-- GitHub Actions publishes `ghcr.io/gtestino92/reals-backend:development` on
-  pushes to `development`.
-- The `dev` Spring profile uses managed PostgreSQL, Firebase auth, Flyway,
-  Hibernate schema validation and automatic schedulers.
-- Public readiness, liveness and ping endpoints exist for smoke checks. Image
-  metadata is available through administrator-only `/actuator/info`.
-- Cloudflare R2/S3-compatible storage configuration is documented separately in
-  `docs/storage-r2-configuration.md`.
-
-Still required before the first deploy:
-
-- Choose Render or Railway as the first runtime.
-- Create the runtime service and managed PostgreSQL database manually.
-- Configure all runtime variables and secrets listed below.
-- Configure the runtime port so incoming HTTP traffic reaches Spring Boot.
-- Configure R2, hosted MinIO or another S3-compatible store for profile photos.
-- Run the `Smoke check` GitHub Actions workflow against the deployed URL.
-
-The app currently listens on Spring Boot's default port `8080`. Render and
-Railway both use a platform `PORT` concept for public web services. For the
-first deployment, set the service variable:
+The workflow does not build or publish an image. It deploys the image already
+published by CI:
 
 ```text
-PORT=8080
+ghcr.io/gtestino92/reals-backend:sha-<short-sha>
 ```
 
-This keeps the platform's target port aligned with the current Docker image. If
-we later want the app to bind to a provider-assigned dynamic port instead, add a
-Spring configuration such as `server.port=${PORT:8080}` and update this doc.
+The tag is calculated automatically from the resolved full Git SHA.
 
-## PostgreSQL For Dev
+For the detailed AWS and GitHub one-time setup, rollback behavior, IAM policy
+templates, and production design notes, see `docs/aws-dev-deployment.md`.
 
-Create a managed PostgreSQL instance in the same platform or region where the
-backend runs. Good first options are Render PostgreSQL, Railway PostgreSQL,
-Neon, Supabase, Fly Postgres, AWS RDS or Azure Database for PostgreSQL.
+## Explicit Rollback
 
-For the first dev environment, prefer the option that matches the app runtime:
+To deploy an older known-good image, run `Deploy AWS Dev` from `development`
+and provide a full 40-character SHA in `revision`.
 
-- Render backend -> Render PostgreSQL.
-- Railway backend -> Railway PostgreSQL.
-- Fly backend -> Fly Postgres.
-- AWS App Runner backend -> RDS PostgreSQL.
-- Azure Container Apps backend -> Azure Database for PostgreSQL.
+The workflow rejects revisions that are not ancestors of current `development`
+and still deploys only the immutable `sha-<short-sha>` image tag. Operators do
+not manually create tags or copy a short SHA.
 
-After creating the database, configure the backend runtime with:
+Database migrations are forward-only at startup. If a failed deploy includes an
+incompatible Flyway migration, application rollback may also require a database
+restore or forward-fix image.
+
+## Automatic Rollback
+
+The EC2-side deployment script pulls and verifies the new immutable image before
+stopping the existing container. It validates the image OCI revision label
+`org.opencontainers.image.revision` against the requested full SHA.
+
+If the new container fails public readiness or `/api/ping`, the script restores
+the previously captured local image ID and returns non-zero. The workflow
+reports whether rollback occurred.
+
+## Runtime Configuration
+
+The `dev` Spring profile uses managed PostgreSQL, Firebase auth, Flyway,
+Hibernate schema validation, S3-compatible storage, and automatic schedulers.
+
+Minimum backend runtime environment in `/etc/reals/backend.env`:
 
 ```text
 SPRING_PROFILES_ACTIVE=dev
@@ -84,14 +85,33 @@ DATABASE_USERNAME=<database-user>
 DATABASE_PASSWORD=<database-password>
 ```
 
-`DATABASE_URL` and `DATABASE_USERNAME` are runtime configuration. `DATABASE_PASSWORD`
-is a runtime secret.
+`DATABASE_PASSWORD`, Firebase credentials, static S3 credentials if used, and
+provider API secrets are runtime secrets. Do not commit them.
 
-Use the provider's internal/private database hostname when available. Use the
-external hostname only if the runtime cannot access private networking yet.
-Many platforms expose PostgreSQL URLs as `postgres://...` or
-`postgresql://...`; convert that to the JDBC shape above before assigning
-`DATABASE_URL`.
+The deployment script defaults to:
+
+```text
+IMAGE_REPOSITORY=ghcr.io/gtestino92/reals-backend
+CONTAINER_NAME=reals-backend
+ENV_FILE=/etc/reals/backend.env
+PORT_BINDING=127.0.0.1:8080:8080
+READINESS_URL=http://127.0.0.1:8080/actuator/health/readiness
+PING_URL=http://127.0.0.1:8080/api/ping
+```
+
+Nginx should proxy public HTTPS traffic to `127.0.0.1:8080`. Do not expose the
+container port publicly.
+
+## PostgreSQL For Dev
+
+Prefer private RDS PostgreSQL for hosted dev when budget allows. The backend
+expects:
+
+```text
+DATABASE_URL=jdbc:postgresql://<private-host>:<port>/<database>
+DATABASE_USERNAME=<database-user>
+DATABASE_PASSWORD=<database-password>
+```
 
 Flyway runs automatically in the `dev` profile and applies migrations at app
 startup. `spring.jpa.hibernate.ddl-auto` is `validate`, so schema drift should
@@ -99,59 +119,25 @@ fail startup instead of silently mutating the database.
 
 ## Profile Photo Storage For Dev
 
-Do not point a shared Render/Railway dev environment at the MinIO container that
-runs on a developer laptop. Use a storage service that lives with the deployed
-environment and has persistent storage.
-
-Good first options:
-
-- Cloudflare R2.
-- Hosted MinIO on the same platform, with a persistent disk/volume.
-- Another S3-compatible object store.
-
-Minimum R2-style variables:
+For AWS-hosted dev with native Amazon S3, prefer role-based AWS SDK credentials:
 
 ```text
-STORAGE_S3_CREDENTIALS_MODE=STATIC
-STORAGE_S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
-STORAGE_S3_PRESIGNED_URL_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
-STORAGE_S3_REGION=auto
+STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN
+STORAGE_S3_REGION=<aws-region>
 STORAGE_S3_BUCKET=<dev-bucket-name>
-STORAGE_S3_ACCESS_KEY_ID=<access-key-id>
-STORAGE_S3_SECRET_ACCESS_KEY=<secret-access-key>
-STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=true
+STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=false
 STORAGE_S3_READ_URL_MODE=PRESIGNED
 ```
 
-See `docs/storage-r2-configuration.md` for the full setup and verification
-checklist.
-
-Hosted MinIO is also acceptable for development when the platform supports it.
-Render has a MinIO deployment guide/template backed by a persistent disk, and
-Railway has MinIO templates/volumes. In that setup, keep the backend and MinIO
-in the same project/region when possible, and configure:
-
-```text
-STORAGE_S3_CREDENTIALS_MODE=STATIC
-STORAGE_S3_ENDPOINT=<backend-reachable MinIO S3 API URL>
-STORAGE_S3_PRESIGNED_URL_ENDPOINT=<client-reachable MinIO S3 API URL>
-STORAGE_S3_REGION=us-east-1
-STORAGE_S3_BUCKET=<dev-bucket-name>
-STORAGE_S3_ACCESS_KEY_ID=<minio-access-key>
-STORAGE_S3_SECRET_ACCESS_KEY=<minio-secret-key>
-STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=true
-STORAGE_S3_READ_URL_MODE=PRESIGNED
-```
-
-The two endpoint values may differ. `STORAGE_S3_ENDPOINT` is used by the
-backend for uploads/deletes. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is embedded in
-returned photo URLs and must be reachable by Android/Bruno clients.
+Do not point shared dev at a developer-machine MinIO instance. See
+`docs/storage-r2-configuration.md` for S3-compatible provider behavior and
+non-AWS options.
 
 ## Firebase For Dev
 
 The `dev` profile uses Firebase token verification, not local auto-auth.
 
-Provide credentials using one of these options:
+Provide credentials using one controlled runtime secret source:
 
 ```text
 FIREBASE_SERVICE_ACCOUNT_PATH=/mounted/secret/firebase-service-account.json
@@ -160,91 +146,21 @@ FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 encoded service account json>
 ```
 
 If none are set, the app falls back to Google Application Default Credentials.
-
-For most lightweight runtimes, `FIREBASE_SERVICE_ACCOUNT_BASE64` is easiest:
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\secrets\reals-backend-firebase-credentials-dev.json"))
-```
-
-Store the resulting value as a runtime secret, not in Git.
-
-Pending before the first dev deploy:
-
-- Generate the Firebase service-account JSON for the dev Firebase project.
-- Encode it as Base64.
-- Store it in the deployment platform as `FIREBASE_SERVICE_ACCOUNT_BASE64`.
-- Rotate/delete any local copy that is no longer needed.
+Do not commit Firebase credentials.
 
 ## Firebase App Check Rollout For Dev
 
-The `dev` profile defaults App Check to `DISABLED` so this backend change can
-deploy before the Android client starts sending App Check tokens.
+The `dev` profile defaults App Check to `DISABLED` so the backend can deploy
+before the Android client starts sending App Check tokens.
 
 Rollout sequence:
 
-1. In Firebase Console, enable App Check for the Android app and identify the
-   numeric Firebase project number plus the dev Firebase Android App ID.
-2. Configure the backend runtime with `FIREBASE_PROJECT_NUMBER` and
-   `FIREBASE_APP_CHECK_ALLOWED_APP_IDS`.
-3. Set `FIREBASE_APP_CHECK_MODE=MONITOR` and deploy the backend.
+1. Enable App Check for the Android dev app in Firebase.
+2. Configure `FIREBASE_PROJECT_NUMBER` and `FIREBASE_APP_CHECK_ALLOWED_APP_IDS`.
+3. Set `FIREBASE_APP_CHECK_MODE=MONITOR` and deploy.
 4. Deploy Android with `X-Firebase-AppCheck: <token>` on API requests.
-5. Inspect logs and `reals.app_check.requests` outcomes for missing, invalid or
-   unavailable verification.
+5. Inspect logs and `reals.app_check.requests` outcomes.
 6. Set `FIREBASE_APP_CHECK_MODE=ENFORCED` only after dev traffic is clean.
-
-Local `local-firebase` testing can use the Android debug provider, but the
-backend still verifies the real App Check JWT against Firebase JWKS when mode is
-`MONITOR` or `ENFORCED`. Do not commit debug provider secrets or tokens.
-
-## Render First Deploy Notes
-
-Use either a Docker build from this repository or a prebuilt GHCR image.
-
-Recommended first path:
-
-1. Create a Render Web Service.
-2. Use Docker as the runtime, either from the repository `Dockerfile` or from
-   `ghcr.io/gtestino92/reals-backend:development`.
-3. Create Render PostgreSQL in the same region.
-4. Set `PORT=8080`.
-5. Set `SPRING_PROFILES_ACTIVE=dev`.
-6. Set `DATABASE_URL` as a JDBC URL using the internal database host when
-   possible.
-7. Set `DATABASE_USERNAME` and `DATABASE_PASSWORD`.
-8. Set Firebase and storage secrets. For storage, choose R2 or hosted MinIO
-   with a persistent disk.
-9. Set the health check path to `/actuator/health/readiness`.
-
-If the GHCR package is private, configure Render registry credentials or deploy
-from the Git repository Dockerfile instead.
-
-Render Web Services expose a public `onrender.com` URL by default. Use that URL
-as the backend base URL for Bruno and Android dev testing.
-
-## Railway First Deploy Notes
-
-Use one Railway service for the backend and a Railway PostgreSQL database in the
-same project/environment.
-
-Recommended first path:
-
-1. Create a Railway project.
-2. Add PostgreSQL.
-3. Add a backend service from the GitHub repository Dockerfile or from the GHCR
-   image.
-4. Generate a public domain for the backend service.
-5. Set `PORT=8080`.
-6. Set `SPRING_PROFILES_ACTIVE=dev`.
-7. Set `DATABASE_URL` as a JDBC URL. If using Railway-provided database
-   variables, do not pass a raw `postgres://...` URL directly to Spring.
-8. Set `DATABASE_USERNAME` and `DATABASE_PASSWORD`, or derive them into the
-   JDBC URL and matching username/password variables.
-9. Set Firebase and storage secrets. For storage, choose R2 or hosted MinIO
-   with a persistent volume.
-
-Railway private networking is useful for backend-to-database traffic, but
-Android and Bruno must use the public Railway domain for API calls.
 
 ## GHCR Image
 
@@ -257,54 +173,28 @@ ghcr.io/gtestino92/reals-backend:master
 ghcr.io/gtestino92/reals-backend:latest
 ```
 
-The deployment platform should pull `:development` for the dev environment.
-Use a `sha-*` tag when you need an immutable rollback target.
-
-The Docker image embeds runtime metadata in environment variables and exposes it
-through `GET /actuator/info` for authenticated administrators:
-
-```json
-{
-  "image": {
-    "repository": "ghcr.io/gtestino92/reals-backend",
-    "tag": "development",
-    "revision": "<full-git-sha>"
-  }
-}
-```
-
-Production should not track a moving branch tag. Once a production environment
-exists, publish immutable tags from Git release tags, for example `v1.0.0`, and
-deploy that exact tag.
+AWS dev deploys the immutable `sha-<short-sha>` tag, not the moving
+`development` tag. Production should not track a moving branch tag either.
 
 ## Required Runtime Checks
 
-The platform health check should use:
-
-```http
-GET /actuator/health/readiness
-```
-
-The endpoint is public by design and should return:
-
-```json
-{"status":"UP"}
-```
-
-`/api/local-dev/**` endpoints are registered in the cloud `dev` profile only as
-administrator tooling: they require an authenticated Firebase-backed
-`ROLE_ADMIN` user and must not be called by Android clients. Scheduled jobs run
-automatically in `dev`; use manual job triggers only for controlled operational
-checks.
-
-After updating a deployed environment, run the automated smoke workflow with
-the environment base URL. It checks only public operational endpoints:
+Public deployment validation checks only:
 
 ```http
 GET /actuator/health/readiness
 GET /api/ping
 ```
 
-Docker image metadata is exposed by `/actuator/info`, but that endpoint is
-administrator-only in hosted environments. Inspect it manually with a fresh
-administrator bearer token when needed.
+Expected responses:
+
+```json
+{"status":"UP"}
+```
+
+```json
+{"status":"ok"}
+```
+
+`/actuator/info` and `/actuator/metrics/**` are administrator-protected in
+hosted environments. Inspect `/actuator/info` manually with a fresh
+administrator bearer token only when needed.
