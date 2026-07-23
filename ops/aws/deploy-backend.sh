@@ -10,22 +10,27 @@ PING_URL="${PING_URL:-http://127.0.0.1:8080/api/ping}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-18}"
 HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-5}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-5}"
-LOG_TAIL_LINES="${LOG_TAIL_LINES:-120}"
 
 PREVIOUS_CONTAINER_EXISTS=false
 PREVIOUS_CONTAINER_RUNNING=false
 PREVIOUS_IMAGE_REF=""
 PREVIOUS_IMAGE_ID=""
 
-fail() {
-  echo "ERROR: $*" >&2
-  exit 1
+emit_stage() {
+  echo "DEPLOY_STAGE=$1"
 }
 
-sanitize_stream() {
-  sed -E \
-    -e 's/([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|DATABASE_URL|DATABASE_USERNAME|DATABASE_PASSWORD|FIREBASE_SERVICE_ACCOUNT[^= :"]*)([= :"]+)[^[:space:]"]+/\1\2[REDACTED]/g' \
-    -e 's#https?://[^[:space:]]*[?][^[:space:]]*#[REDACTED_URL]#g'
+emit_error() {
+  echo "ERROR_CODE=$1"
+  echo "ERROR_MESSAGE=$2"
+  echo "Inspect the container logs on the EC2 host through an authorized SSM session."
+}
+
+fail() {
+  local error_code="$1"
+  shift
+  emit_error "$error_code" "$*"
+  exit 1
 }
 
 validate_inputs() {
@@ -33,21 +38,22 @@ validate_inputs() {
   local expected_revision="$2"
 
   [[ "$image_tag" =~ ^sha-[0-9a-f]{7}$ ]] ||
-    fail "image tag must be an immutable sha-<7 lowercase hex> tag"
+    fail "INVALID_IMAGE_TAG" "image tag must be an immutable sha-<7 lowercase hex> tag"
 
   [[ "$expected_revision" =~ ^[0-9a-f]{40}$ ]] ||
-    fail "expected revision must be a full 40-character lowercase hexadecimal Git SHA"
+    fail "INVALID_REVISION" "expected revision must be a full 40-character lowercase hexadecimal Git SHA"
 
   local expected_tag="sha-${expected_revision:0:7}"
   [[ "$image_tag" == "$expected_tag" ]] ||
-    fail "image tag $image_tag does not match expected revision $expected_revision"
+    fail "TAG_REVISION_MISMATCH" "image tag does not match expected revision"
 }
 
 require_prerequisites() {
-  command -v docker >/dev/null 2>&1 || fail "docker is not available"
-  command -v curl >/dev/null 2>&1 || fail "curl is not available"
-  docker info >/dev/null 2>&1 || fail "docker daemon is not available"
-  [[ -r "$ENV_FILE" ]] || fail "environment file is not readable: $ENV_FILE"
+  emit_stage "PREREQUISITES"
+  command -v docker >/dev/null 2>&1 || fail "DOCKER_NOT_AVAILABLE" "docker is not available"
+  command -v curl >/dev/null 2>&1 || fail "CURL_NOT_AVAILABLE" "curl is not available"
+  docker info >/dev/null 2>&1 || fail "DOCKER_DAEMON_UNAVAILABLE" "docker daemon is not available"
+  [[ -r "$ENV_FILE" ]] || fail "ENV_FILE_NOT_READABLE" "environment file is not readable"
 }
 
 requested_image() {
@@ -59,15 +65,15 @@ pull_and_verify_image() {
   local image="$1"
   local expected_revision="$2"
 
-  echo "Pulling requested immutable image"
-  docker pull "$image" >/dev/null ||
-    fail "failed to pull requested image; verify GHCR visibility or host Docker credentials"
+  emit_stage "PULL_IMAGE"
+  docker pull "$image" >/dev/null 2>&1 ||
+    fail "IMAGE_PULL_FAILED" "failed to pull requested image; verify GHCR visibility or host Docker credentials"
 
   local revision_label
   revision_label="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image" 2>/dev/null || true)"
 
   [[ "$revision_label" == "$expected_revision" ]] ||
-    fail "pulled image revision label does not match requested revision"
+    fail "IMAGE_REVISION_MISMATCH" "pulled image revision label does not match requested revision"
 }
 
 container_exists() {
@@ -79,6 +85,7 @@ container_running() {
 }
 
 capture_current_deployment() {
+  emit_stage "CAPTURE_CURRENT"
   if container_exists; then
     PREVIOUS_CONTAINER_EXISTS=true
     PREVIOUS_IMAGE_REF="$(docker container inspect --format '{{ .Config.Image }}' "$CONTAINER_NAME")"
@@ -86,18 +93,18 @@ capture_current_deployment() {
     if container_running; then
       PREVIOUS_CONTAINER_RUNNING=true
     fi
-    echo "Captured previous container state"
+    echo "PREVIOUS_CONTAINER_EXISTS=true"
   else
-    echo "No previous container found"
+    echo "PREVIOUS_CONTAINER_EXISTS=false"
   fi
 }
 
 remove_existing_container() {
   if container_exists; then
     if container_running; then
-      docker stop "$CONTAINER_NAME" >/dev/null
+      docker stop "$CONTAINER_NAME" >/dev/null 2>&1
     fi
-    docker rm "$CONTAINER_NAME" >/dev/null
+    docker rm "$CONTAINER_NAME" >/dev/null 2>&1
   fi
 }
 
@@ -109,7 +116,7 @@ start_container() {
     --restart unless-stopped \
     --env-file "$ENV_FILE" \
     -p "$PORT_BINDING" \
-    "$image" >/dev/null
+    "$image" >/dev/null 2>&1
 }
 
 response_has_status() {
@@ -128,7 +135,6 @@ wait_for_endpoint() {
 
   for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
     if ! container_running; then
-      echo "$name check failed because the container exited" >&2
       return 1
     fi
 
@@ -141,43 +147,38 @@ wait_for_endpoint() {
     sleep "$HEALTH_DELAY_SECONDS"
   done
 
-  echo "$name check did not return expected status $expected_status" >&2
   return 1
 }
 
-print_container_logs() {
-  local label="$1"
-
-  if container_exists; then
-    {
-      echo "--- sanitized $label container log tail ---"
-      docker logs --tail "$LOG_TAIL_LINES" "$CONTAINER_NAME" 2>&1 || true
-      echo "--- end sanitized $label container log tail ---"
-    } | sanitize_stream
-  fi
-}
-
 verify_runtime_health() {
-  wait_for_endpoint "readiness" "$READINESS_URL" "UP"
-  wait_for_endpoint "ping" "$PING_URL" "ok"
+  emit_stage "VERIFY_READINESS"
+  if ! wait_for_endpoint "readiness" "$READINESS_URL" "UP"; then
+    echo "ERROR_CODE=READINESS_FAILED"
+    return 1
+  fi
+
+  emit_stage "VERIFY_PING"
+  if ! wait_for_endpoint "ping" "$PING_URL" "ok"; then
+    echo "ERROR_CODE=PING_FAILED"
+    return 1
+  fi
 }
 
 rollback_previous_container() {
   local rollback_image="${PREVIOUS_IMAGE_ID:-$PREVIOUS_IMAGE_REF}"
 
-  print_container_logs "failed deployment"
+  emit_stage "ROLLBACK"
   remove_existing_container || true
 
   if [[ "$PREVIOUS_CONTAINER_EXISTS" != "true" || -z "$rollback_image" ]]; then
     echo "DEPLOY_RESULT=ROLLBACK_FAILED"
-    echo "ERROR: no previous container image is available for rollback" >&2
+    emit_error "ROLLBACK_IMAGE_UNAVAILABLE" "no previous container image is available for rollback"
     return 1
   fi
 
-  echo "Recreating previous container image"
   if ! start_container "$rollback_image"; then
     echo "DEPLOY_RESULT=ROLLBACK_FAILED"
-    echo "ERROR: failed to recreate previous container" >&2
+    emit_error "ROLLBACK_START_FAILED" "failed to recreate previous container"
     return 1
   fi
 
@@ -187,8 +188,8 @@ rollback_previous_container() {
     return 1
   fi
 
-  print_container_logs "rollback"
   echo "DEPLOY_RESULT=ROLLBACK_FAILED"
+  emit_error "ROLLBACK_HEALTH_FAILED" "rollback container failed health checks"
   return 1
 }
 
@@ -204,8 +205,14 @@ deploy() {
   pull_and_verify_image "$image" "$expected_revision"
   capture_current_deployment
 
+  emit_stage "REPLACE_CONTAINER"
   remove_existing_container
-  start_container "$image"
+
+  if ! start_container "$image"; then
+    echo "ERROR_CODE=NEW_CONTAINER_START_FAILED"
+    rollback_previous_container
+    return 1
+  fi
 
   if ! verify_runtime_health; then
     rollback_previous_container

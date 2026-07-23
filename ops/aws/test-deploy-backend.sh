@@ -10,6 +10,7 @@ IMAGE_TAG="sha-0123456"
 IMAGE="ghcr.io/gtestino92/reals-backend:${IMAGE_TAG}"
 PREVIOUS_IMAGE_ID="sha256:previous-image"
 PREVIOUS_IMAGE_REF="ghcr.io/gtestino92/reals-backend:sha-abcdef0"
+SIMULATED_APP_LOG="APP_LOG user@example.com user-id-123 chat-id-456 password=super-secret"
 
 pass_count=0
 
@@ -34,8 +35,8 @@ assert_not_contains() {
 
 create_stub_environment() {
   TEST_ROOT="$(mktemp -d)"
-  export TEST_ROOT
-  unset DOCKER_PULL_FAIL DOCKER_LABEL_REVISION CURL_MODE
+  export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID SIMULATED_APP_LOG
+  unset DOCKER_PULL_FAIL DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL CURL_MODE ROLLBACK_CURL_MODE
   mkdir -p "$TEST_ROOT/bin"
   printf 'SPRING_PROFILES_ACTIVE=dev\n' > "$TEST_ROOT/backend.env"
   : > "$TEST_ROOT/docker.log"
@@ -78,6 +79,7 @@ case "${1:-}" in
   pull)
     log "$@"
     if [[ "${DOCKER_PULL_FAIL:-false}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
       exit 1
     fi
     exit 0
@@ -119,7 +121,15 @@ case "${1:-}" in
     ;;
   run)
     log "$@"
-    image="${@: -1}"
+    image="${*: -1}"
+    if [[ "$image" == "$IMAGE" && "${DOCKER_NEW_RUN_FAIL:-false}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
+      exit 1
+    fi
+    if [[ "$image" == "$PREVIOUS_IMAGE_ID" && "${DOCKER_ROLLBACK_RUN_FAIL:-false}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
+      exit 1
+    fi
     write_state exists true
     write_state running true
     write_state image_ref "$image"
@@ -133,7 +143,7 @@ case "${1:-}" in
     ;;
   logs)
     log "$@"
-    echo "simulated log tail without secrets"
+    echo "$SIMULATED_APP_LOG"
     exit 0
     ;;
 esac
@@ -151,16 +161,17 @@ if [[ -f "$TEST_ROOT/container_image_ref" ]]; then
   image_ref="$(cat "$TEST_ROOT/container_image_ref")"
 fi
 
-url="${@: -1}"
+url="${*: -1}"
 mode="${CURL_MODE:-success}"
-
-if [[ "$mode" == "rollback_success" && "$image_ref" != sha256:previous-image ]]; then
-  exit 22
+if [[ "$image_ref" == "$PREVIOUS_IMAGE_ID" ]]; then
+  mode="${ROLLBACK_CURL_MODE:-success}"
 fi
 
-if [[ "$mode" == "always_fail" ]]; then
-  exit 22
-fi
+case "$mode:$url" in
+  always_fail:*) exit 22 ;;
+  readiness_fail:*readiness*) exit 22 ;;
+  ping_fail:*ping*) exit 22 ;;
+esac
 
 case "$url" in
   *readiness*) printf '{"status":"UP"}\n' ;;
@@ -230,19 +241,19 @@ test_case() {
 malformed_tag_rejected() {
   run_deploy "$TEST_ROOT/out" "development" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
-  assert_contains "$TEST_ROOT/out" "image tag must be an immutable"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=INVALID_IMAGE_TAG"
 }
 
 malformed_revision_rejected() {
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "not-a-full-sha"
   expect_failure "$TEST_ROOT/out"
-  assert_contains "$TEST_ROOT/out" "full 40-character"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=INVALID_REVISION"
 }
 
 revision_mismatch_rejected() {
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "1123456789abcdef0123456789abcdef01234567"
   expect_failure "$TEST_ROOT/out"
-  assert_contains "$TEST_ROOT/out" "does not match expected revision"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=TAG_REVISION_MISMATCH"
 }
 
 pull_failure_leaves_current_container() {
@@ -250,6 +261,7 @@ pull_failure_leaves_current_container() {
   export DOCKER_PULL_FAIL=true
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_PULL_FAILED"
   assert_not_contains "$TEST_ROOT/docker.log" "docker stop"
   assert_not_contains "$TEST_ROOT/docker.log" "docker rm"
 }
@@ -259,49 +271,97 @@ revision_label_mismatch_leaves_current_container() {
   export DOCKER_LABEL_REVISION="abcdef0123456789abcdef0123456789abcdef01"
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
-  assert_contains "$TEST_ROOT/out" "revision label does not match"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_REVISION_MISMATCH"
   assert_not_contains "$TEST_ROOT/docker.log" "docker stop"
   assert_not_contains "$TEST_ROOT/docker.log" "docker rm"
 }
 
-successful_deployment_starts_requested_image() {
+successful_deployment() {
   seed_previous_container
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_success "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/docker.log" "$IMAGE"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=SUCCESS"
+  assert_contains "$TEST_ROOT/out" "DEPLOYED_REVISION=$FULL_REVISION"
+  assert_contains "$TEST_ROOT/out" "DEPLOYED_IMAGE=$IMAGE"
 }
 
 readiness_failure_triggers_rollback() {
   seed_previous_container
-  export CURL_MODE=rollback_success
+  export CURL_MODE=readiness_fail
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=READINESS_FAILED"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
 }
 
-rollback_restores_previous_image() {
+ping_failure_triggers_rollback() {
   seed_previous_container
-  export CURL_MODE=rollback_success
+  export CURL_MODE=ping_fail
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=PING_FAILED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+}
+
+new_container_start_failure_triggers_rollback() {
+  seed_previous_container
+  export DOCKER_NEW_RUN_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=NEW_CONTAINER_START_FAILED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+}
+
+rollback_startup_failure_reports_failure() {
+  seed_previous_container
+  export CURL_MODE=readiness_fail
+  export DOCKER_ROLLBACK_RUN_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLBACK_FAILED"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=ROLLBACK_START_FAILED"
+}
+
+rollback_health_failure_reports_failure() {
+  seed_previous_container
+  export CURL_MODE=readiness_fail
+  export ROLLBACK_CURL_MODE=always_fail
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLBACK_FAILED"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=ROLLBACK_HEALTH_FAILED"
+}
+
+successful_rollback_restores_previous_exact_image() {
+  seed_previous_container
+  export CURL_MODE=readiness_fail
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/docker.log" "docker run"
   assert_contains "$TEST_ROOT/docker.log" "$PREVIOUS_IMAGE_ID"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
 }
 
-rollback_failure_reports_failure() {
-  seed_previous_container
-  export CURL_MODE=always_fail
-  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
-  expect_failure "$TEST_ROOT/out"
-  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLBACK_FAILED"
-}
-
-successful_deployment_reports_success() {
+output_contains_controlled_markers() {
   seed_previous_container
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_success "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_STAGE=PULL_IMAGE"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_STAGE=VERIFY_READINESS"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_STAGE=VERIFY_PING"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=SUCCESS"
-  assert_contains "$TEST_ROOT/out" "DEPLOYED_REVISION=$FULL_REVISION"
+}
+
+output_excludes_application_logs_and_secrets() {
+  seed_previous_container
+  export DOCKER_NEW_RUN_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_not_contains "$TEST_ROOT/out" "$SIMULATED_APP_LOG"
+  assert_not_contains "$TEST_ROOT/out" "user@example.com"
+  assert_not_contains "$TEST_ROOT/out" "password=super-secret"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker logs"
 }
 
 test_case "malformed image tag is rejected" malformed_tag_rejected
@@ -309,10 +369,14 @@ test_case "malformed full revision is rejected" malformed_revision_rejected
 test_case "short tag and revision mismatch is rejected" revision_mismatch_rejected
 test_case "pull failure leaves current container untouched" pull_failure_leaves_current_container
 test_case "revision label mismatch leaves current container untouched" revision_label_mismatch_leaves_current_container
-test_case "successful deployment starts requested image" successful_deployment_starts_requested_image
+test_case "successful deploy reports immutable image" successful_deployment
 test_case "readiness failure triggers rollback" readiness_failure_triggers_rollback
-test_case "rollback restores previous image" rollback_restores_previous_image
-test_case "rollback failure reports ROLLBACK_FAILED" rollback_failure_reports_failure
-test_case "successful deployment reports SUCCESS" successful_deployment_reports_success
+test_case "ping failure triggers rollback" ping_failure_triggers_rollback
+test_case "new-container startup failure triggers rollback" new_container_start_failure_triggers_rollback
+test_case "rollback startup failure reports ROLLBACK_FAILED" rollback_startup_failure_reports_failure
+test_case "rollback health failure reports ROLLBACK_FAILED" rollback_health_failure_reports_failure
+test_case "successful rollback restores previous exact image" successful_rollback_restores_previous_exact_image
+test_case "output contains controlled deployment markers" output_contains_controlled_markers
+test_case "output excludes simulated application logs and secrets" output_excludes_application_logs_and_secrets
 
 echo "$pass_count tests passed"
