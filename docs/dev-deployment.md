@@ -48,6 +48,11 @@ The tag is calculated automatically from the resolved full Git SHA.
 For the detailed AWS and GitHub one-time setup, rollback behavior, IAM policy
 templates, and production design notes, see `docs/aws-dev-deployment.md`.
 
+GitHub Actions lists manual workflows only after the workflow file exists on
+the repository default branch. Because the default branch is `master`, perform
+the one-time workflow bootstrap documented in `docs/aws-dev-deployment.md`
+before expecting `Deploy AWS Dev` to appear in the Actions UI.
+
 ## Explicit Rollback
 
 To deploy an older known-good image, run `Deploy AWS Dev` from `development`
@@ -67,9 +72,15 @@ The EC2-side deployment script pulls and verifies the new immutable image before
 stopping the existing container. It validates the image OCI revision label
 `org.opencontainers.image.revision` against the requested full SHA.
 
-If the new container fails public readiness or `/api/ping`, the script restores
-the previously captured local image ID and returns non-zero. The workflow
-reports whether rollback occurred.
+If the new container fails to start, or internal checks against
+`127.0.0.1:8080` fail for readiness or `/api/ping`, the script restores the
+previously captured local image ID and returns non-zero. The workflow reports
+whether rollback occurred.
+
+After SSM succeeds, GitHub Actions checks the public Nginx HTTPS URL. Public
+smoke failure does not automatically roll back because the failure may be in
+Nginx, TLS, DNS, security-group routing, or another host-level path. Inspect the
+public path before deciding whether to run an explicit image rollback.
 
 ## Runtime Configuration
 

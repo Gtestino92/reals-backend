@@ -24,6 +24,33 @@ The deployment workflow does not create or modify AWS infrastructure. It does
 not build or push Docker images. It sends the repository-owned deployment script
 to the selected EC2 instance through Systems Manager Run Command.
 
+## One-time Workflow Bootstrap
+
+GitHub only lists a manually dispatched workflow in the Actions UI after the
+workflow file exists on the repository default branch. The current default
+branch is `master`, while dev deployment still targets `development`.
+
+Bootstrap procedure:
+
+1. Merge this deployment implementation into `development`.
+2. Create a small follow-up branch from `master`.
+3. Copy only `.github/workflows/deploy-aws-dev.yml` into that branch.
+4. Open a small PR against `master`.
+5. After the workflow file exists on the default branch, open GitHub Actions.
+6. Select `Deploy AWS Dev`.
+7. Select `development` in the branch selector.
+8. Leave `revision` blank for the normal deployment path.
+9. Press `Run workflow`.
+
+The workflow file on `master` exists only to register the manual workflow in
+GitHub Actions. Dev deployments still execute only for `refs/heads/development`;
+the branch gate in the workflow must remain in place. Dev application code does
+not need to be merged to `master` to deploy AWS dev.
+
+Future changes to `.github/workflows/deploy-aws-dev.yml` should normally be
+synchronized to both `development` and the default branch so the registered UI
+workflow and the implementation selected from `development` do not drift.
+
 ## Normal Manual Deployment
 
 1. Merge the change into `development`.
@@ -66,18 +93,42 @@ provided full SHA.
 reference, actual local image ID, and running state before replacement. It pulls
 and verifies the requested image before stopping the existing container.
 
-If the new container fails readiness or `/api/ping`, the script:
+If the new container fails to start, or if internal EC2 checks fail against
+`127.0.0.1`, the script:
 
-1. Captures a sanitized log tail from the failed container.
-2. Removes the failed container.
-3. Recreates `reals-backend` from the previously captured local image ID.
-4. Runs the same readiness and ping checks.
-5. Prints `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
-6. Prints `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
-7. Returns non-zero even when rollback succeeds.
+1. Removes the failed container if present.
+2. Recreates `reals-backend` from the previously captured local image ID.
+3. Runs the same internal readiness and ping checks.
+4. Prints `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
+5. Prints `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
+6. Returns non-zero even when rollback succeeds.
 
 The script does not delete the previous image and does not run broad Docker
 cleanup commands.
+
+The workflow then performs public HTTPS smoke checks through Nginx only after
+SSM succeeds. If internal checks succeeded but public readiness or ping fails,
+the workflow fails but does not automatically roll back. Public-path failure may
+come from Nginx, TLS, DNS, security-group routing, or another host-level issue
+unrelated to the application image. Inspect the public path before deciding
+whether to run an explicit image rollback.
+
+## SSM Command Polling
+
+The workflow does not use the default AWS CLI `ssm wait command-executed`
+waiter. It polls `aws ssm get-command-invocation` every 5 seconds for up to 15
+minutes.
+
+Non-terminal statuses are:
+
+- `Pending`
+- `InProgress`
+- `Delayed`
+
+`Success` is the only successful terminal status. `Cancelled`, `TimedOut`,
+`Failed`, `Cancelling`, and unknown terminal statuses fail the workflow. The
+poller temporarily tolerates `InvocationDoesNotExist` immediately after
+`send-command`.
 
 ## Deployed Revision
 
@@ -88,6 +139,7 @@ The GitHub workflow summary shows:
 - immutable image tag;
 - configured EC2 `Name` tag;
 - SSM command result;
+- deployment stage and controlled error code;
 - readiness and ping results;
 - whether rollback occurred.
 
@@ -97,6 +149,27 @@ is the authoritative image-to-commit binding for the host-side deployment.
 
 `/actuator/info` remains administrator-protected in hosted environments. Do not
 depend on it for public deployment validation.
+
+## Actions Output Safety
+
+GitHub Actions receives only controlled deployment markers from the remote
+script, such as:
+
+```text
+DEPLOY_STAGE=...
+DEPLOY_RESULT=SUCCESS
+DEPLOY_RESULT=ROLLED_BACK
+DEPLOY_RESULT=ROLLBACK_FAILED
+DEPLOYED_REVISION=<full-sha>
+DEPLOYED_IMAGE=<immutable-image>
+ROLLBACK_IMAGE=<previous-image-id>
+ERROR_CODE=...
+```
+
+The workflow summary does not include arbitrary SSM stdout, stderr, Docker
+logs, HTTP response bodies, `/etc/reals/backend.env`, environment values,
+credentials, tokens, or application logs. Inspect detailed container logs on the
+EC2 host through an authorized SSM session.
 
 ## GitHub Environment `dev`
 

@@ -156,54 +156,96 @@ jobs:
               --output text
           )"
 
+          poll_ssm_command() {
+            local command_id="$1"
+            local instance_id="$2"
+            local timeout_seconds=900
+            local poll_delay_seconds=5
+            local deadline=$((SECONDS + timeout_seconds))
+            local status=""
+            local attempt_output="ssm-invocation-attempt.json"
+            local attempt_error="ssm-invocation-attempt.err"
+
+            while (( SECONDS < deadline )); do
+              if aws ssm get-command-invocation \
+                --command-id "$command_id" \
+                --instance-id "$instance_id" > "$attempt_output" 2> "$attempt_error"; then
+                cp "$attempt_output" ssm-invocation.json
+                status="$(jq -r '.Status // "Unknown"' ssm-invocation.json)"
+
+                case "$status" in
+                  Pending|InProgress|Delayed)
+                    sleep "$poll_delay_seconds"
+                    ;;
+                  Success)
+                    return 0
+                    ;;
+                  Cancelled|TimedOut|Failed|Cancelling)
+                    return 1
+                    ;;
+                  *)
+                    echo "Unknown SSM terminal status: ${status}" >&2
+                    return 1
+                    ;;
+                esac
+              elif grep -q "InvocationDoesNotExist" "$attempt_error"; then
+                sleep "$poll_delay_seconds"
+              else
+                cat "$attempt_error" >&2
+                return 1
+              fi
+            done
+
+            echo '{"Status":"TimedOut"}' > ssm-invocation.json
+            echo "Timed out waiting for SSM command after ${timeout_seconds} seconds" >&2
+            return 1
+          }
+
           set +e
-          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
-          WAIT_STATUS=$?
+          poll_ssm_command "$COMMAND_ID" "$INSTANCE_ID"
+          POLL_STATUS=$?
           set -e
 
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" > ssm-invocation.json
+          if [[ ! -s ssm-invocation.json ]]; then
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" > ssm-invocation.json || echo '{"Status":"Unknown"}' > ssm-invocation.json
+          fi
 
           jq -r '.Status // "Unknown"' ssm-invocation.json > ssm-status.txt
           jq -r '.StandardOutputContent // ""' ssm-invocation.json > ssm-stdout.raw.txt
           jq -r '.StandardErrorContent // ""' ssm-invocation.json > ssm-stderr.raw.txt
 
-          sanitize() {
-            sed -E \
-              -e 's/([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|DATABASE_URL|DATABASE_USERNAME|DATABASE_PASSWORD|FIREBASE_SERVICE_ACCOUNT[^= :"]*)([= :"]+)[^[:space:]"]+/\1\2[REDACTED]/g' \
-              -e 's#https?://[^[:space:]]*[?][^[:space:]]*#[REDACTED_URL]#g'
-          }
-
-          sanitize < ssm-stdout.raw.txt | tail -c 60000 > ssm-stdout.txt
-          sanitize < ssm-stderr.raw.txt | tail -c 60000 > ssm-stderr.txt
-
           SSM_STATUS="$(cat ssm-status.txt)"
+          DEPLOY_RESULT="$(grep -E '^DEPLOY_RESULT=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          DEPLOY_STAGE="$(grep -E '^DEPLOY_STAGE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          ERROR_CODE="$(grep -E '^ERROR_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           ROLLBACK_OCCURRED="no"
-          if grep -Eq '^DEPLOY_RESULT=(ROLLED_BACK|ROLLBACK_FAILED)$' ssm-stdout.txt; then
+          if [[ "$DEPLOY_RESULT" == "ROLLED_BACK" || "$DEPLOY_RESULT" == "ROLLBACK_FAILED" ]]; then
             ROLLBACK_OCCURRED="yes"
           fi
 
           {
             echo "status=${SSM_STATUS}"
+            echo "deploy_result=${DEPLOY_RESULT:-unknown}"
+            echo "deploy_stage=${DEPLOY_STAGE:-unknown}"
+            echo "error_code=${ERROR_CODE:-none}"
             echo "rollback_occurred=${ROLLBACK_OCCURRED}"
           } >> "$GITHUB_OUTPUT"
 
           {
-            echo "SSM command status: ${SSM_STATUS}"
+            echo "### SSM deployment command"
             echo
-            echo "Sanitized stdout:"
-            echo '```text'
-            cat ssm-stdout.txt
-            echo '```'
-            echo
-            echo "Sanitized stderr:"
-            echo '```text'
-            cat ssm-stderr.txt
-            echo '```'
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Terminal status | ${SSM_STATUS} |"
+            echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
+            echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
+            echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Rollback occurred | ${ROLLBACK_OCCURRED} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$WAIT_STATUS" -ne 0 || "$SSM_STATUS" != "Success" ]]; then
+          if [[ "$POLL_STATUS" -ne 0 || "$SSM_STATUS" != "Success" ]]; then
             exit 1
           fi
 
@@ -236,33 +278,48 @@ jobs:
             local attempt
 
             for attempt in {1..12}; do
-              if curl --fail --show-error --silent --max-time 10 "$url" > "$output_file"; then
+              if curl --fail --show-error --silent --max-time 10 "$url" > "$output_file" &&
                 python - "$expected" "$output_file" <<'PY'
           import json
           import sys
 
           expected = sys.argv[1]
           path = sys.argv[2]
-          with open(path, encoding="utf-8") as handle:
-              payload = json.load(handle)
+          try:
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+          except json.JSONDecodeError:
+              raise SystemExit("response is not valid JSON")
           status = payload.get("status")
           if status != expected:
               raise SystemExit(f"Expected status {expected}, got {status!r}")
           PY
+              then
                 echo "${name}=passed" >> "$GITHUB_OUTPUT"
-                echo "passed" > "${name}.result"
                 return 0
               fi
               sleep 5
             done
 
             echo "${name}=failed" >> "$GITHUB_OUTPUT"
-            echo "failed" > "${name}.result"
             return 1
           }
 
-          check_status readiness "${BASE_URL}/actuator/health/readiness" "UP" readiness.json
-          check_status ping "${BASE_URL}/api/ping" "ok" ping.json
+          READINESS_STATUS=passed
+          PING_STATUS=passed
+
+          if ! check_status readiness "${BASE_URL}/actuator/health/readiness" "UP" readiness.json; then
+            READINESS_STATUS=failed
+          fi
+
+          if ! check_status ping "${BASE_URL}/api/ping" "ok" ping.json; then
+            PING_STATUS=failed
+          fi
+
+          if [[ "$READINESS_STATUS" != "passed" || "$PING_STATUS" != "passed" ]]; then
+            echo "Public smoke failed: readiness=${READINESS_STATUS}, ping=${PING_STATUS}" >&2
+            exit 1
+          fi
 
       - name: Publish deployment summary
         if: always()
@@ -271,6 +328,9 @@ jobs:
           RESOLVED_REVISION: ${{ steps.revision.outputs.resolved_revision }}
           IMAGE_TAG: ${{ steps.revision.outputs.image_tag }}
           SSM_STATUS: ${{ steps.ssm.outputs.status }}
+          DEPLOY_RESULT: ${{ steps.ssm.outputs.deploy_result }}
+          DEPLOY_STAGE: ${{ steps.ssm.outputs.deploy_stage }}
+          ERROR_CODE: ${{ steps.ssm.outputs.error_code }}
           ROLLBACK_OCCURRED: ${{ steps.ssm.outputs.rollback_occurred }}
           READINESS_RESULT: ${{ steps.smoke.outputs.readiness }}
           PING_RESULT: ${{ steps.smoke.outputs.ping }}
@@ -287,6 +347,9 @@ jobs:
             echo "| Immutable image tag | ${IMAGE_TAG:-not resolved} |"
             echo "| Target EC2 Name tag | ${AWS_EC2_INSTANCE_NAME:-not configured} |"
             echo "| SSM command result | ${SSM_STATUS:-not run} |"
+            echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
+            echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
+            echo "| Error code | ${ERROR_CODE:-none} |"
             echo "| Readiness result | ${READINESS_RESULT:-not run} |"
             echo "| Ping result | ${PING_RESULT:-not run} |"
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED:-unknown} |"
