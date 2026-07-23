@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_SCRIPT="$PROJECT_ROOT/ops/aws/deploy-backend.sh"
 WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/deploy-aws-dev.yml"
+CI_WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/ci.yml"
 
 FULL_REVISION="0123456789abcdef0123456789abcdef01234567"
 IMAGE_TAG="sha-0123456"
@@ -40,6 +41,28 @@ assert_no_run_for_image() {
   if grep -F "docker run" "$file" | grep -Fq "$unexpected_image"; then
     fail_test "did not expect docker run for '$unexpected_image' in $file"
   fi
+}
+
+line_number_for() {
+  local file="$1"
+  local pattern="$2"
+  grep -n -F "$pattern" "$file" | head -n 1 | cut -d: -f1
+}
+
+assert_line_before() {
+  local file="$1"
+  local first_pattern="$2"
+  local second_pattern="$3"
+  local first_line
+  local second_line
+
+  first_line="$(line_number_for "$file" "$first_pattern")"
+  second_line="$(line_number_for "$file" "$second_pattern")"
+
+  [[ -n "$first_line" ]] || fail_test "expected '$first_pattern' in $file"
+  [[ -n "$second_line" ]] || fail_test "expected '$second_pattern' in $file"
+  (( first_line < second_line )) ||
+    fail_test "expected '$first_pattern' before '$second_pattern' in $file"
 }
 
 create_stub_environment() {
@@ -413,6 +436,14 @@ current_container_remove_failure_reports_controlled_error() {
   assert_no_run_for_image "$TEST_ROOT/docker.log" "$IMAGE"
 }
 
+ci_validates_deployment_scripts_before_docker_build() {
+  assert_contains "$CI_WORKFLOW_FILE" "Validate AWS deployment scripts"
+  assert_contains "$CI_WORKFLOW_FILE" "bash -n ops/aws/deploy-backend.sh"
+  assert_contains "$CI_WORKFLOW_FILE" "bash -n ops/aws/test-deploy-backend.sh"
+  assert_contains "$CI_WORKFLOW_FILE" "ops/aws/test-deploy-backend.sh"
+  assert_line_before "$CI_WORKFLOW_FILE" "Validate AWS deployment scripts" "Build backend image"
+}
+
 test_case "malformed image tag is rejected" malformed_tag_rejected
 test_case "malformed full revision is rejected" malformed_revision_rejected
 test_case "short tag and revision mismatch is rejected" revision_mismatch_rejected
@@ -431,5 +462,6 @@ test_case "workflow SSM parameters include executionTimeout" workflow_parameters
 test_case "workflow requires DEPLOY_RESULT success marker" workflow_requires_controlled_success_marker
 test_case "current container stop failure reports controlled error" current_container_stop_failure_reports_controlled_error
 test_case "current container remove failure reports controlled error" current_container_remove_failure_reports_controlled_error
+test_case "CI validates deployment scripts before Docker build" ci_validates_deployment_scripts_before_docker_build
 
 echo "$pass_count tests passed"

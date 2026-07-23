@@ -108,9 +108,9 @@ provided full SHA.
 
 ## Automatic Rollback
 
-`ops/aws/deploy-backend.sh` captures the currently configured container image
-reference, actual local image ID, and running state before replacement. It pulls
-and verifies the requested image before stopping the existing container.
+`ops/aws/deploy-backend.sh` captures whether the current container exists, its
+configured image reference, and its exact local image ID before replacement. It
+pulls and verifies the requested image before stopping the existing container.
 
 If the new container fails to start, or if internal EC2 checks fail against
 `127.0.0.1`, the script:
