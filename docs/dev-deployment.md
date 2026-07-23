@@ -45,13 +45,13 @@ ghcr.io/gtestino92/reals-backend:sha-<short-sha>
 
 The tag is calculated automatically from the resolved full Git SHA.
 
-For the detailed AWS and GitHub one-time setup, rollback behavior, IAM policy
-templates, and production design notes, see `docs/aws-dev-deployment.md`.
+For the detailed AWS and GitHub setup, rollback behavior, IAM policy templates,
+branch strategy, and production design notes, see `docs/aws-dev-deployment.md`.
 
-GitHub Actions lists manual workflows only after the workflow file exists on
-the repository default branch. Because the default branch is `master`, perform
-the one-time workflow bootstrap documented in `docs/aws-dev-deployment.md`
-before expecting `Deploy AWS Dev` to appear in the Actions UI.
+`development` is the repository default branch and the source for AWS dev
+deployments, so GitHub registers `Deploy AWS Dev` directly from
+`development:.github/workflows/deploy-aws-dev.yml`. No duplicate workflow file
+on `master` is required for AWS dev deployment.
 
 ## Explicit Rollback
 

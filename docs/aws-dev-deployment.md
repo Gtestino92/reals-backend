@@ -24,32 +24,51 @@ The deployment workflow does not create or modify AWS infrastructure. It does
 not build or push Docker images. It sends the repository-owned deployment script
 to the selected EC2 instance through Systems Manager Run Command.
 
-## One-time Workflow Bootstrap
+## Repository Branch and Workflow Registration
 
-GitHub only lists a manually dispatched workflow in the Actions UI after the
-workflow file exists on the repository default branch. The current default
-branch is `master`, while dev deployment still targets `development`.
+`development` is the repository default branch, the normal pull-request target,
+and the only allowed source branch for AWS dev deployments. Because
+`development` is the default branch, GitHub registers the manual
+`Deploy AWS Dev` workflow directly from:
 
-Bootstrap procedure:
+```text
+development:.github/workflows/deploy-aws-dev.yml
+```
 
-1. Merge this deployment implementation into `development`.
-2. Create a small follow-up branch from `master`.
-3. Copy only `.github/workflows/deploy-aws-dev.yml` into that branch.
-4. Open a small PR against `master`.
-5. After the workflow file exists on the default branch, open GitHub Actions.
-6. Select `Deploy AWS Dev`.
-7. Select `development` in the branch selector.
-8. Leave `revision` blank for the normal deployment path.
-9. Press `Run workflow`.
+No duplicate workflow file on `master` is required for AWS dev deployment.
 
-The workflow file on `master` exists only to register the manual workflow in
-GitHub Actions. Dev deployments still execute only for `refs/heads/development`;
-the branch gate in the workflow must remain in place. Dev application code does
-not need to be merged to `master` to deploy AWS dev.
+Normal workflow execution is:
 
-Future changes to `.github/workflows/deploy-aws-dev.yml` should normally be
-synchronized to both `development` and the default branch so the registered UI
-workflow and the implementation selected from `development` do not drift.
+```text
+Actions
+-> Deploy AWS Dev
+-> Run workflow
+-> Branch: development
+-> revision: blank
+```
+
+The workflow itself still rejects any selected ref other than:
+
+```text
+refs/heads/development
+```
+
+The immutable image tag is calculated automatically from the selected
+`development` SHA as `sha-<first 7 characters>`.
+
+Branch roles:
+
+- `development`: repository default branch, integration branch, default target
+  for feature PRs, source branch for AWS dev image publication, and only
+  allowed source for `Deploy AWS Dev`.
+- `master`: not the default branch, not required for AWS dev workflow
+  registration, reserved for a future deliberate production promotion, and must
+  not receive unrelated direct functional changes.
+
+Future production changes should arrive through a reviewed promotion from
+`development` to `master`. Do not treat `master` as currently synchronized with
+`development`, and do not treat it as production-ready merely because the branch
+exists.
 
 ## Normal Manual Deployment
 
@@ -324,21 +343,25 @@ runtime shape intentionally changes.
 
 Do not reuse the dev workflow or role for production.
 
-The intended production design is:
+Production preparation is a separate task. Before the first production
+deployment, the team must:
 
-- Separate workflow, for example `Deploy AWS Prod`.
-- Separate GitHub Environment `prod`.
-- Separate AWS OIDC deployment role.
-- Separate EC2/runtime variables.
-- Required reviewers or environment approval.
-- Deployment only from `master` or an immutable release tag.
-- Exact immutable image revision; never `latest` or moving `master`.
-- Backups and restore validation before deployment.
-- Documented production rollback procedure.
-- No shared dev/prod AWS role or environment configuration.
+1. Review commits exclusive to `master`.
+2. Reconcile branch divergence intentionally.
+3. Create a reviewed promotion from `development` to `master`.
+4. Validate Flyway migrations, backups, and rollback implications.
+5. Configure a separate GitHub Environment such as `prod`.
+6. Configure a separate AWS OIDC deployment role.
+7. Use a separate manually approved production deployment workflow.
+8. Deploy an immutable SHA or release tag, never moving `master` or `latest`.
+
+The intended production design also requires separate EC2/runtime variables,
+required reviewers or environment approval, a documented production rollback
+procedure, and no shared dev/prod AWS role or environment configuration.
 
 When release versioning is introduced, prefer an immutable release tag such as
-`v1.0.0`. Until then, an exact SHA known to belong to `master` is acceptable.
+`v1.0.0`. Until then, an exact SHA known to belong to the reviewed production
+promotion on `master` is acceptable.
 
 ## Automatic Deployment Checklist
 
