@@ -1,6 +1,7 @@
 # Deployment Inventory and AWS Dev Plan
 
 Retrieval date for external facts: 2026-07-21.
+Deployment automation update: 2026-07-23.
 
 Scope:
 - Backend repository: `Gtestino92/reals-backend`, inspected locally from `development`.
@@ -12,7 +13,7 @@ Scope:
 
 Current deployment readiness:
 - The backend is containerizable and has a cloud-oriented `dev` Spring profile with PostgreSQL, Flyway, Firebase Admin/Auth, App Check modes, S3-compatible storage, schedulers, ShedLock, Actuator health probes, and GHCR image publication. Evidence: `Dockerfile`, `.github/workflows/ci.yml`, `src/main/resources/application-dev.yml`, `docs/dev-deployment.md`.
-- There is no AWS deployment automation or AWS-specific infrastructure definition. Existing Helm values are documented placeholders, not an active Kubernetes deployment design. Evidence: `deploy/helm/values-dev.yaml`, `deploy/helm/values-prod.yaml`, `docs/dev-deployment.md`.
+- The repository now includes manual AWS dev deployment automation through GitHub Actions OIDC, AWS Systems Manager Run Command, and an EC2 Docker container replacement script. AWS resources are still managed outside this repository. Existing Helm values remain documented placeholders, not an active Kubernetes deployment design. Evidence: `.github/workflows/deploy-aws-dev.yml`, `ops/aws/deploy-backend.sh`, `docs/aws-dev-deployment.md`.
 - Android has isolated `local`, `dev`, and `prod` flavors. `dev` builds require a real non-placeholder HTTPS backend URL, a flavor-specific Firebase config for `com.reals.app.dev`, Play Integrity App Check, and release signing for `devRelease`. Evidence: `../reals-app/app/build.gradle.kts`, `../reals-app/docs/infra.md`, `../reals-app/docs/testing.md`.
 
 Largest remaining unknowns:
@@ -24,7 +25,7 @@ Largest remaining unknowns:
 
 Recommended first hosted-dev direction:
 - With `BACK-AWS-0` implemented in code, start with one `linux/amd64` EC2 instance running the backend container, Amazon RDS PostgreSQL when budget allows, one private Amazon S3 bucket, ECR or GHCR as the image registry, and one explicit TLS path. For lowest fixed cost, provisionally prefer EC2 host TLS with Caddy/Nginx and ACME/Let's Encrypt; use ALB plus a normal ACM public certificate only if the operator accepts ALB and public IPv4 cost. If the budget is very tight, use the same x86_64 EC2 instance for the container and a colocated PostgreSQL volume only as a temporary dev compromise.
-- No AWS environment has been deployed yet, and EC2 instance profiles/ECS task roles still need real runtime validation during AWS-1/AWS-2.
+- The selected dev deployment shape is GitHub Actions -> GitHub OIDC -> AWS deployment role -> SSM Run Command -> EC2 Docker container -> Nginx HTTPS -> private RDS PostgreSQL -> private Amazon S3. The repository does not create these AWS resources.
 
 Why this is proportionate:
 - The backend currently expects one JVM process with in-process rate limiting, database-backed ShedLock, a single S3-compatible object store, and no evidence of traffic requiring autoscaling. Evidence: `src/main/kotlin/com/reals/backend/config/security/ratelimit/RateLimitProperties.kt`, `src/main/kotlin/com/reals/backend/config/ShedLockConfig.kt`, `src/main/resources/application-dev.yml`.
@@ -68,9 +69,9 @@ Decisions that must remain open until AWS account and Region constraints are ver
 | DNS | Placeholder Helm hosts and Android placeholder URLs exist; no real domain selected. | `deploy/helm/values-dev.yaml`, `../reals-app/app/build.gradle.kts` | Not ready. | Choose dev subdomain/domain owner. | Medium |
 | TLS | Android dev/prod validation requires HTTPS and rejects placeholders/local hosts. Backend itself serves HTTP in container. | `../reals-app/app/build.gradle.kts`, `Dockerfile` | Needs a supported TLS path. | Choose EC2 host TLS with ACME/exportable cert, ALB TLS with normal ACM public cert, or another managed HTTPS runtime; do not assume a normal non-exportable ACM cert can be installed on EC2. | High |
 | Domain ownership | No observed real Reals domain in repositories. | `deploy/helm/values-dev.yaml`, `../reals-app/app/build.gradle.kts` | Not ready. | Operator must provide/choose domain. | Medium |
-| CI | Backend tests, Docker compose config, image build, Trivy scan, dependency review, GHCR publish; smoke workflow is manual against a URL. | `.github/workflows/ci.yml`, `.github/workflows/smoke.yml` | Build/publish ready; deploy not automated. | Add deployment workflow later, not in this task. | Medium |
-| Deployment | Docs target previous Render/Railway manual flow; no cloud automation exists. | `docs/dev-deployment.md` | Planning-ready only. | AWS platform selection and runbook needed. | Medium |
-| Rollback | GHCR branch tag and immutable `sha-<shortsha>` tags exist; no runtime rollback automation. | `.github/workflows/ci.yml`, `docs/dev-deployment.md` | Image rollback possible manually. | Define runtime revision rollback and Flyway compatibility policy. | High |
+| CI | Backend tests, Docker compose config, image build, Trivy scan, dependency review, GHCR publish; smoke workflow is manual against a URL. | `.github/workflows/ci.yml`, `.github/workflows/smoke.yml` | Build/publish ready; deploy intentionally manual. | Operator must wait for CI success before running deployment. | Medium |
+| Deployment | Manual `Deploy AWS Dev` workflow resolves an immutable `sha-<shortsha>` image, assumes AWS role through OIDC, sends the repository-owned script over SSM with bounded polling, and validates public readiness and ping after SSM succeeds. | `.github/workflows/deploy-aws-dev.yml`, `ops/aws/deploy-backend.sh`, `docs/aws-dev-deployment.md` | Automation ready after default-branch workflow registration, GitHub Environment and AWS role/host prerequisites are configured. | Real AWS OIDC role, EC2 Name tag, SSM-managed host, Nginx, Docker, runtime env file, and default-branch workflow bootstrap remain manual setup. | Medium |
+| Rollback | Runtime script captures the previous container image ID before replacement and automatically recreates it if the new container fails to start or internal container health checks fail. Explicit rollback can deploy an older `development` ancestor SHA. | `.github/workflows/deploy-aws-dev.yml`, `ops/aws/deploy-backend.sh`, `docs/aws-dev-deployment.md` | Application-image rollback automated for container startup/internal health failures. | Public HTTPS smoke failure does not automatically roll back; inspect Nginx/TLS/DNS/routing before explicit rollback. Flyway rollback still requires migration compatibility discipline, restore drill, or forward-fix image. | High |
 | Android dev artifact | `dev` flavor app ID is `com.reals.app.dev`, app name `Reals Dev`, HTTPS-only, Play Integrity provider. | `../reals-app/app/build.gradle.kts`, `../reals-app/app/src/dev/res/values/strings.xml`, `../reals-app/app/src/dev/res/xml/network_security_config.xml`, `../reals-app/app/src/dev/java/com/reals/app/core/appcheck/AppCheckInstaller.kt` | Requires real Firebase JSON and URL. | Create dev Firebase app and backend URL. | High |
 | Android signing | Release signing uses either Gradle keystore path or base64 keystore plus passwords/alias; CI skips dev/prod release without full signing inputs. | `../reals-app/app/build.gradle.kts`, `../reals-app/.github/workflows/ci.yml` | Ready once signing is provided. | Signing-key custody and Play signing strategy. | High |
 | Android Firebase config | Flavor-specific `google-services.json` paths are supported; local file exists, dev/prod files are missing locally. | `../reals-app/app/build.gradle.kts`, `../reals-app/docs/local-development.md` | Not ready for hosted dev. | Supply `app/src/dev/google-services.json` through secure local/CI path. | High |
@@ -441,28 +442,32 @@ Purpose:
 - Make builds traceable and deployment repeatable.
 
 Prerequisites:
-- AWS-2 manual deploy proven.
+- Existing CI image publication on `development`.
+- Pre-existing AWS dev EC2 host with SSM, Docker, Nginx, runtime env file, and GHCR pull access.
 
-Files likely to change:
-- Future GitHub Actions deployment workflow or runbook; not created in this task.
+Files changed:
+- Manual `Deploy AWS Dev` GitHub Actions workflow.
+- EC2-side Docker deployment and rollback script sent through SSM.
+- Stubbed Bash tests for script validation.
+- AWS/GitHub setup runbook.
 
 AWS resources affected:
-- Registry, runtime service, IAM/OIDC if automation is later selected.
+- None directly in this repository. The workflow assumes pre-existing AWS resources.
 
 Secrets involved:
-- CI OIDC role or deploy credentials; avoid long-lived AWS keys if possible.
+- GitHub Actions uses OIDC, not long-lived AWS access keys. Runtime application secrets remain on the host in `/etc/reals/backend.env` or external AWS secret stores.
 
 Validation:
-- Tests green; image scanned; immutable tag deployed; smoke workflow passes against base URL; previous image rollback tested.
+- Tests green; image scanned; immutable tag deployed; SSM polling completes within the bounded timeout; internal health checks pass; public smoke workflow passes against base URL; previous image rollback tested.
 
 Rollback:
-- Redeploy previous image tag and record DB migration compatibility.
+- Automatic rollback recreates the previously captured local image ID when the new container fails to start or fails internal readiness or ping. Explicit rollback deploys a provided full SHA that is an ancestor of current `development`. Public HTTPS smoke failure after successful internal checks fails the workflow but does not automatically roll back.
 
 Completion criteria:
 - Exact source SHA maps to image tag, runtime revision, smoke result, and rollback target.
 
 Dependencies on later decisions:
-- OIDC vs manual deploy credentials.
+- Production deployment design, approvals, and release tagging.
 
 ### AWS-4 — Firebase/App Check dev integration
 
