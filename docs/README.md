@@ -7,7 +7,8 @@ This directory is the canonical documentation set for the project.
 - `architecture.md`: backend structure, layers and infrastructure boundaries.
 - `configuration.md`: profile and environment variable reference.
 - `data-retention.md`: account, media and safety-data retention behavior.
-- `dev-deployment.md`: first dev deployment shape, GHCR image, PostgreSQL and Firebase runtime variables.
+- `dev-deployment.md`: current AWS dev deployment shape, GHCR image, PostgreSQL, Firebase and runtime checks.
+- `aws-dev-deployment.md`: manual AWS dev deployment workflow, OIDC/SSM setup, rollback behavior and future production design.
 - `lifecycle-job-manual-test-plan.md`: manual checks for lifecycle jobs.
 - `local-development.md`: local profiles, H2/PostgreSQL, auth and run notes.
 - `matchmaking-ranking.md`: matching ranking modes and calibration notes.
