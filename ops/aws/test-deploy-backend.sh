@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_SCRIPT="$PROJECT_ROOT/ops/aws/deploy-backend.sh"
+WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/deploy-aws-dev.yml"
 
 FULL_REVISION="0123456789abcdef0123456789abcdef01234567"
 IMAGE_TAG="sha-0123456"
@@ -33,10 +34,18 @@ assert_not_contains() {
   fi
 }
 
+assert_no_run_for_image() {
+  local file="$1"
+  local unexpected_image="$2"
+  if grep -F "docker run" "$file" | grep -Fq "$unexpected_image"; then
+    fail_test "did not expect docker run for '$unexpected_image' in $file"
+  fi
+}
+
 create_stub_environment() {
   TEST_ROOT="$(mktemp -d)"
   export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID SIMULATED_APP_LOG
-  unset DOCKER_PULL_FAIL DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL CURL_MODE ROLLBACK_CURL_MODE
+  unset DOCKER_PULL_FAIL DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL CURL_MODE ROLLBACK_CURL_MODE
   mkdir -p "$TEST_ROOT/bin"
   printf 'SPRING_PROFILES_ACTIVE=dev\n' > "$TEST_ROOT/backend.env"
   : > "$TEST_ROOT/docker.log"
@@ -110,11 +119,19 @@ case "${1:-}" in
     ;;
   stop)
     log "$@"
+    if [[ "${DOCKER_STOP_FAIL:-false}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
+      exit 1
+    fi
     write_state running false
     exit 0
     ;;
   rm)
     log "$@"
+    if [[ "${DOCKER_RM_FAIL:-false}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
+      exit 1
+    fi
     write_state exists false
     write_state running false
     exit 0
@@ -364,6 +381,38 @@ output_excludes_application_logs_and_secrets() {
   assert_not_contains "$TEST_ROOT/docker.log" "docker logs"
 }
 
+workflow_parameters_include_execution_timeout() {
+  assert_contains "$WORKFLOW_FILE" 'executionTimeout: ["840"]'
+}
+
+workflow_requires_controlled_success_marker() {
+  assert_contains "$WORKFLOW_FILE" '$DEPLOY_RESULT" != "SUCCESS"'
+}
+
+current_container_stop_failure_reports_controlled_error() {
+  seed_previous_container
+  export DOCKER_STOP_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=CURRENT_CONTAINER_STOP_FAILED"
+  assert_not_contains "$TEST_ROOT/out" "$SIMULATED_APP_LOG"
+  assert_not_contains "$TEST_ROOT/out" "user@example.com"
+  assert_not_contains "$TEST_ROOT/out" "password=super-secret"
+  assert_no_run_for_image "$TEST_ROOT/docker.log" "$IMAGE"
+}
+
+current_container_remove_failure_reports_controlled_error() {
+  seed_previous_container
+  export DOCKER_RM_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=CURRENT_CONTAINER_REMOVE_FAILED"
+  assert_not_contains "$TEST_ROOT/out" "$SIMULATED_APP_LOG"
+  assert_not_contains "$TEST_ROOT/out" "user@example.com"
+  assert_not_contains "$TEST_ROOT/out" "password=super-secret"
+  assert_no_run_for_image "$TEST_ROOT/docker.log" "$IMAGE"
+}
+
 test_case "malformed image tag is rejected" malformed_tag_rejected
 test_case "malformed full revision is rejected" malformed_revision_rejected
 test_case "short tag and revision mismatch is rejected" revision_mismatch_rejected
@@ -378,5 +427,9 @@ test_case "rollback health failure reports ROLLBACK_FAILED" rollback_health_fail
 test_case "successful rollback restores previous exact image" successful_rollback_restores_previous_exact_image
 test_case "output contains controlled deployment markers" output_contains_controlled_markers
 test_case "output excludes simulated application logs and secrets" output_excludes_application_logs_and_secrets
+test_case "workflow SSM parameters include executionTimeout" workflow_parameters_include_execution_timeout
+test_case "workflow requires DEPLOY_RESULT success marker" workflow_requires_controlled_success_marker
+test_case "current container stop failure reports controlled error" current_container_stop_failure_reports_controlled_error
+test_case "current container remove failure reports controlled error" current_container_remove_failure_reports_controlled_error
 
 echo "$pass_count tests passed"
