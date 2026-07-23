@@ -1,0 +1,356 @@
+name: Deploy AWS Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Optional full development-ancestor Git SHA to deploy or roll back to"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: reals-backend-aws-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy dev backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: dev
+    env:
+      IMAGE_REPOSITORY: ghcr.io/gtestino92/reals-backend
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
+      AWS_EC2_INSTANCE_NAME: ${{ vars.AWS_EC2_INSTANCE_NAME }}
+      BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
+
+    steps:
+      - name: Reject non-development refs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" != "refs/heads/development" ]]; then
+            echo "Deploy AWS Dev only runs from refs/heads/development; selected ref was ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${AWS_REGION:?AWS_REGION is required on the dev GitHub Environment}"
+          : "${AWS_DEPLOY_ROLE_ARN:?AWS_DEPLOY_ROLE_ARN is required on the dev GitHub Environment}"
+          : "${AWS_EC2_INSTANCE_NAME:?AWS_EC2_INSTANCE_NAME is required on the dev GitHub Environment}"
+          : "${BACKEND_BASE_URL:?BACKEND_BASE_URL is required on the dev GitHub Environment}"
+
+      - name: Checkout selected development revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: development
+
+      - name: Resolve immutable image tag
+        id: revision
+        shell: bash
+        env:
+          INPUT_REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin development
+
+          if [[ -z "${INPUT_REVISION}" ]]; then
+            RESOLVED_REVISION="${GITHUB_SHA}"
+          else
+            if [[ ! "${INPUT_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "revision must be a full 40-character hexadecimal Git commit SHA" >&2
+              exit 1
+            fi
+            RESOLVED_REVISION="$(echo "${INPUT_REVISION}" | tr '[:upper:]' '[:lower:]')"
+          fi
+
+          git cat-file -e "${RESOLVED_REVISION}^{commit}"
+          git merge-base --is-ancestor "${RESOLVED_REVISION}" "origin/development"
+
+          SHORT_SHA="${RESOLVED_REVISION::7}"
+          IMAGE_TAG="sha-${SHORT_SHA}"
+          IMAGE="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+
+          {
+            echo "resolved_revision=${RESOLVED_REVISION}"
+            echo "image_tag=${IMAGE_TAG}"
+            echo "image=${IMAGE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: reals-backend-dev-deploy-${{ github.run_id }}
+
+      - name: Resolve running EC2 instance
+        id: ec2
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t INSTANCE_IDS < <(
+            aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=${AWS_EC2_INSTANCE_NAME}" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' \
+              --output text | tr '\t' '\n' | sed '/^$/d'
+          )
+
+          if [[ "${#INSTANCE_IDS[@]}" -ne 1 ]]; then
+            echo "Expected exactly one running EC2 instance with the configured Name tag." >&2
+            exit 1
+          fi
+
+          echo "instance_id=${INSTANCE_IDS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Execute deployment through SSM
+        id: ssm
+        shell: bash
+        env:
+          INSTANCE_ID: ${{ steps.ec2.outputs.instance_id }}
+          IMAGE_TAG: ${{ steps.revision.outputs.image_tag }}
+          RESOLVED_REVISION: ${{ steps.revision.outputs.resolved_revision }}
+        run: |
+          set -euo pipefail
+
+          ENCODED_SCRIPT="$(gzip -c ops/aws/deploy-backend.sh | base64 -w 0)"
+
+          jq -n \
+            --arg encoded "$ENCODED_SCRIPT" \
+            --arg image_tag "$IMAGE_TAG" \
+            --arg revision "$RESOLVED_REVISION" \
+            '{
+              commands: [
+                "set -Eeuo pipefail",
+                "work_dir=\"$(mktemp -d /tmp/reals-backend-deploy.XXXXXX)\"",
+                "cleanup() { rm -rf \"$work_dir\"; }",
+                "trap cleanup EXIT",
+                "cat > \"$work_dir/deploy-backend.sh.gz.b64\" <<'\''REALS_DEPLOY_SCRIPT_B64'\''\n\($encoded)\nREALS_DEPLOY_SCRIPT_B64",
+                "base64 -d \"$work_dir/deploy-backend.sh.gz.b64\" | gzip -d > \"$work_dir/deploy-backend.sh\"",
+                "chmod 700 \"$work_dir/deploy-backend.sh\"",
+                "\"$work_dir/deploy-backend.sh\" \($image_tag | @sh) \($revision | @sh)"
+              ]
+            }' > ssm-parameters.json
+
+          COMMAND_ID="$(
+            aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --comment "Deploy Reals AWS dev backend ${IMAGE_TAG}" \
+              --parameters file://ssm-parameters.json \
+              --timeout-seconds 900 \
+              --query 'Command.CommandId' \
+              --output text
+          )"
+
+          poll_ssm_command() {
+            local command_id="$1"
+            local instance_id="$2"
+            local timeout_seconds=900
+            local poll_delay_seconds=5
+            local deadline=$((SECONDS + timeout_seconds))
+            local status=""
+            local attempt_output="ssm-invocation-attempt.json"
+            local attempt_error="ssm-invocation-attempt.err"
+
+            while (( SECONDS < deadline )); do
+              if aws ssm get-command-invocation \
+                --command-id "$command_id" \
+                --instance-id "$instance_id" > "$attempt_output" 2> "$attempt_error"; then
+                cp "$attempt_output" ssm-invocation.json
+                status="$(jq -r '.Status // "Unknown"' ssm-invocation.json)"
+
+                case "$status" in
+                  Pending|InProgress|Delayed)
+                    sleep "$poll_delay_seconds"
+                    ;;
+                  Success)
+                    return 0
+                    ;;
+                  Cancelled|TimedOut|Failed|Cancelling)
+                    return 1
+                    ;;
+                  *)
+                    echo "Unknown SSM terminal status: ${status}" >&2
+                    return 1
+                    ;;
+                esac
+              elif grep -q "InvocationDoesNotExist" "$attempt_error"; then
+                sleep "$poll_delay_seconds"
+              else
+                cat "$attempt_error" >&2
+                return 1
+              fi
+            done
+
+            echo '{"Status":"TimedOut"}' > ssm-invocation.json
+            echo "Timed out waiting for SSM command after ${timeout_seconds} seconds" >&2
+            return 1
+          }
+
+          set +e
+          poll_ssm_command "$COMMAND_ID" "$INSTANCE_ID"
+          POLL_STATUS=$?
+          set -e
+
+          if [[ ! -s ssm-invocation.json ]]; then
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" > ssm-invocation.json || echo '{"Status":"Unknown"}' > ssm-invocation.json
+          fi
+
+          jq -r '.Status // "Unknown"' ssm-invocation.json > ssm-status.txt
+          jq -r '.StandardOutputContent // ""' ssm-invocation.json > ssm-stdout.raw.txt
+          jq -r '.StandardErrorContent // ""' ssm-invocation.json > ssm-stderr.raw.txt
+
+          SSM_STATUS="$(cat ssm-status.txt)"
+          DEPLOY_RESULT="$(grep -E '^DEPLOY_RESULT=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          DEPLOY_STAGE="$(grep -E '^DEPLOY_STAGE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          ERROR_CODE="$(grep -E '^ERROR_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          ROLLBACK_OCCURRED="no"
+          if [[ "$DEPLOY_RESULT" == "ROLLED_BACK" || "$DEPLOY_RESULT" == "ROLLBACK_FAILED" ]]; then
+            ROLLBACK_OCCURRED="yes"
+          fi
+
+          {
+            echo "status=${SSM_STATUS}"
+            echo "deploy_result=${DEPLOY_RESULT:-unknown}"
+            echo "deploy_stage=${DEPLOY_STAGE:-unknown}"
+            echo "error_code=${ERROR_CODE:-none}"
+            echo "rollback_occurred=${ROLLBACK_OCCURRED}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### SSM deployment command"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Terminal status | ${SSM_STATUS} |"
+            echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
+            echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
+            echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Rollback occurred | ${ROLLBACK_OCCURRED} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$POLL_STATUS" -ne 0 || "$SSM_STATUS" != "Success" ]]; then
+            exit 1
+          fi
+
+      - name: Validate public smoke checks
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_URL="$(
+            python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          value = os.environ["BACKEND_BASE_URL"].strip().rstrip("/")
+          parsed = urlparse(value)
+          if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+              raise SystemExit("BACKEND_BASE_URL must be an absolute http(s) URL")
+          if parsed.username or parsed.password or parsed.params or parsed.query or parsed.fragment:
+              raise SystemExit("BACKEND_BASE_URL must not include credentials, query, or fragment")
+          print(value)
+          PY
+          )"
+
+          check_status() {
+            local name="$1"
+            local url="$2"
+            local expected="$3"
+            local output_file="$4"
+            local attempt
+
+            for attempt in {1..12}; do
+              if curl --fail --show-error --silent --max-time 10 "$url" > "$output_file" &&
+                python - "$expected" "$output_file" <<'PY'
+          import json
+          import sys
+
+          expected = sys.argv[1]
+          path = sys.argv[2]
+          try:
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+          except json.JSONDecodeError:
+              raise SystemExit("response is not valid JSON")
+          status = payload.get("status")
+          if status != expected:
+              raise SystemExit(f"Expected status {expected}, got {status!r}")
+          PY
+              then
+                echo "${name}=passed" >> "$GITHUB_OUTPUT"
+                return 0
+              fi
+              sleep 5
+            done
+
+            echo "${name}=failed" >> "$GITHUB_OUTPUT"
+            return 1
+          }
+
+          READINESS_STATUS=passed
+          PING_STATUS=passed
+
+          if ! check_status readiness "${BASE_URL}/actuator/health/readiness" "UP" readiness.json; then
+            READINESS_STATUS=failed
+          fi
+
+          if ! check_status ping "${BASE_URL}/api/ping" "ok" ping.json; then
+            PING_STATUS=failed
+          fi
+
+          if [[ "$READINESS_STATUS" != "passed" || "$PING_STATUS" != "passed" ]]; then
+            echo "Public smoke failed: readiness=${READINESS_STATUS}, ping=${PING_STATUS}" >&2
+            exit 1
+          fi
+
+      - name: Publish deployment summary
+        if: always()
+        shell: bash
+        env:
+          RESOLVED_REVISION: ${{ steps.revision.outputs.resolved_revision }}
+          IMAGE_TAG: ${{ steps.revision.outputs.image_tag }}
+          SSM_STATUS: ${{ steps.ssm.outputs.status }}
+          DEPLOY_RESULT: ${{ steps.ssm.outputs.deploy_result }}
+          DEPLOY_STAGE: ${{ steps.ssm.outputs.deploy_stage }}
+          ERROR_CODE: ${{ steps.ssm.outputs.error_code }}
+          ROLLBACK_OCCURRED: ${{ steps.ssm.outputs.rollback_occurred }}
+          READINESS_RESULT: ${{ steps.smoke.outputs.readiness }}
+          PING_RESULT: ${{ steps.smoke.outputs.ping }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### Deploy AWS Dev"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Environment | dev |"
+            echo "| Resolved revision | ${RESOLVED_REVISION:-not resolved} |"
+            echo "| Immutable image tag | ${IMAGE_TAG:-not resolved} |"
+            echo "| Target EC2 Name tag | ${AWS_EC2_INSTANCE_NAME:-not configured} |"
+            echo "| SSM command result | ${SSM_STATUS:-not run} |"
+            echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
+            echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
+            echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Readiness result | ${READINESS_RESULT:-not run} |"
+            echo "| Ping result | ${PING_RESULT:-not run} |"
+            echo "| Rollback occurred | ${ROLLBACK_OCCURRED:-unknown} |"
+          } >> "$GITHUB_STEP_SUMMARY"
