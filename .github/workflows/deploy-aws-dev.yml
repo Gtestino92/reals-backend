@@ -133,6 +133,7 @@ jobs:
             --arg image_tag "$IMAGE_TAG" \
             --arg revision "$RESOLVED_REVISION" \
             '{
+              executionTimeout: ["840"],
               commands: [
                 "set -Eeuo pipefail",
                 "work_dir=\"$(mktemp -d /tmp/reals-backend-deploy.XXXXXX)\"",
@@ -245,7 +246,7 @@ jobs:
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$POLL_STATUS" -ne 0 || "$SSM_STATUS" != "Success" ]]; then
+          if [[ "$POLL_STATUS" -ne 0 || "$SSM_STATUS" != "Success" || "$DEPLOY_RESULT" != "SUCCESS" ]]; then
             exit 1
           fi
 

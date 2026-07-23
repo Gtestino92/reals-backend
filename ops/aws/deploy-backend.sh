@@ -12,7 +12,6 @@ HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-5}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-5}"
 
 PREVIOUS_CONTAINER_EXISTS=false
-PREVIOUS_CONTAINER_RUNNING=false
 PREVIOUS_IMAGE_REF=""
 PREVIOUS_IMAGE_ID=""
 
@@ -90,21 +89,33 @@ capture_current_deployment() {
     PREVIOUS_CONTAINER_EXISTS=true
     PREVIOUS_IMAGE_REF="$(docker container inspect --format '{{ .Config.Image }}' "$CONTAINER_NAME")"
     PREVIOUS_IMAGE_ID="$(docker container inspect --format '{{ .Image }}' "$CONTAINER_NAME")"
-    if container_running; then
-      PREVIOUS_CONTAINER_RUNNING=true
-    fi
     echo "PREVIOUS_CONTAINER_EXISTS=true"
   else
     echo "PREVIOUS_CONTAINER_EXISTS=false"
   fi
 }
 
-remove_existing_container() {
+remove_existing_container_strict() {
   if container_exists; then
     if container_running; then
-      docker stop "$CONTAINER_NAME" >/dev/null 2>&1
+      if ! docker stop "$CONTAINER_NAME" >/dev/null 2>&1; then
+        emit_error "CURRENT_CONTAINER_STOP_FAILED" "failed to stop current container"
+        return 1
+      fi
     fi
-    docker rm "$CONTAINER_NAME" >/dev/null 2>&1
+    if ! docker rm "$CONTAINER_NAME" >/dev/null 2>&1; then
+      emit_error "CURRENT_CONTAINER_REMOVE_FAILED" "failed to remove current container"
+      return 1
+    fi
+  fi
+}
+
+cleanup_existing_container_best_effort() {
+  if container_exists; then
+    if container_running; then
+      docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
+    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
 }
 
@@ -168,7 +179,7 @@ rollback_previous_container() {
   local rollback_image="${PREVIOUS_IMAGE_ID:-$PREVIOUS_IMAGE_REF}"
 
   emit_stage "ROLLBACK"
-  remove_existing_container || true
+  cleanup_existing_container_best_effort
 
   if [[ "$PREVIOUS_CONTAINER_EXISTS" != "true" || -z "$rollback_image" ]]; then
     echo "DEPLOY_RESULT=ROLLBACK_FAILED"
@@ -206,7 +217,9 @@ deploy() {
   capture_current_deployment
 
   emit_stage "REPLACE_CONTAINER"
-  remove_existing_container
+  if ! remove_existing_container_strict; then
+    return 1
+  fi
 
   if ! start_container "$image"; then
     echo "ERROR_CODE=NEW_CONTAINER_START_FAILED"

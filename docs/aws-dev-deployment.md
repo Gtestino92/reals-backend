@@ -138,6 +138,10 @@ The workflow does not use the default AWS CLI `ssm wait command-executed`
 waiter. It polls `aws ssm get-command-invocation` every 5 seconds for up to 15
 minutes.
 
+The `AWS-RunShellScript` document receives `executionTimeout: ["840"]`, while
+the GitHub-side poller waits up to 900 seconds. That leaves a short margin for
+Systems Manager to report the terminal command result.
+
 Non-terminal statuses are:
 
 - `Pending`
@@ -148,6 +152,11 @@ Non-terminal statuses are:
 `Failed`, `Cancelling`, and unknown terminal statuses fail the workflow. The
 poller temporarily tolerates `InvocationDoesNotExist` immediately after
 `send-command`.
+
+The workflow treats deployment as successful only when polling succeeds, the
+SSM terminal status is `Success`, and the remote script emits
+`DEPLOY_RESULT=SUCCESS`. Missing, empty, malformed, rolled-back, or otherwise
+unexpected deployment results fail closed.
 
 ## Deployed Revision
 
