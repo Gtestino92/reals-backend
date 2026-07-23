@@ -458,7 +458,7 @@ Secrets involved:
 - GitHub Actions uses OIDC, not long-lived AWS access keys. Runtime application secrets remain on the host in `/etc/reals/backend.env` or external AWS secret stores.
 
 Validation:
-- Tests green; image scanned; immutable tag deployed; SSM polling completes within the bounded timeout; internal health checks pass; public smoke workflow passes against base URL; previous image rollback tested.
+- Tests green; image scanned; immutable tag deployed; SSM document execution stays within the bounded timeout; SSM polling completes within the GitHub-side timeout; remote script emits `DEPLOY_RESULT=SUCCESS`; internal health checks pass; public smoke workflow passes against base URL; previous image rollback tested.
 
 Rollback:
 - Automatic rollback recreates the previously captured local image ID when the new container fails to start or fails internal readiness or ping. Explicit rollback deploys a provided full SHA that is an ancestor of current `development`. Public HTTPS smoke failure after successful internal checks fails the workflow but does not automatically roll back.
