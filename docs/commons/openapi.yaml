@@ -652,7 +652,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
-      description: Sends a message as the authenticated chat participant. While a `MUTUAL_CANCEL` exit request is `PENDING`, sends are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and no message is persisted.
+      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1081,8 +1081,8 @@ paths:
   /api/connections/{connectionId}/second-chat/status:
     get:
       tags: [Connections]
-      summary: Get authoritative second-chat attendance status
-      description: Side-effect-free status view with server-computed join eligibility, no-show claim eligibility, timing windows and active claim state.
+      summary: Get authoritative second-chat status
+      description: Side-effect-free status view with server-computed join eligibility, no-show compatibility fields, generic active resolution request, mutual-completion eligibility/cooldown, inactivity deadlines and read-only terminal metadata. Expired pending requests suppress invalid actions but polling does not mutate lifecycle state.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
@@ -1102,6 +1102,68 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/completion-requests:
+    post:
+      tags: [Connections]
+      summary: Create mutual-completion request
+      description: Requires both participants joined, `conversationStartedAt + 10 minutes`, at least one message from each participant, no pending resolution request, no requester cooldown and active second chat before absolute timeout. Countdown is 60 seconds capped by `timeoutAt`; same-requester active replay returns 200.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/completion-requests/{requestId}/decision:
+    post:
+      tags: [Connections]
+      summary: Respond to mutual-completion request
+      description: Only the persisted responder may accept or reject. `ACCEPTED` before expiry finishes the chat as `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`; at exact expiry the request becomes `TIMED_OUT` and the response is rejected after the timeout commit.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecondChatCompletionDecisionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/inactivity-claims:
+    post:
+      tags: [Connections]
+      summary: Create partner-inactivity claim
+      description: Latest-message author may claim after `lastMessageAt + 5 minutes` and before `lastMessageAt + 10 minutes`. The request references the server-selected latest message. Any message before expiry cancels the claim; at exact expiry the silent responder is no-show-after-join and the chat becomes read-only abandoned.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
         '201':
           $ref: '#/components/responses/SecondChatAttendance'
         '403':
@@ -2453,6 +2515,7 @@ components:
         endedAt: { type: string, format: date-time, nullable: true }
         readOnlyUntil: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessageSenderId: { type: string, format: uuid, nullable: true }
         inactivityExpiresAt:
           type: string
           format: date-time
@@ -2769,14 +2832,23 @@ components:
           description: True when the current user's Home should hide this connection's second-chat next step.
     SecondChatResolutionRequestResponse:
       type: object
-      required: [id, requesterUserId, responderUserId, status, createdAt, expiresAt]
+      required: [id, type, requesterUserId, responderUserId, status, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/SecondChatResolutionRequestType' }
         requesterUserId: { type: string, format: uuid }
         responderUserId: { type: string, format: uuid }
+        referenceMessageId: { type: string, format: uuid, nullable: true }
         status: { $ref: '#/components/schemas/SecondChatResolutionRequestStatus' }
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+    SecondChatCompletionDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED]
     SecondChatAttendanceResponse:
       type: object
       required:
@@ -2813,6 +2885,23 @@ components:
           allOf:
             - $ref: '#/components/schemas/SecondChatResolutionRequestResponse'
           nullable: true
+        activeResolutionRequest:
+          allOf:
+            - $ref: '#/components/schemas/SecondChatResolutionRequestResponse'
+          nullable: true
+        chatStatus: { $ref: '#/components/schemas/ChatStatus', nullable: true }
+        endedReason: { type: string, nullable: true, example: SECOND_CHAT_MUTUAL_COMPLETION }
+        endedAt: { type: string, format: date-time, nullable: true }
+        readOnlyUntil: { type: string, format: date-time, nullable: true }
+        mutualCompletionEligibleAt: { type: string, format: date-time, nullable: true }
+        canRequestMutualCompletion: { type: boolean }
+        mutualCompletionCooldownUntil: { type: string, format: date-time, nullable: true }
+        inactivityClaimableAt: { type: string, format: date-time, nullable: true }
+        inactivityClosesAt: { type: string, format: date-time, nullable: true }
+        canClaimPartnerInactivity: { type: boolean }
+        mustRespondToPartner: { type: boolean }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessageSenderId: { type: string, format: uuid, nullable: true }
     AddProposalRequest:
       type: object
       required: [expectedRoundNumber, proposedDateTimes]
@@ -2914,9 +3003,12 @@ components:
     SecondChatAttendanceStatus:
       type: string
       enum: [PENDING, ON_TIME, LATE, NO_SHOW]
+    SecondChatResolutionRequestType:
+      type: string
+      enum: [PARTNER_NO_SHOW, MUTUAL_COMPLETION, PARTNER_INACTIVITY]
     SecondChatResolutionRequestStatus:
       type: string
-      enum: [PENDING, CANCELLED, COMPLETED]
+      enum: [PENDING, CANCELLED, COMPLETED, ACCEPTED, REJECTED, TIMED_OUT]
     HomePendingActionType:
       type: string
       enum: [FIRST_CHAT, VISUAL_REVIEW]

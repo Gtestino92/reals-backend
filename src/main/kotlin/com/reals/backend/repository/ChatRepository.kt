@@ -171,7 +171,7 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
 
     @Query(
         """select c from Chat c
-           where c.status in ('EXPIRED', 'ABANDONED')
+           where c.status in ('FINISHED', 'EXPIRED', 'ABANDONED')
              and c.chatType = 'SECOND_CHAT'
              and c.readOnlyUntil is not null
              and c.readOnlyUntil <= :now"""
@@ -182,7 +182,7 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
 
     @Query(
         """select c.id from Chat c
-           where c.status in ('EXPIRED', 'ABANDONED')
+           where c.status in ('FINISHED', 'EXPIRED', 'ABANDONED')
              and c.chatType = 'SECOND_CHAT'
              and c.readOnlyUntil is not null
              and c.readOnlyUntil <= :now
@@ -190,6 +190,35 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
     )
     fun findExpiredReadOnlySecondChatIds(
         @Param("now") now: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
+        """select c.id from Chat c
+           where c.status = 'ACTIVE'
+             and c.chatType = 'SECOND_CHAT'
+             and c.conversationStartedAt is not null
+             and c.lastMessageAt is null
+             and c.conversationStartedAt <= :dueBefore
+           order by c.conversationStartedAt asc, c.id asc"""
+    )
+    fun findInitialSilenceDueSecondChatIds(
+        @Param("dueBefore") dueBefore: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
+        """select c.id from Chat c
+           where c.status = 'ACTIVE'
+             and c.chatType = 'SECOND_CHAT'
+             and c.conversationStartedAt is not null
+             and c.lastMessageAt is not null
+             and c.lastMessageSenderId is not null
+             and c.lastMessageAt <= :dueBefore
+           order by c.lastMessageAt asc, c.id asc"""
+    )
+    fun findAutomaticInactivityDueSecondChatIds(
+        @Param("dueBefore") dueBefore: OffsetDateTime,
         pageable: Pageable
     ): List<UUID>
 

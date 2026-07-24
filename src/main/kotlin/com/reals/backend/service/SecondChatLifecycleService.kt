@@ -40,6 +40,7 @@ class SecondChatLifecycleService(
     private val participationRepository: SecondChatParticipationRepository,
     private val resolutionRequestRepository: SecondChatResolutionRequestRepository,
     private val chatService: ChatService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val connectionService: ConnectionService,
     private val userBlockService: UserBlockService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
@@ -77,7 +78,8 @@ class SecondChatLifecycleService(
         val partnerJoinedAt: OffsetDateTime?,
         val canJoin: Boolean,
         val canClaimPartnerNoShow: Boolean,
-        val activeNoShowClaim: SecondChatResolutionRequest?
+        val activeNoShowClaim: SecondChatResolutionRequest?,
+        val conversation: SecondChatConversationLifecycleService.SecondChatConversationStatus
     )
 
     sealed interface SecondChatJoinResult {
@@ -699,6 +701,13 @@ class SecondChatLifecycleService(
             activeClaim != null &&
                 !activeClaim.expiresAt.isAfter(now) &&
                 activeClaim.responderUserId == userId
+        val conversationStatus =
+            secondChatConversationLifecycleService.buildStatus(
+                connection = connection,
+                chat = chat,
+                userId = userId,
+                now = now
+            )
 
         return SecondChatAttendanceView(
             connectionId = connection.id,
@@ -725,7 +734,8 @@ class SecondChatLifecycleService(
                 !now.isBefore(onTimeUntil) &&
                 now.isBefore(entryClosesAt) &&
                 activeClaim == null,
-            activeNoShowClaim = activeClaim
+            activeNoShowClaim = activeClaim,
+            conversation = conversationStatus
         )
     }
 

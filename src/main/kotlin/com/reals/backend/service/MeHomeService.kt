@@ -625,6 +625,7 @@ class MeHomeService(
         now: OffsetDateTime
     ): HomeNextStepType? {
         return when (secondChat?.status) {
+            ChatStatus.FINISHED,
             ChatStatus.EXPIRED,
             ChatStatus.ABANDONED ->
                 if (secondChat.readOnlyUntil?.isAfter(now) == true) {

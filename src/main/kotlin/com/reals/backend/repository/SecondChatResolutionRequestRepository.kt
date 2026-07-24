@@ -40,11 +40,48 @@ interface SecondChatResolutionRequestRepository : JpaRepository<SecondChatResolu
         status: SecondChatResolutionRequestStatus
     ): List<SecondChatResolutionRequest>
 
+    fun findByConnectionIdAndStatusOrderByCreatedAtDesc(
+        connectionId: UUID,
+        status: SecondChatResolutionRequestStatus
+    ): List<SecondChatResolutionRequest>
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+        """
+        select r from SecondChatResolutionRequest r
+        where r.connectionId = :connectionId
+          and r.status = :status
+        """
+    )
+    fun findByConnectionIdAndStatusForUpdate(
+        @Param("connectionId") connectionId: UUID,
+        @Param("status") status: SecondChatResolutionRequestStatus
+    ): SecondChatResolutionRequest?
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from SecondChatResolutionRequest r where r.id = :requestId")
     fun findByIdForUpdate(
         @Param("requestId") requestId: UUID
     ): SecondChatResolutionRequest?
+
+    @Query(
+        """
+        select r from SecondChatResolutionRequest r
+        where r.connectionId = :connectionId
+          and r.requesterUserId = :requesterUserId
+          and r.type = :type
+          and r.status in :statuses
+          and r.resolvedAt is not null
+        order by r.resolvedAt desc, r.id desc
+        """
+    )
+    fun findLatestResolvedByRequesterAndType(
+        @Param("connectionId") connectionId: UUID,
+        @Param("requesterUserId") requesterUserId: UUID,
+        @Param("type") type: SecondChatResolutionRequestType,
+        @Param("statuses") statuses: Collection<SecondChatResolutionRequestStatus>,
+        pageable: Pageable
+    ): List<SecondChatResolutionRequest>
 
     @Query(
         """
@@ -58,6 +95,22 @@ interface SecondChatResolutionRequestRepository : JpaRepository<SecondChatResolu
     fun findExpiredPendingPartnerNoShowRequestIds(
         @Param("now") now: OffsetDateTime,
         @Param("type") type: SecondChatResolutionRequestType = SecondChatResolutionRequestType.PARTNER_NO_SHOW,
+        @Param("status") status: SecondChatResolutionRequestStatus = SecondChatResolutionRequestStatus.PENDING,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
+        """
+        select r.id from SecondChatResolutionRequest r
+        where r.type = :type
+          and r.status = :status
+          and r.expiresAt <= :now
+        order by r.expiresAt asc, r.id asc
+        """
+    )
+    fun findExpiredPendingRequestIdsByType(
+        @Param("now") now: OffsetDateTime,
+        @Param("type") type: SecondChatResolutionRequestType,
         @Param("status") status: SecondChatResolutionRequestStatus = SecondChatResolutionRequestStatus.PENDING,
         pageable: Pageable
     ): List<UUID>

@@ -26,6 +26,8 @@ import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.schedulingAvailableAggregateId
+import com.reals.backend.service.ChatService
+import com.reals.backend.service.SecondChatConversationLifecycleService
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -871,6 +873,224 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `mutual completion requires elapsed conversation and both participants messaging then finishes read only`() {
+        val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
+        val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        val joined = joinSecondChatOrThrow(setup.connectionId, setup.userBId, scheduledAt.plusMinutes(2))
+        val chatId = joined.chatId!!
+        val conversationStartedAt = chatRepository.findById(chatId).orElseThrow().conversationStartedAt!!
+
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = conversationStartedAt.plusMinutes(10).minusNanos(1)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_COMPLETION_NOT_AVAILABLE, it.code) }
+
+        sendMessageOrThrow(chatId, setup.userAId, "Yo envie primero", conversationStartedAt.plusMinutes(3))
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = conversationStartedAt.plusMinutes(10)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_COMPLETION_NOT_AVAILABLE, it.code) }
+
+        sendMessageOrThrow(chatId, setup.userBId, "Yo tambien participe", conversationStartedAt.plusMinutes(4))
+        val request =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = conversationStartedAt.plusMinutes(10)
+            )
+        assertTrue(request.created)
+        assertEquals(SecondChatResolutionRequestStatus.PENDING, request.request?.status)
+        assertEquals(conversationStartedAt.plusMinutes(11).toInstant(), request.request?.expiresAt?.toInstant())
+
+        val replay =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = conversationStartedAt.plusMinutes(10).plusSeconds(1)
+            )
+        assertFalse(replay.created)
+        assertEquals(request.request?.id, replay.request?.id)
+
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.decideMutualCompletion(
+                connectionId = setup.connectionId,
+                requestId = request.request!!.id,
+                responderUserId = setup.userAId,
+                decision = SecondChatConversationLifecycleService.CompletionDecision.ACCEPTED,
+                now = request.request.expiresAt.minusNanos(1)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_COMPLETION_REQUEST_NOT_ACTIONABLE, it.code) }
+
+        secondChatConversationLifecycleService.decideMutualCompletion(
+            connectionId = setup.connectionId,
+            requestId = request.request!!.id,
+            responderUserId = setup.userBId,
+            decision = SecondChatConversationLifecycleService.CompletionDecision.ACCEPTED,
+            now = request.request.expiresAt.minusNanos(1)
+        )
+
+        val chat = chatRepository.findById(chatId).orElseThrow()
+        assertEquals(ChatStatus.FINISHED, chat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_MUTUAL_COMPLETION, chat.endedReason)
+        assertNotNull(chat.readOnlyUntil)
+        assertEquals(2, completionEventCount(setup.connectionId))
+        assertEquals(2, chatService.getMessages(chatId, setup.userAId).size)
+        assertThrows(DomainConflictException::class.java) {
+            sendMessageOrThrow(chatId, setup.userAId, "No se puede escribir", request.request.expiresAt)
+        }
+    }
+
+    @Test
+    fun `mutual completion expiry rejection and message cancellation start requester cooldown`() {
+        val setup = createMutualCompletionReadySecondChat()
+        val chat = chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)!!
+        val conversationStartedAt = chat.conversationStartedAt!!
+        val first =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = conversationStartedAt.plusMinutes(10)
+            )
+        val expired =
+            secondChatConversationLifecycleService.decideMutualCompletion(
+                connectionId = setup.connectionId,
+                requestId = first.request!!.id,
+                responderUserId = setup.userBId,
+                decision = SecondChatConversationLifecycleService.CompletionDecision.ACCEPTED,
+                now = first.request.expiresAt
+            )
+        assertTrue(expired is SecondChatConversationLifecycleService.CompletionDecisionResult.Rejected)
+        assertEquals(SecondChatResolutionRequestStatus.TIMED_OUT, secondChatResolutionRequestRepository.findById(first.request.id).orElseThrow().status)
+        assertEquals(ChatStatus.ACTIVE, chatRepository.findById(chat.id).orElseThrow().status)
+        assertEquals(0, completionEventCount(setup.connectionId))
+
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = first.request.expiresAt.plusSeconds(59)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_COMPLETION_REQUEST_COOLDOWN, it.code) }
+
+        val partnerRequest =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userBId,
+                now = first.request.expiresAt.plusSeconds(1)
+            )
+        assertTrue(partnerRequest.created)
+        sendMessageOrThrow(chat.id, setup.userAId, "Cancelo la solicitud", partnerRequest.request!!.createdAt.plusSeconds(1))
+        assertEquals(
+            SecondChatResolutionRequestStatus.CANCELLED,
+            secondChatResolutionRequestRepository.findById(partnerRequest.request.id).orElseThrow().status
+        )
+        assertEquals(setup.userAId, chatRepository.findById(chat.id).orElseThrow().lastMessageSenderId)
+    }
+
+    @Test
+    fun `partner inactivity claim boundaries and exact expiry message closure`() {
+        val setup = createActiveSecondChat()
+        val chatId = setup.secondChatId
+        val conversationStartedAt = chatRepository.findById(chatId).orElseThrow().conversationStartedAt!!
+        val lastMessage = sendMessageOrThrow(chatId, setup.userAId, "Espero respuesta", conversationStartedAt.plusMinutes(1))
+
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = lastMessage.sentAt.plusMinutes(5).minusNanos(1)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_INACTIVITY_CLAIM_NOT_AVAILABLE, it.code) }
+        assertThrows(DomainConflictException::class.java) {
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userBId,
+                now = lastMessage.sentAt.plusMinutes(5)
+            )
+        }.also { assertEquals(DomainErrorCode.SECOND_CHAT_INACTIVITY_CLAIM_NOT_AVAILABLE, it.code) }
+
+        val claim =
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = lastMessage.sentAt.plusMinutes(5)
+            )
+        assertTrue(claim.created)
+        assertEquals(lastMessage.id, claim.request?.referenceMessageId)
+        assertEquals(lastMessage.sentAt.plusMinutes(6).toInstant(), claim.request?.expiresAt?.toInstant())
+
+        val rejectedMessage =
+            chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = setup.userBId,
+                content = "Llegue tarde",
+                now = claim.request!!.expiresAt
+            )
+        assertTrue(rejectedMessage is ChatService.SendMessageResult.RejectedAfterResolution)
+        val chat = chatRepository.findById(chatId).orElseThrow()
+        assertEquals(ChatStatus.ABANDONED, chat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_PARTNER_INACTIVITY, chat.endedReason)
+        assertEquals(SecondChatResolutionRequestStatus.COMPLETED, secondChatResolutionRequestRepository.findById(claim.request.id).orElseThrow().status)
+        assertEquals(1, abandonedAfterJoinEventCount(setup.userBId, setup.connectionId))
+        assertEquals(0, abandonedAfterJoinEventCount(setup.userAId, setup.connectionId))
+        assertEquals(1, chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chatId).size)
+    }
+
+    @Test
+    fun `inactivity claim is cancelled by message before expiry and latest message restarts clock`() {
+        val setup = createActiveSecondChat()
+        val chatId = setup.secondChatId
+        val conversationStartedAt = chatRepository.findById(chatId).orElseThrow().conversationStartedAt!!
+        val lastMessage = sendMessageOrThrow(chatId, setup.userAId, "Espero respuesta", conversationStartedAt.plusMinutes(1))
+        val claim =
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = lastMessage.sentAt.plusMinutes(5)
+            )
+
+        val response = sendMessageOrThrow(chatId, setup.userBId, "Respondo a tiempo", claim.request!!.expiresAt.minusNanos(1))
+
+        assertEquals(
+            SecondChatResolutionRequestStatus.CANCELLED,
+            secondChatResolutionRequestRepository.findById(claim.request.id).orElseThrow().status
+        )
+        val chat = chatRepository.findById(chatId).orElseThrow()
+        assertEquals(response.sentAt.toInstant(), chat.lastMessageAt?.toInstant())
+        assertEquals(setup.userBId, chat.lastMessageSenderId)
+    }
+
+    @Test
+    fun `automatic inactivity and initial silence close read only idempotently`() {
+        val inactive = createActiveSecondChat()
+        val inactiveChat = chatRepository.findById(inactive.secondChatId).orElseThrow()
+        val inactiveStartedAt = inactiveChat.conversationStartedAt!!
+        val last = sendMessageOrThrow(inactive.secondChatId, inactive.userAId, "No respondio", inactiveStartedAt.plusMinutes(1))
+        assertFalse(secondChatConversationLifecycleService.processAutomaticInactivity(inactive.secondChatId, last.sentAt.plusMinutes(10).minusNanos(1)))
+        assertTrue(secondChatConversationLifecycleService.processAutomaticInactivity(inactive.secondChatId, last.sentAt.plusMinutes(10)))
+        assertFalse(secondChatConversationLifecycleService.processAutomaticInactivity(inactive.secondChatId, last.sentAt.plusMinutes(11)))
+        assertEquals(ChatEndReason.SECOND_CHAT_PARTNER_INACTIVITY, chatRepository.findById(inactive.secondChatId).orElseThrow().endedReason)
+        assertEquals(1, abandonedAfterJoinEventCount(inactive.userBId, inactive.connectionId))
+        assertEquals(0, abandonedAfterJoinEventCount(inactive.userAId, inactive.connectionId))
+
+        val silent = createActiveSecondChat()
+        val silentStartedAt = chatRepository.findById(silent.secondChatId).orElseThrow().conversationStartedAt!!
+        assertFalse(secondChatConversationLifecycleService.processInitialSilence(silent.secondChatId, silentStartedAt.plusMinutes(10).minusNanos(1)))
+        assertTrue(secondChatConversationLifecycleService.processInitialSilence(silent.secondChatId, silentStartedAt.plusMinutes(10)))
+        assertFalse(secondChatConversationLifecycleService.processInitialSilence(silent.secondChatId, silentStartedAt.plusMinutes(11)))
+        assertEquals(ChatEndReason.SECOND_CHAT_NO_CONVERSATION_STARTED, chatRepository.findById(silent.secondChatId).orElseThrow().endedReason)
+        assertEquals(1, noConversationStartedEventCount(silent.userAId, silent.connectionId))
+        assertEquals(1, noConversationStartedEventCount(silent.userBId, silent.connectionId))
+    }
+
+    @Test
     fun `sending first message keeps materialized second chat active`() {
         val setup = createActiveSecondChat()
 
@@ -1008,6 +1228,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         SecondChatLifecycleJob(
             chatService = chatService,
             secondChatLifecycleService = secondChatLifecycleService,
+            secondChatConversationLifecycleService = secondChatConversationLifecycleService,
             negotiationRepository = negotiationRepository
         )
 
@@ -1020,6 +1241,40 @@ class SchedulerFlowIntegrationTest : BaseIT() {
                 it.relatedConnectionId == connectionId &&
                 it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_SHOW
         }
+
+    private fun completionEventCount(connectionId: UUID): Int =
+        userReliabilityEventRepository.findAll().count {
+            it.relatedConnectionId == connectionId &&
+                it.eventType == UserReliabilityEventType.SECOND_CHAT_MUTUAL_COMPLETION
+        }
+
+    private fun abandonedAfterJoinEventCount(
+        userId: UUID,
+        connectionId: UUID
+    ): Int =
+        userReliabilityEventRepository.findAll().count {
+            it.userId == userId &&
+                it.relatedConnectionId == connectionId &&
+                it.eventType == UserReliabilityEventType.SECOND_CHAT_ABANDONED_AFTER_JOIN
+        }
+
+    private fun noConversationStartedEventCount(
+        userId: UUID,
+        connectionId: UUID
+    ): Int =
+        userReliabilityEventRepository.findAll().count {
+            it.userId == userId &&
+                it.relatedConnectionId == connectionId &&
+                it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_CONVERSATION_STARTED
+        }
+
+    private fun createMutualCompletionReadySecondChat(): ActiveSecondChatFixture {
+        val setup = createActiveSecondChat()
+        val conversationStartedAt = chatRepository.findById(setup.secondChatId).orElseThrow().conversationStartedAt!!
+        sendMessageOrThrow(setup.secondChatId, setup.userAId, "Mensaje A", conversationStartedAt.plusMinutes(1))
+        sendMessageOrThrow(setup.secondChatId, setup.userBId, "Mensaje B", conversationStartedAt.plusMinutes(2))
+        return setup
+    }
 
     private fun createScheduledSecondChatAt(confirmedDateTime: OffsetDateTime): ConnectionFixture {
         val setup = createScheduledSecondChatReadyToEnter()

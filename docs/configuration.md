@@ -149,11 +149,18 @@ Non-sensitive runtime configuration:
 | `CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES` | no | On-time join window after confirmed second-chat start. Defaults to `10`. |
 | `CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES` | no | Total second-chat entry window before hard no-show cutoff. Defaults to `20`. |
 | `CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS` | no | Manual partner no-show claim countdown, capped at hard cutoff. Defaults to `60`. |
+| `CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES` | no | Minimum elapsed second-chat conversation time before mutual completion can be requested. Defaults to `10`. |
+| `CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS` | no | Mutual-completion responder countdown, capped by absolute timeout. Defaults to `60`. |
+| `CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS` | no | Per-requester cooldown after rejected, timed-out or message-cancelled mutual completion. Defaults to `60`. |
+| `CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES` | no | Delay after the latest conversational message before its author may claim partner inactivity. Defaults to `5`. |
+| `CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES` | no | Delay after the latest conversational message before automatic partner-inactivity closure. Defaults to `10`. |
+| `CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS` | no | Manual partner-inactivity countdown, capped by automatic inactivity and absolute timeout. Defaults to `60`. |
+| `CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES` | no | Delay after both participants joined before closing an empty second chat for initial silence. Defaults to `10`. |
 | `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring in `LEGACY_EARLY_ACCEPT` mode when reliability is enabled. Defaults to `0.05`. |
 | `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `60000`. |
 | `SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN` | no | Dev/prod upper bound for pairs processed per matchmaking run. Defaults to `10`. |
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
-| `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for second-chat availability, timeout and read-only cleanup. Defaults to `120000`. |
+| `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for no-show, conversation requests, inactivity, absolute timeout and read-only cleanup. Defaults to `120000`. |
 | `SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatReminderNotificationJob`. Defaults to `60000`, which gives a 1-minute reminder pickup window. |
 | `SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `VisualReviewReminderNotificationJob`. Defaults to `1800000`, so due visual-review reminders are picked up about every 30 minutes. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for stale match expiration fallback. Defaults to `300000`. |

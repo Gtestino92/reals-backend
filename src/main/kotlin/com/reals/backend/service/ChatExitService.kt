@@ -49,9 +49,6 @@ class ChatExitService(
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
 
-    @param:Value("\${chat.second-chat.min-messages-before-free-cancel:0}")
-    private val secondChatMinMessagesBeforeFreeCancel: Int,
-
     @param:Value("\${chat.exit-request.mutual-timeout-seconds:20}")
     private val mutualCancellationTimeoutSeconds: Long,
 
@@ -88,6 +85,7 @@ class ChatExitService(
         val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, requesterUserId)
+        rejectOrdinarySecondChatCancellation(chat)
         val responderUserId = resolvePartnerUserId(chat, requesterUserId)
         val normalizedDetails = normalizeDetails(details)
 
@@ -140,6 +138,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
+        rejectOrdinarySecondChatCancellation(chat)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -176,6 +175,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
+        rejectOrdinarySecondChatCancellation(chat)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -210,6 +210,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
+        rejectOrdinarySecondChatCancellation(chat)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         if (
@@ -266,6 +267,7 @@ class ChatExitService(
         val chat = findChatOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
+        rejectOrdinarySecondChatCancellation(chat)
         val responderUserId = resolvePartnerUserId(chat, userId)
         val normalizedDetails = normalizeDetails(details)
 
@@ -508,7 +510,7 @@ class ChatExitService(
         val minimum =
             when (chat.chatType) {
                 ChatType.FIRST_CHAT -> firstChatMinMessagesBeforeFreeCancel
-                ChatType.SECOND_CHAT -> secondChatMinMessagesBeforeFreeCancel
+                ChatType.SECOND_CHAT -> 0
             }
 
         if (minimum <= 0) return false
@@ -673,4 +675,13 @@ class ChatExitService(
             code = DomainErrorCode.CHAT_MESSAGE_INVALID,
             message = "Chat message is invalid"
         )
+
+    private fun rejectOrdinarySecondChatCancellation(chat: Chat) {
+        if (chat.chatType == ChatType.SECOND_CHAT) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED,
+                message = "Ordinary cancellation is not available for second chats"
+            )
+        }
+    }
 }

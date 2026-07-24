@@ -57,6 +57,7 @@ class ChatService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
@@ -77,6 +78,14 @@ class ChatService(
     @param:Value("\${chat.messages.page-limit-default:200}")
     private val defaultMessagePageLimit: Int
 ) {
+
+    sealed interface SendMessageResult {
+        data class Sent(val message: ChatMessage) : SendMessageResult
+        data class RejectedAfterResolution(
+            val code: DomainErrorCode,
+            val message: String
+        ) : SendMessageResult
+    }
 
     private companion object {
         const val MESSAGE_MAX_LENGTH = 1000
@@ -179,7 +188,19 @@ class ChatService(
         chatId: UUID,
         senderId: UUID,
         content: String
-    ): ChatMessage {
+    ): ChatMessage =
+        when (val result = sendMessageWithResult(chatId, senderId, content)) {
+            is SendMessageResult.Sent -> result.message
+            is SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    fun sendMessageWithResult(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SendMessageResult {
         val normalizedContent = normalizeMessageContent(content)
 
         val chat = findByIdForUpdateOrThrow(chatId)
@@ -188,21 +209,43 @@ class ChatService(
         validateActiveChatWindow(chat)
         validateChatParticipant(chat, senderId)
         requireSecondChatJoinedForMessage(chat, senderId)
-        requireNoPendingMutualCancellation(chat.id)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            requireNoPendingMutualCancellation(chat.id)
+        }
+
+        when (
+            val lifecycleResult =
+                secondChatConversationLifecycleService.beforeSecondChatMessage(
+                    chat = chat,
+                    senderId = senderId,
+                    now = now
+                )
+        ) {
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.Continue -> Unit
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.RejectedAfterResolution ->
+                return SendMessageResult.RejectedAfterResolution(
+                    code = lifecycleResult.code,
+                    message = lifecycleResult.message
+                )
+        }
 
         val message =
             chatMessageRepository.save(
                 ChatMessage(
                     chatSessionId = chat.id,
                     senderId = senderId,
-                    content = normalizedContent
+                    content = normalizedContent,
+                    sentAt = now
                 )
             )
 
         chat.lastMessageAt = maxOf(chat.lastMessageAt ?: message.sentAt, message.sentAt)
+        if (chat.chatType == ChatType.SECOND_CHAT) {
+            chat.lastMessageSenderId = senderId
+        }
         chatRepository.save(chat)
 
-        return message
+        return SendMessageResult.Sent(message)
     }
 
     fun recordChatDecision(
@@ -677,7 +720,7 @@ class ChatService(
 
         if (
             chat.chatType != ChatType.SECOND_CHAT ||
-            chat.status !in setOf(ChatStatus.EXPIRED, ChatStatus.ABANDONED)
+            chat.status !in setOf(ChatStatus.FINISHED, ChatStatus.EXPIRED, ChatStatus.ABANDONED)
         ) {
             return false
         }
@@ -688,7 +731,14 @@ class ChatService(
         }
 
         chat.status = ChatStatus.CLOSED
-        if (chat.endedReason != ChatEndReason.SECOND_CHAT_NO_SHOW) {
+        if (
+            chat.endedReason !in setOf(
+                ChatEndReason.SECOND_CHAT_NO_SHOW,
+                ChatEndReason.SECOND_CHAT_MUTUAL_COMPLETION,
+                ChatEndReason.SECOND_CHAT_PARTNER_INACTIVITY,
+                ChatEndReason.SECOND_CHAT_NO_CONVERSATION_STARTED
+            )
+        ) {
             chat.endedReason = ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED
         }
         chatRepository.save(chat)
@@ -811,6 +861,7 @@ class ChatService(
 
         if (
             chat?.status == ChatStatus.ACTIVE ||
+            chat?.status == ChatStatus.FINISHED ||
             chat?.status == ChatStatus.EXPIRED ||
             chat?.status == ChatStatus.ABANDONED
         ) {

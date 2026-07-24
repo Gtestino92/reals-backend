@@ -12,13 +12,18 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 enum class SecondChatResolutionRequestType {
-    PARTNER_NO_SHOW
+    PARTNER_NO_SHOW,
+    MUTUAL_COMPLETION,
+    PARTNER_INACTIVITY
 }
 
 enum class SecondChatResolutionRequestStatus {
     PENDING,
     CANCELLED,
-    COMPLETED
+    COMPLETED,
+    ACCEPTED,
+    REJECTED,
+    TIMED_OUT
 }
 
 @Entity
@@ -43,6 +48,9 @@ data class SecondChatResolutionRequest(
 
     @Column(name = "chat_id")
     var chatId: UUID? = null,
+
+    @Column(name = "reference_message_id")
+    var referenceMessageId: UUID? = null,
 
     @Column(name = "requester_user_id", nullable = false)
     var requesterUserId: UUID,

@@ -1,9 +1,13 @@
 package com.reals.backend.controller.dev
 
+import com.reals.backend.domain.SecondChatResolutionRequestStatus
+import com.reals.backend.domain.SecondChatResolutionRequestType
+import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.VisualReviewRepository
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
@@ -20,9 +24,11 @@ import java.util.UUID
 @RequestMapping("/api/local-dev/timeouts")
 class DevTimeoutController(
     private val chatRepository: ChatRepository,
+    private val chatMessageRepository: ChatMessageRepository,
     private val connectionRepository: ConnectionRepository,
     private val penaltyRepository: PenaltyRepository,
     private val scheduleNegotiationRepository: ScheduleNegotiationRepository,
+    private val secondChatResolutionRequestRepository: SecondChatResolutionRequestRepository,
     private val visualReviewRepository: VisualReviewRepository
 ) {
 
@@ -176,6 +182,110 @@ class DevTimeoutController(
             target = "schedule-negotiation-second-chat-past-hard-cutoff"
         )
 
+    @PostMapping("/chats/{chatId}/second-chat-conversation-started-past")
+    @Transactional
+    fun moveSecondChatConversationStartedPast(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val startedAt = OffsetDateTime.now().minusMinutes(11)
+        val chat = chatRepository.findByIdForUpdate(chatId)
+            ?: throw NoSuchElementException("Chat not found: $chatId")
+        chat.conversationStartedAt = startedAt
+        chatRepository.save(chat)
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "second-chat-conversation-started",
+                id = chatId,
+                expiresAt = startedAt
+            )
+        )
+    }
+
+    @PostMapping("/chats/{chatId}/latest-message-before-inactivity-claim")
+    @Transactional
+    fun moveLatestMessageBeforeInactivityClaim(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveLatestSecondChatMessageTime(
+            chatId = chatId,
+            sentAt = OffsetDateTime.now().minusMinutes(4).minusSeconds(59),
+            target = "second-chat-latest-message-before-inactivity-claim"
+        )
+
+    @PostMapping("/chats/{chatId}/latest-message-claimable")
+    @Transactional
+    fun moveLatestMessageClaimable(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveLatestSecondChatMessageTime(
+            chatId = chatId,
+            sentAt = OffsetDateTime.now().minusMinutes(5),
+            target = "second-chat-latest-message-claimable"
+        )
+
+    @PostMapping("/chats/{chatId}/latest-message-before-automatic-inactivity")
+    @Transactional
+    fun moveLatestMessageBeforeAutomaticInactivity(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveLatestSecondChatMessageTime(
+            chatId = chatId,
+            sentAt = OffsetDateTime.now().minusMinutes(9).minusSeconds(59),
+            target = "second-chat-latest-message-before-automatic-inactivity"
+        )
+
+    @PostMapping("/chats/{chatId}/latest-message-automatic-inactivity-due")
+    @Transactional
+    fun moveLatestMessageAutomaticInactivityDue(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveLatestSecondChatMessageTime(
+            chatId = chatId,
+            sentAt = OffsetDateTime.now().minusMinutes(10).minusSeconds(1),
+            target = "second-chat-latest-message-automatic-inactivity-due"
+        )
+
+    @PostMapping("/second-chat-resolution-requests/{requestId}/expire-now")
+    @Transactional
+    fun expireSecondChatResolutionRequestNow(
+        @PathVariable requestId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val expiresAt = OffsetDateTime.now().minusSeconds(1)
+        val request = secondChatResolutionRequestRepository.findByIdForUpdate(requestId)
+            ?: throw NoSuchElementException("Second-chat resolution request not found: $requestId")
+        request.expiresAt = expiresAt
+        secondChatResolutionRequestRepository.save(request)
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = "second-chat-resolution-request-expiry",
+                id = requestId,
+                expiresAt = expiresAt
+            )
+        )
+    }
+
+    @PostMapping("/second-chat-resolution-requests/{requestId}/completion-cooldown-active")
+    @Transactional
+    fun makeCompletionCooldownActive(
+        @PathVariable requestId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveCompletionRequestResolvedAt(
+            requestId = requestId,
+            resolvedAt = OffsetDateTime.now().minusSeconds(30),
+            target = "second-chat-completion-cooldown-active"
+        )
+
+    @PostMapping("/second-chat-resolution-requests/{requestId}/completion-cooldown-expired")
+    @Transactional
+    fun makeCompletionCooldownExpired(
+        @PathVariable requestId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveCompletionRequestResolvedAt(
+            requestId = requestId,
+            resolvedAt = OffsetDateTime.now().minusSeconds(61),
+            target = "second-chat-completion-cooldown-expired"
+        )
+
     @PostMapping("/penalties/{penaltyId}/expire-now")
     @Transactional
     fun expirePenaltyNow(
@@ -221,6 +331,53 @@ class DevTimeoutController(
                 target = target,
                 id = connectionId,
                 expiresAt = startsAt
+            )
+        )
+    }
+
+    private fun moveLatestSecondChatMessageTime(
+        chatId: UUID,
+        sentAt: OffsetDateTime,
+        target: String
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val chat = chatRepository.findByIdForUpdate(chatId)
+            ?: throw NoSuchElementException("Chat not found: $chatId")
+        val latestMessage = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(chatId)
+            ?: throw NoSuchElementException("No messages found for chat: $chatId")
+        latestMessage.sentAt = sentAt
+        chatMessageRepository.save(latestMessage)
+        chat.lastMessageAt = sentAt
+        chat.lastMessageSenderId = latestMessage.senderId
+        chatRepository.save(chat)
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = target,
+                id = chatId,
+                expiresAt = sentAt
+            )
+        )
+    }
+
+    private fun moveCompletionRequestResolvedAt(
+        requestId: UUID,
+        resolvedAt: OffsetDateTime,
+        target: String
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val request = secondChatResolutionRequestRepository.findByIdForUpdate(requestId)
+            ?: throw NoSuchElementException("Second-chat resolution request not found: $requestId")
+        if (request.type != SecondChatResolutionRequestType.MUTUAL_COMPLETION) {
+            throw IllegalArgumentException("Second-chat resolution request is not mutual completion: $requestId")
+        }
+        if (request.status == SecondChatResolutionRequestStatus.PENDING) {
+            request.status = SecondChatResolutionRequestStatus.TIMED_OUT
+        }
+        request.resolvedAt = resolvedAt
+        secondChatResolutionRequestRepository.save(request)
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = target,
+                id = requestId,
+                expiresAt = resolvedAt
             )
         )
     }
