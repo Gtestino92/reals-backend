@@ -284,7 +284,7 @@ class VisualReviewIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `personal message status reports unread partner message as decision requirement`() {
+    fun `personal message status reports unread partner message as nonblocking`() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
 
@@ -295,7 +295,7 @@ class VisualReviewIntegrationTest : BaseIT() {
 
         assertTrue(status.partnerPersonalMessageSubmitted)
         assertFalse(status.partnerPersonalMessageRead)
-        assertTrue(status.decisionRequiresPartnerPersonalMessageRead)
+        assertFalse(status.decisionRequiresPartnerPersonalMessageRead)
     }
 
     @Test
@@ -330,41 +330,33 @@ class VisualReviewIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `visual approval returns stable conflict when partner message is unread`() {
+    fun `visual approval succeeds when partner message is unread`() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me gustaria seguir")
 
-        val exception = assertThrows<DomainConflictException> {
-            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
-        }
-        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
-
-        assertEquals("Me gustaria seguir", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
-
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
         assertEquals(
             VisualDecision.APPROVED,
-            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+            review.userAVisualDecision
         )
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
-    fun `visual rejection returns stable conflict when partner message is unread`() {
+    fun `visual rejection succeeds when partner message is unread`() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me gustaria seguir")
 
-        val exception = assertThrows<DomainConflictException> {
-            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
-        }
-        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
-
-        assertEquals("Me gustaria seguir", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
-
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
         assertEquals(
             VisualDecision.REJECTED,
-            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+            review.userAVisualDecision
         )
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
@@ -389,6 +381,59 @@ class VisualReviewIntegrationTest : BaseIT() {
             VisualDecision.REJECTED,
             visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
         )
+    }
+
+    @Test
+    fun `replaying same visual decision remains idempotent`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+
+        assertEquals(
+            VisualDecision.APPROVED,
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+        )
+    }
+
+    @Test
+    fun `changing recorded visual decision remains rejected`() {
+        val setup = createMatchInVisualPhase()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+
+        assertThrows<IllegalStateException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+        }
+        assertEquals(
+            VisualDecision.APPROVED,
+            visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision
+        )
+    }
+
+    @Test
+    fun `expired visual review still rejects new decisions`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_EXPIRED, exception.code)
+    }
+
+    @Test
+    fun `approval of blocked pair remains rejected`() {
+        val setup = createMatchInVisualPhase()
+        userBlockService.blockUser(setup.userAId, setup.userBId, com.reals.backend.domain.UserBlockSource.MANUAL)
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        }
+
+        assertEquals(DomainErrorCode.USER_PAIR_BLOCKED, exception.code)
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision)
     }
 
     @Test

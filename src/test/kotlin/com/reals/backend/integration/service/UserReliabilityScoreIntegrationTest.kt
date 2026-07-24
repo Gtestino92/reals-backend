@@ -176,6 +176,19 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `reading partner personal message creates no reliability event`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+        val eventCountBeforeRead = userReliabilityEventRepository.count()
+
+        assertEquals("Mensaje B", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
+
+        assertEquals(eventCountBeforeRead, userReliabilityEventRepository.count())
+        assertNoEvent(setup.userAId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED, 1)
+    }
+
+    @Test
     fun `failed visual personal message submission creates no participation event`() {
         val setup = createMatchInVisualPhase()
 

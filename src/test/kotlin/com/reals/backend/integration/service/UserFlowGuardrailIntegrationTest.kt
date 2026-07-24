@@ -258,7 +258,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `visual decision requires reading partner personal message when present`() {
+    fun `visual decision does not require reading partner personal message when present`() {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
@@ -266,14 +266,9 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
 
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me caiste bien")
 
-        val exception = assertThrows<DomainConflictException> {
-            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
-        }
-        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
 
         assertEquals("Me caiste bien", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
-
-        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
     }
 
     @Test
