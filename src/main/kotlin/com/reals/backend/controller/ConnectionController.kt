@@ -14,6 +14,7 @@ import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.exception.DomainConflictException
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -80,14 +81,18 @@ class ConnectionController(
     ): ResponseEntity<SecondChatAttendanceResponse> {
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
-        return ResponseEntity.ok(
-            SecondChatAttendanceResponse.from(
-                secondChatLifecycleService.joinSecondChat(
-                    connectionId = connectionId,
-                    userId = userId
-                )
+        return when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId
             )
-        )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined ->
+                ResponseEntity.ok(SecondChatAttendanceResponse.from(result.view))
+
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
     }
 
     @GetMapping("/{connectionId}/second-chat/status")
@@ -111,14 +116,14 @@ class ConnectionController(
     ): ResponseEntity<SecondChatAttendanceResponse> {
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(
-            SecondChatAttendanceResponse.from(
-                secondChatLifecycleService.createPartnerNoShowClaim(
-                    connectionId = connectionId,
-                    requesterUserId = userId
-                )
+        val result =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = connectionId,
+                requesterUserId = userId
             )
-        )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(SecondChatAttendanceResponse.from(result.view))
     }
 
     @GetMapping("/{connectionId}/negotiation")

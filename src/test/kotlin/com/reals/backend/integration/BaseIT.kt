@@ -57,6 +57,7 @@ import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.SecondChatLifecycleService
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
@@ -423,11 +424,11 @@ abstract class BaseIT {
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
         val setup = createScheduledSecondChatReadyToEnter()
-        val joined = secondChatLifecycleService.joinSecondChat(
+        val joined = joinSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
-        secondChatLifecycleService.joinSecondChat(
+        joinSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userBId
         )
@@ -446,6 +447,44 @@ abstract class BaseIT {
             connectionId = setup.connectionId,
             secondChatId = secondChat.id
         )
+    }
+
+    protected fun joinSecondChatOrThrow(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatAttendanceView =
+        when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined -> result.view
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    protected fun rejectSecondChatJoin(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatJoinResult.Rejected {
+        val result = try {
+            secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        } catch (ex: DomainConflictException) {
+            return SecondChatLifecycleService.SecondChatJoinResult.Rejected(
+                code = ex.code,
+                message = ex.message ?: "Second-chat join rejected"
+            )
+        }
+        Assertions.assertTrue(result is SecondChatLifecycleService.SecondChatJoinResult.Rejected)
+        return result as SecondChatLifecycleService.SecondChatJoinResult.Rejected
     }
 
     protected fun futureHalfHourSlot(): OffsetDateTime {

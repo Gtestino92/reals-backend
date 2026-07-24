@@ -237,7 +237,7 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
             confirmedDateTime = attendedAt
         )
         val attendedJoin =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 connectionId = attended.connectionId,
                 userId = attended.userAId,
                 now = attendedAt
@@ -252,12 +252,12 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
             connectionId = late.connectionId,
             confirmedDateTime = lateAt
         )
-        secondChatLifecycleService.joinSecondChat(
+        joinSecondChatOrThrow(
             connectionId = late.connectionId,
             userId = late.userAId,
             now = lateAt.plusMinutes(10)
         )
-        secondChatLifecycleService.joinSecondChat(
+        joinSecondChatOrThrow(
             connectionId = late.connectionId,
             userId = late.userAId,
             now = lateAt.plusMinutes(11)

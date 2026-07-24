@@ -1,9 +1,13 @@
 package com.reals.backend.integration.controller
 
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.SecondChatAttendanceStatus
+import com.reals.backend.domain.SecondChatResolutionRequestStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
@@ -13,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.context.TestPropertySource
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
@@ -27,6 +32,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+@TestPropertySource(
+    properties = [
+        "user-reliability.enabled=true"
+    ]
+)
 class ConnectionControllerIntegrationTest : ControllerIT() {
 
     @Autowired
@@ -434,6 +444,187 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.activeNoShowClaim", nullValue()))
             .andExpect(jsonPath("$.partnerAttendanceStatus", equalTo("LATE")))
+    }
+
+    @Test
+    fun `duplicate pending no show claim returns ok over http`() {
+        val setup = createScheduledSecondChatReadyToEnter()
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(10)
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/no-show-claims")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.activeNoShowClaim.status", equalTo("PENDING")))
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/no-show-claims")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeNoShowClaim.status", equalTo("PENDING")))
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `duplicate expired no show claim resolves without created over http`() {
+        val setup =
+            TransactionTemplate(transactionManager).execute {
+                val fixture = createScheduledSecondChatReadyToEnter()
+                negotiationRepository.updateConfirmedDateTimeByConnectionId(
+                    connectionId = fixture.connectionId,
+                    confirmedDateTime = OffsetDateTime.now().minusMinutes(10)
+                )
+                fixture
+            }
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/no-show-claims")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isCreated)
+
+        val forcedExpiresAt =
+            TransactionTemplate(transactionManager).execute {
+                secondChatResolutionRequestRepository.findAll()
+                    .single { it.connectionId == setup.connectionId }
+                    .also {
+                        it.expiresAt = OffsetDateTime.now().minusSeconds(1).withNano(0)
+                        secondChatResolutionRequestRepository.saveAndFlush(it)
+                    }
+                    .expiresAt
+            }
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/no-show-claims")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeNoShowClaim", nullValue()))
+            .andExpect(jsonPath("$.partnerAttendanceStatus", equalTo("NO_SHOW")))
+
+        val requests =
+            TransactionTemplate(transactionManager).execute {
+                secondChatResolutionRequestRepository.findAll().filter { it.connectionId == setup.connectionId }
+            }
+        assertEquals(1, requests.size)
+        assertEquals(SecondChatResolutionRequestStatus.COMPLETED, requests.single().status)
+        assertEquals(forcedExpiresAt.toInstant(), requests.single().expiresAt.toInstant())
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `hard cutoff join conflict commits both absent closure over http`() {
+        val setup =
+            TransactionTemplate(transactionManager).execute {
+                val fixture = createScheduledSecondChatReadyToEnter()
+                negotiationRepository.updateConfirmedDateTimeByConnectionId(
+                    connectionId = fixture.connectionId,
+                    confirmedDateTime = OffsetDateTime.now().minusMinutes(20).minusSeconds(5)
+                )
+                fixture
+            }
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_ENTRY_CLOSED")))
+
+        val snapshot =
+            TransactionTemplate(transactionManager).execute {
+                val participations = secondChatParticipationRepository.findByConnectionId(setup.connectionId)
+                val events = userReliabilityEventRepository.findAll().filter {
+                    it.relatedConnectionId == setup.connectionId &&
+                        it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+                }
+                Triple(
+                    connectionRepository.findById(setup.connectionId).orElseThrow().state,
+                    participations.map { it.userId to it.attendanceStatus }.toMap(),
+                    events.map { it.userId }.toSet()
+                )
+            }
+
+        assertEquals(ConnectionState.CLOSED, snapshot.first)
+        assertEquals(SecondChatAttendanceStatus.NO_SHOW, snapshot.second[setup.userAId])
+        assertEquals(SecondChatAttendanceStatus.NO_SHOW, snapshot.second[setup.userBId])
+        assertEquals(setOf(setup.userAId, setup.userBId), snapshot.third)
+        assertEquals(null, chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT))
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `hard cutoff absent join conflict commits abandoned read only chat over http`() {
+        val setup =
+            TransactionTemplate(transactionManager).execute {
+                val fixture = createScheduledSecondChatReadyToEnter()
+                val scheduledAt = OffsetDateTime.now().minusMinutes(20).minusSeconds(5)
+                negotiationRepository.updateConfirmedDateTimeByConnectionId(
+                    connectionId = fixture.connectionId,
+                    confirmedDateTime = scheduledAt
+                )
+                joinSecondChatOrThrow(
+                    connectionId = fixture.connectionId,
+                    userId = fixture.userAId,
+                    now = scheduledAt.plusMinutes(1)
+                )
+                fixture
+            }
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_ENTRY_CLOSED")))
+
+        val snapshot =
+            TransactionTemplate(transactionManager).execute {
+                val chat = chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)
+                    ?: error("Second chat missing")
+                val absentParticipation =
+                    secondChatParticipationRepository.findByConnectionIdAndUserId(setup.connectionId, setup.userBId)
+                        ?: error("Absent participation missing")
+                val noShowEvents = userReliabilityEventRepository.findAll().count {
+                    it.userId == setup.userBId &&
+                        it.relatedConnectionId == setup.connectionId &&
+                        it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+                }
+                listOf(
+                    connectionRepository.findById(setup.connectionId).orElseThrow().state,
+                    absentParticipation.attendanceStatus,
+                    chat.status,
+                    chat.endedReason,
+                    chat.endedAt != null,
+                    chat.readOnlyUntil != null,
+                    noShowEvents
+                )
+            }
+
+        assertEquals(ConnectionState.SECOND_CHAT, snapshot[0])
+        assertEquals(SecondChatAttendanceStatus.NO_SHOW, snapshot[1])
+        assertEquals(ChatStatus.ABANDONED, snapshot[2])
+        assertEquals(ChatEndReason.SECOND_CHAT_NO_SHOW, snapshot[3])
+        assertEquals(true, snapshot[4])
+        assertEquals(true, snapshot[5])
+        assertEquals(1, snapshot[6])
     }
 
     @Test
