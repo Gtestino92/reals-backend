@@ -66,12 +66,6 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         senderId: UUID
     ): Long
 
-    fun countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
-        chatSessionId: UUID,
-        senderId: UUID,
-        sentAt: OffsetDateTime
-    ): Long
-
     @Query(
         value = """
             select coalesce(sum(length(content)), 0)

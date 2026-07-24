@@ -1,0 +1,15 @@
+meta {
+  name: 07 Create User A No Show Claim
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/no-show-claims
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}

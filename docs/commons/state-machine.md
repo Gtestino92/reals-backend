@@ -33,6 +33,7 @@ Allowed transitions:
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
 - `EXPIRED -> CLOSED` only for second-chat read-only retention cleanup
+- `ABANDONED -> CLOSED` for second-chat no-show read-only retention cleanup
 
 `ACTIVE -> ABANDONED` is the first-chat inactivity closure. It can be applied by
 the inactivity job or by endpoint validation before a stale mutation is accepted.
@@ -46,6 +47,7 @@ Terminal states:
 - `FINISHED`
 - `CANCELLED`
 - `EXPIRED` for first chats; for second chats this is read-only until cleanup
+- `ABANDONED` for second-chat no-show with an existing chat; readable until `readOnlyUntil`
 - `ABANDONED`
 - `CLOSED`
 

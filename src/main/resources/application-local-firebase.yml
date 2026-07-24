@@ -107,7 +107,9 @@ user-reliability:
     min-participation-messages-per-user: 2
     min-participation-minutes: 5
   second-chat:
-    no-show-grace-minutes: 10
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
   matchmaking:
     max-modifier: 0.05
 

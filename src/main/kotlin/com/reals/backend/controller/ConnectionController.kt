@@ -8,9 +8,11 @@ import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.RejectPartnerProposalsRequest
 import com.reals.backend.controller.dto.ScheduleProposalResponse
+import com.reals.backend.controller.dto.SecondChatAttendanceResponse
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.SchedulingService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -23,6 +25,7 @@ import java.util.*
 class ConnectionController(
     private val connectionService: ConnectionService,
     private val chatService: ChatService,
+    private val secondChatLifecycleService: SecondChatLifecycleService,
     private val schedulingService: SchedulingService,
     private val legalComplianceService: LegalComplianceService
 
@@ -68,6 +71,54 @@ class ConnectionController(
         )
 
         return ResponseEntity.ok(ConnectionDismissalResponse(dismissed = true))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/join")
+    fun joinSecondChat(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return ResponseEntity.ok(
+            SecondChatAttendanceResponse.from(
+                secondChatLifecycleService.joinSecondChat(
+                    connectionId = connectionId,
+                    userId = userId
+                )
+            )
+        )
+    }
+
+    @GetMapping("/{connectionId}/second-chat/status")
+    fun getSecondChatStatus(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> =
+        ResponseEntity.ok(
+            SecondChatAttendanceResponse.from(
+                secondChatLifecycleService.getSecondChatStatus(
+                    connectionId = connectionId,
+                    userId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{connectionId}/second-chat/no-show-claims")
+    fun createSecondChatNoShowClaim(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            SecondChatAttendanceResponse.from(
+                secondChatLifecycleService.createPartnerNoShowClaim(
+                    connectionId = connectionId,
+                    requesterUserId = userId
+                )
+            )
+        )
     }
 
     @GetMapping("/{connectionId}/negotiation")

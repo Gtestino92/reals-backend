@@ -451,14 +451,21 @@ POST /api/local-dev/jobs/account-deletion-finalization/run
 POST /api/local-dev/jobs/media-cleanup/run
 ```
 
-To move a confirmed second-chat time into the past for manual entry testing:
+To move a confirmed second-chat time into deterministic attendance windows:
 
 ```http
 POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now
+POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-late-window-now
+POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-before-hard-cutoff
+POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-past-hard-cutoff
 ```
 
-Then call `GET /api/connections/{connectionId}/chat` as either participant to
-materialize and activate the second chat.
+Then call `POST /api/connections/{connectionId}/second-chat/join` as each
+participant to materialize the chat and record attendance. Use `GET
+/api/connections/{connectionId}/second-chat/status` to inspect attendance and
+pending no-show claims, and `POST
+/api/connections/{connectionId}/second-chat/no-show-claims` to start the local
+60-second partner no-show countdown.
 
 Second-chat read-only lifecycle can be tested manually with:
 

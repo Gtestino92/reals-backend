@@ -419,7 +419,10 @@ Temporary penalties require positive `durationHours`; permanent penalties reject
 ## Connections And Scheduling
 
 - `GET /api/connections/{connectionId}`: fetch connection.
-- `GET /api/connections/{connectionId}/chat`: fetch the second chat for a connection. If no chat exists and the confirmed second-chat window is open (`now >= availableAt && now < expiresAt`), this idempotently creates and activates the `SECOND_CHAT`. If called before `availableAt`, returns conflict with `SECOND_CHAT_NOT_AVAILABLE_YET`; if called after `expiresAt` with no chat, returns conflict with `SECOND_CHAT_EXPIRED`.
+- `POST /api/connections/{connectionId}/second-chat/join`: explicit authenticated second-chat join. It creates or activates the chat, classifies the caller as `ON_TIME` for `scheduledAt <= now < onTimeUntil` or `LATE` for `onTimeUntil <= now < entryClosesAt`, and returns authoritative attendance state. Repeated joins preserve the original `joinedAt` and classification.
+- `GET /api/connections/{connectionId}/second-chat/status`: side-effect-free authoritative second-chat status with `serverTime`, join windows, attendance statuses, claim eligibility and any active no-show claim.
+- `POST /api/connections/{connectionId}/second-chat/no-show-claims`: create an authenticated partner no-show claim after the requester has joined and `onTimeUntil <= now < entryClosesAt`. The persisted countdown is 60 seconds capped at `entryClosesAt`.
+- `GET /api/connections/{connectionId}/chat`: fetch an already materialized visible second chat for a connection. This GET no longer creates a chat or records attendance. During an open entry window with no chat it returns `SECOND_CHAT_JOIN_REQUIRED`; clients must call the join endpoint.
 - `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation. Includes `schedulingExpiresAt` from the parent connection so clients can show a countdown without an extra request.
 - `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the expected current round. Body: `{ "expectedRoundNumber": 1, "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots. Each participant may submit at most one ordered list per round. Existing partner proposals in the same round do not make backend submission invalid.
@@ -494,6 +497,9 @@ Supported local job triggers:
 The second-chat confirmed time can be moved into the past for local testing with:
 
 - `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-late-window-now`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-before-hard-cutoff`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-past-hard-cutoff`
 
 Second-chat read-only lifecycle can be tested locally with:
 

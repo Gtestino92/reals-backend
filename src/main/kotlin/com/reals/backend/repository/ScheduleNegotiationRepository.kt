@@ -190,6 +190,38 @@ interface ScheduleNegotiationRepository :
         pageable: Pageable
     ): List<UUID>
 
+    @Query(
+        """select n.connectionId from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime <= :dueBefore
+             and (
+                not exists (
+                    select p.id from SecondChatParticipation p
+                    where p.connectionId = c.id
+                )
+                or exists (
+                    select p.id from SecondChatParticipation p
+                    where p.connectionId = c.id
+                      and p.attendanceStatus = 'PENDING'
+                )
+             )
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findConfirmedSecondChatHardCutoffDueConnectionIds(
+        @Param("dueBefore") dueBefore: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            ConnectionState.SECOND_CHAT
+        ),
+        pageable: Pageable
+    ): List<UUID>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """update ScheduleNegotiation n

@@ -4,8 +4,8 @@ meta {
   seq: 57
 }
 
-get {
-  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/chat
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/second-chat/join
   body: none
   auth: none
 }
@@ -16,11 +16,11 @@ headers {
 
 script:post-response {
   const body = res.getBody();
-  if (body.status !== "ACTIVE") {
-    throw new Error(`Expected second chat ACTIVE, got ${body.status}`);
+  if (body.myAttendanceStatus !== "ON_TIME" && body.myAttendanceStatus !== "LATE") {
+    throw new Error(`Expected joined attendance, got ${body.myAttendanceStatus}`);
   }
-  if (!body.availableAt || !body.activatedAt || !body.timeoutAt) {
-    throw new Error("Expected availableAt, activatedAt and timeoutAt after entering second chat.");
+  if (!body.chatId || !body.absoluteExpiresAt) {
+    throw new Error("Expected second-chat attendance response after joining.");
   }
-  bru.setEnvVar("timeoutSecondChatId", body.id);
+  bru.setEnvVar("timeoutSecondChatId", body.chatId);
 }

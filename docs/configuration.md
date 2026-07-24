@@ -146,7 +146,9 @@ Non-sensitive runtime configuration:
 | `USER_RELIABILITY_EXPIRATION_DAYS` | no | Event retention/scoring window before cleanup deletes reliability events. Defaults to `20`. |
 | `FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER` | no | Reliability-only first-chat minimum participation message threshold. Defaults to `2`. |
 | `FIRST_CHAT_MIN_PARTICIPATION_MINUTES` | no | Reliability-only first-chat minimum participation elapsed-time threshold. Defaults to `5`. |
-| `SECOND_CHAT_NO_SHOW_GRACE_MINUTES` | no | Grace window for second-chat attendance/no-show reliability events. Defaults to `10`. |
+| `CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES` | no | On-time join window after confirmed second-chat start. Defaults to `10`. |
+| `CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES` | no | Total second-chat entry window before hard no-show cutoff. Defaults to `20`. |
+| `CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS` | no | Manual partner no-show claim countdown, capped at hard cutoff. Defaults to `60`. |
 | `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring in `LEGACY_EARLY_ACCEPT` mode when reliability is enabled. Defaults to `0.05`. |
 | `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `60000`. |
 | `SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN` | no | Dev/prod upper bound for pairs processed per matchmaking run. Defaults to `10`. |
@@ -392,7 +394,7 @@ Dev and prod use the same MVP scheduler defaults:
 | `SecondChatReminderNotificationJob` | `60000` ms | Pick up second-chat reminders within a 1-minute window. |
 | `VisualReviewReminderNotificationJob` | `1800000` ms | Pick up persisted visual-review reminder eligibility about every 30 minutes. |
 | `ChatTimeoutJob` | `60000` ms | Expire timed-out first chats without leaving users stuck. |
-| `SecondChatLifecycleJob` | `120000` ms | Make due second chats available, expire inactive scheduled windows, expire active second chats and close read-only chats. |
+| `SecondChatLifecycleJob` | `120000` ms | Process expired no-show claims, resolve hard-cutoff no-shows, expire inactive scheduled windows, expire active second chats and close read-only chats. |
 | `InactivityCheckJob` | `60000` ms, `5` minute threshold | Abandon inactive first chats before the absolute timeout when no messages are sent. |
 | `MatchExpirationJob` | `300000` ms, `PT20M` first-chat fallback | Safety net for stale matches that did not progress after first-chat timeout handling. |
 | `VisualPhaseExpirationJob` | `300000` ms | Expire visual reviews whose deadline passed. |

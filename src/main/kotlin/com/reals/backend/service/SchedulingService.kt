@@ -6,9 +6,11 @@ import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ScheduleProposal
+import com.reals.backend.domain.SecondChatParticipation
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import org.springframework.context.ApplicationEventPublisher
 import com.reals.backend.service.exception.DomainBadRequestException
@@ -27,6 +29,7 @@ import java.util.UUID
 class SchedulingService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val proposalRepository: ScheduleProposalRepository,
+    private val participationRepository: SecondChatParticipationRepository,
     private val connectionService: ConnectionService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
@@ -554,6 +557,25 @@ class SchedulingService(
         negotiationRepository.save(negotiation)
 
         connectionService.transitionToSecondChatScheduled(connectionId)
+        initializeSecondChatParticipations(connection)
+    }
+
+    private fun initializeSecondChatParticipations(connection: Connection) {
+        val existingUserIds =
+            participationRepository.findByConnectionId(connection.id)
+                .map { it.userId }
+                .toSet()
+        val missing = listOf(connection.userAId, connection.userBId)
+            .filter { it !in existingUserIds }
+            .map {
+                SecondChatParticipation(
+                    connectionId = connection.id,
+                    userId = it
+                )
+            }
+        if (missing.isNotEmpty()) {
+            participationRepository.saveAll(missing)
+        }
     }
 
     private fun requireSchedulingPhase(state: ConnectionState) {

@@ -118,6 +118,9 @@ chat:
   second-chat:
     duration-minutes: ${CHAT_SECOND_CHAT_DURATION_MINUTES:120}
     read-only-retention-minutes: ${CHAT_SECOND_CHAT_READ_ONLY_RETENTION_MINUTES:1440}
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
     min-messages-before-free-cancel: 0
 
 scheduling:

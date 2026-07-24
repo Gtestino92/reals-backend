@@ -143,6 +143,39 @@ class DevTimeoutController(
         )
     }
 
+    @PostMapping("/connections/{connectionId}/second-chat-late-window-now")
+    @Transactional
+    fun makeSecondChatLateWindowNow(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveConfirmedSecondChatTime(
+            connectionId = connectionId,
+            startsAt = OffsetDateTime.now().minusMinutes(10),
+            target = "schedule-negotiation-second-chat-late-window"
+        )
+
+    @PostMapping("/connections/{connectionId}/second-chat-before-hard-cutoff")
+    @Transactional
+    fun makeSecondChatBeforeHardCutoff(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveConfirmedSecondChatTime(
+            connectionId = connectionId,
+            startsAt = OffsetDateTime.now().minusMinutes(19).minusSeconds(59),
+            target = "schedule-negotiation-second-chat-before-hard-cutoff"
+        )
+
+    @PostMapping("/connections/{connectionId}/second-chat-past-hard-cutoff")
+    @Transactional
+    fun makeSecondChatPastHardCutoff(
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> =
+        moveConfirmedSecondChatTime(
+            connectionId = connectionId,
+            startsAt = OffsetDateTime.now().minusMinutes(20).minusSeconds(1),
+            target = "schedule-negotiation-second-chat-past-hard-cutoff"
+        )
+
     @PostMapping("/penalties/{penaltyId}/expire-now")
     @Transactional
     fun expirePenaltyNow(
@@ -169,6 +202,27 @@ class DevTimeoutController(
         if (updated == 0) {
             throw NoSuchElementException(message)
         }
+    }
+
+    private fun moveConfirmedSecondChatTime(
+        connectionId: UUID,
+        startsAt: OffsetDateTime,
+        target: String
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        requireUpdated(
+            updated = scheduleNegotiationRepository.updateConfirmedDateTimeByConnectionId(
+                connectionId = connectionId,
+                confirmedDateTime = startsAt
+            ),
+            message = "ScheduleNegotiation not found for connection: $connectionId"
+        )
+        return ResponseEntity.ok(
+            DevTimeoutMutationResponse(
+                target = target,
+                id = connectionId,
+                expiresAt = startsAt
+            )
+        )
     }
 }
 

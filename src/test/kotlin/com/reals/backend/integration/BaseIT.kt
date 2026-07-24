@@ -29,6 +29,8 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
 import com.reals.backend.repository.SafetyReportRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
@@ -54,6 +56,7 @@ import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
@@ -132,6 +135,9 @@ abstract class BaseIT {
     protected lateinit var schedulingService: SchedulingService
 
     @Autowired
+    protected lateinit var secondChatLifecycleService: SecondChatLifecycleService
+
+    @Autowired
     protected lateinit var safetyReportService: SafetyReportService
 
     @Autowired
@@ -187,6 +193,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var proposalRepository: ScheduleProposalRepository
+
+    @Autowired
+    protected lateinit var secondChatParticipationRepository: SecondChatParticipationRepository
+
+    @Autowired
+    protected lateinit var secondChatResolutionRequestRepository: SecondChatResolutionRequestRepository
 
     @Autowired
     protected lateinit var penaltyRepository: PenaltyRepository
@@ -411,10 +423,15 @@ abstract class BaseIT {
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
         val setup = createScheduledSecondChatReadyToEnter()
-        val secondChat = chatService.findVisibleSecondChatOrThrow(
+        val joined = secondChatLifecycleService.joinSecondChat(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
+        secondChatLifecycleService.joinSecondChat(
+            connectionId = setup.connectionId,
+            userId = setup.userBId
+        )
+        val secondChat = chatRepository.findById(joined.chatId!!).orElseThrow()
 
         Assertions.assertEquals(ChatStatus.ACTIVE, secondChat.status)
         Assertions.assertEquals(
