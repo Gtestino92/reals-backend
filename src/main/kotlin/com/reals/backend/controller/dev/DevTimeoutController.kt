@@ -1,5 +1,6 @@
 package com.reals.backend.controller.dev
 
+import com.reals.backend.domain.Chat
 import com.reals.backend.domain.SecondChatResolutionRequestStatus
 import com.reals.backend.domain.SecondChatResolutionRequestType
 import com.reals.backend.repository.ChatMessageRepository
@@ -212,6 +213,22 @@ class DevTimeoutController(
             target = "second-chat-latest-message-before-inactivity-claim"
         )
 
+    @PostMapping("/chats/{chatId}/latest-message-before-conversation-started")
+    @Transactional
+    fun moveLatestMessageBeforeConversationStarted(
+        @PathVariable chatId: UUID
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val chat = chatRepository.findByIdForUpdate(chatId)
+            ?: throw NoSuchElementException("Chat not found: $chatId")
+        val conversationStartedAt = chat.conversationStartedAt
+            ?: throw IllegalArgumentException("Second chat conversation has not started: $chatId")
+        return moveLatestSecondChatMessageTime(
+            chat = chat,
+            sentAt = conversationStartedAt.minusMinutes(1),
+            target = "second-chat-latest-message-before-conversation-started"
+        )
+    }
+
     @PostMapping("/chats/{chatId}/latest-message-claimable")
     @Transactional
     fun moveLatestMessageClaimable(
@@ -342,8 +359,20 @@ class DevTimeoutController(
     ): ResponseEntity<DevTimeoutMutationResponse> {
         val chat = chatRepository.findByIdForUpdate(chatId)
             ?: throw NoSuchElementException("Chat not found: $chatId")
-        val latestMessage = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(chatId)
-            ?: throw NoSuchElementException("No messages found for chat: $chatId")
+        return moveLatestSecondChatMessageTime(
+            chat = chat,
+            sentAt = sentAt,
+            target = target
+        )
+    }
+
+    private fun moveLatestSecondChatMessageTime(
+        chat: Chat,
+        sentAt: OffsetDateTime,
+        target: String
+    ): ResponseEntity<DevTimeoutMutationResponse> {
+        val latestMessage = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(chat.id)
+            ?: throw NoSuchElementException("No messages found for chat: ${chat.id}")
         latestMessage.sentAt = sentAt
         chatMessageRepository.save(latestMessage)
         chat.lastMessageAt = sentAt
@@ -352,7 +381,7 @@ class DevTimeoutController(
         return ResponseEntity.ok(
             DevTimeoutMutationResponse(
                 target = target,
-                id = chatId,
+                id = chat.id,
                 expiresAt = sentAt
             )
         )

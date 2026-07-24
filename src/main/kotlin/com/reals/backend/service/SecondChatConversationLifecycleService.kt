@@ -186,6 +186,13 @@ class SecondChatConversationLifecycleService(
     ): CompletionDecisionResult {
         val context = lockedActiveConversationContext(connectionId, responderUserId)
         val chat = context.chat
+        resolveDueInitialSilenceOrInactivity(chat, now)?.let {
+            return CompletionDecisionResult.Rejected(
+                code = DomainErrorCode.SECOND_CHAT_CONVERSATION_ALREADY_RESOLVED,
+                message = "Second chat for connection $connectionId is already resolved",
+                status = buildStatus(context.connection, chat, responderUserId, now)
+            )
+        }
         val request =
             resolutionRequestRepository.findByIdForUpdate(requestId)
                 ?: throw DomainNotFoundException(
@@ -292,7 +299,7 @@ class SecondChatConversationLifecycleService(
 
         val latestMessage = latestMessage(chat)
             ?: throw inactivityClaimNotAvailable(connectionId)
-        val lastMessageAt = chat.lastMessageAt
+        val responseClockStartedAt = responseClockStartedAt(chat)
             ?: throw inactivityClaimNotAvailable(connectionId)
         val request =
             resolutionRequestRepository.saveAndFlush(
@@ -307,7 +314,7 @@ class SecondChatConversationLifecycleService(
                     createdAt = now,
                     expiresAt = minOf(
                         now.plusSeconds(inactivityClaimCountdownSeconds),
-                        lastMessageAt.plusMinutes(inactivityAutomaticCloseAfterMinutes),
+                        responseClockStartedAt.plusMinutes(inactivityAutomaticCloseAfterMinutes),
                         chat.timeoutAt
                     )
                 )
@@ -454,7 +461,8 @@ class SecondChatConversationLifecycleService(
         ) {
             return false
         }
-        if (chat.lastMessageAt!!.plusMinutes(inactivityAutomaticCloseAfterMinutes).isAfter(now)) {
+        val responseClockStartedAt = responseClockStartedAt(chat) ?: return false
+        if (responseClockStartedAt.plusMinutes(inactivityAutomaticCloseAfterMinutes).isAfter(now)) {
             return false
         }
         val connection = chat.connectionId?.let { connectionRepository.findById(it).orElse(null) } ?: return false
@@ -484,12 +492,13 @@ class SecondChatConversationLifecycleService(
         val conversationStartedAt = chat.conversationStartedAt
         val mutualEligibleAt = conversationStartedAt?.plusMinutes(mutualCompletionMinimumConversationMinutes)
         val latest = latestMessage(chat)
-        val lastMessageAt = chat.lastMessageAt
-        val inactivityClaimableAt = lastMessageAt?.plusMinutes(inactivityClaimableAfterMinutes)
-        val inactivityClosesAt = lastMessageAt?.plusMinutes(inactivityAutomaticCloseAfterMinutes)
+        val responseClockStartedAt = responseClockStartedAt(chat)
+        val inactivityClaimableAt = responseClockStartedAt?.plusMinutes(inactivityClaimableAfterMinutes)
+        val inactivityClosesAt = responseClockStartedAt?.plusMinutes(inactivityAutomaticCloseAfterMinutes)
         val myMustRespond = chat.lastMessageSenderId != null && chat.lastMessageSenderId != userId
         val cooldownUntil = mutualCompletionCooldownUntil(connection.id, userId)
         val terminal = chat.status != ChatStatus.ACTIVE || !chat.timeoutAt.isAfter(now)
+        val conversationLifecycleDue = isInitialSilenceDue(chat, now) || isPartnerInactivityDue(chat, now)
         val pendingExpired = activeRequest != null && !activeRequest.expiresAt.isAfter(now)
         val bothMessaged = listOf(connection.userAId, connection.userBId).all {
             chatMessageRepository.existsByChatSessionIdAndSenderId(chat.id, it)
@@ -503,6 +512,7 @@ class SecondChatConversationLifecycleService(
             readOnlyUntil = chat.readOnlyUntil,
             mutualCompletionEligibleAt = mutualEligibleAt,
             canRequestMutualCompletion = !terminal &&
+                !conversationLifecycleDue &&
                 !pendingExpired &&
                 activeRequest == null &&
                 mutualEligibleAt != null &&
@@ -513,6 +523,7 @@ class SecondChatConversationLifecycleService(
             inactivityClaimableAt = inactivityClaimableAt,
             inactivityClosesAt = inactivityClosesAt,
             canClaimPartnerInactivity = !terminal &&
+                !conversationLifecycleDue &&
                 !pendingExpired &&
                 activeRequest == null &&
                 latest != null &&
@@ -521,7 +532,7 @@ class SecondChatConversationLifecycleService(
                 !now.isBefore(inactivityClaimableAt) &&
                 inactivityClosesAt != null &&
                 now.isBefore(inactivityClosesAt),
-            mustRespondToPartner = !terminal && myMustRespond,
+            mustRespondToPartner = !terminal && !conversationLifecycleDue && myMustRespond,
             lastMessageAt = chat.lastMessageAt,
             lastMessageSenderId = chat.lastMessageSenderId
         )
@@ -575,12 +586,14 @@ class SecondChatConversationLifecycleService(
         if (chat.conversationStartedAt == null || chat.lastMessageAt == null || chat.lastMessageSenderId == null) {
             throw inactivityClaimNotAvailable(context.connection.id)
         }
+        val responseClockStartedAt = responseClockStartedAt(chat)
+            ?: throw inactivityClaimNotAvailable(context.connection.id)
         val latestMessage = latestMessage(chat) ?: throw inactivityClaimNotAvailable(context.connection.id)
         if (latestMessage.senderId != requesterUserId || chat.lastMessageSenderId != requesterUserId) {
             throw inactivityClaimNotAvailable(context.connection.id)
         }
-        val claimableAt = chat.lastMessageAt!!.plusMinutes(inactivityClaimableAfterMinutes)
-        val closesAt = chat.lastMessageAt!!.plusMinutes(inactivityAutomaticCloseAfterMinutes)
+        val claimableAt = responseClockStartedAt.plusMinutes(inactivityClaimableAfterMinutes)
+        val closesAt = responseClockStartedAt.plusMinutes(inactivityAutomaticCloseAfterMinutes)
         if (now.isBefore(claimableAt) || !now.isBefore(closesAt) || !chat.timeoutAt.isAfter(now)) {
             throw inactivityClaimNotAvailable(context.connection.id)
         }
@@ -623,7 +636,8 @@ class SecondChatConversationLifecycleService(
             return null
         }
         val lastSenderId = chat.lastMessageSenderId ?: return null
-        if (!chat.lastMessageAt!!.plusMinutes(inactivityAutomaticCloseAfterMinutes).isAfter(now)) {
+        val responseClockStartedAt = responseClockStartedAt(chat) ?: return null
+        if (!responseClockStartedAt.plusMinutes(inactivityAutomaticCloseAfterMinutes).isAfter(now)) {
             resolveDueCompletionBeforeTerminal(connection.id, now)
             findPendingRequestForUpdate(connection.id)
                 ?.takeIf { it.type == SecondChatResolutionRequestType.PARTNER_INACTIVITY }
@@ -634,7 +648,46 @@ class SecondChatConversationLifecycleService(
             finishPartnerInactivity(connection, chat, connection.partnerUserId(lastSenderId), now)
             return true
         }
+        if (!chat.timeoutAt.isAfter(now)) {
+            resolveDueCompletionBeforeTerminal(connection.id, now)
+            finishSecondChat(
+                connection = connection,
+                chat = chat,
+                status = ChatStatus.EXPIRED,
+                endedReason = ChatEndReason.ABSOLUTE_TIMEOUT,
+                now = now,
+                reliabilityRecorder = {}
+            )
+            return true
+        }
         return null
+    }
+
+    private fun responseClockStartedAt(chat: Chat): OffsetDateTime? {
+        val lastMessageAt = chat.lastMessageAt ?: return null
+        val conversationStartedAt = chat.conversationStartedAt ?: return null
+        return maxOf(lastMessageAt, conversationStartedAt)
+    }
+
+    private fun isInitialSilenceDue(chat: Chat, now: OffsetDateTime): Boolean {
+        if (chat.status != ChatStatus.ACTIVE || chat.chatType != ChatType.SECOND_CHAT || chat.lastMessageAt != null) {
+            return false
+        }
+        val conversationStartedAt = chat.conversationStartedAt ?: return false
+        return !conversationStartedAt.plusMinutes(initialSilenceAutomaticCloseAfterMinutes).isAfter(now)
+    }
+
+    private fun isPartnerInactivityDue(chat: Chat, now: OffsetDateTime): Boolean {
+        if (
+            chat.status != ChatStatus.ACTIVE ||
+            chat.chatType != ChatType.SECOND_CHAT ||
+            chat.lastMessageAt == null ||
+            chat.lastMessageSenderId == null
+        ) {
+            return false
+        }
+        val responseClockStartedAt = responseClockStartedAt(chat) ?: return false
+        return !responseClockStartedAt.plusMinutes(inactivityAutomaticCloseAfterMinutes).isAfter(now)
     }
 
     private fun resolveDueCompletionBeforeTerminal(connectionId: UUID, now: OffsetDateTime) {

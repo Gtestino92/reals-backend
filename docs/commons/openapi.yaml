@@ -1158,7 +1158,7 @@ paths:
     post:
       tags: [Connections]
       summary: Create partner-inactivity claim
-      description: Latest-message author may claim after `lastMessageAt + 5 minutes` and before `lastMessageAt + 10 minutes`. The request references the server-selected latest message. Any message before expiry cancels the claim; at exact expiry the silent responder is no-show-after-join and the chat becomes read-only abandoned.
+      description: Latest-message author may claim after `max(lastMessageAt, conversationStartedAt) + 5 minutes` and before `max(lastMessageAt, conversationStartedAt) + 10 minutes`. The request references the server-selected latest message. Any message before expiry cancels the claim; at exact expiry the silent responder is no-show-after-join and the chat becomes read-only abandoned.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:

@@ -737,6 +737,63 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `completion acceptance after due inactivity commits abandoned chat over http`() {
+        val fixture =
+            TransactionTemplate(transactionManager).execute {
+                val setup = createActiveSecondChat()
+                val serverNow = OffsetDateTime.now().withNano(0)
+                val conversationStartedAt = serverNow.minusMinutes(11).minusSeconds(5)
+                val chat = chatRepository.findById(setup.secondChatId).orElseThrow()
+                chat.conversationStartedAt = conversationStartedAt
+                chatRepository.saveAndFlush(chat)
+                sendMessageOrThrow(setup.secondChatId, setup.userAId, "Mensaje A", conversationStartedAt.plusSeconds(30))
+                sendMessageOrThrow(setup.secondChatId, setup.userBId, "Mensaje B", conversationStartedAt.plusMinutes(1))
+                val request =
+                    secondChatConversationLifecycleService.createMutualCompletionRequest(
+                        connectionId = setup.connectionId,
+                        requesterUserId = setup.userBId,
+                        now = conversationStartedAt.plusMinutes(10).plusSeconds(30)
+                    )
+                Pair(setup, request.request!!.id)
+            }
+
+        mockMvc.perform(
+            post("/api/connections/${fixture.first.connectionId}/second-chat/completion-requests/${fixture.second}/decision")
+                .with(authenticatedAs(fixture.first.userAId))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("decision" to "ACCEPTED")))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SECOND_CHAT_CONVERSATION_ALREADY_RESOLVED")))
+
+        TransactionTemplate(transactionManager).execute {
+            assertEquals(
+                SecondChatResolutionRequestStatus.CANCELLED,
+                secondChatResolutionRequestRepository.findById(fixture.second).orElseThrow().status
+            )
+            val chat = chatRepository.findById(fixture.first.secondChatId).orElseThrow()
+            assertEquals(ChatStatus.ABANDONED, chat.status)
+            assertEquals(ChatEndReason.SECOND_CHAT_PARTNER_INACTIVITY, chat.endedReason)
+            assertEquals(
+                1,
+                userReliabilityEventRepository.findAll().count {
+                    it.relatedConnectionId == fixture.first.connectionId &&
+                        it.userId == fixture.first.userAId &&
+                        it.eventType == UserReliabilityEventType.SECOND_CHAT_ABANDONED_AFTER_JOIN
+                }
+            )
+            assertEquals(
+                0,
+                userReliabilityEventRepository.findAll().count {
+                    it.relatedConnectionId == fixture.first.connectionId &&
+                        it.eventType == UserReliabilityEventType.SECOND_CHAT_MUTUAL_COMPLETION
+                }
+            )
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `concurrent join second chat requests return same chat over http`() {
         val setup =
             TransactionTemplate(transactionManager).execute {

@@ -291,7 +291,7 @@ Purpose: validate mutual completion, partner inactivity and initial silence.
 2. Join both participants; `conversationStartedAt` should be set after the second join.
 3. Send at least one message from each participant, force `second-chat-conversation-started-past`, create `POST /api/connections/{connectionId}/second-chat/completion-requests`, and accept before expiry to confirm `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`.
 4. Repeat with rejection, timeout and message cancellation to confirm the requester-only 60-second cooldown.
-5. Send one latest message, force `latest-message-claimable`, create `POST /api/connections/{connectionId}/second-chat/inactivity-claims`, then either send before expiry to cancel or force request expiry and run the lifecycle job to confirm `ABANDONED / SECOND_CHAT_PARTNER_INACTIVITY`.
+5. Send one latest message, force `latest-message-claimable`, create `POST /api/connections/{connectionId}/second-chat/inactivity-claims`, then either send before expiry to cancel or force request expiry and run the lifecycle job to confirm `ABANDONED / SECOND_CHAT_PARTNER_INACTIVITY`. Also test a waiting message sent before the partner joins with `latest-message-before-conversation-started`; the five- and ten-minute deadlines should be calculated from `conversationStartedAt`.
 6. With both joined and no messages, force `second-chat-conversation-started-past`, run the lifecycle job and confirm `ABANDONED / SECOND_CHAT_NO_CONVERSATION_STARTED` with both-user reliability events.
 
 ## Active Second Chat Timeout And Read-Only Cleanup
