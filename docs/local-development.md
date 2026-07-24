@@ -467,13 +467,26 @@ pending no-show claims, and `POST
 /api/connections/{connectionId}/second-chat/no-show-claims` to start the local
 60-second partner no-show countdown.
 
-Second-chat read-only lifecycle can be tested manually with:
+Second-chat conversation lifecycle can be tested manually without waiting:
 
 ```http
+POST /api/local-dev/timeouts/chats/{chatId}/second-chat-conversation-started-past
+POST /api/local-dev/timeouts/chats/{chatId}/latest-message-before-inactivity-claim
+POST /api/local-dev/timeouts/chats/{chatId}/latest-message-claimable
+POST /api/local-dev/timeouts/chats/{chatId}/latest-message-before-automatic-inactivity
+POST /api/local-dev/timeouts/chats/{chatId}/latest-message-automatic-inactivity-due
+POST /api/local-dev/timeouts/second-chat-resolution-requests/{requestId}/expire-now
+POST /api/local-dev/timeouts/second-chat-resolution-requests/{requestId}/completion-cooldown-active
+POST /api/local-dev/timeouts/second-chat-resolution-requests/{requestId}/completion-cooldown-expired
 POST /api/local-dev/jobs/second-chat-lifecycle/run
 POST /api/local-dev/timeouts/chats/{chatId}/expire-now
 POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now
 ```
+
+Use the production endpoints to create/respond to completion requests and
+inactivity claims, then use the local helpers only to move server-owned clocks.
+Read-only second chats in `FINISHED`, `ABANDONED` or `EXPIRED` remain readable
+until `read-only-expire-now` plus the lifecycle job closes them.
 
 Recoverable account deletion finalization can be triggered manually with:
 

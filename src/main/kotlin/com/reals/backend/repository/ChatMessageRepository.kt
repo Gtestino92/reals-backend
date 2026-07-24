@@ -66,6 +66,15 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         senderId: UUID
     ): Long
 
+    fun existsByChatSessionIdAndSenderId(
+        chatSessionId: UUID,
+        senderId: UUID
+    ): Boolean
+
+    fun findTopByChatSessionIdOrderBySentAtDescIdDesc(
+        chatSessionId: UUID
+    ): ChatMessage?
+
     @Query(
         value = """
             select coalesce(sum(length(content)), 0)

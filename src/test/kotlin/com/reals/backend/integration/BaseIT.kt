@@ -1,6 +1,7 @@
 package com.reals.backend.integration
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
@@ -56,6 +57,7 @@ import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.SecondChatConversationLifecycleService
 import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.reports.SafetyReportService
@@ -137,6 +139,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var secondChatLifecycleService: SecondChatLifecycleService
+
+    @Autowired
+    protected lateinit var secondChatConversationLifecycleService: SecondChatConversationLifecycleService
 
     @Autowired
     protected lateinit var safetyReportService: SafetyReportService
@@ -486,6 +491,25 @@ abstract class BaseIT {
         Assertions.assertTrue(result is SecondChatLifecycleService.SecondChatJoinResult.Rejected)
         return result as SecondChatLifecycleService.SecondChatJoinResult.Rejected
     }
+
+    protected fun sendMessageOrThrow(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): ChatMessage =
+        when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = senderId,
+                content = content,
+                now = now
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent -> result.message
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
 
     protected fun futureHalfHourSlot(): OffsetDateTime {
         val candidate = OffsetDateTime.now()

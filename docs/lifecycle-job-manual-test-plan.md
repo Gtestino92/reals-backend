@@ -283,6 +283,17 @@ resolution.
 5. Either join with the partner before the returned `expiresAt` and confirm the claim is `CANCELLED`, or run the lifecycle job after `expiresAt` and confirm the absent partner is `NO_SHOW`.
 6. For both-absent behavior, use `second-chat-past-hard-cutoff`, do not join either participant, run the lifecycle job, and confirm both are `NO_SHOW`, the connection is `CLOSED`, and no empty chat exists.
 
+## Active Second Chat Conversation Lifecycle
+
+Purpose: validate mutual completion, partner inactivity and initial silence.
+
+1. Confirm a second-chat schedule and make it available.
+2. Join both participants; `conversationStartedAt` should be set after the second join.
+3. Send at least one message from each participant, force `second-chat-conversation-started-past`, create `POST /api/connections/{connectionId}/second-chat/completion-requests`, and accept before expiry to confirm `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`.
+4. Repeat with rejection, timeout and message cancellation to confirm the requester-only 60-second cooldown.
+5. Send one latest message, force `latest-message-claimable`, create `POST /api/connections/{connectionId}/second-chat/inactivity-claims`, then either send before expiry to cancel or force request expiry and run the lifecycle job to confirm `ABANDONED / SECOND_CHAT_PARTNER_INACTIVITY`.
+6. With both joined and no messages, force `second-chat-conversation-started-past`, run the lifecycle job and confirm `ABANDONED / SECOND_CHAT_NO_CONVERSATION_STARTED` with both-user reliability events.
+
 ## Active Second Chat Timeout And Read-Only Cleanup
 
 Purpose: validate second-chat write timeout, read-only mode and final cleanup.

@@ -27,6 +27,9 @@ enum class ChatEndReason {
     ABSOLUTE_TIMEOUT,
     INACTIVITY_TIMEOUT,
     SECOND_CHAT_NO_SHOW,
+    SECOND_CHAT_MUTUAL_COMPLETION,
+    SECOND_CHAT_PARTNER_INACTIVITY,
+    SECOND_CHAT_NO_CONVERSATION_STARTED,
     SECOND_CHAT_READ_ONLY_EXPIRED,
     USER_DELETED,
     SYSTEM_CLOSED
@@ -95,5 +98,8 @@ data class Chat(
     var readOnlyUntil: OffsetDateTime? = null,
 
     @Column(name = "last_message_at")
-    var lastMessageAt: OffsetDateTime? = null
+    var lastMessageAt: OffsetDateTime? = null,
+
+    @Column(name = "last_message_sender_id")
+    var lastMessageSenderId: UUID? = null
 )

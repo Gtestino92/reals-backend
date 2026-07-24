@@ -36,6 +36,9 @@ enum class UserReliabilityEventType(
     SECOND_CHAT_CONFIRMED_ATTENDED(UserReliabilityDimension.SchedulingCommitmentScore, 4),
     SECOND_CHAT_LATE_ARRIVAL(UserReliabilityDimension.SchedulingCommitmentScore, -2),
     SECOND_CHAT_NO_SHOW(UserReliabilityDimension.SchedulingCommitmentScore, -10),
+    SECOND_CHAT_MUTUAL_COMPLETION(UserReliabilityDimension.ResolutionQualityScore, 2),
+    SECOND_CHAT_ABANDONED_AFTER_JOIN(UserReliabilityDimension.ConversationParticipationScore, -5),
+    SECOND_CHAT_NO_CONVERSATION_STARTED(UserReliabilityDimension.ConversationParticipationScore, -5),
     SAFETY_REPORT_DETERMINED_ABUSIVE(UserReliabilityDimension.ResolutionQualityScore, -8)
 }
 

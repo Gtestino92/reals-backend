@@ -148,3 +148,8 @@ not automatically reject those rows or advance the round. Explicit acceptance
 returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE` when the proposal instant is not
 strictly in the future, and overlap auto-confirm ignores expired overlapping
 instants while still considering future overlaps.
+
+
+## Second Chat
+
+Second-chat entry and conversation lifecycle are server-authoritative. Explicit join records attendance; mutual completion, partner inactivity, initial silence, absolute timeout and read-only cleanup are owned by `SecondChatLifecycleJob` and request-triggered lifecycle services. Ordinary mutual/unilateral cancellation is not available for second chats.

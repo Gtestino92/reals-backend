@@ -2,6 +2,7 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.service.ChatService
+import com.reals.backend.service.SecondChatConversationLifecycleService
 import com.reals.backend.service.SecondChatLifecycleService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
@@ -21,6 +22,7 @@ import java.time.OffsetDateTime
 class SecondChatLifecycleJob(
     private val chatService: ChatService,
     private val secondChatLifecycleService: SecondChatLifecycleService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val negotiationRepository: ScheduleNegotiationRepository,
 
     @param:Value("\${chat.second-chat.duration-minutes:120}")
@@ -62,6 +64,38 @@ class SecondChatLifecycleJob(
         val hardCutoffNoShows =
             boundedSchedulerBatch(
                 fetchedCandidates = secondChatLifecycleService.findHardCutoffNoShowConnectionIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val expiredMutualCompletionRequests =
+            boundedSchedulerBatch(
+                fetchedCandidates = secondChatConversationLifecycleService.findExpiredMutualCompletionRequestIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val expiredPartnerInactivityClaims =
+            boundedSchedulerBatch(
+                fetchedCandidates = secondChatConversationLifecycleService.findExpiredPartnerInactivityClaimIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val initialSilenceDue =
+            boundedSchedulerBatch(
+                fetchedCandidates = secondChatConversationLifecycleService.findInitialSilenceDueChatIds(
+                    now = now,
+                    limit = batchSize + 1
+                ),
+                batchSize = batchSize
+            )
+        val automaticInactivityDue =
+            boundedSchedulerBatch(
+                fetchedCandidates = secondChatConversationLifecycleService.findAutomaticInactivityDueChatIds(
                     now = now,
                     limit = batchSize + 1
                 ),
@@ -137,6 +171,74 @@ class SecondChatLifecycleJob(
                 log.error(
                     "SecondChatLifecycleJob - failed to resolve hard-cutoff no-show connection={}",
                     connectionId,
+                    ex
+                )
+            }
+        }
+
+        expiredMutualCompletionRequests.items.forEach { requestId ->
+            try {
+                if (secondChatConversationLifecycleService.processExpiredMutualCompletionRequest(requestId, now)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "SecondChatLifecycleJob - failed to process expired mutual completion request={}",
+                    requestId,
+                    ex
+                )
+            }
+        }
+
+        expiredPartnerInactivityClaims.items.forEach { requestId ->
+            try {
+                if (secondChatConversationLifecycleService.processExpiredPartnerInactivityClaim(requestId, now)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "SecondChatLifecycleJob - failed to process expired partner inactivity claim={}",
+                    requestId,
+                    ex
+                )
+            }
+        }
+
+        initialSilenceDue.items.forEach { chatId ->
+            try {
+                if (secondChatConversationLifecycleService.processInitialSilence(chatId, now)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "SecondChatLifecycleJob - failed to process initial silence second chat={}",
+                    chatId,
+                    ex
+                )
+            }
+        }
+
+        automaticInactivityDue.items.forEach { chatId ->
+            try {
+                if (secondChatConversationLifecycleService.processAutomaticInactivity(chatId, now)) {
+                    succeeded += 1
+                } else {
+                    skipped += 1
+                }
+            } catch (ex: Exception) {
+                failed += 1
+                log.error(
+                    "SecondChatLifecycleJob - failed to process automatic second-chat inactivity chat={}",
+                    chatId,
                     ex
                 )
             }
@@ -221,6 +323,10 @@ class SecondChatLifecycleJob(
         val processed =
             expiredNoShowClaims.items.size +
                 hardCutoffNoShows.items.size +
+                expiredMutualCompletionRequests.items.size +
+                expiredPartnerInactivityClaims.items.size +
+                initialSilenceDue.items.size +
+                automaticInactivityDue.items.size +
                 expiredScheduledWithoutChat.items.size +
                 timedOutAvailable.items.size +
                 timedOutActive.items.size +
@@ -228,6 +334,10 @@ class SecondChatLifecycleJob(
         val fetched =
             expiredNoShowClaims.fetched +
                 hardCutoffNoShows.fetched +
+                expiredMutualCompletionRequests.fetched +
+                expiredPartnerInactivityClaims.fetched +
+                initialSilenceDue.fetched +
+                automaticInactivityDue.fetched +
                 expiredScheduledWithoutChat.fetched +
                 timedOutAvailable.fetched +
                 timedOutActive.fetched +
@@ -235,6 +345,10 @@ class SecondChatLifecycleJob(
         val backlogRemaining =
             expiredNoShowClaims.backlogRemaining ||
                 hardCutoffNoShows.backlogRemaining ||
+                expiredMutualCompletionRequests.backlogRemaining ||
+                expiredPartnerInactivityClaims.backlogRemaining ||
+                initialSilenceDue.backlogRemaining ||
+                automaticInactivityDue.backlogRemaining ||
                 expiredScheduledWithoutChat.backlogRemaining ||
                 timedOutAvailable.backlogRemaining ||
                 timedOutActive.backlogRemaining ||

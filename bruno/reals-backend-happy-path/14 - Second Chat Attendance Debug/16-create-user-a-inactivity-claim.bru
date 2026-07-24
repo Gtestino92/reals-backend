@@ -1,0 +1,15 @@
+meta {
+  name: 16 Create User A Inactivity Claim
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/inactivity-claims
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}

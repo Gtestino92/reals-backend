@@ -360,12 +360,29 @@ is taken and the chat remains active.
 `SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. A
 no-show with an existing chat sets `ABANDONED / SECOND_CHAT_NO_SHOW`, `endedAt`
 and `readOnlyUntil`; messages remain readable during retention and new messages
-are rejected. Active second-chat absolute timeout still sets `EXPIRED /
-ABSOLUTE_TIMEOUT` and read-only retention. When `readOnlyUntil` is reached, the
-same job marks the chat `CLOSED`, closes the connection and releases locks; the
-interaction then disappears from Home.
+are rejected. Once both participants have joined, mutual completion can be
+requested after 10 minutes only if each participant has sent a message. Accepted
+completion sets `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`; rejection, timeout
+and new-message cancellation keep the chat active and start a one-minute
+cooldown for the requester.
 
-Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation creates a pending report for backoffice review without immediate penalty. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
+Partner inactivity is based on `lastMessageAt` and `lastMessageSenderId`. The
+latest-message author may claim after five minutes and before the ten-minute
+automatic closure deadline; the countdown is 60 seconds and cannot extend past
+automatic inactivity or absolute timeout. Any new conversational message before
+expiry cancels the claim and becomes the new inactivity clock. At exact expiry,
+the silent participant is penalized and the chat becomes `ABANDONED /
+SECOND_CHAT_PARTNER_INACTIVITY`. If both users joined but neither sent any
+message by `conversationStartedAt + 10 minutes`, both receive the initial-silence
+penalty and the chat becomes `ABANDONED /
+SECOND_CHAT_NO_CONVERSATION_STARTED`.
+
+Active second-chat absolute timeout still sets `EXPIRED / ABSOLUTE_TIMEOUT` and
+is reliability-neutral. `FINISHED`, `ABANDONED` and `EXPIRED` are read-only until
+retention cleanup; when `readOnlyUntil` is reached, the same job marks the chat
+`CLOSED`, closes the connection and releases locks. Ordinary second-chat mutual
+and unilateral cancellation are unavailable; safety report and manual block
+remain available. First-chat timeout and cancellation semantics are unchanged.
 
 ## 9. Safety Report Review
 
