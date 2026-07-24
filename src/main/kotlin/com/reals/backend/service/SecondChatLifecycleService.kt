@@ -80,11 +80,27 @@ class SecondChatLifecycleService(
         val activeNoShowClaim: SecondChatResolutionRequest?
     )
 
+    sealed interface SecondChatJoinResult {
+        data class Joined(
+            val view: SecondChatAttendanceView
+        ) : SecondChatJoinResult
+
+        data class Rejected(
+            val code: DomainErrorCode,
+            val message: String
+        ) : SecondChatJoinResult
+    }
+
+    data class SecondChatNoShowClaimResult(
+        val view: SecondChatAttendanceView,
+        val created: Boolean
+    )
+
     fun joinSecondChat(
         connectionId: UUID,
         userId: UUID,
         now: OffsetDateTime = OffsetDateTime.now()
-    ): SecondChatAttendanceView {
+    ): SecondChatJoinResult {
         val context = lockedConfirmedContext(connectionId, userId)
         val scheduledAt = context.confirmedDateTime
         val entryClosesAt = scheduledAt.plusMinutes(entryWindowMinutes)
@@ -102,9 +118,11 @@ class SecondChatLifecycleService(
         if (!now.isBefore(entryClosesAt)) {
             resolveHardCutoffNoShowLocked(context = context, now = now)
             if (myParticipation.hasJoined()) {
-                return buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+                return SecondChatJoinResult.Joined(
+                    buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+                )
             }
-            throw DomainConflictException(
+            return SecondChatJoinResult.Rejected(
                 code = DomainErrorCode.SECOND_CHAT_ENTRY_CLOSED,
                 message = "Second-chat entry closed for connection $connectionId at $entryClosesAt"
             )
@@ -120,12 +138,30 @@ class SecondChatLifecycleService(
         val existingChat = chatRepository.findByConnectionIdAndChatTypeForUpdate(connectionId, ChatType.SECOND_CHAT)
         if (existingChat.isTerminal()) {
             if (myParticipation.hasJoined()) {
-                return buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+                return SecondChatJoinResult.Joined(
+                    buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+                )
             }
             throw DomainConflictException(
                 code = DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED,
                 message = "Second chat for connection $connectionId is already resolved"
             )
+        }
+
+        val pendingClaim = findPendingNoShowClaimForUpdate(connectionId)
+        if (pendingClaim != null && !pendingClaim.expiresAt.isAfter(now)) {
+            resolveExpiredNoShowClaimLocked(context.connection, pendingClaim, now)
+            if (pendingClaim.responderUserId == userId) {
+                return SecondChatJoinResult.Rejected(
+                    code = DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED,
+                    message = "Second chat for connection $connectionId is already resolved by an expired no-show claim"
+                )
+            }
+            if (myParticipation.hasJoined()) {
+                return SecondChatJoinResult.Joined(
+                    buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+                )
+            }
         }
 
         val chat = materializeOrActivateSecondChat(
@@ -162,7 +198,7 @@ class SecondChatLifecycleService(
             reason = "second_chat_joined"
         )
 
-        return buildStatusView(context.connection, context.confirmedDateTime, userId, now)
+        return SecondChatJoinResult.Joined(buildStatusView(context.connection, context.confirmedDateTime, userId, now))
     }
 
     fun getSecondChatStatus(
@@ -185,48 +221,59 @@ class SecondChatLifecycleService(
         connectionId: UUID,
         requesterUserId: UUID,
         now: OffsetDateTime = OffsetDateTime.now()
-    ): SecondChatAttendanceView {
+    ): SecondChatNoShowClaimResult {
         val context = lockedConfirmedContext(connectionId, requesterUserId)
         val scheduledAt = context.confirmedDateTime
         val onTimeUntil = scheduledAt.plusMinutes(onTimeWindowMinutes)
         val entryClosesAt = scheduledAt.plusMinutes(entryWindowMinutes)
-
-        if (now.isBefore(onTimeUntil) || !now.isBefore(entryClosesAt)) {
-            throw noShowClaimNotAvailable(connectionId)
-        }
 
         val participations = ensureParticipationsForUpdate(context.connection)
         val requester = participations.byUser(requesterUserId)
         val responderUserId = context.connection.partnerUserId(requesterUserId)
         val responder = participations.byUser(responderUserId)
 
-        if (!requester.hasJoined() || responder.hasJoined() || responder.attendanceStatus == SecondChatAttendanceStatus.NO_SHOW) {
+        if (!requester.hasJoined() || responder.hasJoined()) {
             throw noShowClaimNotAvailable(connectionId)
         }
 
         val chat = chatRepository.findByConnectionIdAndChatTypeForUpdate(connectionId, ChatType.SECOND_CHAT)
+        if (responder.attendanceStatus == SecondChatAttendanceStatus.NO_SHOW) {
+            return SecondChatNoShowClaimResult(
+                view = buildStatusView(context.connection, scheduledAt, requesterUserId, now),
+                created = false
+            )
+        }
         if (chat.isTerminal()) {
-            throw DomainConflictException(
-                code = DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED,
-                message = "Second chat for connection $connectionId is already resolved"
+            return SecondChatNoShowClaimResult(
+                view = buildStatusView(context.connection, scheduledAt, requesterUserId, now),
+                created = false
             )
         }
 
-        val pending =
-            resolutionRequestRepository.findByConnectionIdAndTypeAndStatus(
-                connectionId = connectionId,
-                type = SecondChatResolutionRequestType.PARTNER_NO_SHOW,
-                status = SecondChatResolutionRequestStatus.PENDING
-            )
+        val pending = findPendingNoShowClaimForUpdate(connectionId)
 
         if (pending != null) {
+            if (!pending.expiresAt.isAfter(now)) {
+                resolveExpiredNoShowClaimLocked(context.connection, pending, now)
+                return SecondChatNoShowClaimResult(
+                    view = buildStatusView(context.connection, scheduledAt, requesterUserId, now),
+                    created = false
+                )
+            }
             if (pending.requesterUserId == requesterUserId && pending.responderUserId == responderUserId) {
-                return buildStatusView(context.connection, scheduledAt, requesterUserId, now)
+                return SecondChatNoShowClaimResult(
+                    view = buildStatusView(context.connection, scheduledAt, requesterUserId, now),
+                    created = false
+                )
             }
             throw DomainConflictException(
                 code = DomainErrorCode.SECOND_CHAT_NO_SHOW_CLAIM_ALREADY_PENDING,
                 message = "A pending no-show claim already exists for connection $connectionId"
             )
+        }
+
+        if (now.isBefore(onTimeUntil) || !now.isBefore(entryClosesAt)) {
+            throw noShowClaimNotAvailable(connectionId)
         }
 
         val materializedChat = materializeOrActivateSecondChat(
@@ -255,7 +302,10 @@ class SecondChatLifecycleService(
             reason = "second_chat_no_show_claim_created"
         )
 
-        return buildStatusView(context.connection, scheduledAt, requesterUserId, now)
+        return SecondChatNoShowClaimResult(
+            view = buildStatusView(context.connection, scheduledAt, requesterUserId, now),
+            created = true
+        )
     }
 
     fun initializeParticipationsForConfirmedConnection(connectionId: UUID) {
@@ -297,35 +347,7 @@ class SecondChatLifecycleService(
             return false
         }
 
-        val negotiation = negotiationRepository.findByConnectionIdForUpdate(connection.id) ?: return false
-        val confirmedDateTime = negotiation.confirmedDateTime ?: return false
-        if (negotiation.status != NegotiationStatus.CONFIRMED) {
-            return false
-        }
-
-        val participations = ensureParticipationsForUpdate(connection)
-        val responder = participations.byUser(request.responderUserId)
-        if (responder.hasJoined()) {
-            request.status = SecondChatResolutionRequestStatus.CANCELLED
-            request.resolvedAt = now
-            resolutionRequestRepository.save(request)
-            return true
-        }
-
-        if (responder.attendanceStatus != SecondChatAttendanceStatus.NO_SHOW) {
-            markNoShow(
-                connection = connection,
-                chat = chatRepository.findByConnectionIdAndChatTypeForUpdate(connection.id, ChatType.SECOND_CHAT),
-                participation = responder,
-                now = now
-            )
-        }
-        request.status = SecondChatResolutionRequestStatus.COMPLETED
-        request.resolvedAt = now
-        resolutionRequestRepository.save(request)
-        terminateForNoShow(connection, now)
-
-        return true
+        return resolveExpiredNoShowClaimLocked(connection, request, now)
     }
 
     fun findHardCutoffNoShowConnectionIds(
@@ -601,6 +623,56 @@ class SecondChatLifecycleService(
         }
     }
 
+    private fun findPendingNoShowClaimForUpdate(connectionId: UUID): SecondChatResolutionRequest? =
+        resolutionRequestRepository.findByConnectionIdAndTypeAndStatusForUpdate(
+            connectionId = connectionId,
+            type = SecondChatResolutionRequestType.PARTNER_NO_SHOW,
+            status = SecondChatResolutionRequestStatus.PENDING
+        )
+
+    private fun resolveExpiredNoShowClaimLocked(
+        connection: Connection,
+        request: SecondChatResolutionRequest,
+        now: OffsetDateTime
+    ): Boolean {
+        if (
+            request.type != SecondChatResolutionRequestType.PARTNER_NO_SHOW ||
+            request.status != SecondChatResolutionRequestStatus.PENDING ||
+            request.expiresAt.isAfter(now)
+        ) {
+            return false
+        }
+
+        val negotiation = negotiationRepository.findByConnectionIdForUpdate(connection.id) ?: return false
+        if (negotiation.status != NegotiationStatus.CONFIRMED || negotiation.confirmedDateTime == null) {
+            return false
+        }
+
+        val participations = ensureParticipationsForUpdate(connection)
+        val responder = participations.byUser(request.responderUserId)
+        if (responder.hasJoined()) {
+            request.status = SecondChatResolutionRequestStatus.CANCELLED
+            request.resolvedAt = now
+            resolutionRequestRepository.save(request)
+            return true
+        }
+
+        if (responder.attendanceStatus != SecondChatAttendanceStatus.NO_SHOW) {
+            markNoShow(
+                connection = connection,
+                chat = chatRepository.findByConnectionIdAndChatTypeForUpdate(connection.id, ChatType.SECOND_CHAT),
+                participation = responder,
+                now = now
+            )
+        }
+        request.status = SecondChatResolutionRequestStatus.COMPLETED
+        request.resolvedAt = now
+        resolutionRequestRepository.save(request)
+        terminateForNoShow(connection, now)
+
+        return true
+    }
+
     private fun buildStatusView(
         connection: Connection,
         scheduledAt: OffsetDateTime,
@@ -623,6 +695,10 @@ class SecondChatLifecycleService(
         val terminal = connection.state == ConnectionState.CLOSED || chat.isTerminal()
         val myStatus = myParticipation?.attendanceStatus ?: SecondChatAttendanceStatus.PENDING
         val partnerStatus = partnerParticipation?.attendanceStatus ?: SecondChatAttendanceStatus.PENDING
+        val expiredClaimForMe =
+            activeClaim != null &&
+                !activeClaim.expiresAt.isAfter(now) &&
+                activeClaim.responderUserId == userId
 
         return SecondChatAttendanceView(
             connectionId = connection.id,
@@ -639,6 +715,7 @@ class SecondChatLifecycleService(
             partnerJoinedAt = partnerParticipation?.joinedAt,
             canJoin = !terminal &&
                 myStatus == SecondChatAttendanceStatus.PENDING &&
+                !expiredClaimForMe &&
                 !now.isBefore(scheduledAt) &&
                 now.isBefore(entryClosesAt),
             canClaimPartnerNoShow = !terminal &&

@@ -120,9 +120,9 @@ class HappyPathIntegrationTest : BaseIT() {
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
 
-        val joined = secondChatLifecycleService.joinSecondChat(connection.id, userA)
+        val joined = joinSecondChatOrThrow(connection.id, userA)
         val secondChat = chatService.findByIdOrThrow(joined.chatId!!)
-        secondChatLifecycleService.joinSecondChat(connection.id, userB)
+        joinSecondChatOrThrow(connection.id, userB)
         assertEquals(ChatStatus.ACTIVE, secondChat.status)
         assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
 

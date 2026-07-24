@@ -14,6 +14,7 @@ import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.domain.SecondChatResolutionRequestStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
@@ -35,12 +36,18 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.context.TestPropertySource
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
+@TestPropertySource(
+    properties = [
+        "user-reliability.enabled=true"
+    ]
+)
 class SchedulerFlowIntegrationTest : BaseIT() {
 
     @Autowired
@@ -348,7 +355,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         )
 
         val joined =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 connectionId = setup.connectionId,
                 userId = setup.userAId
             )
@@ -366,7 +373,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         )
 
         val repeated =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 setup.connectionId,
                 setup.userBId
             )
@@ -471,7 +478,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val scheduledAt = schedulingService.findNegotiationOrThrow(beforeStart.connectionId).confirmedDateTime!!
         val beforeStartError =
             assertThrows(DomainConflictException::class.java) {
-                secondChatLifecycleService.joinSecondChat(
+                joinSecondChatOrThrow(
                     connectionId = beforeStart.connectionId,
                     userId = beforeStart.userAId,
                     now = scheduledAt.minusNanos(1)
@@ -483,7 +490,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val atStartScheduledAt = schedulingService.findNegotiationOrThrow(atStart.connectionId).confirmedDateTime!!
         assertEquals(
             SecondChatAttendanceStatus.ON_TIME,
-            secondChatLifecycleService.joinSecondChat(atStart.connectionId, atStart.userAId, atStartScheduledAt)
+            joinSecondChatOrThrow(atStart.connectionId, atStart.userAId, atStartScheduledAt)
                 .myAttendanceStatus
         )
 
@@ -491,7 +498,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val beforeLateScheduledAt = schedulingService.findNegotiationOrThrow(beforeLate.connectionId).confirmedDateTime!!
         assertEquals(
             SecondChatAttendanceStatus.ON_TIME,
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 beforeLate.connectionId,
                 beforeLate.userAId,
                 beforeLateScheduledAt.plusMinutes(10).minusNanos(1)
@@ -502,7 +509,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val atLateScheduledAt = schedulingService.findNegotiationOrThrow(atLate.connectionId).confirmedDateTime!!
         assertEquals(
             SecondChatAttendanceStatus.LATE,
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 atLate.connectionId,
                 atLate.userAId,
                 atLateScheduledAt.plusMinutes(10)
@@ -513,7 +520,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val beforeClosedScheduledAt = schedulingService.findNegotiationOrThrow(beforeClosed.connectionId).confirmedDateTime!!
         assertEquals(
             SecondChatAttendanceStatus.LATE,
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 beforeClosed.connectionId,
                 beforeClosed.userAId,
                 beforeClosedScheduledAt.plusMinutes(20).minusNanos(1)
@@ -524,7 +531,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val atClosedScheduledAt = schedulingService.findNegotiationOrThrow(atClosed.connectionId).confirmedDateTime!!
         val closedError =
             assertThrows(DomainConflictException::class.java) {
-                secondChatLifecycleService.joinSecondChat(
+                joinSecondChatOrThrow(
                     atClosed.connectionId,
                     atClosed.userAId,
                     atClosedScheduledAt.plusMinutes(20)
@@ -545,14 +552,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
 
         val first =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
                 now = scheduledAt.plusMinutes(1)
             )
         assertNull(chatRepository.findById(first.chatId!!).orElseThrow().conversationStartedAt)
         val retry =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
                 now = scheduledAt.plusMinutes(11)
@@ -570,35 +577,166 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     fun `second participant join starts conversation exactly once and cancels pending claim`() {
         val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
         val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
-        secondChatLifecycleService.joinSecondChat(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
         val claim =
             secondChatLifecycleService.createPartnerNoShowClaim(
                 connectionId = setup.connectionId,
                 requesterUserId = setup.userAId,
                 now = scheduledAt.plusMinutes(10)
-            )
+            ).view
         assertEquals(SecondChatResolutionRequestStatus.PENDING, claim.activeNoShowClaim?.status)
 
+        val joinAt = claim.activeNoShowClaim!!.expiresAt.minusNanos(1)
         val joined =
-            secondChatLifecycleService.joinSecondChat(
+            joinSecondChatOrThrow(
                 connectionId = setup.connectionId,
                 userId = setup.userBId,
-                now = scheduledAt.plusMinutes(11)
+                now = joinAt
             )
         val conversationStartedAt = chatRepository.findById(joined.chatId!!).orElseThrow().conversationStartedAt
 
         assertEquals(SecondChatAttendanceStatus.LATE, joined.myAttendanceStatus)
-        assertEquals(scheduledAt.plusMinutes(11).toInstant(), conversationStartedAt?.toInstant())
+        assertNotNull(conversationStartedAt)
         assertEquals(
             SecondChatResolutionRequestStatus.CANCELLED,
             secondChatResolutionRequestRepository.findAll().single { it.connectionId == setup.connectionId }.status
         )
+        assertFalse(
+            userReliabilityEventRepository.findAll().any {
+                it.userId == setup.userBId && it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+            }
+        )
 
-        secondChatLifecycleService.joinSecondChat(setup.connectionId, setup.userBId, scheduledAt.plusMinutes(12))
+        joinSecondChatOrThrow(setup.connectionId, setup.userBId, scheduledAt.plusMinutes(12))
         assertEquals(
             conversationStartedAt?.toInstant(),
             chatRepository.findById(joined.chatId).orElseThrow().conversationStartedAt?.toInstant()
         )
+    }
+
+    @Test
+    fun `responder join at expired claim boundary is rejected and no show is committed once`() {
+        val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
+        val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        val claim =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = scheduledAt.plusMinutes(10)
+            ).view.activeNoShowClaim!!
+
+        val rejected =
+            rejectSecondChatJoin(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                now = claim.expiresAt
+            )
+
+        assertEquals(DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED, rejected.code)
+        assertEquals(
+            SecondChatAttendanceStatus.NO_SHOW,
+            secondChatParticipationRepository.findByConnectionIdAndUserId(setup.connectionId, setup.userBId)
+                ?.attendanceStatus
+        )
+        assertEquals(
+            SecondChatResolutionRequestStatus.COMPLETED,
+            secondChatResolutionRequestRepository.findById(claim.id).orElseThrow().status
+        )
+        val chat = chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)!!
+        assertEquals(ChatStatus.ABANDONED, chat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_NO_SHOW, chat.endedReason)
+        assertNull(chat.conversationStartedAt)
+        assertEquals(1, noShowEventCount(setup.userBId, setup.connectionId))
+
+        val retry =
+            rejectSecondChatJoin(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                now = claim.expiresAt.plusSeconds(1)
+            )
+        assertEquals(DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED, retry.code)
+        assertFalse(secondChatLifecycleService.processExpiredNoShowClaim(claim.id, claim.expiresAt.plusSeconds(2)))
+        assertEquals(1, noShowEventCount(setup.userBId, setup.connectionId))
+    }
+
+    @Test
+    fun `expired claim before scheduler prevents responder from escaping no show`() {
+        val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
+        val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        val claim =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = scheduledAt.plusMinutes(10)
+            ).view.activeNoShowClaim!!
+
+        val statusBeforeResolution =
+            secondChatLifecycleService.getSecondChatStatus(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                now = claim.expiresAt
+            )
+        assertFalse(statusBeforeResolution.canJoin)
+        assertFalse(statusBeforeResolution.canClaimPartnerNoShow)
+        assertEquals(SecondChatResolutionRequestStatus.PENDING, statusBeforeResolution.activeNoShowClaim?.status)
+
+        val rejected =
+            rejectSecondChatJoin(setup.connectionId, setup.userBId, claim.expiresAt.plusNanos(1))
+
+        assertEquals(DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED, rejected.code)
+        assertEquals(
+            SecondChatAttendanceStatus.NO_SHOW,
+            secondChatParticipationRepository.findByConnectionIdAndUserId(setup.connectionId, setup.userBId)
+                ?.attendanceStatus
+        )
+        assertEquals(
+            SecondChatResolutionRequestStatus.COMPLETED,
+            secondChatResolutionRequestRepository.findById(claim.id).orElseThrow().status
+        )
+        assertEquals(1, noShowEventCount(setup.userBId, setup.connectionId))
+    }
+
+    @Test
+    fun `duplicate no show claim after expiry resolves without replacement or extension`() {
+        val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
+        val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        val first =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = scheduledAt.plusMinutes(10)
+            )
+        val claim = first.view.activeNoShowClaim!!
+
+        val replay =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = claim.expiresAt
+            )
+
+        assertTrue(first.created)
+        assertFalse(replay.created)
+        assertNull(replay.view.activeNoShowClaim)
+        assertEquals(1, secondChatResolutionRequestRepository.findAll().count { it.connectionId == setup.connectionId })
+        val resolved = secondChatResolutionRequestRepository.findById(claim.id).orElseThrow()
+        assertEquals(SecondChatResolutionRequestStatus.COMPLETED, resolved.status)
+        assertEquals(claim.expiresAt.toInstant(), resolved.expiresAt.toInstant())
+        assertEquals(1, noShowEventCount(setup.userBId, setup.connectionId))
+
+        val terminalReplay =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = setup.connectionId,
+                requesterUserId = setup.userAId,
+                now = claim.expiresAt.plusSeconds(1)
+            )
+        assertFalse(terminalReplay.created)
+        assertNull(terminalReplay.view.activeNoShowClaim)
+        assertEquals(1, secondChatResolutionRequestRepository.findAll().count { it.connectionId == setup.connectionId })
+        assertEquals(1, noShowEventCount(setup.userBId, setup.connectionId))
     }
 
     @Test
@@ -610,7 +748,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         assertEquals(SecondChatAttendanceStatus.PENDING, status.myAttendanceStatus)
         assertNull(status.chatId)
 
-        secondChatLifecycleService.joinSecondChat(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
         val chat = chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT)!!
         chatService.sendMessage(chat.id, setup.userAId, "Mensaje de espera")
         chatService.getMessages(chat.id, setup.userBId)
@@ -635,7 +773,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             }
         assertEquals(DomainErrorCode.SECOND_CHAT_NO_SHOW_CLAIM_NOT_AVAILABLE, earlyClaimError.code)
 
-        secondChatLifecycleService.joinSecondChat(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
         val waitingChat = chatService.findVisibleSecondChatOrThrow(setup.connectionId, setup.userAId)
         chatService.sendMessage(waitingChat.id, setup.userAId, "Estoy esperando")
         val claim =
@@ -643,7 +781,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
                 connectionId = setup.connectionId,
                 requesterUserId = setup.userAId,
                 now = scheduledAt.plusMinutes(10)
-            )
+            ).view
         assertEquals(scheduledAt.plusMinutes(11).toInstant(), claim.activeNoShowClaim?.expiresAt?.toInstant())
 
         secondChatLifecycleService.processExpiredNoShowClaim(
@@ -672,14 +810,14 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     fun `manual no show claim near hard cutoff expires at hard cutoff`() {
         val setup = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
         val scheduledAt = schedulingService.findNegotiationOrThrow(setup.connectionId).confirmedDateTime!!
-        secondChatLifecycleService.joinSecondChat(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(19))
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(19))
 
         val claim =
             secondChatLifecycleService.createPartnerNoShowClaim(
                 connectionId = setup.connectionId,
                 requesterUserId = setup.userAId,
                 now = scheduledAt.plusMinutes(19).plusSeconds(30)
-            )
+            ).view
 
         assertEquals(scheduledAt.plusMinutes(20).toInstant(), claim.activeNoShowClaim?.expiresAt?.toInstant())
     }
@@ -688,7 +826,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     fun `hard cutoff resolves one absent both absent and both joined outcomes`() {
         val oneAbsent = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(1).withNano(0))
         val oneAbsentScheduledAt = schedulingService.findNegotiationOrThrow(oneAbsent.connectionId).confirmedDateTime!!
-        secondChatLifecycleService.joinSecondChat(oneAbsent.connectionId, oneAbsent.userAId, oneAbsentScheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(oneAbsent.connectionId, oneAbsent.userAId, oneAbsentScheduledAt.plusMinutes(1))
         assertTrue(
             secondChatLifecycleService.resolveHardCutoffNoShow(
                 oneAbsent.connectionId,
@@ -718,8 +856,8 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
         val bothJoined = createScheduledSecondChatAt(OffsetDateTime.now().plusHours(3).withNano(0))
         val bothJoinedScheduledAt = schedulingService.findNegotiationOrThrow(bothJoined.connectionId).confirmedDateTime!!
-        secondChatLifecycleService.joinSecondChat(bothJoined.connectionId, bothJoined.userAId, bothJoinedScheduledAt.plusMinutes(1))
-        secondChatLifecycleService.joinSecondChat(bothJoined.connectionId, bothJoined.userBId, bothJoinedScheduledAt.plusMinutes(11))
+        joinSecondChatOrThrow(bothJoined.connectionId, bothJoined.userAId, bothJoinedScheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(bothJoined.connectionId, bothJoined.userBId, bothJoinedScheduledAt.plusMinutes(11))
         assertFalse(
             secondChatLifecycleService.resolveHardCutoffNoShow(
                 bothJoined.connectionId,
@@ -872,6 +1010,16 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             secondChatLifecycleService = secondChatLifecycleService,
             negotiationRepository = negotiationRepository
         )
+
+    private fun noShowEventCount(
+        userId: UUID,
+        connectionId: UUID
+    ): Int =
+        userReliabilityEventRepository.findAll().count {
+            it.userId == userId &&
+                it.relatedConnectionId == connectionId &&
+                it.eventType == UserReliabilityEventType.SECOND_CHAT_NO_SHOW
+        }
 
     private fun createScheduledSecondChatAt(confirmedDateTime: OffsetDateTime): ConnectionFixture {
         val setup = createScheduledSecondChatReadyToEnter()

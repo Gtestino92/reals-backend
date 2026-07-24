@@ -20,6 +20,21 @@ interface SecondChatResolutionRequestRepository : JpaRepository<SecondChatResolu
         status: SecondChatResolutionRequestStatus
     ): SecondChatResolutionRequest?
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+        """
+        select r from SecondChatResolutionRequest r
+        where r.connectionId = :connectionId
+          and r.type = :type
+          and r.status = :status
+        """
+    )
+    fun findByConnectionIdAndTypeAndStatusForUpdate(
+        @Param("connectionId") connectionId: UUID,
+        @Param("type") type: SecondChatResolutionRequestType,
+        @Param("status") status: SecondChatResolutionRequestStatus
+    ): SecondChatResolutionRequest?
+
     fun findByConnectionIdAndStatus(
         connectionId: UUID,
         status: SecondChatResolutionRequestStatus
