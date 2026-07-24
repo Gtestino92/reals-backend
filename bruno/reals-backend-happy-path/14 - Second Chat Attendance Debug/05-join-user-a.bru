@@ -1,0 +1,22 @@
+meta {
+  name: 05 Join User A
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/join
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.chatId) {
+    bru.setEnvVar("secondChatId", body.chatId);
+  }
+}

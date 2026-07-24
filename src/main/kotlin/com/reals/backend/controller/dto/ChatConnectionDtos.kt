@@ -22,6 +22,7 @@ data class ChatResponse(
     val startedAt: OffsetDateTime,
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
+    val conversationStartedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
@@ -42,6 +43,7 @@ data class ChatResponse(
             startedAt = c.startedAt,
             availableAt = c.availableAt,
             activatedAt = c.activatedAt,
+            conversationStartedAt = c.conversationStartedAt,
             timeoutAt = c.timeoutAt,
             expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
@@ -75,6 +77,7 @@ data class FirstChatResponse(
     val startedAt: OffsetDateTime,
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
+    val conversationStartedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
@@ -103,6 +106,7 @@ data class FirstChatResponse(
             startedAt = chat.startedAt,
             availableAt = chat.availableAt,
             activatedAt = chat.activatedAt,
+            conversationStartedAt = chat.conversationStartedAt,
             timeoutAt = chat.timeoutAt,
             expiresAt = chat.timeoutAt,
             endedAt = chat.endedAt,
@@ -302,6 +306,66 @@ data class ConnectionResponse(
 data class ConnectionDismissalResponse(
     val dismissed: Boolean
 )
+
+data class SecondChatResolutionRequestResponse(
+    val id: UUID,
+    val requesterUserId: UUID,
+    val responderUserId: UUID,
+    val status: SecondChatResolutionRequestStatus,
+    val createdAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime
+) {
+    companion object {
+        fun from(r: SecondChatResolutionRequest) =
+            SecondChatResolutionRequestResponse(
+                id = r.id,
+                requesterUserId = r.requesterUserId,
+                responderUserId = r.responderUserId,
+                status = r.status,
+                createdAt = r.createdAt,
+                expiresAt = r.expiresAt
+            )
+    }
+}
+
+data class SecondChatAttendanceResponse(
+    val connectionId: UUID,
+    val chatId: UUID?,
+    val scheduledAt: OffsetDateTime,
+    val onTimeUntil: OffsetDateTime,
+    val entryClosesAt: OffsetDateTime,
+    val absoluteExpiresAt: OffsetDateTime,
+    val conversationStartedAt: OffsetDateTime?,
+    val serverTime: OffsetDateTime,
+    val myAttendanceStatus: SecondChatAttendanceStatus,
+    val myJoinedAt: OffsetDateTime?,
+    val partnerAttendanceStatus: SecondChatAttendanceStatus,
+    val partnerJoinedAt: OffsetDateTime?,
+    val canJoin: Boolean,
+    val canClaimPartnerNoShow: Boolean,
+    val activeNoShowClaim: SecondChatResolutionRequestResponse?
+) {
+    companion object {
+        fun from(view: com.reals.backend.service.SecondChatLifecycleService.SecondChatAttendanceView) =
+            SecondChatAttendanceResponse(
+                connectionId = view.connectionId,
+                chatId = view.chatId,
+                scheduledAt = view.scheduledAt,
+                onTimeUntil = view.onTimeUntil,
+                entryClosesAt = view.entryClosesAt,
+                absoluteExpiresAt = view.absoluteExpiresAt,
+                conversationStartedAt = view.conversationStartedAt,
+                serverTime = view.serverTime,
+                myAttendanceStatus = view.myAttendanceStatus,
+                myJoinedAt = view.myJoinedAt,
+                partnerAttendanceStatus = view.partnerAttendanceStatus,
+                partnerJoinedAt = view.partnerJoinedAt,
+                canJoin = view.canJoin,
+                canClaimPartnerNoShow = view.canClaimPartnerNoShow,
+                activeNoShowClaim = view.activeNoShowClaim?.let { SecondChatResolutionRequestResponse.from(it) }
+            )
+    }
+}
 
 /**
  * The personal message the partner left for the requesting user.

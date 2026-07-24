@@ -308,7 +308,7 @@ Clients may visually identify proposal options whose proposed instants have pass
 
 Partner proposal rejection resolves only the partner's pending proposals. A single rejection does not end the round. The round advances only when both participants have submitted at least one proposal in that round and no proposal in the round remains `PENDING`; at that point the backend opens the next round or fails/closes on the final permitted round. Scheduling mutations are serialized per negotiation through a database write lock on the negotiation row.
 
-Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
+Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time, moves the connection to `SECOND_CHAT_SCHEDULED` and initializes `PENDING` participation rows for both users.
 
 If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILED` and the connection closes.
 
@@ -319,37 +319,51 @@ persistent failed/closed transition when it runs.
 
 ## 8. Second Chat
 
-Second chat is materialized on demand when a participant enters at or after the
-agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat` validates
-that the connection belongs to the authenticated user, checks that the confirmed
-window is open, creates the `SECOND_CHAT` if needed, and moves the connection to
+Second chat entry is explicit. `POST /api/connections/{connectionId}/second-chat/join`
+validates the authenticated participant, confirmed negotiation and server time,
+creates or activates the `SECOND_CHAT` if needed, and moves the connection to
 `SECOND_CHAT`:
 
 ```text
-ChatService.findVisibleSecondChatOrThrow(connectionId, userId)
+SecondChatLifecycleService.joinSecondChat(connectionId, userId)
 ```
 
 Home exposes the agreed start time as `nextSteps[].secondChat.availableAt` for
-`SECOND_CHAT_SCHEDULED`. Clients may enable
-entry from `availableAt` and should show the agreed time before
-that window. `secondChat.expiresAt` is the end of the writable second-chat
-window, and `secondChat.durationMinutes` exposes the configured writable
-duration (`chat.second-chat.duration-minutes`, currently 120 minutes).
+`SECOND_CHAT_SCHEDULED`. The status endpoint returns `scheduledAt`,
+`onTimeUntil`, `entryClosesAt`, `absoluteExpiresAt`, `serverTime`, both
+attendance statuses and any active no-show claim. `GET
+/api/connections/{connectionId}/chat`, Home loads, polling and message fetches
+are side-effect free and do not count as attendance.
 
-The chat is created as `ACTIVE` when a participant enters it through `GET /api/connections/{connectionId}/chat`. At that moment the backend sets `activatedAt`; `timeoutAt` remains the configured end of the agreed writable window (`availableAt + durationMinutes`).
+Arrival windows are exact: `confirmedDateTime <= now < confirmedDateTime + 10
+minutes` is `ON_TIME`; `confirmedDateTime + 10 minutes <= now <
+confirmedDateTime + 20 minutes` is `LATE`; `now >= confirmedDateTime + 20
+minutes` closes entry and unresolved absences become `NO_SHOW`. Join retries
+preserve the original `joinedAt` and classification. When both participants
+have joined, `conversationStartedAt` is set once to the later joined time.
+`timeoutAt` remains `confirmedDateTime + chat.second-chat.duration-minutes`
+(currently 120 minutes).
 
-If the agreed second-chat window expires before a chat is created, the backend
-does not create a stale chat and the lifecycle job closes the scheduled
-connection. This case had no messages, so there is no read-only period.
+After `confirmedDateTime + 10 minutes` and before `confirmedDateTime + 20
+minutes`, a joined participant may create one pending partner no-show claim per
+connection. The countdown is 60 seconds, capped at the hard cutoff. If the
+partner joins before expiry, the claim is cancelled and the partner is
+classified as `LATE`. If it expires first, the partner is marked `NO_SHOW`, the
+no-show reliability event is recorded once and the interaction is closed to
+read-only when a chat exists.
 
-`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. When
-an active second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
-`readOnlyUntil` using `chat.second-chat.read-only-retention-minutes` (currently
-24 hours), and leaves the connection visible in Home as `SECOND_CHAT_READ_ONLY`.
-Messages remain readable, but new messages are rejected because the chat is no
-longer `ACTIVE`. When `readOnlyUntil` is reached, the same job marks the chat
-`CLOSED`, closes the connection and releases locks; the interaction then
-disappears from Home.
+At the hard cutoff, if one participant joined, only the absent participant is
+marked `NO_SHOW`. If neither joined, both are marked `NO_SHOW`, the connection
+closes directly and no empty chat is created. If both joined, no no-show action
+is taken and the chat remains active.
+
+`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. A
+no-show with an existing chat sets `ABANDONED / SECOND_CHAT_NO_SHOW`, `endedAt`
+and `readOnlyUntil`; messages remain readable during retention and new messages
+are rejected. Active second-chat absolute timeout still sets `EXPIRED /
+ABSOLUTE_TIMEOUT` and read-only retention. When `readOnlyUntil` is reached, the
+same job marks the chat `CLOSED`, closes the connection and releases locks; the
+interaction then disappears from Home.
 
 Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation creates a pending report for backoffice review without immediate penalty. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
 

@@ -171,6 +171,9 @@ chat:
   second-chat:
     duration-minutes: 120 # 2 hours
     read-only-retention-minutes: 1440 # 24 hours
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
     min-messages-before-free-cancel: 0
 
 scheduling:
@@ -274,8 +277,6 @@ user-reliability:
   first-chat:
     min-participation-messages-per-user: ${FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER:2}
     min-participation-minutes: ${FIRST_CHAT_MIN_PARTICIPATION_MINUTES:5}
-  second-chat:
-    no-show-grace-minutes: ${SECOND_CHAT_NO_SHOW_GRACE_MINUTES:10}
   matchmaking:
     max-modifier: ${USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER:0.05}
 

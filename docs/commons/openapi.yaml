@@ -1052,12 +1052,60 @@ paths:
     get:
       tags: [Connections]
       summary: Get visible second chat for connection
-      description: Returns the connection second chat. If no SECOND_CHAT exists and the confirmed second-chat window is open, this call idempotently creates and activates it. Before availableAt it returns conflict with SECOND_CHAT_NOT_AVAILABLE_YET. After expiresAt with no chat it returns conflict with SECOND_CHAT_EXPIRED.
+      description: Returns an already materialized visible second chat. This GET is side-effect free and no longer records attendance or creates the chat. Clients must call `POST /api/connections/{connectionId}/second-chat/join` to join. Before scheduledAt it returns `SECOND_CHAT_NOT_AVAILABLE_YET`; during the open entry window with no joined chat it returns `SECOND_CHAT_JOIN_REQUIRED`; after absolute expiration with no chat it returns `SECOND_CHAT_EXPIRED`.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
         '200':
           $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/join:
+    post:
+      tags: [Connections]
+      summary: Explicitly join scheduled second chat
+      description: Authenticated participant join. Classifies attendance as `ON_TIME` for `scheduledAt <= now < onTimeUntil` and `LATE` for `onTimeUntil <= now < entryClosesAt`. At `entryClosesAt` entry is closed and unresolved absences are resolved as no-shows.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/status:
+    get:
+      tags: [Connections]
+      summary: Get authoritative second-chat attendance status
+      description: Side-effect-free status view with server-computed join eligibility, no-show claim eligibility, timing windows and active claim state.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/no-show-claims:
+    post:
+      tags: [Connections]
+      summary: Create partner no-show claim
+      description: Starts a persisted 60-second partner no-show countdown when requester has joined, partner has not joined, and `onTimeUntil <= now < entryClosesAt`. Expiry is capped at `entryClosesAt`. Partner join before expiry cancels the claim.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1408,6 +1456,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ConnectionResponse'
+    SecondChatAttendance:
+      description: Authoritative second-chat attendance state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecondChatAttendanceResponse'
     Negotiation:
       description: Negotiation
       content:
@@ -2393,6 +2447,7 @@ components:
         startedAt: { type: string, format: date-time }
         availableAt: { type: string, format: date-time, nullable: true }
         activatedAt: { type: string, format: date-time, nullable: true }
+        conversationStartedAt: { type: string, format: date-time, nullable: true }
         timeoutAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time, nullable: true }
@@ -2712,6 +2767,52 @@ components:
         dismissed:
           type: boolean
           description: True when the current user's Home should hide this connection's second-chat next step.
+    SecondChatResolutionRequestResponse:
+      type: object
+      required: [id, requesterUserId, responderUserId, status, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        requesterUserId: { type: string, format: uuid }
+        responderUserId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SecondChatResolutionRequestStatus' }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    SecondChatAttendanceResponse:
+      type: object
+      required:
+        - connectionId
+        - scheduledAt
+        - onTimeUntil
+        - entryClosesAt
+        - absoluteExpiresAt
+        - serverTime
+        - myAttendanceStatus
+        - partnerAttendanceStatus
+        - canJoin
+        - canClaimPartnerNoShow
+      properties:
+        connectionId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
+        scheduledAt: { type: string, format: date-time, example: '2026-07-24T20:00:00Z' }
+        onTimeUntil: { type: string, format: date-time, example: '2026-07-24T20:10:00Z' }
+        entryClosesAt: { type: string, format: date-time, example: '2026-07-24T20:20:00Z' }
+        absoluteExpiresAt: { type: string, format: date-time, example: '2026-07-24T22:00:00Z' }
+        conversationStartedAt: { type: string, format: date-time, nullable: true }
+        serverTime: { type: string, format: date-time }
+        myAttendanceStatus: { $ref: '#/components/schemas/SecondChatAttendanceStatus' }
+        myJoinedAt: { type: string, format: date-time, nullable: true }
+        partnerAttendanceStatus: { $ref: '#/components/schemas/SecondChatAttendanceStatus' }
+        partnerJoinedAt: { type: string, format: date-time, nullable: true }
+        canJoin:
+          type: boolean
+          description: Server-authoritative eligibility for the authenticated user.
+        canClaimPartnerNoShow:
+          type: boolean
+          description: Server-authoritative eligibility for the authenticated user.
+        activeNoShowClaim:
+          allOf:
+            - $ref: '#/components/schemas/SecondChatResolutionRequestResponse'
+          nullable: true
     AddProposalRequest:
       type: object
       required: [expectedRoundNumber, proposedDateTimes]
@@ -2810,6 +2911,12 @@ components:
     ChatStatus:
       type: string
       enum: [AVAILABLE, ACTIVE, CANCELLED, EXPIRED, ABANDONED, CLOSED, FINISHED]
+    SecondChatAttendanceStatus:
+      type: string
+      enum: [PENDING, ON_TIME, LATE, NO_SHOW]
+    SecondChatResolutionRequestStatus:
+      type: string
+      enum: [PENDING, CANCELLED, COMPLETED]
     HomePendingActionType:
       type: string
       enum: [FIRST_CHAT, VISUAL_REVIEW]

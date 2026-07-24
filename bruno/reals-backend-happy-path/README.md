@@ -26,6 +26,7 @@ The first request generates unique test emails and a future half-hour second-cha
 - `05 Firebase Auth`: optional Firebase smoke flow. Fill `firebase_api_key`, `firebase_email` and `firebase_password` in `environments/local.bru` before running it. In `local-firebase`, run `01b Local Email Verification` after provisioning if the test account uses a fictitious email, then run `00 Sign In Firebase` again to refresh `firebase_id_token` before photo upload or profile activation. `local.bru` is ignored by Git; never commit real Firebase values.
 - `10 Local Dev Jobs`: local-only manual triggers for periodic jobs, including user reliability cleanup.
 - `12 User Reliability Debug`: local/dev-only Firebase sign-in/provision setup and read requests for `GET /api/local-dev/user-reliability/{userId}`.
+- `14 Second Chat Attendance Debug`: local-only second-chat attendance and no-show helpers, including forced join windows, join calls, no-show claims, status inspection and lifecycle-job execution.
 
 Hosted `dev` keeps the `/api/local-dev/**` path for compatibility, but requires
 `Authorization: Bearer {{firebase_admin_id_token}}` from an active Firebase user
@@ -46,7 +47,7 @@ whose email is listed in `BACKOFFICE_ADMIN_EMAILS`. Local profiles keep
 - force scheduling availability and run the local scheduling activation job
 - confirm the second-chat slot with matching ordered proposal lists
 - force the confirmed start time and trigger the scheduled second-chat availability job locally
-- enter the available second chat, which activates it and starts its timeout window
+- explicitly join the available second chat with both users, which records attendance and activates it
 - request and accept mutual second-chat cancellation, closing the connection without penalty
 
 This collection assumes local photo requirements from `application-local-nodb.yml` or `application-local-postgres.yml`: 4 required photos, at least 1 person photo and at least 1 full-body photo.

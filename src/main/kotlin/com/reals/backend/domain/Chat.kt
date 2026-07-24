@@ -26,6 +26,7 @@ enum class ChatEndReason {
     USER_BLOCK,
     ABSOLUTE_TIMEOUT,
     INACTIVITY_TIMEOUT,
+    SECOND_CHAT_NO_SHOW,
     SECOND_CHAT_READ_ONLY_EXPIRED,
     USER_DELETED,
     SYSTEM_CLOSED
@@ -76,6 +77,9 @@ data class Chat(
 
     @Column(name = "activated_at")
     var activatedAt: OffsetDateTime? = null,
+
+    @Column(name = "conversation_started_at")
+    var conversationStartedAt: OffsetDateTime? = null,
 
     @Column(name = "timeout_at", nullable = false)
     var timeoutAt: OffsetDateTime,

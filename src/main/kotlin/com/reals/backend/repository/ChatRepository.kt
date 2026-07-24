@@ -25,6 +25,13 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
         chatType: ChatType
     ): Chat?
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Chat c where c.connectionId = :connectionId and c.chatType = :chatType")
+    fun findByConnectionIdAndChatTypeForUpdate(
+        @Param("connectionId") connectionId: UUID,
+        @Param("chatType") chatType: ChatType
+    ): Chat?
+
     @Query("select c.status from Chat c where c.id = :chatId")
     fun findStatusById(
         @Param("chatId") chatId: UUID
@@ -164,7 +171,7 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
 
     @Query(
         """select c from Chat c
-           where c.status = 'EXPIRED'
+           where c.status in ('EXPIRED', 'ABANDONED')
              and c.chatType = 'SECOND_CHAT'
              and c.readOnlyUntil is not null
              and c.readOnlyUntil <= :now"""
@@ -175,7 +182,7 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
 
     @Query(
         """select c.id from Chat c
-           where c.status = 'EXPIRED'
+           where c.status in ('EXPIRED', 'ABANDONED')
              and c.chatType = 'SECOND_CHAT'
              and c.readOnlyUntil is not null
              and c.readOnlyUntil <= :now

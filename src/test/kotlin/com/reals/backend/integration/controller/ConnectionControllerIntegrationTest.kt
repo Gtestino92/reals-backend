@@ -10,6 +10,7 @@ import org.hamcrest.Matchers.hasSize
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.PlatformTransactionManager
@@ -311,19 +312,24 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `get second chat materializes active second chat over http`() {
+    fun `join second chat materializes active second chat over http`() {
         val setup = createScheduledSecondChatReadyToEnter()
 
         mockMvc.perform(
-            get("/api/connections/${setup.connectionId}/chat")
+            post("/api/connections/${setup.connectionId}/second-chat/join")
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.chatType", equalTo("SECOND_CHAT")))
-            .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
-            .andExpect(jsonPath("$.availableAt").exists())
-            .andExpect(jsonPath("$.activatedAt").exists())
-            .andExpect(jsonPath("$.inactivityExpiresAt", nullValue()))
+            .andExpect(jsonPath("$.connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.chatId").exists())
+            .andExpect(jsonPath("$.scheduledAt").exists())
+            .andExpect(jsonPath("$.onTimeUntil").exists())
+            .andExpect(jsonPath("$.entryClosesAt").exists())
+            .andExpect(jsonPath("$.absoluteExpiresAt").exists())
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.myAttendanceStatus", equalTo("ON_TIME")))
+            .andExpect(jsonPath("$.partnerAttendanceStatus", equalTo("PENDING")))
+            .andExpect(jsonPath("$.conversationStartedAt", nullValue()))
 
         assertEquals(
             1,
@@ -338,13 +344,13 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `get second chat repeated sequential calls return same chat over http`() {
+    fun `join second chat repeated sequential calls return same chat over http`() {
         val setup = createScheduledSecondChatReadyToEnter()
 
         val first =
             objectMapper.readTree(
                 mockMvc.perform(
-                    get("/api/connections/${setup.connectionId}/chat")
+                    post("/api/connections/${setup.connectionId}/second-chat/join")
                         .with(authenticatedAs(setup.userAId))
                 )
                     .andExpect(status().isOk)
@@ -356,16 +362,19 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
         val second =
             objectMapper.readTree(
                 mockMvc.perform(
-                    get("/api/connections/${setup.connectionId}/chat")
+                    post("/api/connections/${setup.connectionId}/second-chat/join")
                         .with(authenticatedAs(setup.userBId))
                 )
                     .andExpect(status().isOk)
                     .andReturn()
                     .response
                     .contentAsString
-            )
+        )
 
-        assertEquals(first["id"].asString(), second["id"].asString())
+        assertEquals(first["chatId"].asString(), second["chatId"].asString())
+        assertEquals("ON_TIME", first["myAttendanceStatus"].asString())
+        assertEquals("ON_TIME", second["myAttendanceStatus"].asString())
+        assertTrue(!second["conversationStartedAt"].isNull)
         assertEquals(
             1,
             chatRepository.findAll().count {
@@ -379,8 +388,57 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `second chat status exposes server time pending claim and cancellation over http`() {
+        val setup = createScheduledSecondChatReadyToEnter()
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(10)
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myAttendanceStatus", equalTo("LATE")))
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/second-chat/status")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.canClaimPartnerNoShow", equalTo(true)))
+            .andExpect(jsonPath("$.activeNoShowClaim", nullValue()))
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/no-show-claims")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.activeNoShowClaim.status", equalTo("PENDING")))
+            .andExpect(jsonPath("$.activeNoShowClaim.expiresAt").exists())
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat/join")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.myAttendanceStatus", equalTo("LATE")))
+            .andExpect(jsonPath("$.activeNoShowClaim", nullValue()))
+
+        mockMvc.perform(
+            get("/api/connections/${setup.connectionId}/second-chat/status")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeNoShowClaim", nullValue()))
+            .andExpect(jsonPath("$.partnerAttendanceStatus", equalTo("LATE")))
+    }
+
+    @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    fun `concurrent get second chat requests return same chat over http`() {
+    fun `concurrent join second chat requests return same chat over http`() {
         val setup =
             TransactionTemplate(transactionManager).execute {
                 createScheduledSecondChatReadyToEnter()
@@ -395,7 +453,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
                         Callable {
                             start.await()
                             mockMvc.perform(
-                                get("/api/connections/${setup.connectionId}/chat")
+                                post("/api/connections/${setup.connectionId}/second-chat/join")
                                     .with(authenticatedAs(userId))
                             )
                                 .andExpect(status().isOk)
@@ -412,7 +470,7 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
                 futures.map {
                     objectMapper.readTree(
                         it.get(15, TimeUnit.SECONDS)
-                    )["id"].asString()
+                    )["chatId"].asString()
                 }
 
             assertEquals(1, chatIds.toSet().size)

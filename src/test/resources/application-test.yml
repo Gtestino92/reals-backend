@@ -102,6 +102,9 @@ chat:
   second-chat:
     duration-minutes: 120
     read-only-retention-minutes: 1440
+    on-time-window-minutes: 10
+    entry-window-minutes: 20
+    no-show-claim-countdown-seconds: 60
     min-messages-before-free-cancel: 1
 
 scheduling:

@@ -1,7 +1,7 @@
 meta {
-  name: 38 Join Second Chat User A
+  name: 38b Join Second Chat User B
   type: http
-  seq: 38
+  seq: 39
 }
 
 post {
@@ -11,7 +11,7 @@ post {
 }
 
 headers {
-  X-Dev-User-Id: {{userAId}}
+  X-Dev-User-Id: {{userBId}}
 }
 
 script:post-response {
@@ -19,8 +19,10 @@ script:post-response {
   if (body.myAttendanceStatus !== "ON_TIME" && body.myAttendanceStatus !== "LATE") {
     throw new Error(`Expected joined attendance, got ${body.myAttendanceStatus}`);
   }
-  if (!body.chatId || !body.scheduledAt || !body.absoluteExpiresAt || !body.serverTime) {
-    throw new Error("Expected second-chat attendance response after joining.");
+  if (body.chatId !== bru.getEnvVar("secondChatId")) {
+    throw new Error("Expected both users to join the same second chat.");
   }
-  bru.setEnvVar("secondChatId", body.chatId);
+  if (!body.conversationStartedAt) {
+    throw new Error("Expected conversationStartedAt after both users join.");
+  }
 }

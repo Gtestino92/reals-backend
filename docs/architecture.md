@@ -52,7 +52,8 @@ activation job transitions it to `SCHEDULING_PHASE`.
 
 Chat responsibilities are split conservatively:
 
-- `ChatService`: chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `ChatService`: chat creation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `SecondChatLifecycleService`: explicit second-chat attendance, join classification, no-show claims and no-show terminal handling.
 - `ChatExitService`: mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
 
 Push notification responsibilities are split between application orchestration
@@ -89,7 +90,7 @@ Known scheduler jobs:
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
 
-`GET /api/connections/{connectionId}/chat` owns second-chat materialization for user entry. It creates the `SECOND_CHAT` idempotently when the confirmed window is open, then activates it for the conversation.
+`POST /api/connections/{connectionId}/second-chat/join` owns second-chat materialization for user entry. It creates or activates the `SECOND_CHAT` idempotently when `confirmedDateTime <= now < confirmedDateTime + 20 minutes`, records exactly one attendance classification for the caller and keeps `timeoutAt` anchored to the agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat`, Home reads, polling and message fetches are side-effect free and do not imply attendance.
 
 ## Matchmaking Persistence
 
@@ -136,7 +137,7 @@ engagement-capacity checks remain independent.
 for SQL distance filtering. PostGIS, spatial indexes driven by real query
 plans, canonical pair identity and derived eligibility state remain deferred.
 
-`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
+`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it processes expired partner no-show claims, resolves the hard entry cutoff at `confirmedDateTime + 20 minutes`, preserves scheduled-without-chat and available-chat timeout cleanup, moves timed-out active second chats to read-only `EXPIRED`, then closes expired/read-only or no-show/read-only chats and their connection after retention.
 
 `SecondChatReminderNotificationJob` sends privacy-safe external push reminders
 before a confirmed second-chat `confirmedDateTime` while the connection is still

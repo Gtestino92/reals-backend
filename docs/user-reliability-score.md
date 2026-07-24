@@ -67,8 +67,9 @@ Dimensional scores are not exposed to users.
 | `VISUAL_PERSONAL_MESSAGE_SUBMITTED` | submitting user | `ConversationParticipationScore` | `+1` |
 | `SCHEDULING_SLOTS_PROPOSED_ON_TIME` | proposing user | `SchedulingCommitmentScore` | `+1` |
 | `SCHEDULING_EXPIRED_NO_PROPOSAL` | user with no proposal on the connection | `SchedulingCommitmentScore` | `-3` |
-| `SECOND_CHAT_CONFIRMED_ATTENDED` | user with a message inside the grace window | `SchedulingCommitmentScore` | `+4` |
-| `SECOND_CHAT_NO_SHOW` | user with no message inside the grace window | `SchedulingCommitmentScore` | `-10` |
+| `SECOND_CHAT_CONFIRMED_ATTENDED` | explicit on-time second-chat join | `SchedulingCommitmentScore` | `+4` |
+| `SECOND_CHAT_LATE_ARRIVAL` | explicit late second-chat join before entry closes | `SchedulingCommitmentScore` | `-2` |
+| `SECOND_CHAT_NO_SHOW` | unresolved absence at claim expiry or hard cutoff | `SchedulingCommitmentScore` | `-10` |
 | `SAFETY_REPORT_DETERMINED_ABUSIVE` | abusive/unjustified reporter | `ResolutionQualityScore` | `-8` |
 
 No reliability events are created for visual approval, visual rejection, visual decisions made on time, reading a partner personal message, creating a safety report, pending safety reports, ordinary insufficient-evidence dismissals, or confirmed safety reports against the reported user.
@@ -117,10 +118,12 @@ If scheduling expires, users who never submitted proposals on that connection re
 Second-chat attendance is message-based in v0:
 
 ```text
-SECOND_CHAT_NO_SHOW_GRACE_MINUTES=10
+CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES=10
+CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES=20
+CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS=60
 ```
 
-A user who sends any message within the first configured grace minutes after the confirmed second-chat start time receives `SECOND_CHAT_CONFIRMED_ATTENDED`. A user who sends no message in that window receives `SECOND_CHAT_NO_SHOW`. If neither user appears, both receive `SECOND_CHAT_NO_SHOW`.
+Only explicit second-chat join records attendance. A user who joins during `confirmedDateTime <= now < confirmedDateTime + 10 minutes` receives `SECOND_CHAT_CONFIRMED_ATTENDED`. A user who joins during `confirmedDateTime + 10 minutes <= now < confirmedDateTime + 20 minutes` receives `SECOND_CHAT_LATE_ARRIVAL` and not the on-time event. At the hard cutoff, unresolved absences receive `SECOND_CHAT_NO_SHOW`; if neither user joined, both receive it. Sending or fetching messages never creates attendance events.
 
 Future work: early second-chat cancellation should move the connection back to scheduling; late cancellation should reduce reliability less than no-show but more than early cancellation; proper rescheduling may have a small positive score effect.
 
