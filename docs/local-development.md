@@ -472,6 +472,7 @@ Second-chat conversation lifecycle can be tested manually without waiting:
 ```http
 POST /api/local-dev/timeouts/chats/{chatId}/second-chat-conversation-started-past
 POST /api/local-dev/timeouts/chats/{chatId}/latest-message-before-inactivity-claim
+POST /api/local-dev/timeouts/chats/{chatId}/latest-message-before-conversation-started
 POST /api/local-dev/timeouts/chats/{chatId}/latest-message-claimable
 POST /api/local-dev/timeouts/chats/{chatId}/latest-message-before-automatic-inactivity
 POST /api/local-dev/timeouts/chats/{chatId}/latest-message-automatic-inactivity-due
@@ -485,6 +486,9 @@ POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now
 
 Use the production endpoints to create/respond to completion requests and
 inactivity claims, then use the local helpers only to move server-owned clocks.
+`latest-message-before-conversation-started` reproduces a waiting message sent
+before the second participant joined; status and lifecycle deadlines should then
+use `conversationStartedAt` as the effective inactivity clock.
 Read-only second chats in `FINISHED`, `ABANDONED` or `EXPIRED` remain readable
 until `read-only-expire-now` plus the lifecycle job closes them.
 

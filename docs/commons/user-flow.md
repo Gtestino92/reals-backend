@@ -366,10 +366,13 @@ completion sets `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`; rejection, timeout
 and new-message cancellation keep the chat active and start a one-minute
 cooldown for the requester.
 
-Partner inactivity is based on `lastMessageAt` and `lastMessageSenderId`. The
-latest-message author may claim after five minutes and before the ten-minute
-automatic closure deadline; the countdown is 60 seconds and cannot extend past
-automatic inactivity or absolute timeout. Any new conversational message before
+Partner inactivity is based on `lastMessageAt`, `lastMessageSenderId` and
+`conversationStartedAt`. A participant may send a waiting message before the
+partner joins; that message remains the latest reference message, but the
+response clock starts at `max(lastMessageAt, conversationStartedAt)`, not before
+both users joined. The latest-message author may claim after five minutes and
+before the ten-minute automatic closure deadline; the countdown is 60 seconds
+and cannot extend past automatic inactivity or absolute timeout. Any new conversational message before
 expiry cancels the claim and becomes the new inactivity clock. At exact expiry,
 the silent participant is penalized and the chat becomes `ABANDONED /
 SECOND_CHAT_PARTNER_INACTIVITY`. If both users joined but neither sent any
@@ -377,8 +380,10 @@ message by `conversationStartedAt + 10 minutes`, both receive the initial-silenc
 penalty and the chat becomes `ABANDONED /
 SECOND_CHAT_NO_CONVERSATION_STARTED`.
 
-Active second-chat absolute timeout still sets `EXPIRED / ABSOLUTE_TIMEOUT` and
-is reliability-neutral. `FINISHED`, `ABANDONED` and `EXPIRED` are read-only until
+Status polling uses the same effective response clock to suppress invalid
+conversation actions when initial silence or partner inactivity is already due,
+but it does not persist terminal state. Active second-chat absolute timeout still
+sets `EXPIRED / ABSOLUTE_TIMEOUT` and is reliability-neutral. `FINISHED`, `ABANDONED` and `EXPIRED` are read-only until
 retention cleanup; when `readOnlyUntil` is reached, the same job marks the chat
 `CLOSED`, closes the connection and releases locks. Ordinary second-chat mutual
 and unilateral cancellation are unavailable; safety report and manual block

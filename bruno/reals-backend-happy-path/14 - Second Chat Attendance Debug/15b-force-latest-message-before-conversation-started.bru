@@ -1,0 +1,11 @@
+meta {
+  name: 15b Force Latest Message Before Conversation Started
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/chats/{{secondChatId}}/latest-message-before-conversation-started
+  body: none
+  auth: none
+}

@@ -214,8 +214,12 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
              and c.conversationStartedAt is not null
              and c.lastMessageAt is not null
              and c.lastMessageSenderId is not null
-             and c.lastMessageAt <= :dueBefore
-           order by c.lastMessageAt asc, c.id asc"""
+             and (
+                 (c.lastMessageAt >= c.conversationStartedAt and c.lastMessageAt <= :dueBefore)
+                 or (c.lastMessageAt < c.conversationStartedAt and c.conversationStartedAt <= :dueBefore)
+             )
+           order by case when c.lastMessageAt >= c.conversationStartedAt then c.lastMessageAt else c.conversationStartedAt end asc,
+                    c.id asc"""
     )
     fun findAutomaticInactivityDueSecondChatIds(
         @Param("dueBefore") dueBefore: OffsetDateTime,
