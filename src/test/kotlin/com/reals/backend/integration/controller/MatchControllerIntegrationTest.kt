@@ -306,7 +306,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
 
         mockMvc.perform(
             put("/api/matches/${setup.matchId}/personal-messages/me")
@@ -324,7 +324,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
     }
 
     @Test
@@ -346,7 +346,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
 
         val review = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Expected visual review")
@@ -378,7 +378,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `visual decision approval before reading partner message returns stable conflict code`() {
+    fun `visual decision approval succeeds before reading partner message`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -395,14 +395,12 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"decision":"APPROVED"}""")
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
-            .andExpect(
-                jsonPath(
-                    "$.message",
-                    equalTo("Read the partner personal message before making a visual decision.")
-                )
-            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
@@ -425,7 +423,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `visual decision rejection before reading partner message returns stable conflict code`() {
+    fun `visual decision rejection succeeds before reading partner message`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -442,14 +440,12 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"decision":"REJECTED"}""")
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
-            .andExpect(
-                jsonPath(
-                    "$.message",
-                    equalTo("Read the partner personal message before making a visual decision.")
-                )
-            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
