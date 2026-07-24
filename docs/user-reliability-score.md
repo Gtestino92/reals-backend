@@ -103,8 +103,10 @@ Visual approval and rejection do not affect reliability. If the visual review ex
 A successful optional personal-message submission records
 `VISUAL_PERSONAL_MESSAGE_SUBMITTED` once per user per match. This is a small
 `+1` participation incentive for making the optional personal-message effort.
-Reading the partner personal message does not create a positive reliability
-event.
+Opening the partner personal message persists its visual-review read timestamp
+but does not create a positive or negative reliability event. Leaving a partner
+message unread also has no reliability effect and does not block visual
+approval or rejection.
 
 ## Scheduling And Second Chat
 
