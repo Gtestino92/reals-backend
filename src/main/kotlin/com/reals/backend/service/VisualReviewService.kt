@@ -177,12 +177,6 @@ class VisualReviewService(
             "Match is not in visual phase"
         }
 
-        requirePartnerMessageReadBeforeDecisionIfPresent(
-            match = match,
-            review = review,
-            userId = userId
-        )
-
         review.recordDecisionFor(
             userId = userId,
             userAId = match.userAId,
@@ -310,25 +304,6 @@ class VisualReviewService(
         )
     }
 
-    private fun requirePartnerMessageReadBeforeDecisionIfPresent(
-        match: Match,
-        review: VisualReview,
-        userId: UUID
-    ) {
-        val status = personalMessageStatusFor(
-            match = match,
-            review = review,
-            userId = userId
-        )
-
-        if (status.decisionRequiresPartnerPersonalMessageRead) {
-            throw DomainConflictException(
-                code = DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ,
-                message = "Read the partner personal message before making a visual decision."
-            )
-        }
-    }
-
     private fun requireVisualReviewNotExpired(review: VisualReview) {
         review.expiresAt?.let { expiresAt ->
             if (!OffsetDateTime.now().isBefore(expiresAt)) {
@@ -366,8 +341,8 @@ class VisualReviewService(
         return VisualReviewPersonalMessageStatus(
             partnerPersonalMessageSubmitted = partnerMessageSubmitted,
             partnerPersonalMessageRead = partnerMessageRead,
-            decisionRequiresPartnerPersonalMessageRead =
-                partnerMessageSubmitted && !partnerMessageRead
+            // Retained for backward-compatible response shape; no longer blocks visual decisions.
+            decisionRequiresPartnerPersonalMessageRead = false
         )
     }
 

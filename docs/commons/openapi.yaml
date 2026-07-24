@@ -588,7 +588,7 @@ paths:
     post:
       tags: [Matches]
       summary: Submit visual decision
-      description: APPROVED requires current legal requirements to be satisfied. REJECTED remains available without legal compliance. Partner personal messages, when present, must still be read before any visual decision.
+      description: APPROVED requires current legal requirements to be satisfied. REJECTED remains available without legal compliance. Partner personal messages are optional and may remain unread before any visual decision.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -2327,7 +2327,7 @@ components:
           description: True when no partner personal message exists, or when the partner message exists and the authenticated user has fetched/read it.
         decisionRequiresPartnerPersonalMessageRead:
           type: boolean
-          description: True when the partner has submitted a personal message and the authenticated user must fetch/read it before making a visual decision.
+          description: Temporarily retained for backward-compatible response shape. Always false; partner personal-message reads are no longer a visual-decision prerequisite.
         visualExpiresAt:
           type: string
           format: date-time

@@ -223,12 +223,16 @@ Each user submits one `VisualDecision`.
 - When both users have decided, mutual `APPROVED` moves the match to `VISUAL_APPROVED` and creates a pending connection.
 - When both users have decided and at least one rejected, the match moves to `VISUAL_REJECTED` and remaining match locks are released.
 
-Personal messages are stored on `VisualReview`. Current behavior allows reading
-the partner message during visual review once it exists, and requires reading it
-before deciding if the partner already submitted one. A successful optional
-personal-message submission also records a small backend-internal reliability
-participation event when user reliability is enabled. The message remains
-optional, and reading the partner message does not create a reliability event.
+Personal messages are optional and stored on `VisualReview`. Current behavior
+allows reading the partner message during visual review once it exists. Reading
+is encouraged and unread messages are exposed to clients for visual emphasis,
+but reading is not required before submitting `APPROVED` or `REJECTED`. Opening
+an existing partner message persists the requester-specific read timestamp. A
+successful optional personal-message submission also records a small
+backend-internal reliability participation event when user reliability is
+enabled. Reading the partner message does not create a reliability event.
+`decisionRequiresPartnerPersonalMessageRead` is retained temporarily for
+client-compatible response shape and is always `false`.
 
 Match and visual-profile responses expose `visualExpiresAt` so clients can warn
 before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
