@@ -1,7 +1,7 @@
 meta {
   name: 13 Reject User A Completion Request As User B
   type: http
-  seq: 13
+  seq: 14
 }
 
 post {
@@ -11,7 +11,8 @@ post {
 }
 
 headers {
-  X-Dev-User-Id: {{userBId}}
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+  Content-Type: application/json
 }
 
 body:json {

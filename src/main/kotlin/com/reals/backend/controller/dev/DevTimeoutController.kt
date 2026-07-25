@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dev
 
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.SecondChatResolutionRequestStatus
 import com.reals.backend.domain.SecondChatResolutionRequestType
 import com.reals.backend.repository.ChatMessageRepository
@@ -373,8 +374,18 @@ class DevTimeoutController(
     ): ResponseEntity<DevTimeoutMutationResponse> {
         val latestMessage = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(chat.id)
             ?: throw NoSuchElementException("No messages found for chat: ${chat.id}")
+        val otherMessagesInCurrentOrder =
+            chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(chat.id)
+                .filter { it.id != latestMessage.id }
+                .sortedWith(compareByDescending<ChatMessage> { it.sentAt }.thenByDescending { it.id })
         latestMessage.sentAt = sentAt
-        chatMessageRepository.save(latestMessage)
+        chatMessageRepository.saveAll(
+            listOf(latestMessage) +
+                otherMessagesInCurrentOrder.mapIndexed { index, message ->
+                    message.sentAt = sentAt.minusSeconds((index + 1).toLong())
+                    message
+                }
+        )
         chat.lastMessageAt = sentAt
         chat.lastMessageSenderId = latestMessage.senderId
         chatRepository.save(chat)

@@ -1,0 +1,26 @@
+meta {
+  name: 16 Create User A Inactivity Claim
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/inactivity-claims
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_a_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  const request = body && body.activeResolutionRequest;
+  
+  if (!request || request.type !== "PARTNER_INACTIVITY" || request.status !== "PENDING") {
+    throw new Error("Expected a pending PARTNER_INACTIVITY request.");
+  }
+  
+  bru.setEnvVar("inactivityRequestId", request.id, { persist: true });
+}

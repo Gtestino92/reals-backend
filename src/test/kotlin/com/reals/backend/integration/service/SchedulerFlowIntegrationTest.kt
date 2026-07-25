@@ -16,6 +16,7 @@ import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.domain.SecondChatResolutionRequestStatus
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.VisualDecision
+import com.reals.backend.controller.dev.DevTimeoutController
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.MatchmakingJob
@@ -1296,6 +1297,101 @@ class SchedulerFlowIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `local latest-message helper preserves selected latest message with multiple messages`() {
+        val setup = createActiveSecondChat()
+        val conversationStartedAt = OffsetDateTime.now().minusMinutes(20)
+        sendMessageOrThrow(
+            chatId = setup.secondChatId,
+            senderId = setup.userBId,
+            content = "Mensaje previo de B",
+            now = OffsetDateTime.now().minusMinutes(1)
+        )
+        val userALatest =
+            sendMessageOrThrow(
+                chatId = setup.secondChatId,
+                senderId = setup.userAId,
+                content = "Mensaje latest de A",
+                now = OffsetDateTime.now()
+            )
+        chatRepository.findById(setup.secondChatId).orElseThrow().also {
+            it.conversationStartedAt = conversationStartedAt
+            chatRepository.saveAndFlush(it)
+        }
+
+        localDevTimeoutController().moveLatestMessageClaimable(setup.secondChatId)
+
+        val actualLatest = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(setup.secondChatId)!!
+        val chat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        val connection = connectionRepository.findById(setup.connectionId).orElseThrow()
+        assertEquals(userALatest.id, actualLatest.id)
+        assertEquals(actualLatest.sentAt.toInstant(), chat.lastMessageAt?.toInstant())
+        assertEquals(setup.userAId, chat.lastMessageSenderId)
+
+        val userAStatus =
+            secondChatConversationLifecycleService.buildStatus(
+                connection = connection,
+                chat = chat,
+                userId = setup.userAId,
+                now = actualLatest.sentAt.plusMinutes(5)
+            )
+        val userBStatus =
+            secondChatConversationLifecycleService.buildStatus(
+                connection = connection,
+                chat = chat,
+                userId = setup.userBId,
+                now = actualLatest.sentAt.plusMinutes(5)
+            )
+        assertTrue(userAStatus.canClaimPartnerInactivity)
+        assertFalse(userAStatus.mustRespondToPartner)
+        assertFalse(userBStatus.canClaimPartnerInactivity)
+        assertTrue(userBStatus.mustRespondToPartner)
+    }
+
+    @Test
+    fun `local latest-message helper remains consistent with a single message`() {
+        val setup = createActiveSecondChat()
+        val userAMessage =
+            sendMessageOrThrow(
+                chatId = setup.secondChatId,
+                senderId = setup.userAId,
+                content = "Unico mensaje de A",
+                now = OffsetDateTime.now()
+            )
+        chatRepository.findById(setup.secondChatId).orElseThrow().also {
+            it.conversationStartedAt = OffsetDateTime.now().minusMinutes(20)
+            chatRepository.saveAndFlush(it)
+        }
+
+        localDevTimeoutController().moveLatestMessageClaimable(setup.secondChatId)
+
+        val actualLatest = chatMessageRepository.findTopByChatSessionIdOrderBySentAtDescIdDesc(setup.secondChatId)!!
+        val chat = chatRepository.findById(setup.secondChatId).orElseThrow()
+        val connection = connectionRepository.findById(setup.connectionId).orElseThrow()
+        assertEquals(userAMessage.id, actualLatest.id)
+        assertEquals(actualLatest.sentAt.toInstant(), chat.lastMessageAt?.toInstant())
+        assertEquals(setup.userAId, chat.lastMessageSenderId)
+
+        val userAStatus =
+            secondChatConversationLifecycleService.buildStatus(
+                connection = connection,
+                chat = chat,
+                userId = setup.userAId,
+                now = actualLatest.sentAt.plusMinutes(5)
+            )
+        val userBStatus =
+            secondChatConversationLifecycleService.buildStatus(
+                connection = connection,
+                chat = chat,
+                userId = setup.userBId,
+                now = actualLatest.sentAt.plusMinutes(5)
+            )
+        assertTrue(userAStatus.canClaimPartnerInactivity)
+        assertFalse(userAStatus.mustRespondToPartner)
+        assertFalse(userBStatus.canClaimPartnerInactivity)
+        assertTrue(userBStatus.mustRespondToPartner)
+    }
+
+    @Test
     fun `automatic inactivity and initial silence close read only idempotently`() {
         val inactive = createActiveSecondChat()
         val inactiveChat = chatRepository.findById(inactive.secondChatId).orElseThrow()
@@ -1503,6 +1599,17 @@ class SchedulerFlowIntegrationTest : BaseIT() {
         sendMessageOrThrow(setup.secondChatId, setup.userBId, "Mensaje B", conversationStartedAt.plusMinutes(2))
         return setup
     }
+
+    private fun localDevTimeoutController(): DevTimeoutController =
+        DevTimeoutController(
+            chatRepository = chatRepository,
+            chatMessageRepository = chatMessageRepository,
+            connectionRepository = connectionRepository,
+            penaltyRepository = penaltyRepository,
+            scheduleNegotiationRepository = negotiationRepository,
+            secondChatResolutionRequestRepository = secondChatResolutionRequestRepository,
+            visualReviewRepository = visualReviewRepository
+        )
 
     private fun createScheduledSecondChatAt(confirmedDateTime: OffsetDateTime): ConnectionFixture {
         val setup = createScheduledSecondChatReadyToEnter()

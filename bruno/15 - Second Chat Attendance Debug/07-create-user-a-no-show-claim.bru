@@ -11,5 +11,9 @@ post {
 }
 
 headers {
-  X-Dev-User-Id: {{userAId}}
+  Authorization: Bearer {{second_chat_user_a_id_token}}
+}
+
+vars:pre-request {
+  resolutionRequestId: f844ce96-0ba1-4249-8a17-c81bb1716f3b
 }

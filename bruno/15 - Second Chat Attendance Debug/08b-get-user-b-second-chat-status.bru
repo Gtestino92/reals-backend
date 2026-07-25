@@ -1,7 +1,7 @@
 meta {
-  name: 08 Get User A Second Chat Status
+  name: 08b Get User B Second Chat Status
   type: http
-  seq: 8
+  seq: 9
 }
 
 get {
@@ -11,5 +11,5 @@ get {
 }
 
 headers {
-  X-Dev-User-Id: {{userAId}}
+  Authorization: Bearer {{second_chat_user_b_id_token}}
 }
