@@ -1,0 +1,26 @@
+meta {
+  name: 11 Create User A Completion Request
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/completion-requests
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_a_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  const request = body && body.activeResolutionRequest;
+  
+  if (!request || request.type !== "MUTUAL_COMPLETION" || request.status !== "PENDING") {
+    throw new Error("Expected a pending MUTUAL_COMPLETION request.");
+  }
+  
+  bru.setEnvVar("completionRequestId", request.id, { persist: true });
+}
