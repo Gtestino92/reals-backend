@@ -92,6 +92,7 @@ chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
     min-messages-per-user: 0
+    min-messages-before-free-cancel: 1
     guidance:
       required-characters: 40
       max-questions: 3
