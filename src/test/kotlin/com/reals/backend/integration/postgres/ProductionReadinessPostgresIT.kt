@@ -180,8 +180,10 @@ class ProductionReadinessPostgresIT : PostgresITBase() {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    fun `concurrent activation of one available second chat materializes once on postgres`() {
-        val setup = createAvailableSecondChat()
+    fun `concurrent messages in same joined second chat both persist on postgres`() {
+        val setup = TransactionTemplate(transactionManager).execute {
+            createActiveSecondChat()
+        }
 
         val outcomes = runMessagesConcurrently(
             { chatService.sendMessage(setup.secondChatId, setup.userAId, "postgres available second from A") },

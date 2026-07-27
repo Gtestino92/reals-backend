@@ -8,10 +8,15 @@ import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
 import com.reals.backend.controller.dto.RejectPartnerProposalsRequest
 import com.reals.backend.controller.dto.ScheduleProposalResponse
+import com.reals.backend.controller.dto.SecondChatAttendanceResponse
+import com.reals.backend.controller.dto.SecondChatCompletionDecisionRequest
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.SecondChatConversationLifecycleService
+import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.exception.DomainConflictException
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -23,6 +28,8 @@ import java.util.*
 class ConnectionController(
     private val connectionService: ConnectionService,
     private val chatService: ChatService,
+    private val secondChatLifecycleService: SecondChatLifecycleService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val schedulingService: SchedulingService,
     private val legalComplianceService: LegalComplianceService
 
@@ -68,6 +75,118 @@ class ConnectionController(
         )
 
         return ResponseEntity.ok(ConnectionDismissalResponse(dismissed = true))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/join")
+    fun joinSecondChat(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId
+            )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined ->
+                ResponseEntity.ok(SecondChatAttendanceResponse.from(result.view))
+
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @GetMapping("/{connectionId}/second-chat/status")
+    fun getSecondChatStatus(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> =
+        ResponseEntity.ok(
+            SecondChatAttendanceResponse.from(
+                secondChatLifecycleService.getSecondChatStatus(
+                    connectionId = connectionId,
+                    userId = userId
+                )
+            )
+        )
+
+    @PostMapping("/{connectionId}/second-chat/no-show-claims")
+    fun createSecondChatNoShowClaim(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(SecondChatAttendanceResponse.from(result.view))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/completion-requests")
+    fun createSecondChatCompletionRequest(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(SecondChatAttendanceResponse.from(secondChatLifecycleService.getSecondChatStatus(connectionId, userId)))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/completion-requests/{requestId}/decision")
+    fun decideSecondChatCompletionRequest(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID,
+        @PathVariable requestId: UUID,
+        @Valid
+        @RequestBody request: SecondChatCompletionDecisionRequest
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return when (
+            val result = secondChatConversationLifecycleService.decideMutualCompletion(
+                connectionId = connectionId,
+                requestId = requestId,
+                responderUserId = userId,
+                decision = request.decision
+            )
+        ) {
+            is SecondChatConversationLifecycleService.CompletionDecisionResult.Applied ->
+                ResponseEntity.ok(SecondChatAttendanceResponse.from(secondChatLifecycleService.getSecondChatStatus(connectionId, userId)))
+
+            is SecondChatConversationLifecycleService.CompletionDecisionResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @PostMapping("/{connectionId}/second-chat/inactivity-claims")
+    fun createSecondChatInactivityClaim(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(SecondChatAttendanceResponse.from(secondChatLifecycleService.getSecondChatStatus(connectionId, userId)))
     }
 
     @GetMapping("/{connectionId}/negotiation")

@@ -8,10 +8,12 @@ import com.reals.backend.controller.dev.DevJobController
 import com.reals.backend.controller.dev.DevMatchmakingController
 import com.reals.backend.controller.dev.DevTimeoutController
 import com.reals.backend.domain.MatchmakingProcessResult
+import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.service.matching.MatchmakingProcessorService
@@ -61,6 +63,9 @@ class DevAdminToolingControllerExposureDevTest {
     private lateinit var chatRepository: ChatRepository
 
     @MockitoBean
+    private lateinit var chatMessageRepository: ChatMessageRepository
+
+    @MockitoBean
     private lateinit var connectionRepository: ConnectionRepository
 
     @MockitoBean
@@ -68,6 +73,9 @@ class DevAdminToolingControllerExposureDevTest {
 
     @MockitoBean
     private lateinit var scheduleNegotiationRepository: ScheduleNegotiationRepository
+
+    @MockitoBean
+    private lateinit var secondChatResolutionRequestRepository: SecondChatResolutionRequestRepository
 
     @MockitoBean
     private lateinit var visualReviewRepository: VisualReviewRepository

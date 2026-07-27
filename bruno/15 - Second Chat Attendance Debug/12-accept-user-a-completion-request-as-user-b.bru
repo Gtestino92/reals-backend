@@ -1,0 +1,22 @@
+meta {
+  name: 12 Accept User A Completion Request As User B
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/completion-requests/{{completionRequestId}}/decision
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "decision": "ACCEPTED"
+  }
+}

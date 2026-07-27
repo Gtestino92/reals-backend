@@ -1,0 +1,77 @@
+meta {
+  name: 06 Get Home User B And Verify Connection
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/me/home
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+}
+
+script:pre-request {
+  const token = bru.getEnvVar("second_chat_user_b_id_token");
+  if (!token) throw new Error("Missing User B token.");
+  bru.setVar("second_chat_user_b_id_token", token);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body) throw new Error("Expected Home response for User B.");
+
+  const allowedTypes = new Set([
+    "SECOND_CHAT_SCHEDULED",
+    "SECOND_CHAT_AVAILABLE",
+    "SECOND_CHAT_READ_ONLY"
+  ]);
+
+  const nextSteps = Array.isArray(body.nextSteps) ? body.nextSteps : [];
+  const candidates = nextSteps.filter((step) => step && allowedTypes.has(step.type));
+
+  const partnerIdOf = (step) =>
+    (step.partner && step.partner.userId) ||
+    (step.secondChat && step.secondChat.partner && step.secondChat.partner.userId) ||
+    null;
+
+  const expectedConnectionId = bru.getEnvVar("connectionId");
+  const expectedPartnerId = bru.getEnvVar("userAId");
+
+  const connectionMatch = expectedConnectionId
+    ? candidates.find((step) => step.connectionId === expectedConnectionId)
+    : null;
+  const partnerMatch = candidates.find((step) => partnerIdOf(step) === expectedPartnerId);
+  const selected =
+    connectionMatch || partnerMatch || (candidates.length === 1 ? candidates[0] : null);
+
+  if (!selected || !selected.connectionId) {
+    const summary = candidates
+      .map((step) => `${step.type}:${step.connectionId || "missing"}`)
+      .join(", ");
+    throw new Error(
+      "Could not identify User B second-chat connection. " +
+      `Candidates: ${summary || "none"}`
+    );
+  }
+
+  if (expectedConnectionId && selected.connectionId !== expectedConnectionId) {
+    throw new Error(
+      `User B resolved connection ${selected.connectionId}, expected ${expectedConnectionId}`
+    );
+  }
+
+  bru.setEnvVar("connectionId", selected.connectionId, { persist: true });
+  bru.setEnvVar("counterpartConnectionId", selected.connectionId, { persist: true });
+  bru.setEnvVar("counterpartMatchId", selected.matchId || "", { persist: true });
+
+  if (!bru.getEnvVar("matchId") && selected.matchId) {
+    bru.setEnvVar("matchId", selected.matchId, { persist: true });
+  }
+  if (selected.secondChat && selected.secondChat.chatId) {
+    bru.setEnvVar("secondChatId", selected.secondChat.chatId, { persist: true });
+  }
+}

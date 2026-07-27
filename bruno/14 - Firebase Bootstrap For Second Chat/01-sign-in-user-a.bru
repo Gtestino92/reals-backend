@@ -1,0 +1,53 @@
+meta {
+  name: 01 Sign In User A
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{second_chat_user_a_email}}",
+    "password": "{{firebase_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:pre-request {
+  const expectedEmail = "gtestino1992@gmail.com";
+  bru.setVar("second_chat_user_a_email", expectedEmail);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-in response for User A.");
+  }
+
+  const expectedEmail = "gtestino1992@gmail.com";
+  const returnedEmail = body.email.toLowerCase();
+  if (returnedEmail !== expectedEmail) {
+    throw new Error(`Expected User A email ${expectedEmail}, got ${returnedEmail}`);
+  }
+
+  bru.setEnvVar("second_chat_user_a_id_token", body.idToken, { persist: true });
+  bru.setEnvVar("second_chat_user_a_uid", body.localId, { persist: true });
+
+  // Compatibility aliases.
+  bru.setEnvVar("firebase_email", expectedEmail, { persist: true });
+  bru.setEnvVar("firebase_id_token", body.idToken, { persist: true });
+  bru.setEnvVar("firebase_uid", body.localId, { persist: true });
+
+  bru.setVar("firebase_email", expectedEmail);
+  bru.setVar("firebase_id_token", body.idToken);
+  bru.setVar("firebase_uid", body.localId);
+}

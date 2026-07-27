@@ -1,0 +1,33 @@
+meta {
+  name: 08 Get User A Second Chat Status
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_a_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+
+  if (body && body.chatId) {
+    bru.setEnvVar("secondChatId", body.chatId, { persist: true });
+  }
+
+  const request = body && body.activeResolutionRequest;
+  if (request && request.id) {
+    if (request.type === "MUTUAL_COMPLETION") {
+      bru.setEnvVar("completionRequestId", request.id, { persist: true });
+    }
+    if (request.type === "PARTNER_INACTIVITY") {
+      bru.setEnvVar("inactivityRequestId", request.id, { persist: true });
+    }
+  }
+}

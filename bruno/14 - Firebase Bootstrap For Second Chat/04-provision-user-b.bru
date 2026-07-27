@@ -1,0 +1,57 @@
+meta {
+  name: 04 Provision User B
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+}
+
+script:pre-request {
+  const token = bru.getEnvVar("second_chat_user_b_id_token");
+  if (!token) {
+    throw new Error("Run 03 Sign In User B before provisioning User B.");
+  }
+
+  bru.setVar("second_chat_user_b_id_token", token);
+  bru.setVar("firebase_counterpart_id_token", token);
+  bru.setVar("firebase_counterpart_email", "android.counterpart@example.com");
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected User B provision response 200 or 201, got ${status}`);
+  }
+
+  const body = res.getBody();
+  if (!body || !body.id || !body.email) {
+    throw new Error("Expected provisioned backend user id and email for User B.");
+  }
+
+  const expectedEmail = "android.counterpart@example.com";
+  const returnedEmail = body.email.toLowerCase();
+  if (returnedEmail !== expectedEmail) {
+    throw new Error(
+      `User B token resolved to backend email ${returnedEmail}, expected ${expectedEmail}.`
+    );
+  }
+
+  bru.setEnvVar("userBId", body.id, { persist: true });
+  bru.setEnvVar("counterpartUserId", body.id, { persist: true });
+
+  // Reassert compatibility aliases after the response.
+  bru.setEnvVar("firebase_counterpart_email", expectedEmail, { persist: true });
+  bru.setEnvVar(
+    "firebase_counterpart_id_token",
+    bru.getEnvVar("second_chat_user_b_id_token"),
+    { persist: true }
+  );
+}

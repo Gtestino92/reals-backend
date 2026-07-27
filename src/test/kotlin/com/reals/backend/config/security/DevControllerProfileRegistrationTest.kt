@@ -5,10 +5,12 @@ import com.reals.backend.controller.dev.DevMatchmakingController
 import com.reals.backend.controller.dev.DevTimeoutController
 import com.reals.backend.controller.dev.DevUserController
 import com.reals.backend.controller.dev.DevUserReliabilityController
+import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.UserService
 import com.reals.backend.service.matching.MatchmakingProcessorService
@@ -36,6 +38,10 @@ class DevControllerProfileRegistrationTest {
                 Supplier { Mockito.mock(ChatRepository::class.java) }
             )
             .withBean(
+                ChatMessageRepository::class.java,
+                Supplier { Mockito.mock(ChatMessageRepository::class.java) }
+            )
+            .withBean(
                 ConnectionRepository::class.java,
                 Supplier { Mockito.mock(ConnectionRepository::class.java) }
             )
@@ -46,6 +52,10 @@ class DevControllerProfileRegistrationTest {
             .withBean(
                 ScheduleNegotiationRepository::class.java,
                 Supplier { Mockito.mock(ScheduleNegotiationRepository::class.java) }
+            )
+            .withBean(
+                SecondChatResolutionRequestRepository::class.java,
+                Supplier { Mockito.mock(SecondChatResolutionRequestRepository::class.java) }
             )
             .withBean(
                 VisualReviewRepository::class.java,

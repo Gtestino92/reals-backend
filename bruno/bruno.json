@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "reals-backend-happy-path",
+  "name": "reals-backend",
   "type": "collection",
   "ignore": [
     "node_modules",

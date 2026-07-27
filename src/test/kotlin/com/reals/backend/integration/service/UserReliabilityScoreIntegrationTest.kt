@@ -24,7 +24,9 @@ import java.util.UUID
         "user-reliability.enabled=true",
         "user-reliability.first-chat.min-participation-messages-per-user=2",
         "user-reliability.first-chat.min-participation-minutes=5",
-        "user-reliability.second-chat.no-show-grace-minutes=10",
+        "chat.second-chat.on-time-window-minutes=10",
+        "chat.second-chat.entry-window-minutes=20",
+        "chat.second-chat.no-show-claim-countdown-seconds=60",
         "user-reliability.matchmaking.max-modifier=0.05"
     ]
 )
@@ -227,20 +229,58 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `second chat attendance and no show use message within grace window`() {
+    fun `second chat attendance and no show use explicit join only`() {
         val attended = createScheduledSecondChatReadyToEnter()
-        val attendedChat = chatService.findVisibleSecondChatOrThrow(attended.connectionId, attended.userAId)
-        chatService.sendMessage(attendedChat.id, attended.userAId, "I attended")
+        val attendedAt = OffsetDateTime.now().plusHours(1).withNano(0)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = attended.connectionId,
+            confirmedDateTime = attendedAt
+        )
+        val attendedJoin =
+            joinSecondChatOrThrow(
+                connectionId = attended.connectionId,
+                userId = attended.userAId,
+                now = attendedAt
+            )
+        chatService.sendMessage(attendedJoin.chatId!!, attended.userAId, "Message is not attendance")
 
         assertSingleEvent(attended.userAId, UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED, 4)
 
-        val noShow = createScheduledSecondChatReadyToEnter()
+        val late = createScheduledSecondChatReadyToEnter()
+        val lateAt = OffsetDateTime.now().plusHours(2).withNano(0)
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
-            connectionId = noShow.connectionId,
-            confirmedDateTime = OffsetDateTime.now().minusMinutes(11)
+            connectionId = late.connectionId,
+            confirmedDateTime = lateAt
+        )
+        joinSecondChatOrThrow(
+            connectionId = late.connectionId,
+            userId = late.userAId,
+            now = lateAt.plusMinutes(10)
+        )
+        joinSecondChatOrThrow(
+            connectionId = late.connectionId,
+            userId = late.userAId,
+            now = lateAt.plusMinutes(11)
         )
 
-        chatService.evaluateSecondChatNoShows()
+        assertSingleEvent(late.userAId, UserReliabilityEventType.SECOND_CHAT_LATE_ARRIVAL, -2)
+        assertNoEvent(late.userAId, UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED)
+
+        val noShow = createScheduledSecondChatReadyToEnter()
+        val noShowAt = OffsetDateTime.now().plusHours(3).withNano(0)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = noShow.connectionId,
+            confirmedDateTime = noShowAt
+        )
+
+        secondChatLifecycleService.resolveHardCutoffNoShow(
+            connectionId = noShow.connectionId,
+            now = noShowAt.plusMinutes(20)
+        )
+        secondChatLifecycleService.resolveHardCutoffNoShow(
+            connectionId = noShow.connectionId,
+            now = noShowAt.plusMinutes(21)
+        )
 
         assertSingleEvent(noShow.userAId, UserReliabilityEventType.SECOND_CHAT_NO_SHOW, -10)
         assertSingleEvent(noShow.userBId, UserReliabilityEventType.SECOND_CHAT_NO_SHOW, -10)

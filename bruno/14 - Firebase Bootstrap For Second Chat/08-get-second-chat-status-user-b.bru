@@ -1,0 +1,32 @@
+meta {
+  name: 08 Get Second Chat Status User B
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  const expectedConnectionId = bru.getEnvVar("connectionId");
+
+  if (!body || body.connectionId !== expectedConnectionId) {
+    throw new Error("Expected User B second-chat status for the discovered connection.");
+  }
+
+  if (body.chatId) {
+    const existingChatId = bru.getEnvVar("secondChatId");
+    if (existingChatId && existingChatId !== body.chatId) {
+      throw new Error(`User B returned chat ${body.chatId}, expected ${existingChatId}`);
+    }
+    bru.setEnvVar("secondChatId", body.chatId, { persist: true });
+  }
+}

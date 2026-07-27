@@ -1,8 +1,11 @@
 package com.reals.backend.integration.controller
 
 import com.jayway.jsonpath.JsonPath
+import com.reals.backend.domain.ChatEndReason
+import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.VisualDecision
@@ -836,16 +839,17 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
 
         val connectionSetup = createActiveSecondChat()
-        val secondChatExitRequest =
-            chatExitService.requestMutualCancellation(
-                chatId = connectionSetup.secondChatId,
-                requesterUserId = connectionSetup.userAId
-            )
-        chatExitService.acceptMutualCancellation(
-            chatId = connectionSetup.secondChatId,
-            requestId = secondChatExitRequest.id,
-            responderUserId = connectionSetup.userBId
-        )
+        val closedAt = OffsetDateTime.now()
+        val secondChat = chatRepository.findById(connectionSetup.secondChatId).orElseThrow()
+        secondChat.status = ChatStatus.CLOSED
+        secondChat.endedReason = ChatEndReason.SYSTEM_CLOSED
+        secondChat.endedAt = closedAt
+        secondChat.readOnlyUntil = null
+        chatRepository.saveAndFlush(secondChat)
+        val connection = connectionRepository.findById(connectionSetup.connectionId).orElseThrow()
+        connection.state = ConnectionState.CLOSED
+        connection.updatedAt = closedAt
+        connectionRepository.saveAndFlush(connection)
 
         mockMvc.perform(
             get("/api/me/home")

@@ -33,6 +33,7 @@ Allowed transitions:
 - `ACTIVE -> EXPIRED`
 - `ACTIVE -> ABANDONED`
 - `EXPIRED -> CLOSED` only for second-chat read-only retention cleanup
+- `ABANDONED -> CLOSED` for second-chat no-show read-only retention cleanup
 
 `ACTIVE -> ABANDONED` is the first-chat inactivity closure. It can be applied by
 the inactivity job or by endpoint validation before a stale mutation is accepted.
@@ -46,6 +47,7 @@ Terminal states:
 - `FINISHED`
 - `CANCELLED`
 - `EXPIRED` for first chats; for second chats this is read-only until cleanup
+- `ABANDONED` for second-chat no-show with an existing chat; readable until `readOnlyUntil`
 - `ABANDONED`
 - `CLOSED`
 
@@ -146,3 +148,8 @@ not automatically reject those rows or advance the round. Explicit acceptance
 returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE` when the proposal instant is not
 strictly in the future, and overlap auto-confirm ignores expired overlapping
 instants while still considering future overlaps.
+
+
+## Second Chat
+
+Second-chat entry and conversation lifecycle are server-authoritative. Explicit join records attendance; mutual completion, partner inactivity, initial silence, absolute timeout and read-only cleanup are owned by `SecondChatLifecycleJob` and request-triggered lifecycle services. Ordinary mutual/unilateral cancellation is not available for second chats.

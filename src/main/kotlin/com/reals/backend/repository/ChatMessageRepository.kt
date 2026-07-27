@@ -66,11 +66,14 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         senderId: UUID
     ): Long
 
-    fun countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
+    fun existsByChatSessionIdAndSenderId(
         chatSessionId: UUID,
-        senderId: UUID,
-        sentAt: OffsetDateTime
-    ): Long
+        senderId: UUID
+    ): Boolean
+
+    fun findTopByChatSessionIdOrderBySentAtDescIdDesc(
+        chatSessionId: UUID
+    ): ChatMessage?
 
     @Query(
         value = """

@@ -1,0 +1,19 @@
+meta {
+  name: 07 Create User A No Show Claim
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/no-show-claims
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_a_id_token}}
+}
+
+vars:pre-request {
+  resolutionRequestId: f844ce96-0ba1-4249-8a17-c81bb1716f3b
+}

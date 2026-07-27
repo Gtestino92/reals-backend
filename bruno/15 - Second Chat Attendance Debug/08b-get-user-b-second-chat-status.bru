@@ -1,0 +1,15 @@
+meta {
+  name: 08b Get User B Second Chat Status
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{second_chat_user_b_id_token}}
+}

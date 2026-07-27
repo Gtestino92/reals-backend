@@ -6,6 +6,7 @@ import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.exception.DomainConflictException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -52,15 +53,19 @@ class ChatController(
     ): ResponseEntity<ChatMessageResponse> {
         legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
-        val message = chatService.sendMessage(
-            chatId = chatId,
-            senderId = userId,
-            content = request.content
-        )
+        return when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = userId,
+                content = request.content
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent ->
+                ResponseEntity.ok(ChatMessageResponse.from(result.message))
 
-        return ResponseEntity.ok(
-            ChatMessageResponse.from(message)
-        )
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
     }
 
     @PostMapping("/{chatId}/guidance/next-request")
