@@ -428,14 +428,22 @@ Temporary penalties require positive `durationHours`; permanent penalties reject
 - `GET /api/connections/{connectionId}/chat`: fetch an already materialized visible second chat for a connection. This GET no longer creates a chat or records attendance. During an open entry window with no chat it returns `SECOND_CHAT_JOIN_REQUIRED`; clients must call the join endpoint.
 - `POST /api/connections/{connectionId}/second-chat-dismissal`: hide a finished or non-actionable second-chat next step from the authenticated user's Home. The action is idempotent and returns `{ "dismissed": true }`. It is allowed for read-only/expired/closed second chats and for second-chat windows that already expired without an actionable chat. It returns conflict while the second chat is still actionable.
 - `GET /api/connections/{connectionId}/negotiation`: fetch scheduling negotiation. Includes `schedulingExpiresAt` from the parent connection so clients can show a countdown without an extra request.
-- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the expected current round. Body: `{ "expectedRoundNumber": 1, "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots. Each participant may submit at most one ordered list per round. Existing partner proposals in the same round do not make backend submission invalid.
+- `GET /api/connections/{connectionId}/scheduling-availability`: side-effect-free read of the authenticated user's unavailable second-chat windows, excluding the path connection. The response includes `conflictWindowMinutes`, sorted `unavailableWindows` and `serverTime`.
+- `POST /api/connections/{connectionId}/proposals`: submit the authenticated user's ordered scheduling proposal list for the expected current round. Body: `{ "expectedRoundNumber": 1, "proposedDateTimes": ["..."] }`, 1 to `scheduling.max-proposals-per-round` future half-hour slots. Each participant may submit at most one ordered list per round. Existing partner proposals in the same round do not make backend submission invalid. Any proposed instant in the configured inclusive conflict window around another confirmed second chat for the submitting user returns `409 SCHEDULING_SLOT_CONFLICT`.
 - `GET /api/connections/{connectionId}/proposals`: list scheduling proposals.
-- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept a pending partner proposal and schedule second chat at the accepted time. The proposal instant must still be strictly in the future at backend acceptance time; otherwise the endpoint returns `409 SCHEDULING_PROPOSAL_NOT_AVAILABLE`. Expired proposals remain `PENDING`, visible and rejectable.
+- `POST /api/connections/{connectionId}/proposals/{proposalId}/acceptance`: accept a pending partner proposal and schedule second chat at the accepted time. The proposal instant must still be strictly in the future at backend acceptance time and outside the configured inclusive conflict window for both participants. Expired proposals return `409 SCHEDULING_PROPOSAL_NOT_AVAILABLE`; slot conflicts return `409 SCHEDULING_SLOT_CONFLICT`. Expired proposals remain `PENDING`, visible and rejectable.
 - `POST /api/connections/{connectionId}/negotiation/rejections`: user explicitly rejects only the partner's pending scheduling proposals for the expected current round. Body: `{ "expectedRoundNumber": 1 }`. A single rejection does not end the round; the round advances only after both users submitted in that round and both lists have been resolved as rejected. On the final permitted round, that second rejection marks the negotiation `FAILED` and closes the connection.
 
 Scheduling mutations after `schedulingExpiresAt` are rejected with
 `SCHEDULING_EXPIRED`. The timeout job owns the persistent transition to
 `FAILED`/closed when it runs.
+
+Second-chat slot conflicts are compared as instants. Only confirmed negotiations
+whose connections are still `SECOND_CHAT_SCHEDULED` or
+`SECOND_CHAT_AVAILABLE` reserve a slot; the current connection, `SECOND_CHAT`,
+`CLOSED` and pending/unconfirmed negotiations do not. With the default
+60-minute window, a confirmed start at `20:00` blocks candidate starts from
+`19:00` through `21:00`, inclusive, while `18:30` and `21:30` remain valid.
 
 After mutual visual approval the backend creates a connection in
 `SCHEDULING_PENDING`. This connection already counts against each participant's
@@ -580,6 +588,7 @@ Selected stable frontend-facing domain codes:
 - `FIRST_CHAT_GUIDANCE_COMPLETED`: first-chat guidance already reached the active final configured question.
 - `SCHEDULING_EXPIRED`: scheduling action was attempted after the negotiation deadline.
 - `SCHEDULING_PROPOSAL_NOT_AVAILABLE`: scheduling proposal cannot be accepted because it is missing, not pending, from another connection, from an old round or its proposed instant is no longer strictly in the future.
+- `SCHEDULING_SLOT_CONFLICT`: a proposed or selected second-chat start falls inside the configured inclusive conflict window around another confirmed second chat for the same user.
 - `SCHEDULING_ROUND_CHANGED`: `expectedRoundNumber` does not match the current negotiation round; refresh negotiation and proposals before retrying.
 - `SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE`: the expected current round has no pending partner proposal to reject, including retries after proposals were already resolved.
 - `VISUAL_REVIEW_EXPIRED`: visual-review action was attempted after the visual deadline.
