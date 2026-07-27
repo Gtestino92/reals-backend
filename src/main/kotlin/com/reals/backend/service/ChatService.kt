@@ -17,19 +17,19 @@ import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.reliability.UserReliabilityScoreService
-import jakarta.persistence.EntityManager
-import jakarta.persistence.PersistenceContext
 import jakarta.transaction.Transactional
 import org.springframework.data.domain.PageRequest
 import org.springframework.beans.factory.annotation.Value
@@ -46,6 +46,7 @@ class ChatService(
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
+    private val secondChatParticipationRepository: SecondChatParticipationRepository,
     private val matchService: MatchService,
     private val visualReviewService: VisualReviewService,
     private val penaltyService: PenaltyService,
@@ -56,6 +57,7 @@ class ChatService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
@@ -73,15 +75,17 @@ class ChatService(
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val firstChatInactivityThresholdMinutes: Long,
 
-    @param:Value("\${user-reliability.second-chat.no-show-grace-minutes:10}")
-    private val secondChatNoShowGraceMinutes: Long,
-
     @param:Value("\${chat.messages.page-limit-default:200}")
     private val defaultMessagePageLimit: Int
 ) {
 
-    @PersistenceContext
-    private lateinit var entityManager: EntityManager
+    sealed interface SendMessageResult {
+        data class Sent(val message: ChatMessage) : SendMessageResult
+        data class RejectedAfterResolution(
+            val code: DomainErrorCode,
+            val message: String
+        ) : SendMessageResult
+    }
 
     private companion object {
         const val MESSAGE_MAX_LENGTH = 1000
@@ -184,44 +188,64 @@ class ChatService(
         chatId: UUID,
         senderId: UUID,
         content: String
-    ): ChatMessage {
+    ): ChatMessage =
+        when (val result = sendMessageWithResult(chatId, senderId, content)) {
+            is SendMessageResult.Sent -> result.message
+            is SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    fun sendMessageWithResult(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SendMessageResult {
         val normalizedContent = normalizeMessageContent(content)
 
-        val initialStatus = chatRepository.findStatusById(chatId)
-            ?: throw chatNotFound()
-        if (initialStatus == ChatStatus.AVAILABLE) {
-            val initialChat = findByIdOrThrow(chatId)
-            val activatedChat = activateAvailableSecondChatIfNeeded(
-                chat = initialChat,
-                userId = senderId
-            )
-            entityManager.detach(initialChat)
-            if (activatedChat !== initialChat) {
-                entityManager.detach(activatedChat)
-            }
-        }
         val chat = findByIdForUpdateOrThrow(chatId)
 
         requireChatPairNotBlocked(chat)
         validateActiveChatWindow(chat)
         validateChatParticipant(chat, senderId)
-        requireNoPendingMutualCancellation(chat.id)
+        requireSecondChatJoinedForMessage(chat, senderId)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            requireNoPendingMutualCancellation(chat.id)
+        }
+
+        when (
+            val lifecycleResult =
+                secondChatConversationLifecycleService.beforeSecondChatMessage(
+                    chat = chat,
+                    senderId = senderId,
+                    now = now
+                )
+        ) {
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.Continue -> Unit
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.RejectedAfterResolution ->
+                return SendMessageResult.RejectedAfterResolution(
+                    code = lifecycleResult.code,
+                    message = lifecycleResult.message
+                )
+        }
 
         val message =
             chatMessageRepository.save(
                 ChatMessage(
                     chatSessionId = chat.id,
                     senderId = senderId,
-                    content = normalizedContent
+                    content = normalizedContent,
+                    sentAt = now
                 )
             )
 
         chat.lastMessageAt = maxOf(chat.lastMessageAt ?: message.sentAt, message.sentAt)
+        if (chat.chatType == ChatType.SECOND_CHAT) {
+            chat.lastMessageSenderId = senderId
+        }
         chatRepository.save(chat)
 
-        recordSecondChatAttendanceIfWithinGrace(chat, message)
-
-        return message
+        return SendMessageResult.Sent(message)
     }
 
     fun recordChatDecision(
@@ -372,98 +396,6 @@ class ChatService(
         }
 
         return true
-    }
-
-    fun evaluateSecondChatNoShows(now: OffsetDateTime = OffsetDateTime.now()): Int {
-        val dueNegotiations =
-            negotiationRepository.findConfirmedSecondChatNoShowDue(
-                dueBefore = now.minusMinutes(secondChatNoShowGraceMinutes)
-            )
-
-        var recorded = 0
-        dueNegotiations.forEach { negotiation ->
-            recorded += evaluateSecondChatNoShow(
-                connectionId = negotiation.connectionId,
-                now = now
-            )
-        }
-
-        return recorded
-    }
-
-    fun findSecondChatNoShowConnectionIds(
-        now: OffsetDateTime,
-        limit: Int
-    ): List<UUID> {
-        require(limit > 0) { "Second-chat no-show candidate limit must be positive" }
-        return negotiationRepository.findConfirmedSecondChatNoShowDueConnectionIds(
-            dueBefore = now.minusMinutes(secondChatNoShowGraceMinutes),
-            pageable = PageRequest.of(0, limit)
-        )
-    }
-
-    fun evaluateSecondChatNoShow(
-        connectionId: UUID,
-        now: OffsetDateTime = OffsetDateTime.now()
-    ): Int {
-        val negotiation = negotiationRepository.findByConnectionId(connectionId)
-            ?: return 0
-        val confirmedDateTime = negotiation.confirmedDateTime ?: return 0
-        if (
-            negotiation.status != NegotiationStatus.CONFIRMED ||
-            confirmedDateTime > now.minusMinutes(secondChatNoShowGraceMinutes)
-        ) {
-            return 0
-        }
-
-        val connection = connectionService.findByIdOrThrow(negotiation.connectionId)
-        if (
-            connection.state !in setOf(
-                ConnectionState.SECOND_CHAT_SCHEDULED,
-                ConnectionState.SECOND_CHAT_AVAILABLE,
-                ConnectionState.SECOND_CHAT
-            )
-        ) {
-            return 0
-        }
-
-        val graceEndsAt = confirmedDateTime.plusMinutes(secondChatNoShowGraceMinutes)
-        val secondChat =
-            chatRepository.findByConnectionIdAndChatType(
-                connectionId = connection.id,
-                chatType = ChatType.SECOND_CHAT
-            )
-
-        var recorded = 0
-        listOf(connection.userAId, connection.userBId).forEach { participantId ->
-            val sentWithinGrace =
-                secondChat != null &&
-                    chatMessageRepository.countByChatSessionIdAndSenderIdAndSentAtLessThanEqual(
-                        chatSessionId = secondChat.id,
-                        senderId = participantId,
-                        sentAt = graceEndsAt
-                    ) > 0
-
-            val eventType =
-                if (sentWithinGrace) {
-                    UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED
-                } else {
-                    UserReliabilityEventType.SECOND_CHAT_NO_SHOW
-                }
-
-            val event =
-                userReliabilityScoreService.recordEvent(
-                    userId = participantId,
-                    eventType = eventType,
-                    relatedMatchId = connection.matchId,
-                    relatedConnectionId = connection.id,
-                    relatedChatId = secondChat?.id
-                )
-            if (event != null) {
-                recorded += 1
-            }
-        }
-        return recorded
     }
 
     fun getMessages(
@@ -786,7 +718,10 @@ class ChatService(
     fun closeExpiredReadOnlySecondChat(chatId: UUID): Boolean {
         val chat = findByIdOrThrow(chatId)
 
-        if (chat.chatType != ChatType.SECOND_CHAT || chat.status != ChatStatus.EXPIRED) {
+        if (
+            chat.chatType != ChatType.SECOND_CHAT ||
+            chat.status !in setOf(ChatStatus.FINISHED, ChatStatus.EXPIRED, ChatStatus.ABANDONED)
+        ) {
             return false
         }
 
@@ -796,7 +731,16 @@ class ChatService(
         }
 
         chat.status = ChatStatus.CLOSED
-        chat.endedReason = ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED
+        if (
+            chat.endedReason !in setOf(
+                ChatEndReason.SECOND_CHAT_NO_SHOW,
+                ChatEndReason.SECOND_CHAT_MUTUAL_COMPLETION,
+                ChatEndReason.SECOND_CHAT_PARTNER_INACTIVITY,
+                ChatEndReason.SECOND_CHAT_NO_CONVERSATION_STARTED
+            )
+        ) {
+            chat.endedReason = ChatEndReason.SECOND_CHAT_READ_ONLY_EXPIRED
+        }
         chatRepository.save(chat)
         recordChatEnded(chat)
 
@@ -821,29 +765,6 @@ class ChatService(
                 "matchId" to chat.matchId,
                 "connectionId" to chat.connectionId
             )
-        )
-    }
-
-    private fun recordSecondChatAttendanceIfWithinGrace(
-        chat: Chat,
-        message: ChatMessage
-    ) {
-        if (chat.chatType != ChatType.SECOND_CHAT) {
-            return
-        }
-
-        val connectionId = chat.connectionId ?: return
-        val availableAt = chat.availableAt ?: return
-        if (message.sentAt.isAfter(availableAt.plusMinutes(secondChatNoShowGraceMinutes))) {
-            return
-        }
-
-        userReliabilityScoreService.recordEvent(
-            userId = message.senderId,
-            eventType = UserReliabilityEventType.SECOND_CHAT_CONFIRMED_ATTENDED,
-            relatedMatchId = chat.matchId,
-            relatedConnectionId = connectionId,
-            relatedChatId = chat.id
         )
     }
 
@@ -917,20 +838,39 @@ class ChatService(
                 connectionId,
                 ChatType.SECOND_CHAT
             )
-                ?: materializeSecondChatForEntry(connection, connectionId)
 
-        val visibleChat = activateAvailableSecondChatIfNeeded(
-            chat = chat,
-            userId = userId
-        )
+        if (chat == null) {
+            val negotiation = negotiationRepository.findByConnectionId(connectionId)
+                ?: throw secondChatNotAvailable(
+                    message = "Second chat is not scheduled for connection $connectionId"
+                )
+            val confirmedDateTime = negotiation.confirmedDateTime
+            if (negotiation.status != NegotiationStatus.CONFIRMED || confirmedDateTime == null) {
+                throw secondChatNotAvailable(
+                    message = "Second chat is not confirmed for connection $connectionId"
+                )
+            }
+            validateSecondChatEntryWindow(
+                connectionId = connectionId,
+                availableAt = confirmedDateTime,
+                expiresAt = confirmedDateTime.plusMinutes(secondChatDurationMinutes),
+                now = OffsetDateTime.now(),
+                joinRequiredWhenOpen = true
+            )
+        }
 
-        if (visibleChat.status == ChatStatus.ACTIVE || visibleChat.status == ChatStatus.EXPIRED) {
-            return visibleChat
+        if (
+            chat?.status == ChatStatus.ACTIVE ||
+            chat?.status == ChatStatus.FINISHED ||
+            chat?.status == ChatStatus.EXPIRED ||
+            chat?.status == ChatStatus.ABANDONED
+        ) {
+            return chat
         }
 
         throw secondChatNotAvailable(
             message = "Second chat for connection $connectionId is not available " +
-                "(chat status: ${visibleChat.status}, connection state: ${connection.state})"
+                "(chat status: ${chat?.status}, connection state: ${connection.state})"
         )
     }
 
@@ -1091,7 +1031,8 @@ class ChatService(
         connectionId: UUID,
         availableAt: OffsetDateTime,
         expiresAt: OffsetDateTime,
-        now: OffsetDateTime
+        now: OffsetDateTime,
+        joinRequiredWhenOpen: Boolean = false
     ) {
         if (now.isBefore(availableAt)) {
             throw DomainConflictException(
@@ -1104,6 +1045,13 @@ class ChatService(
             throw DomainConflictException(
                 code = DomainErrorCode.SECOND_CHAT_EXPIRED,
                 message = "Second chat for connection $connectionId expired at $expiresAt"
+            )
+        }
+
+        if (joinRequiredWhenOpen) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_JOIN_REQUIRED,
+                message = "Second chat for connection $connectionId requires explicit join"
             )
         }
     }
@@ -1169,6 +1117,30 @@ class ChatService(
 
         if (userId != match.userAId && userId != match.userBId) {
             throw AccessDeniedException("User $userId does not belong to match ${chat.matchId}")
+        }
+    }
+
+    private fun requireSecondChatJoinedForMessage(
+        chat: Chat,
+        senderId: UUID
+    ) {
+        if (chat.chatType != ChatType.SECOND_CHAT) {
+            return
+        }
+        val connectionId = chat.connectionId ?: throw chatNotAvailable()
+        val participation =
+            secondChatParticipationRepository.findByConnectionIdAndUserId(
+                connectionId = connectionId,
+                userId = senderId
+            )
+        if (
+            participation?.attendanceStatus != SecondChatAttendanceStatus.ON_TIME &&
+            participation?.attendanceStatus != SecondChatAttendanceStatus.LATE
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_JOIN_REQUIRED,
+                message = "Second chat for connection $connectionId requires explicit join before sending messages"
+            )
         }
     }
 

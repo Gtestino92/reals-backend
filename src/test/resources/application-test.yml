@@ -102,7 +102,19 @@ chat:
   second-chat:
     duration-minutes: 120
     read-only-retention-minutes: 1440
-    min-messages-before-free-cancel: 1
+    on-time-window-minutes: 10
+    entry-window-minutes: 20
+    no-show-claim-countdown-seconds: 60
+    mutual-completion:
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
+      request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
+      requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    inactivity:
+      claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+      claim-countdown-seconds: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS:60}
+    initial-silence:
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
 
 scheduling:
   negotiation-duration-minutes: 2880

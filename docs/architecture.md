@@ -52,8 +52,10 @@ activation job transitions it to `SCHEDULING_PHASE`.
 
 Chat responsibilities are split conservatively:
 
-- `ChatService`: chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
-- `ChatExitService`: mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
+- `ChatService`: chat creation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `SecondChatLifecycleService`: explicit second-chat attendance, join classification, no-show claims and no-show terminal handling.
+- `SecondChatConversationLifecycleService`: second-chat mutual completion, partner inactivity, initial silence and conversation-phase request resolution.
+- `ChatExitService`: first-chat mutual/unilateral cancellation plus safety-report cancellation. Ordinary mutual/unilateral cancellation is rejected for `SECOND_CHAT`.
 
 Push notification responsibilities are split between application orchestration
 and provider transport:
@@ -89,7 +91,10 @@ Known scheduler jobs:
 
 Jobs are guarded with ShedLock infrastructure and should be idempotent where practical. They should log useful progress, catch per-item failures and call services for business transitions.
 
-`GET /api/connections/{connectionId}/chat` owns second-chat materialization for user entry. It creates the `SECOND_CHAT` idempotently when the confirmed window is open, then activates it for the conversation.
+
+Once both participants have joined a second chat, the conversation lifecycle is anchored at `conversationStartedAt = max(joinedAtA, joinedAtB)`. Mutual completion requires 10 minutes of conversation and at least one message from each participant; accepted completion sets `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION` and read-only retention. Partner inactivity is based only on conversational messages, but its response clock does not start before both users have joined: `responseClockStartedAt = max(lastMessageAt, conversationStartedAt)`. A waiting message sent before the partner joins remains the latest reference message, while claimability and automatic closure are clamped to conversation start. The latest-message author may claim after 5 minutes, automatic closure occurs at 10 minutes, and the silent participant receives the reliability penalty. If neither user sends any message for 10 minutes after conversation start, the chat becomes `ABANDONED / SECOND_CHAT_NO_CONVERSATION_STARTED`. Control requests do not update `lastMessageAt` or `lastMessageSenderId`.
+
+`POST /api/connections/{connectionId}/second-chat/join` owns second-chat materialization for user entry. It creates or activates the `SECOND_CHAT` idempotently when `confirmedDateTime <= now < confirmedDateTime + 20 minutes`, records exactly one attendance classification for the caller and keeps `timeoutAt` anchored to the agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat`, Home reads, polling and message fetches are side-effect free and do not imply attendance.
 
 ## Matchmaking Persistence
 
@@ -136,7 +141,7 @@ engagement-capacity checks remain independent.
 for SQL distance filtering. PostGIS, spatial indexes driven by real query
 plans, canonical pair identity and derived eligibility state remain deferred.
 
-`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation: it closes expired scheduled windows that never created a chat, moves timed-out active second chats to read-only `EXPIRED`, then closes them and their connection after read-only retention.
+`SecondChatLifecycleJob` owns second-chat lifecycle cleanup after scheduling confirmation. In deterministic bounded batches it resolves no-show claims and hard entry cutoff first, then conversation-phase requests, initial silence, automatic partner inactivity, neutral absolute timeout and read-only cleanup. Request-triggered terminal transitions return typed rejected results from the transaction and map to HTTP conflicts after commit, avoiding rollback of committed lifecycle outcomes. Already-due initial silence or partner inactivity is evaluated before a mutual-completion decision, so a late acceptance cannot override an inactivity terminal outcome.
 
 `SecondChatReminderNotificationJob` sends privacy-safe external push reminders
 before a confirmed second-chat `confirmedDateTime` while the connection is still

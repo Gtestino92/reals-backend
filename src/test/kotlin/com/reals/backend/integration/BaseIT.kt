@@ -1,6 +1,7 @@
 package com.reals.backend.integration
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
@@ -29,6 +30,8 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
 import com.reals.backend.repository.SafetyReportRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
@@ -54,6 +57,9 @@ import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.SecondChatConversationLifecycleService
+import com.reals.backend.service.SecondChatLifecycleService
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
@@ -132,6 +138,12 @@ abstract class BaseIT {
     protected lateinit var schedulingService: SchedulingService
 
     @Autowired
+    protected lateinit var secondChatLifecycleService: SecondChatLifecycleService
+
+    @Autowired
+    protected lateinit var secondChatConversationLifecycleService: SecondChatConversationLifecycleService
+
+    @Autowired
     protected lateinit var safetyReportService: SafetyReportService
 
     @Autowired
@@ -187,6 +199,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var proposalRepository: ScheduleProposalRepository
+
+    @Autowired
+    protected lateinit var secondChatParticipationRepository: SecondChatParticipationRepository
+
+    @Autowired
+    protected lateinit var secondChatResolutionRequestRepository: SecondChatResolutionRequestRepository
 
     @Autowired
     protected lateinit var penaltyRepository: PenaltyRepository
@@ -411,10 +429,15 @@ abstract class BaseIT {
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
         val setup = createScheduledSecondChatReadyToEnter()
-        val secondChat = chatService.findVisibleSecondChatOrThrow(
+        val joined = joinSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
+        joinSecondChatOrThrow(
+            connectionId = setup.connectionId,
+            userId = setup.userBId
+        )
+        val secondChat = chatRepository.findById(joined.chatId!!).orElseThrow()
 
         Assertions.assertEquals(ChatStatus.ACTIVE, secondChat.status)
         Assertions.assertEquals(
@@ -430,6 +453,63 @@ abstract class BaseIT {
             secondChatId = secondChat.id
         )
     }
+
+    protected fun joinSecondChatOrThrow(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatAttendanceView =
+        when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined -> result.view
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    protected fun rejectSecondChatJoin(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatJoinResult.Rejected {
+        val result = try {
+            secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        } catch (ex: DomainConflictException) {
+            return SecondChatLifecycleService.SecondChatJoinResult.Rejected(
+                code = ex.code,
+                message = ex.message ?: "Second-chat join rejected"
+            )
+        }
+        Assertions.assertTrue(result is SecondChatLifecycleService.SecondChatJoinResult.Rejected)
+        return result as SecondChatLifecycleService.SecondChatJoinResult.Rejected
+    }
+
+    protected fun sendMessageOrThrow(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): ChatMessage =
+        when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = senderId,
+                content = content,
+                now = now
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent -> result.message
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
 
     protected fun futureHalfHourSlot(): OffsetDateTime {
         val candidate = OffsetDateTime.now()

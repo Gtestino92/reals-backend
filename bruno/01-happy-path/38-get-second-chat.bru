@@ -1,0 +1,26 @@
+meta {
+  name: 38 Join Second Chat User A
+  type: http
+  seq: 38
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/join
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.myAttendanceStatus !== "ON_TIME" && body.myAttendanceStatus !== "LATE") {
+    throw new Error(`Expected joined attendance, got ${body.myAttendanceStatus}`);
+  }
+  if (!body.chatId || !body.scheduledAt || !body.absoluteExpiresAt || !body.serverTime) {
+    throw new Error("Expected second-chat attendance response after joining.");
+  }
+  bru.setEnvVar("secondChatId", body.chatId);
+}

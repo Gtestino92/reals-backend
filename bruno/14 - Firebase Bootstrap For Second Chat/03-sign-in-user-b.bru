@@ -1,0 +1,53 @@
+meta {
+  name: 03 Sign In User B
+  type: http
+  seq: 3
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{second_chat_user_b_email}}",
+    "password": "{{firebase_counterpart_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:pre-request {
+  const expectedEmail = "android.counterpart@example.com";
+  bru.setVar("second_chat_user_b_email", expectedEmail);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-in response for User B.");
+  }
+
+  const expectedEmail = "android.counterpart@example.com";
+  const returnedEmail = body.email.toLowerCase();
+  if (returnedEmail !== expectedEmail) {
+    throw new Error(`Expected User B email ${expectedEmail}, got ${returnedEmail}`);
+  }
+
+  bru.setEnvVar("second_chat_user_b_id_token", body.idToken, { persist: true });
+  bru.setEnvVar("second_chat_user_b_uid", body.localId, { persist: true });
+
+  // Compatibility aliases.
+  bru.setEnvVar("firebase_counterpart_email", expectedEmail, { persist: true });
+  bru.setEnvVar("firebase_counterpart_id_token", body.idToken, { persist: true });
+  bru.setEnvVar("firebase_counterpart_uid", body.localId, { persist: true });
+
+  bru.setVar("firebase_counterpart_email", expectedEmail);
+  bru.setVar("firebase_counterpart_id_token", body.idToken);
+  bru.setVar("firebase_counterpart_uid", body.localId);
+}

@@ -1,0 +1,26 @@
+meta {
+  name: 57 Enter Second Chat Before Timeout
+  type: http
+  seq: 57
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/second-chat/join
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserAId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.myAttendanceStatus !== "ON_TIME" && body.myAttendanceStatus !== "LATE") {
+    throw new Error(`Expected joined attendance, got ${body.myAttendanceStatus}`);
+  }
+  if (!body.chatId || !body.absoluteExpiresAt) {
+    throw new Error("Expected second-chat attendance response after joining.");
+  }
+  bru.setEnvVar("timeoutSecondChatId", body.chatId);
+}

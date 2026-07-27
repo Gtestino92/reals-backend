@@ -22,11 +22,13 @@ data class ChatResponse(
     val startedAt: OffsetDateTime,
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
+    val conversationStartedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?,
+    val lastMessageSenderId: UUID?,
     val inactivityExpiresAt: OffsetDateTime?
 ) {
     companion object {
@@ -42,11 +44,13 @@ data class ChatResponse(
             startedAt = c.startedAt,
             availableAt = c.availableAt,
             activatedAt = c.activatedAt,
+            conversationStartedAt = c.conversationStartedAt,
             timeoutAt = c.timeoutAt,
             expiresAt = c.timeoutAt,
             endedAt = c.endedAt,
             readOnlyUntil = c.readOnlyUntil,
             lastMessageAt = c.lastMessageAt,
+            lastMessageSenderId = c.lastMessageSenderId,
             inactivityExpiresAt = inactivityExpiresAt
         )
     }
@@ -75,11 +79,13 @@ data class FirstChatResponse(
     val startedAt: OffsetDateTime,
     val availableAt: OffsetDateTime?,
     val activatedAt: OffsetDateTime?,
+    val conversationStartedAt: OffsetDateTime?,
     val timeoutAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val endedAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?,
+    val lastMessageSenderId: UUID?,
     val inactivityExpiresAt: OffsetDateTime?,
     val partner: PartnerSummaryResponse,
     val myDecision: ChatParticipantDecisionStatus,
@@ -103,11 +109,13 @@ data class FirstChatResponse(
             startedAt = chat.startedAt,
             availableAt = chat.availableAt,
             activatedAt = chat.activatedAt,
+            conversationStartedAt = chat.conversationStartedAt,
             timeoutAt = chat.timeoutAt,
             expiresAt = chat.timeoutAt,
             endedAt = chat.endedAt,
             readOnlyUntil = chat.readOnlyUntil,
             lastMessageAt = chat.lastMessageAt,
+            lastMessageSenderId = chat.lastMessageSenderId,
             inactivityExpiresAt = inactivityExpiresAt,
             partner = PartnerSummaryResponse.from(partner),
             myDecision = myDecision,
@@ -301,6 +309,103 @@ data class ConnectionResponse(
 
 data class ConnectionDismissalResponse(
     val dismissed: Boolean
+)
+
+data class SecondChatResolutionRequestResponse(
+    val id: UUID,
+    val type: SecondChatResolutionRequestType,
+    val requesterUserId: UUID,
+    val responderUserId: UUID,
+    val referenceMessageId: UUID?,
+    val status: SecondChatResolutionRequestStatus,
+    val createdAt: OffsetDateTime,
+    val expiresAt: OffsetDateTime
+) {
+    companion object {
+        fun from(r: SecondChatResolutionRequest) =
+            SecondChatResolutionRequestResponse(
+                id = r.id,
+                type = r.type,
+                requesterUserId = r.requesterUserId,
+                responderUserId = r.responderUserId,
+                referenceMessageId = r.referenceMessageId,
+                status = r.status,
+                createdAt = r.createdAt,
+                expiresAt = r.expiresAt
+            )
+    }
+}
+
+data class SecondChatAttendanceResponse(
+    val connectionId: UUID,
+    val chatId: UUID?,
+    val scheduledAt: OffsetDateTime,
+    val onTimeUntil: OffsetDateTime,
+    val entryClosesAt: OffsetDateTime,
+    val absoluteExpiresAt: OffsetDateTime,
+    val conversationStartedAt: OffsetDateTime?,
+    val serverTime: OffsetDateTime,
+    val myAttendanceStatus: SecondChatAttendanceStatus,
+    val myJoinedAt: OffsetDateTime?,
+    val partnerAttendanceStatus: SecondChatAttendanceStatus,
+    val partnerJoinedAt: OffsetDateTime?,
+    val canJoin: Boolean,
+    val canClaimPartnerNoShow: Boolean,
+    val activeNoShowClaim: SecondChatResolutionRequestResponse?,
+    val activeResolutionRequest: SecondChatResolutionRequestResponse?,
+    val chatStatus: ChatStatus?,
+    val endedReason: ChatEndReason?,
+    val endedAt: OffsetDateTime?,
+    val readOnlyUntil: OffsetDateTime?,
+    val mutualCompletionEligibleAt: OffsetDateTime?,
+    val canRequestMutualCompletion: Boolean,
+    val mutualCompletionCooldownUntil: OffsetDateTime?,
+    val inactivityClaimableAt: OffsetDateTime?,
+    val inactivityClosesAt: OffsetDateTime?,
+    val canClaimPartnerInactivity: Boolean,
+    val mustRespondToPartner: Boolean,
+    val lastMessageAt: OffsetDateTime?,
+    val lastMessageSenderId: UUID?
+) {
+    companion object {
+        fun from(view: com.reals.backend.service.SecondChatLifecycleService.SecondChatAttendanceView) =
+            SecondChatAttendanceResponse(
+                connectionId = view.connectionId,
+                chatId = view.chatId,
+                scheduledAt = view.scheduledAt,
+                onTimeUntil = view.onTimeUntil,
+                entryClosesAt = view.entryClosesAt,
+                absoluteExpiresAt = view.absoluteExpiresAt,
+                conversationStartedAt = view.conversationStartedAt,
+                serverTime = view.serverTime,
+                myAttendanceStatus = view.myAttendanceStatus,
+                myJoinedAt = view.myJoinedAt,
+                partnerAttendanceStatus = view.partnerAttendanceStatus,
+                partnerJoinedAt = view.partnerJoinedAt,
+                canJoin = view.canJoin,
+                canClaimPartnerNoShow = view.canClaimPartnerNoShow,
+                activeNoShowClaim = view.activeNoShowClaim?.let { SecondChatResolutionRequestResponse.from(it) },
+                activeResolutionRequest =
+                    view.conversation.activeResolutionRequest?.let { SecondChatResolutionRequestResponse.from(it) },
+                chatStatus = view.conversation.chatStatus,
+                endedReason = view.conversation.endedReason,
+                endedAt = view.conversation.endedAt,
+                readOnlyUntil = view.conversation.readOnlyUntil,
+                mutualCompletionEligibleAt = view.conversation.mutualCompletionEligibleAt,
+                canRequestMutualCompletion = view.conversation.canRequestMutualCompletion,
+                mutualCompletionCooldownUntil = view.conversation.mutualCompletionCooldownUntil,
+                inactivityClaimableAt = view.conversation.inactivityClaimableAt,
+                inactivityClosesAt = view.conversation.inactivityClosesAt,
+                canClaimPartnerInactivity = view.conversation.canClaimPartnerInactivity,
+                mustRespondToPartner = view.conversation.mustRespondToPartner,
+                lastMessageAt = view.conversation.lastMessageAt,
+                lastMessageSenderId = view.conversation.lastMessageSenderId
+            )
+    }
+}
+
+data class SecondChatCompletionDecisionRequest(
+    val decision: com.reals.backend.service.SecondChatConversationLifecycleService.CompletionDecision
 )
 
 /**

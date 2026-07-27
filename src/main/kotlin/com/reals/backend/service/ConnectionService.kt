@@ -439,6 +439,8 @@ class ConnectionService(
             ConnectionState.SECOND_CHAT ->
                 when (secondChat?.status) {
                     ChatStatus.EXPIRED,
+                    ChatStatus.FINISHED,
+                    ChatStatus.ABANDONED,
                     ChatStatus.CLOSED -> true
                     ChatStatus.AVAILABLE,
                     ChatStatus.ACTIVE -> !secondChat.timeoutAt.isAfter(now)

@@ -1,0 +1,28 @@
+meta {
+  name: 38b Join Second Chat User B
+  type: http
+  seq: 39
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{connectionId}}/second-chat/join
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{userBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.myAttendanceStatus !== "ON_TIME" && body.myAttendanceStatus !== "LATE") {
+    throw new Error(`Expected joined attendance, got ${body.myAttendanceStatus}`);
+  }
+  if (body.chatId !== bru.getEnvVar("secondChatId")) {
+    throw new Error("Expected both users to join the same second chat.");
+  }
+  if (!body.conversationStartedAt) {
+    throw new Error("Expected conversationStartedAt after both users join.");
+  }
+}
