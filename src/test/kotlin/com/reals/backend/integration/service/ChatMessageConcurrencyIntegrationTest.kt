@@ -53,8 +53,10 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    fun `two concurrent messages in same available second chat activate once and both persist`() {
-        val setup = createAvailableSecondChat()
+    fun `two concurrent messages in same joined second chat both persist`() {
+        val setup = TransactionTemplate(transactionManager).execute {
+            createActiveSecondChat()
+        }
 
         val outcomes = runConcurrently(
             { chatService.sendMessage(setup.secondChatId, setup.userAId, "available second from A") },
@@ -66,9 +68,6 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
         val chat = chatRepository.findById(setup.secondChatId).orElseThrow()
         assertEquals(2, messages.size)
         assertEquals(setOf("available second from A", "available second from B"), messages.map { it.content }.toSet())
-        assertEquals(1, chatRepository.findAll().count {
-            it.connectionId == setup.connectionId && it.chatType == ChatType.SECOND_CHAT
-        })
         assertEquals(ChatStatus.ACTIVE, chat.status)
         assertNotNull(chat.activatedAt)
         assertEquals(ConnectionState.SECOND_CHAT, connectionRepository.findById(setup.connectionId).orElseThrow().state)

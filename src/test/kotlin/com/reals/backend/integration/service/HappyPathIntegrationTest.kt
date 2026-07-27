@@ -1,6 +1,7 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
@@ -11,6 +12,7 @@ import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.SecondChatConversationLifecycleService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -126,21 +128,35 @@ class HappyPathIntegrationTest : BaseIT() {
         assertEquals(ChatStatus.ACTIVE, secondChat.status)
         assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
 
-        chatService.sendMessage(secondChat.id, userA, "Ya quedo habilitado el segundo chat")
-        chatService.sendMessage(secondChat.id, userB, "Seguimos por aca")
-
-        val exitRequest =
-            chatExitService.requestMutualCancellation(
-                chatId = secondChat.id,
-                requesterUserId = userA
+        val conversationStartedAt = chatService.findByIdOrThrow(secondChat.id).conversationStartedAt
+            ?: error("Expected second-chat conversationStartedAt")
+        sendMessageOrThrow(secondChat.id, userA, "Ya quedo habilitado el segundo chat", conversationStartedAt.plusMinutes(3))
+        sendMessageOrThrow(secondChat.id, userB, "Seguimos por aca", conversationStartedAt.plusMinutes(4))
+        val completionRequest =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = connection.id,
+                requesterUserId = userA,
+                now = conversationStartedAt.plusMinutes(10)
             )
-        chatExitService.acceptMutualCancellation(
-            chatId = secondChat.id,
-            requestId = exitRequest.id,
-            responderUserId = userB
+        secondChatConversationLifecycleService.decideMutualCompletion(
+            connectionId = connection.id,
+            requestId = completionRequest.request!!.id,
+            responderUserId = userB,
+            decision = SecondChatConversationLifecycleService.CompletionDecision.ACCEPTED,
+            now = conversationStartedAt.plusMinutes(10).plusSeconds(1)
         )
 
-        assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(secondChat.id).status)
+        val finishedSecondChat = chatService.findByIdOrThrow(secondChat.id)
+        assertEquals(ChatStatus.FINISHED, finishedSecondChat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_MUTUAL_COMPLETION, finishedSecondChat.endedReason)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
+
+        chatRepository.updateReadOnlyUntil(
+            chatId = secondChat.id,
+            readOnlyUntil = OffsetDateTime.now().minusSeconds(1)
+        )
+        assertTrue(chatService.closeExpiredReadOnlySecondChat(secondChat.id))
+        assertEquals(ChatStatus.CLOSED, chatService.findByIdOrThrow(secondChat.id).status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(connection.id).state)
         assertNoConnectionLocks(userA, userB)
     }
