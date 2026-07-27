@@ -1203,11 +1203,23 @@ paths:
           $ref: '#/components/responses/Negotiation'
         '404':
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
+  /api/connections/{connectionId}/scheduling-availability:
+    get:
+      tags: [Connections]
+      summary: Get current user's second-chat scheduling unavailable windows
+      description: Side-effect-free authenticated read. Verifies the current user belongs to the connection, excludes that connection from conflicts, and returns only this user's unavailable windows derived from confirmed `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` connections. Window bounds are symmetric and inclusive around each confirmed start.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SchedulingAvailability'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/connections/{connectionId}/proposals:
     post:
       tags: [Connections]
       summary: Submit ordered scheduling proposal list for expected current round
-      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round.
+      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round. Any proposed instant inside the configured inclusive conflict window around another confirmed second-chat start for the submitting user returns `SCHEDULING_SLOT_CONFLICT`.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       requestBody:
@@ -1247,7 +1259,7 @@ paths:
     post:
       tags: [Connections]
       summary: Accept partner proposal and schedule second chat
-      description: Accepts a pending partner proposal only if the proposal belongs to the path connection, belongs to the current round, and its proposed instant is still strictly in the future. A persisted proposal may remain `PENDING` after its proposed time passes; accepting it returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE`, but it remains visible and rejectable.
+      description: Accepts a pending partner proposal only if the proposal belongs to the path connection, belongs to the current round, its proposed instant is still strictly in the future, and it is outside the configured inclusive conflict window for both participants. A persisted proposal may remain `PENDING` after its proposed time passes; accepting it returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE`, but it remains visible and rejectable.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
         - $ref: '#/components/parameters/ProposalId'
@@ -1530,6 +1542,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/NegotiationResponse'
+    SchedulingAvailability:
+      description: Current user's unavailable second-chat scheduling windows
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulingAvailabilityResponse'
     BadRequest:
       description: Invalid request
       content:
@@ -1851,8 +1869,13 @@ components:
                 code: SCHEDULING_ROUND_CHANGED
                 error: Conflict
                 message: Scheduling round changed; refresh negotiation and proposals before retrying
+            slotConflict:
+              value:
+                code: SCHEDULING_SLOT_CONFLICT
+                error: Conflict
+                message: The selected time conflicts with another confirmed second chat
     SchedulingProposalAcceptanceConflict:
-      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, and proposals whose own proposed instant is no longer strictly in the future. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
+      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, proposals whose own proposed instant is no longer strictly in the future, and proposal instants that conflict with another confirmed second chat for either participant. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1883,6 +1906,11 @@ components:
                 code: SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL
                 error: Conflict
                 message: Users cannot accept their own scheduling proposal
+            slotConflict:
+              value:
+                code: SCHEDULING_SLOT_CONFLICT
+                error: Conflict
+                message: The selected time conflicts with another confirmed second chat
     SchedulingPartnerProposalRejectionConflict:
       description: Partner scheduling proposals cannot be rejected in the current flow state. Rejecting partner scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
@@ -2949,6 +2977,35 @@ components:
         chatId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    SchedulingAvailabilityResponse:
+      type: object
+      required: [conflictWindowMinutes, unavailableWindows, serverTime]
+      properties:
+        conflictWindowMinutes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Configured symmetric inclusive window size around confirmed second-chat starts.
+        unavailableWindows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchedulingUnavailableWindowResponse'
+        serverTime:
+          type: string
+          format: date-time
+          description: Backend timestamp used to omit already-ended unavailable windows.
+    SchedulingUnavailableWindowResponse:
+      type: object
+      required: [startsAt, endsAt]
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+          description: Inclusive lower bound of the unavailable window.
+        endsAt:
+          type: string
+          format: date-time
+          description: Inclusive upper bound of the unavailable window.
     Gender:
       type: string
       enum: [MALE, FEMALE, NON_BINARY, OTHER]
