@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.config.s3.S3StorageProperties
 import com.reals.backend.config.s3.S3ReadUrlMode
 import com.reals.backend.domain.StoredObject
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.springframework.stereotype.Service
 import software.amazon.awssdk.core.sync.RequestBody
@@ -59,7 +60,7 @@ class S3StorageService(
                 bytes = bytes
             )
         } catch (ex: Exception) {
-            throw ObjectStorageException("Could not upload chat audio", ex)
+            throw ChatAudioStorageException("Could not upload chat audio", ex)
         }
     }
 
@@ -134,10 +135,19 @@ class S3StorageService(
 
     fun mediaBucket(): String = properties.bucket
 
-    fun getReadUrl(key: String): String {
+    fun getReadUrl(key: String): String =
+        getReadUrl(
+            bucket = properties.bucket,
+            key = key
+        )
+
+    fun getReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         return when (properties.readUrlMode) {
             S3ReadUrlMode.PUBLIC -> publicReadUrl(key)
-            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(key)
+            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(bucket, key)
         }
     }
 
@@ -153,9 +163,12 @@ class S3StorageService(
         return "${publicBaseUrl.removeSuffix("/")}/$key"
     }
 
-    private fun presignedReadUrl(key: String): String {
+    private fun presignedReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         val getObjectRequest = GetObjectRequest.builder()
-            .bucket(properties.bucket)
+            .bucket(bucket)
             .key(key)
             .build()
 

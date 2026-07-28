@@ -48,7 +48,7 @@ class SafetyReportEvidenceSnapshotService(
         val input = messages.joinToString(separator = "\n") { message ->
             when (message.messageType) {
                 ChatMessageType.TEXT ->
-                    "TEXT|${message.id}|${message.senderId}|${message.sentAt}|${message.content}"
+                    "${message.id}|${message.senderId}|${message.sentAt}|${message.content}"
                 ChatMessageType.AUDIO ->
                     "AUDIO|${message.id}|${message.senderId}|${message.sentAt}|" +
                         "${message.audioDurationMillis}|${message.audioSha256}"

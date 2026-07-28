@@ -299,6 +299,9 @@ class ChatController(
         )
 
     private fun audioReadUrl(message: com.reals.backend.domain.ChatMessage): String =
-        storageService.getReadUrl(requireNotNull(message.audioObjectKey))
+        storageService.getReadUrl(
+            bucket = requireNotNull(message.audioBucket),
+            key = requireNotNull(message.audioObjectKey)
+        )
 
 }

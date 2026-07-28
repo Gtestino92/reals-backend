@@ -5,6 +5,7 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import com.reals.backend.service.ChatAudioUploadBusyException
 import com.reals.backend.service.ProfilePhotoUploadBusyException
@@ -287,6 +288,22 @@ class GlobalExceptionHandler {
                     code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_FAILED.name,
                     error = "Bad Gateway",
                     message = "Profile photo upload failed. Please retry."
+                )
+            )
+    }
+
+    @ExceptionHandler(ChatAudioStorageException::class)
+    fun handleChatAudioStorageException(
+        ex: ChatAudioStorageException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Chat audio storage failure while processing request: {}", ex.message)
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.CHAT_AUDIO_UPLOAD_FAILED.name,
+                    error = "Bad Gateway",
+                    message = "Chat audio upload failed. Please retry."
                 )
             )
     }
