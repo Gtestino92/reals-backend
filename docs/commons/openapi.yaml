@@ -716,7 +716,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat audio message
-      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT.
+      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted durationMillis is rounded up from the MP4 timescale rational value.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -730,7 +730,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: MPEG-4/M4A audio-only AAC file, max 2 MiB and max 60 seconds.
+                  description: MPEG-4/M4A audio-only AAC file with media payload, max 2 MiB and max 60 seconds.
                 clientMessageId:
                   type: string
                   format: uuid
@@ -753,6 +753,12 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+        '502':
+          description: Audio object upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           description: Audio upload pipeline is busy
           headers:

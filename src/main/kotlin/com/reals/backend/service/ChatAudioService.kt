@@ -42,6 +42,11 @@ class ChatAudioService(
             audioSha256 = sha256
         )?.let { return ChatAudioSendResult.Replayed(it) }
 
+        chatService.preflightNewAudioMessage(
+            chatId = chatId,
+            senderId = senderId
+        )
+
         val messageId = UUID.randomUUID()
         val objectKey = storageService.chatAudioObjectKey(chatId = chatId, messageId = messageId)
         val guardTask = mediaCleanupTaskService.createGuardTask(

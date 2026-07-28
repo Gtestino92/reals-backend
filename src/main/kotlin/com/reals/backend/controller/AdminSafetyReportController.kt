@@ -145,6 +145,9 @@ class AdminSafetyReportController(
         detail: com.reals.backend.service.reports.SafetyReportDetail
     ): SafetyReportAdminDetail =
         SafetyReportAdminDetail.from(detail) { message ->
-            storageService.getReadUrl(requireNotNull(message.audioObjectKey))
+            storageService.getReadUrl(
+                bucket = requireNotNull(message.audioBucket),
+                key = requireNotNull(message.audioObjectKey)
+            )
         }
 }

@@ -286,6 +286,26 @@ class ChatService(
         return existing
     }
 
+    fun preflightNewAudioMessage(
+        chatId: UUID,
+        senderId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ) {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, senderId)
+        requireChatPairNotBlocked(chat)
+        validateActiveChatWindowSideEffectFree(chat, now)
+        requireSecondChatJoinedForMessage(chat, senderId)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            requireNoPendingMutualCancellation(chat.id)
+        }
+        chatAudioPolicyService.requireAudioEnabled(
+            chat = chat,
+            userId = senderId,
+            now = now
+        )
+    }
+
     fun sendAudioMessageWithResult(
         chatId: UUID,
         senderId: UUID,
@@ -1226,6 +1246,34 @@ class ChatService(
                 finalStatus = ChatStatus.ABANDONED,
                 endedReason = ChatEndReason.INACTIVITY_TIMEOUT
             )
+            throw chatAbandoned()
+        }
+    }
+
+    private fun validateActiveChatWindowSideEffectFree(
+        chat: Chat,
+        now: OffsetDateTime
+    ) {
+        if (chat.status == ChatStatus.ABANDONED) {
+            throw chatAbandoned()
+        }
+
+        if (chat.status == ChatStatus.EXPIRED) {
+            throw chatExpired()
+        }
+
+        if (chat.status != ChatStatus.ACTIVE) {
+            throw chatNotAvailable()
+        }
+
+        if (!now.isBefore(chat.timeoutAt)) {
+            throw chatExpired()
+        }
+
+        if (
+            chat.chatType == ChatType.FIRST_CHAT &&
+            inactivityExpiresAt(chat)?.isAfter(now) == false
+        ) {
             throw chatAbandoned()
         }
     }

@@ -4,3 +4,8 @@ class ObjectStorageException(
     message: String,
     cause: Throwable? = null
 ) : RuntimeException(message, cause)
+
+class ChatAudioStorageException(
+    message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
