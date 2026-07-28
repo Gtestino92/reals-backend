@@ -2609,10 +2609,6 @@ components:
           format: date-time
           nullable: true
           description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply.
-        audioPolicy:
-          allOf:
-            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
-          nullable: true
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
@@ -3035,6 +3031,10 @@ components:
         mustRespondToPartner: { type: boolean }
         lastMessageAt: { type: string, format: date-time, nullable: true }
         lastMessageSenderId: { type: string, format: uuid, nullable: true }
+        audioPolicy:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+          nullable: true
     AddProposalRequest:
       type: object
       required: [expectedRoundNumber, proposedDateTimes]
