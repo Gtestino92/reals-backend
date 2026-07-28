@@ -198,6 +198,10 @@ scheduling:
   # Maximum number of proposed second-chat slots each user can submit per round
   max-proposals-per-round: 3
 
+  # Symmetric inclusive window around another confirmed second-chat start time.
+  # A value of 60 blocks candidate starts from confirmedAt - 60m through confirmedAt + 60m.
+  second-chat-conflict-window-minutes: ${SCHEDULING_SECOND_CHAT_CONFLICT_WINDOW_MINUTES:60}
+
 profile:
   photos:
     # Maximum number of photos a user can upload to their profile

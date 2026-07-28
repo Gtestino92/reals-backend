@@ -31,6 +31,7 @@ class SchedulingService(
     private val proposalRepository: ScheduleProposalRepository,
     private val participationRepository: SecondChatParticipationRepository,
     private val connectionService: ConnectionService,
+    private val schedulingConflictService: SchedulingConflictService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
     private val eventPublisher: ApplicationEventPublisher,
@@ -130,6 +131,11 @@ class SchedulingService(
         }
 
         validateProposalSlots(proposedDateTimes)
+        schedulingConflictService.requireSlotsAvailableForUser(
+            userId = userId,
+            excludedConnectionId = connectionId,
+            candidateDateTimes = proposedDateTimes
+        )
 
         if (
             proposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
@@ -226,11 +232,23 @@ class SchedulingService(
         val proposalsA = byUser[connection.userAId].orEmpty()
         val proposalsB = byUser[connection.userBId].orEmpty()
 
-        val overlap = selectBestFutureOverlap(
+        val candidates = selectFutureOverlaps(
             proposalsA = proposalsA,
             proposalsB = proposalsB,
             now = now
-        ) ?: return false
+        )
+
+        if (candidates.isEmpty()) return false
+
+        val selectedDateTime = schedulingConflictService.selectFirstAvailableSlotForUsers(
+            userIds = listOf(connection.userAId, connection.userBId),
+            excludedConnectionId = connection.id,
+            candidateDateTimes = candidates.map { it.proposalA.proposedDateTime }
+        )
+
+        val overlap = candidates.first {
+            it.proposalA.proposedDateTime.toInstant() == selectedDateTime.toInstant()
+        }
 
         confirmWith(
             accepted = listOf(overlap.proposalA, overlap.proposalB),
@@ -253,7 +271,18 @@ class SchedulingService(
         proposalsA: List<ScheduleProposal>,
         proposalsB: List<ScheduleProposal>,
         now: OffsetDateTime
-    ): AgreedSlotCandidate? {
+    ): AgreedSlotCandidate? =
+        selectFutureOverlaps(
+            proposalsA = proposalsA,
+            proposalsB = proposalsB,
+            now = now
+        ).firstOrNull()
+
+    private fun selectFutureOverlaps(
+        proposalsA: List<ScheduleProposal>,
+        proposalsB: List<ScheduleProposal>,
+        now: OffsetDateTime
+    ): List<AgreedSlotCandidate> {
         val nowInstant = now.toInstant()
 
         return proposalsA.flatMap { proposalA ->
@@ -271,11 +300,10 @@ class SchedulingService(
                         score = proposalA.preferenceOrder + proposalB.preferenceOrder
                     )
                 }
-        }
-            .minWithOrNull(
-                compareBy<AgreedSlotCandidate> { it.score }
-                    .thenBy { it.proposalA.proposedDateTime.toInstant() }
-            )
+        }.sortedWith(
+            compareBy<AgreedSlotCandidate> { it.score }
+                .thenBy { it.proposalA.proposedDateTime.toInstant() }
+        )
     }
 
     /**
@@ -344,6 +372,12 @@ class SchedulingService(
                 message = "Users cannot accept their own scheduling proposal"
             )
         }
+
+        schedulingConflictService.requireSlotAvailableForUsers(
+            userIds = listOf(connection.userAId, connection.userBId),
+            excludedConnectionId = connectionId,
+            candidateDateTime = proposal.proposedDateTime
+        )
 
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
