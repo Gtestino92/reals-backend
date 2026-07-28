@@ -1,0 +1,81 @@
+meta {
+  name: 16b Counterpart Send First Chat Audio Message
+  type: http
+  seq: 25
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{counterpartFirstChatId}}/audio-messages
+  body: multipartForm
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+}
+
+body:multipart-form {
+  clientMessageId: 00000000-0000-0000-0000-000000000701
+  file: @file(../src/test/resources/fixtures/audio/valid-aac-short.m4a) @contentType(audio/mp4)
+}
+
+script:post-response {
+  const status = res.getStatus();
+  const body = res.getBody();
+  const expectedClientMessageId = "00000000-0000-0000-0000-000000000701";
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK replay or 201 Created, got ${status}: ${JSON.stringify(body)}`);
+  }
+  if (!body || typeof body.id !== "string" || !uuidPattern.test(body.id)) {
+    throw new Error("Expected audio message id as UUID string.");
+  }
+  if (body.chatSessionId !== bru.getEnvVar("counterpartFirstChatId")) {
+    throw new Error(`Expected chatSessionId ${bru.getEnvVar("counterpartFirstChatId")}, got ${body.chatSessionId}.`);
+  }
+  if (body.clientMessageId !== expectedClientMessageId) {
+    throw new Error(`Expected clientMessageId ${expectedClientMessageId}, got ${body.clientMessageId}.`);
+  }
+  if (body.messageType !== "AUDIO") {
+    throw new Error(`Expected messageType AUDIO, got ${body.messageType}.`);
+  }
+  if (body.content !== null) {
+    throw new Error("Expected audio message content to be null.");
+  }
+  if (!body.audio || typeof body.audio !== "object") {
+    throw new Error("Expected audio metadata object.");
+  }
+  if (typeof body.audio.url !== "string" || body.audio.url.trim() === "") {
+    throw new Error("Expected non-blank audio read URL.");
+  }
+  if (!(body.audio.durationMillis > 0 && body.audio.durationMillis <= 60000)) {
+    throw new Error(`Expected audio durationMillis in range, got ${body.audio.durationMillis}.`);
+  }
+  if (body.audio.contentType !== "audio/mp4") {
+    throw new Error(`Expected audio contentType audio/mp4, got ${body.audio.contentType}.`);
+  }
+  if (!(body.audio.sizeBytes > 0 && body.audio.sizeBytes <= 2097152)) {
+    throw new Error(`Expected audio sizeBytes in range, got ${body.audio.sizeBytes}.`);
+  }
+  if (!body.sentAt) {
+    throw new Error("Expected sentAt.");
+  }
+
+  const forbiddenKeys = ["audioBucket", "audioObjectKey", "bucket", "objectKey", "audioSha256"];
+  for (const key of forbiddenKeys) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      throw new Error(`Response must not expose ${key}.`);
+    }
+    if (Object.prototype.hasOwnProperty.call(body.audio, key)) {
+      throw new Error(`Audio metadata must not expose ${key}.`);
+    }
+  }
+
+  bru.setVar("audioMessageId", body.id);
+}
+
+docs {
+  Both participants must have satisfied question 1 and requested the next guidance question, so local audioPolicy is enabled.
+  Re-send this request with the same clientMessageId to verify idempotent replay: first execution returns 201 Created, identical repeat returns 200 OK for the same logical message.
+}
