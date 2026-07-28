@@ -147,6 +147,10 @@ profile:
     min-full-body-photos: 1
 
 chat:
+  audio:
+    enabled: true
   first-chat:
     guidance:
       required-characters: 10
+    audio:
+      required-answered-guidance-questions: 1

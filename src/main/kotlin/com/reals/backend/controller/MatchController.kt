@@ -22,7 +22,8 @@ class MatchController(
     private val connectionService: ConnectionService,
     private val profileService: ProfileService,
     private val userBlockCommandService: UserBlockCommandService,
-    private val legalComplianceService: LegalComplianceService
+    private val legalComplianceService: LegalComplianceService,
+    private val chatAudioPolicyService: ChatAudioPolicyService
 ) {
 
     @PostMapping("/{matchId}/block")
@@ -105,7 +106,10 @@ class MatchController(
                 guidance = chatService.getFirstChatGuidanceState(
                     chat = chat,
                     userId = userId
-                )?.let { FirstChatGuidanceResponse.from(it) }
+                )?.let { FirstChatGuidanceResponse.from(it) },
+                audioPolicy = ChatAudioPolicyResponse.from(
+                    chatAudioPolicyService.policyFor(chat = chat, userId = userId)
+                )
             )
         )
     }

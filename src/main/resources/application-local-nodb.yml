@@ -81,3 +81,10 @@ profile:
     required-count: 4
     min-person-photos: 1
     min-full-body-photos: 1
+
+chat:
+  audio:
+    enabled: true
+  first-chat:
+    audio:
+      required-answered-guidance-questions: 1

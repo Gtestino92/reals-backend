@@ -64,7 +64,7 @@ class RateLimitRuleResolver(
 
             method == "POST" &&
                 path.startsWith("/api/chats/") &&
-                path.endsWith("/messages") ->
+                (path.endsWith("/messages") || path.endsWith("/audio-messages")) ->
                 RateLimitGroup.MESSAGES
 
             method == "POST" && path == "/api/me/profile/photos" ->
