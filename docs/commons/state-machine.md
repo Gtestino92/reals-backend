@@ -149,6 +149,13 @@ returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE` when the proposal instant is not
 strictly in the future, and overlap auto-confirm ignores expired overlapping
 instants while still considering future overlaps.
 
+Scheduling slot conflict checks compare instants against a symmetric inclusive
+window around confirmed second-chat starts on other connections for the same
+users. Only `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` reserve slots.
+Confirmation paths lock both participant user rows in deterministic UUID order
+before checking other confirmed negotiations and before mutating proposal or
+negotiation status.
+
 
 ## Second Chat
 

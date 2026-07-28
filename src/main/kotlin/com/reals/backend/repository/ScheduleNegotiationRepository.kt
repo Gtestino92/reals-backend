@@ -30,6 +30,26 @@ interface ScheduleNegotiationRepository :
         connectionIds: Collection<UUID>
     ): List<ScheduleNegotiation>
 
+    @Query(
+        """select n from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.id <> :excludedConnectionId
+             and (c.userAId in :userIds or c.userBId in :userIds)
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null"""
+    )
+    fun findConfirmedReservedSecondChatSlotsForUsers(
+        @Param("userIds") userIds: Collection<UUID>,
+        @Param("excludedConnectionId") excludedConnectionId: UUID,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE
+        ),
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED
+    ): List<ScheduleNegotiation>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """
