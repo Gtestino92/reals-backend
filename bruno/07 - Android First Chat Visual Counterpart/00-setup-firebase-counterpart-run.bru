@@ -16,11 +16,10 @@ vars:pre-request {
 
 script:pre-request {
   const clearEnvVars = (names) => names.forEach((name) => bru.setEnvVar(name, ""));
+  const clearRuntimeVars = (names) => names.forEach((name) => bru.setVar(name, ""));
   clearEnvVars([
     "counterpartRunId",
     "firebase_counterpart_email",
-    "firebase_counterpart_id_token",
-    "firebase_counterpart_uid",
     "counterpartUserId",
     "counterpartProfileId",
     "counterpartMatchId",
@@ -29,6 +28,13 @@ script:pre-request {
     "counterpartExitRequestId",
     "counterpartConnectionId"
   ]);
+clearRuntimeVars([
+  "firebase_counterpart_id_token",
+  "firebase_counterpart_uid",
+  "firebase_id_token",
+  "firebase_uid",
+  "audioMessageId"
+]);
   
   const runId = Date.now().toString();
   bru.setEnvVar("counterpartRunId", runId);
