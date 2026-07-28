@@ -6,9 +6,11 @@ import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.exception.ObjectStorageException
+import com.reals.backend.service.ChatAudioUploadBusyException
 import com.reals.backend.service.ProfilePhotoUploadBusyException
 import com.reals.backend.service.localdev.LocalFirebaseEmailVerificationFailedException
 import jakarta.validation.ConstraintViolationException
+import jakarta.servlet.http.HttpServletRequest
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.CannotAcquireLockException
@@ -141,13 +143,18 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(MissingServletRequestPartException::class)
     fun handleMissingServletRequestPart(
-        ex: MissingServletRequestPartException
+        ex: MissingServletRequestPartException,
+        request: HttpServletRequest
     ): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
                     code = if (ex.requestPartName == "file") {
-                        DomainErrorCode.INVALID_PROFILE_PHOTO.name
+                        if (request.requestURI.endsWith("/audio-messages")) {
+                            DomainErrorCode.CHAT_AUDIO_INVALID_FORMAT.name
+                        } else {
+                            DomainErrorCode.INVALID_PROFILE_PHOTO.name
+                        }
                     } else {
                         "VALIDATION_ERROR"
                     },
@@ -314,6 +321,20 @@ class GlobalExceptionHandler {
                     code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_BUSY.name,
                     error = "Service Unavailable",
                     message = "Profile photo upload capacity is temporarily exhausted. Please retry later."
+                )
+            )
+
+    @ExceptionHandler(ChatAudioUploadBusyException::class)
+    fun handleChatAudioUploadBusy(
+        ex: ChatAudioUploadBusyException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.CHAT_AUDIO_UPLOAD_BUSY.name,
+                    error = "Service Unavailable",
+                    message = "Chat audio upload capacity is temporarily exhausted. Please retry later."
                 )
             )
 

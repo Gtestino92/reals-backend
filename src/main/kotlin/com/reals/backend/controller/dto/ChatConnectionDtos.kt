@@ -29,12 +29,14 @@ data class ChatResponse(
     val readOnlyUntil: OffsetDateTime?,
     val lastMessageAt: OffsetDateTime?,
     val lastMessageSenderId: UUID?,
-    val inactivityExpiresAt: OffsetDateTime?
+    val inactivityExpiresAt: OffsetDateTime?,
+    val audioPolicy: ChatAudioPolicyResponse? = null
 ) {
     companion object {
         fun from(
             c: Chat,
-            inactivityExpiresAt: OffsetDateTime? = null
+            inactivityExpiresAt: OffsetDateTime? = null,
+            audioPolicy: ChatAudioPolicyResponse? = null
         ) = ChatResponse(
             id = c.id,
             matchId = c.matchId,
@@ -51,8 +53,30 @@ data class ChatResponse(
             readOnlyUntil = c.readOnlyUntil,
             lastMessageAt = c.lastMessageAt,
             lastMessageSenderId = c.lastMessageSenderId,
-            inactivityExpiresAt = inactivityExpiresAt
+            inactivityExpiresAt = inactivityExpiresAt,
+            audioPolicy = audioPolicy
         )
+    }
+}
+
+data class ChatAudioPolicyResponse(
+    val enabled: Boolean,
+    val unavailableReason: com.reals.backend.service.ChatAudioUnavailableReason?,
+    val enabledAt: OffsetDateTime?,
+    val maxDurationMillis: Long,
+    val maxFileSizeBytes: Long,
+    val remainingMessages: Int?
+) {
+    companion object {
+        fun from(policy: com.reals.backend.service.ChatAudioPolicy) =
+            ChatAudioPolicyResponse(
+                enabled = policy.enabled,
+                unavailableReason = policy.unavailableReason,
+                enabledAt = policy.enabledAt,
+                maxDurationMillis = policy.maxDurationMillis,
+                maxFileSizeBytes = policy.maxFileSizeBytes,
+                remainingMessages = policy.remainingMessages
+            )
     }
 }
 
@@ -90,7 +114,8 @@ data class FirstChatResponse(
     val partner: PartnerSummaryResponse,
     val myDecision: ChatParticipantDecisionStatus,
     val partnerDecision: ChatParticipantDecisionStatus,
-    val guidance: FirstChatGuidanceResponse?
+    val guidance: FirstChatGuidanceResponse?,
+    val audioPolicy: ChatAudioPolicyResponse? = null
 ) {
     companion object {
         fun from(
@@ -99,7 +124,8 @@ data class FirstChatResponse(
             myDecision: ChatParticipantDecisionStatus,
             partnerDecision: ChatParticipantDecisionStatus,
             inactivityExpiresAt: OffsetDateTime?,
-            guidance: FirstChatGuidanceResponse? = null
+            guidance: FirstChatGuidanceResponse? = null,
+            audioPolicy: ChatAudioPolicyResponse? = null
         ) = FirstChatResponse(
             id = chat.id,
             matchId = chat.matchId,
@@ -120,7 +146,8 @@ data class FirstChatResponse(
             partner = PartnerSummaryResponse.from(partner),
             myDecision = myDecision,
             partnerDecision = partnerDecision,
-            guidance = guidance
+            guidance = guidance,
+            audioPolicy = audioPolicy
         )
     }
 }
@@ -194,19 +221,46 @@ data class ChatMessageResponse(
     val id: UUID,
     val chatSessionId: UUID,
     val senderId: UUID,
-    val content: String,
+    val clientMessageId: UUID?,
+    val messageType: ChatMessageType,
+    val content: String?,
+    val audio: ChatMessageAudioResponse?,
     val sentAt: OffsetDateTime
 ) {
     companion object {
-        fun from(m: ChatMessage) = ChatMessageResponse(
+        fun from(
+            m: ChatMessage,
+            audioUrlResolver: (ChatMessage) -> String = {
+                error("Audio URL resolver is required for audio messages")
+            }
+        ) = ChatMessageResponse(
             id = m.id,
             chatSessionId = m.chatSessionId,
             senderId = m.senderId,
+            clientMessageId = m.clientMessageId,
+            messageType = m.messageType,
             content = m.content,
+            audio = if (m.messageType == ChatMessageType.AUDIO) {
+                ChatMessageAudioResponse(
+                    url = audioUrlResolver(m),
+                    durationMillis = requireNotNull(m.audioDurationMillis),
+                    contentType = requireNotNull(m.audioContentType),
+                    sizeBytes = requireNotNull(m.audioSizeBytes)
+                )
+            } else {
+                null
+            },
             sentAt = m.sentAt
         )
     }
 }
+
+data class ChatMessageAudioResponse(
+    val url: String,
+    val durationMillis: Long,
+    val contentType: String,
+    val sizeBytes: Long
+)
 
 data class ChatMessagesResponse(
     val messages: List<ChatMessageResponse>,
@@ -217,9 +271,12 @@ data class ChatMessagesResponse(
         fun from(
             messages: List<ChatMessage>,
             hasMore: Boolean = false,
-            serverTime: OffsetDateTime = OffsetDateTime.now()
+            serverTime: OffsetDateTime = OffsetDateTime.now(),
+            audioUrlResolver: (ChatMessage) -> String = {
+                error("Audio URL resolver is required for audio messages")
+            }
         ) = ChatMessagesResponse(
-            messages = messages.map { ChatMessageResponse.from(it) },
+            messages = messages.map { ChatMessageResponse.from(it, audioUrlResolver) },
             hasMore = hasMore,
             serverTime = serverTime
         )
@@ -365,10 +422,14 @@ data class SecondChatAttendanceResponse(
     val canClaimPartnerInactivity: Boolean,
     val mustRespondToPartner: Boolean,
     val lastMessageAt: OffsetDateTime?,
-    val lastMessageSenderId: UUID?
+    val lastMessageSenderId: UUID?,
+    val audioPolicy: ChatAudioPolicyResponse? = null
 ) {
     companion object {
-        fun from(view: com.reals.backend.service.SecondChatLifecycleService.SecondChatAttendanceView) =
+        fun from(
+            view: com.reals.backend.service.SecondChatLifecycleService.SecondChatAttendanceView,
+            audioPolicy: ChatAudioPolicyResponse? = null
+        ) =
             SecondChatAttendanceResponse(
                 connectionId = view.connectionId,
                 chatId = view.chatId,
@@ -399,7 +460,8 @@ data class SecondChatAttendanceResponse(
                 canClaimPartnerInactivity = view.conversation.canClaimPartnerInactivity,
                 mustRespondToPartner = view.conversation.mustRespondToPartner,
                 lastMessageAt = view.conversation.lastMessageAt,
-                lastMessageSenderId = view.conversation.lastMessageSenderId
+                lastMessageSenderId = view.conversation.lastMessageSenderId,
+                audioPolicy = audioPolicy
             )
     }
 }

@@ -145,6 +145,17 @@ matchmaking:
     maximum-similarity-scale-multiplier: 3.0
 
 chat:
+  audio:
+    enabled: false
+    max-duration-millis: ${CHAT_AUDIO_MAX_DURATION_MILLIS:60000}
+    max-file-size-bytes: ${CHAT_AUDIO_MAX_FILE_SIZE_BYTES:2097152}
+    allowed-content-types:
+      - audio/mp4
+    upload:
+      max-concurrent: ${CHAT_AUDIO_UPLOAD_MAX_CONCURRENT:2}
+      permit-wait-duration: ${CHAT_AUDIO_UPLOAD_PERMIT_WAIT_DURATION:PT0S}
+      retry-after-seconds: ${CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS:1}
+
   # Maximum duration for the anonymous first chat between matched users
   first-chat:
     duration-minutes: 15
@@ -161,6 +172,9 @@ chat:
       required-characters: 10
       max-questions: 3
       catalog: classpath:first-chat-guided-questions.es.json
+    audio:
+      max-per-user: 1
+      required-answered-guidance-questions: 2
 
   # Maximum duration for the visual phase
   visual-phase:
@@ -177,6 +191,8 @@ chat:
       minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
       request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
       requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    audio:
+      enabled-after-conversation-minutes: ${chat.second-chat.mutual-completion.minimum-conversation-minutes}
     inactivity:
       claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
       automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}

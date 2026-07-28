@@ -8,6 +8,7 @@ import com.reals.backend.controller.dto.SafetyReportDismissRequest
 import com.reals.backend.controller.dto.SafetyReportPenaltyRequest
 import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.service.S3StorageService
 import com.reals.backend.service.reports.SafetyReportService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -24,7 +25,8 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/admin/safety-reports")
 class AdminSafetyReportController(
-    private val safetyReportService: SafetyReportService
+    private val safetyReportService: SafetyReportService,
+    private val storageService: S3StorageService
 ) {
 
     @GetMapping("/pending")
@@ -66,7 +68,7 @@ class AdminSafetyReportController(
         )
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(SafetyReportAdminDetail.from(safetyReportService.getReportDetail(report.id)))
+            .body(safetyReportAdminDetail(safetyReportService.getReportDetail(report.id)))
     }
 
     @GetMapping("/{reportId}")
@@ -74,7 +76,7 @@ class AdminSafetyReportController(
         @PathVariable reportId: UUID
     ): ResponseEntity<SafetyReportAdminDetail> =
         ResponseEntity.ok(
-            SafetyReportAdminDetail.from(
+            safetyReportAdminDetail(
                 safetyReportService.getReportDetail(reportId)
             )
         )
@@ -138,4 +140,11 @@ class AdminSafetyReportController(
                 )
             )
         )
+
+    private fun safetyReportAdminDetail(
+        detail: com.reals.backend.service.reports.SafetyReportDetail
+    ): SafetyReportAdminDetail =
+        SafetyReportAdminDetail.from(detail) { message ->
+            storageService.getReadUrl(requireNotNull(message.audioObjectKey))
+        }
 }

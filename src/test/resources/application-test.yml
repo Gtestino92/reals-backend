@@ -88,6 +88,8 @@ matchmaking:
   first-chat-expiration-cooldown-days: 7
 
 chat:
+  audio:
+    enabled: true
   first-chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
@@ -97,6 +99,8 @@ chat:
       required-characters: 40
       max-questions: 3
       catalog: classpath:first-chat-guided-questions.es.json
+    audio:
+      required-answered-guidance-questions: 1
   visual-phase:
     duration-minutes: 1440
   second-chat:
