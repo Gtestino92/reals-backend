@@ -712,6 +712,62 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/chats/{chatId}/audio-messages:
+    post:
+      tags: [Chats]
+      summary: Send chat audio message
+      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted durationMillis is rounded up from the MP4 timescale rational value.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, clientMessageId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: MPEG-4/M4A audio-only AAC file with media payload, max 2 MiB and max 60 seconds.
+                clientMessageId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Existing message returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '201':
+          description: Created audio message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatAvailabilityConflict'
+        '502':
+          description: Audio object upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Audio upload pipeline is busy
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/chats/{chatId}/guidance/next-request:
     post:
       tags: [Chats]
@@ -2544,6 +2600,10 @@ components:
         readOnlyUntil: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
         lastMessageSenderId: { type: string, format: uuid, nullable: true }
+        audioPolicy:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+          nullable: true
         inactivityExpiresAt:
           type: string
           format: date-time
@@ -2563,6 +2623,26 @@ components:
                 - $ref: '#/components/schemas/FirstChatGuidanceResponse'
               nullable: true
               description: Nullable for legacy first-chat rows created before guidance existed. New first chats initialize guidance.
+            audioPolicy:
+              allOf:
+                - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+              nullable: true
+    ChatAudioPolicyResponse:
+      type: object
+      required: [enabled, maxDurationMillis, maxFileSizeBytes]
+      properties:
+        enabled: { type: boolean }
+        unavailableReason:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioUnavailableReason'
+          nullable: true
+        enabledAt: { type: string, format: date-time, nullable: true }
+        maxDurationMillis: { type: integer, format: int64, example: 60000 }
+        maxFileSizeBytes: { type: integer, format: int64, example: 2097152 }
+        remainingMessages:
+          type: integer
+          nullable: true
+          description: First-chat remaining per-user audio messages; null means unlimited second-chat audio.
     FirstChatGuidanceQuestionResponse:
       type: object
       required: [id, text]
@@ -2613,13 +2693,29 @@ components:
           description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
     ChatMessageResponse:
       type: object
-      required: [id, chatSessionId, senderId, content, sentAt]
+      required: [id, chatSessionId, senderId, messageType, sentAt]
       properties:
         id: { type: string, format: uuid }
         chatSessionId: { type: string, format: uuid }
         senderId: { type: string, format: uuid }
-        content: { type: string }
+        clientMessageId: { type: string, format: uuid, nullable: true }
+        messageType: { $ref: '#/components/schemas/ChatMessageType' }
+        content: { type: string, nullable: true }
+        audio:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageAudioResponse'
+          nullable: true
         sentAt: { type: string, format: date-time }
+    ChatMessageAudioResponse:
+      type: object
+      required: [url, durationMillis, contentType, sizeBytes]
+      properties:
+        url:
+          type: string
+          description: Fresh backend-generated read URL. Storage bucket and object key are never exposed.
+        durationMillis: { type: integer, format: int64, maximum: 60000 }
+        contentType: { type: string, example: audio/mp4 }
+        sizeBytes: { type: integer, format: int64, maximum: 2097152 }
     ChatMessagesResponse:
       type: object
       required: [messages, hasMore, serverTime]
@@ -2802,12 +2898,17 @@ components:
         status: { $ref: '#/components/schemas/UserStatus' }
     AdminChatMessageResponse:
       type: object
-      required: [id, chatSessionId, senderId, content, sentAt]
+      required: [id, chatSessionId, senderId, messageType, sentAt]
       properties:
         id: { type: string, format: uuid }
         chatSessionId: { type: string, format: uuid }
         senderId: { type: string, format: uuid }
-        content: { type: string }
+        messageType: { $ref: '#/components/schemas/ChatMessageType' }
+        content: { type: string, nullable: true }
+        audio:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageAudioResponse'
+          nullable: true
         sentAt: { type: string, format: date-time }
     AdminPenaltyResponse:
       type: object
@@ -2930,6 +3031,10 @@ components:
         mustRespondToPartner: { type: boolean }
         lastMessageAt: { type: string, format: date-time, nullable: true }
         lastMessageSenderId: { type: string, format: uuid, nullable: true }
+        audioPolicy:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+          nullable: true
     AddProposalRequest:
       type: object
       required: [expectedRoundNumber, proposedDateTimes]
@@ -3054,6 +3159,12 @@ components:
     ChatType:
       type: string
       enum: [FIRST_CHAT, SECOND_CHAT]
+    ChatMessageType:
+      type: string
+      enum: [TEXT, AUDIO]
+    ChatAudioUnavailableReason:
+      type: string
+      enum: [FEATURE_DISABLED, CHAT_NOT_WRITABLE, GUIDANCE_NOT_AVAILABLE, GUIDANCE_REQUIRED, LIMIT_REACHED, WAITING_FOR_BOTH, WAITING_DELAY]
     ChatStatus:
       type: string
       enum: [AVAILABLE, ACTIVE, CANCELLED, EXPIRED, ABANDONED, CLOSED, FINISHED]

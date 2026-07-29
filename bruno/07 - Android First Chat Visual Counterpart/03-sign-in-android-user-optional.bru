@@ -32,6 +32,6 @@ script:post-response {
     throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
   }
   
-  bru.setEnvVar("firebase_id_token", body.idToken);
-  bru.setEnvVar("firebase_uid", body.localId);
+  bru.setVar("firebase_id_token", body.idToken);
+  bru.setVar("firebase_uid", body.localId);
 }

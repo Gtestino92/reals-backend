@@ -106,12 +106,16 @@ matchmaking:
     maximum-similarity-scale-multiplier: ${MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER:3.0}
 
 chat:
+  audio:
+    enabled: ${CHAT_AUDIO_ENABLED:false}
   first-chat:
     duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
     min-messages-per-user: 0
     guidance:
       required-characters: 30
+    audio:
+      required-answered-guidance-questions: 2
   visual-phase:
     duration-minutes: 1440
   second-chat:
@@ -124,6 +128,8 @@ chat:
       minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
       request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
       requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    audio:
+      enabled-after-conversation-minutes: ${chat.second-chat.mutual-completion.minimum-conversation-minutes}
     inactivity:
       claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
       automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}

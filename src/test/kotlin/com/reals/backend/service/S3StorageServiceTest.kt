@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.config.s3.S3CompatibleStorageConfig
 import com.reals.backend.config.s3.S3ReadUrlMode
 import com.reals.backend.config.s3.S3StorageProperties
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -75,6 +76,59 @@ class S3StorageServiceTest {
             assertTrue(url.contains("X-Amz-Signature="))
         } finally {
             presigner.close()
+        }
+    }
+
+    @Test
+    fun `presigned audio read url uses persisted bucket`() {
+        val properties = storageProperties(
+            endpoint = "http://minio:9000",
+            presignedUrlEndpoint = "http://localhost:9000",
+            readUrlMode = S3ReadUrlMode.PRESIGNED
+        )
+        val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
+
+        try {
+            val service = S3StorageService(
+                s3Client = Mockito.mock(S3Client::class.java),
+                s3Presigner = presigner,
+                properties = properties
+            )
+
+            val url = service.getReadUrl(
+                bucket = "archived-chat-media",
+                key = "chats/chat-id/messages/message-id.m4a"
+            )
+
+            assertTrue(url.startsWith("http://localhost:9000/archived-chat-media/"))
+            assertTrue(url.contains("chats/chat-id/messages/message-id.m4a"))
+        } finally {
+            presigner.close()
+        }
+    }
+
+    @Test
+    fun `chat audio upload storage failures use audio-specific exception`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+        Mockito.doThrow(RuntimeException("storage down"))
+            .`when`(s3Client)
+            .putObject(
+                any(PutObjectRequest::class.java),
+                any(RequestBody::class.java)
+            )
+
+        assertThrows<ChatAudioStorageException> {
+            service.uploadChatAudio(
+                chatId = UUID.fromString("00000000-0000-0000-0000-000000000011"),
+                messageId = UUID.fromString("00000000-0000-0000-0000-000000000012"),
+                contentType = "audio/mp4",
+                bytes = byteArrayOf(1, 2, 3)
+            )
         }
     }
 

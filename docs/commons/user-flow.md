@@ -200,6 +200,8 @@ rejects first-chat mutations with `CHAT_EXPIRED` after the absolute deadline or
 
 Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
 
+Audio messages use the same polling stream. First-chat audio unlocks from shared guidance progress, not per-user counters: `answeredGuidanceQuestions = max(currentQuestionOrdinal - 1, 0)`. Local and test unlock when question 2 becomes active (`requiredAnsweredGuidanceQuestions = 1`); dev/prod unlock when question 3 becomes active (`requiredAnsweredGuidanceQuestions = 2`). With the current three-question flow, dev/prod unlock after both users answered the penultimate question. Legacy first chats without guidance keep audio unavailable. Each participant may create one first-chat audio message, and idempotent replay of the already-created message does not consume another slot.
+
 ## 4. Chat Decision
 
 Each user can approve continuation, request mutual cancellation or cancel explicitly.
@@ -344,6 +346,14 @@ preserve the original `joinedAt` and classification. When both participants
 have joined, `conversationStartedAt` is set once to the later joined time.
 `timeoutAt` remains `confirmedDateTime + chat.second-chat.duration-minutes`
 (currently 120 minutes).
+
+Second-chat audio remains unavailable until both participants have joined and
+`conversationStartedAt` exists. The unlock instant is
+`conversationStartedAt + chat.second-chat.mutual-completion.minimum-conversation-minutes`.
+Boundary semantics are exact: `now < audioEnabledAt` is unavailable with
+`WAITING_DELAY`; `now >= audioEnabledAt` is available, subject to the global
+feature flag, file validation, rate limits and normal writable lifecycle. Once
+unlocked, second-chat audio messages are unlimited in quantity.
 
 After `confirmedDateTime + 10 minutes` and before `confirmedDateTime + 20
 minutes`, a joined participant may create one pending partner no-show claim per

@@ -10,6 +10,7 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
@@ -58,6 +59,8 @@ class ChatService(
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
     private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
+    private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val mediaCleanupTaskService: MediaCleanupTaskService,
     private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
@@ -85,6 +88,15 @@ class ChatService(
             val code: DomainErrorCode,
             val message: String
         ) : SendMessageResult
+    }
+
+    sealed interface SendAudioMessageResult {
+        data class Created(val message: ChatMessage) : SendAudioMessageResult
+        data class Replayed(val message: ChatMessage) : SendAudioMessageResult
+        data class RejectedAfterResolution(
+            val code: DomainErrorCode,
+            val message: String
+        ) : SendAudioMessageResult
     }
 
     private companion object {
@@ -234,6 +246,7 @@ class ChatService(
                 ChatMessage(
                     chatSessionId = chat.id,
                     senderId = senderId,
+                    messageType = ChatMessageType.TEXT,
                     content = normalizedContent,
                     sentAt = now
                 )
@@ -246,6 +259,140 @@ class ChatService(
         chatRepository.save(chat)
 
         return SendMessageResult.Sent(message)
+    }
+
+    fun findAudioMessageReplayOrThrowOnConflict(
+        chatId: UUID,
+        senderId: UUID,
+        clientMessageId: UUID,
+        audioSha256: String
+    ): ChatMessage? {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, senderId)
+        val existing =
+            chatMessageRepository.findByChatSessionIdAndSenderIdAndClientMessageId(
+                chatSessionId = chatId,
+                senderId = senderId,
+                clientMessageId = clientMessageId
+            ) ?: return null
+
+        if (existing.audioSha256 != audioSha256) {
+            throw DomainConflictException(
+                code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
+                message = "Client message id was already used with different audio content"
+            )
+        }
+
+        return existing
+    }
+
+    fun preflightNewAudioMessage(
+        chatId: UUID,
+        senderId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ) {
+        val chat = findByIdOrThrow(chatId)
+        validateChatParticipant(chat, senderId)
+        requireChatPairNotBlocked(chat)
+        validateActiveChatWindowSideEffectFree(chat, now)
+        requireSecondChatJoinedForMessage(chat, senderId)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            requireNoPendingMutualCancellation(chat.id)
+        }
+        chatAudioPolicyService.requireAudioEnabled(
+            chat = chat,
+            userId = senderId,
+            now = now
+        )
+    }
+
+    fun sendAudioMessageWithResult(
+        chatId: UUID,
+        senderId: UUID,
+        clientMessageId: UUID,
+        audioContentType: String,
+        audioSizeBytes: Long,
+        audioDurationMillis: Long,
+        audioSha256: String,
+        audioBucket: String,
+        audioObjectKey: String,
+        cleanupTaskId: UUID,
+        messageId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SendAudioMessageResult {
+        val chat = findByIdForUpdateOrThrow(chatId)
+        validateChatParticipant(chat, senderId)
+
+        chatMessageRepository.findByChatSessionIdAndSenderIdAndClientMessageId(
+            chatSessionId = chatId,
+            senderId = senderId,
+            clientMessageId = clientMessageId
+        )?.let { existing ->
+            if (existing.audioSha256 != audioSha256) {
+                throw DomainConflictException(
+                    code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
+                    message = "Client message id was already used with different audio content"
+                )
+            }
+            return SendAudioMessageResult.Replayed(existing)
+        }
+
+        requireChatPairNotBlocked(chat)
+        validateActiveChatWindow(chat)
+        requireSecondChatJoinedForMessage(chat, senderId)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            requireNoPendingMutualCancellation(chat.id)
+        }
+
+        when (
+            val lifecycleResult =
+                secondChatConversationLifecycleService.beforeSecondChatMessage(
+                    chat = chat,
+                    senderId = senderId,
+                    now = now
+                )
+        ) {
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.Continue -> Unit
+            is SecondChatConversationLifecycleService.SecondChatMessageResult.RejectedAfterResolution ->
+                return SendAudioMessageResult.RejectedAfterResolution(
+                    code = lifecycleResult.code,
+                    message = lifecycleResult.message
+                )
+        }
+
+        chatAudioPolicyService.requireAudioEnabled(
+            chat = chat,
+            userId = senderId,
+            now = now
+        )
+
+        val message =
+            chatMessageRepository.saveAndFlush(
+                ChatMessage(
+                    id = messageId,
+                    chatSessionId = chat.id,
+                    senderId = senderId,
+                    messageType = ChatMessageType.AUDIO,
+                    clientMessageId = clientMessageId,
+                    content = null,
+                    audioBucket = audioBucket,
+                    audioObjectKey = audioObjectKey,
+                    audioContentType = audioContentType,
+                    audioSizeBytes = audioSizeBytes,
+                    audioDurationMillis = audioDurationMillis,
+                    audioSha256 = audioSha256,
+                    sentAt = now
+                )
+            )
+
+        chat.lastMessageAt = maxOf(chat.lastMessageAt ?: message.sentAt, message.sentAt)
+        if (chat.chatType == ChatType.SECOND_CHAT) {
+            chat.lastMessageSenderId = senderId
+        }
+        chatRepository.save(chat)
+        mediaCleanupTaskService.deleteTaskInCurrentTransaction(cleanupTaskId)
+
+        return SendAudioMessageResult.Created(message)
     }
 
     fun recordChatDecision(
@@ -1099,6 +1246,34 @@ class ChatService(
                 finalStatus = ChatStatus.ABANDONED,
                 endedReason = ChatEndReason.INACTIVITY_TIMEOUT
             )
+            throw chatAbandoned()
+        }
+    }
+
+    private fun validateActiveChatWindowSideEffectFree(
+        chat: Chat,
+        now: OffsetDateTime
+    ) {
+        if (chat.status == ChatStatus.ABANDONED) {
+            throw chatAbandoned()
+        }
+
+        if (chat.status == ChatStatus.EXPIRED) {
+            throw chatExpired()
+        }
+
+        if (chat.status != ChatStatus.ACTIVE) {
+            throw chatNotAvailable()
+        }
+
+        if (!now.isBefore(chat.timeoutAt)) {
+            throw chatExpired()
+        }
+
+        if (
+            chat.chatType == ChatType.FIRST_CHAT &&
+            inactivityExpiresAt(chat)?.isAfter(now) == false
+        ) {
             throw chatAbandoned()
         }
     }

@@ -98,6 +98,12 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly photo upload/replacement pipelines. Defaults to `2`. |
 | `PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an upload waits for a photo pipeline permit. Defaults to `PT0S` for immediate 503. |
 | `PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `PROFILE_PHOTO_UPLOAD_BUSY`. Defaults to `1`. |
+| `CHAT_AUDIO_ENABLED` | no | Enables creation of chat audio messages in dev/prod. Defaults to `false` in shared dev/prod; local and test profiles enable audio through profile config. Disabling this does not hide existing audio rows. |
+| `CHAT_AUDIO_MAX_DURATION_MILLIS` | no | Product maximum audio duration if externalized in a deployment. Current committed default is `60000`; equality is accepted. |
+| `CHAT_AUDIO_MAX_FILE_SIZE_BYTES` | no | Product maximum audio file size if externalized in a deployment. Current committed default is `2097152` bytes. The global multipart limit remains larger for profile photos; audio enforces this inside the audio pipeline. |
+| `CHAT_AUDIO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly audio upload pipelines. Defaults to `2`. |
+| `CHAT_AUDIO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an audio upload waits for a pipeline permit. Defaults to `PT0S` for immediate 503. |
+| `CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `CHAT_AUDIO_UPLOAD_BUSY`. Defaults to `1`. |
 | `PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE` | no | Servlet multipart parser file-size limit for profile-photo uploads. Defaults to `5MB`; keep aligned with the 5 MiB product limit. |
 | `PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE` | no | Servlet multipart parser request-size limit. Defaults to `6MB` to leave room for multipart headers and the `position` field. |
 | `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` in `prod` to enable one Sightengine multipart request per upload/replacement. |

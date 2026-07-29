@@ -4,16 +4,23 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.service.ChatExitService
+import com.reals.backend.service.ChatAudioPolicyService
+import com.reals.backend.service.ChatAudioSendResult
+import com.reals.backend.service.ChatAudioService
+import com.reals.backend.service.ChatAudioUploadGuard
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.S3StorageService
 import com.reals.backend.service.exception.DomainConflictException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 import java.util.*
 
 @RestController
@@ -21,6 +28,10 @@ import java.util.*
 @Validated
 class ChatController(
     private val chatService: ChatService,
+    private val chatAudioService: ChatAudioService,
+    private val chatAudioUploadGuard: ChatAudioUploadGuard,
+    private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val storageService: S3StorageService,
     private val chatExitService: ChatExitService,
     private val legalComplianceService: LegalComplianceService
 ) {
@@ -39,7 +50,10 @@ class ChatController(
         return ResponseEntity.ok(
             ChatResponse.from(
                 c = chat,
-                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat),
+                audioPolicy = ChatAudioPolicyResponse.from(
+                    chatAudioPolicyService.policyFor(chat = chat, userId = userId)
+                )
             )
         )
     }
@@ -61,10 +75,42 @@ class ChatController(
             )
         ) {
             is ChatService.SendMessageResult.Sent ->
-                ResponseEntity.ok(ChatMessageResponse.from(result.message))
+                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
 
             is ChatService.SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @PostMapping(
+        "/{chatId}/audio-messages",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
+    )
+    fun sendAudioMessage(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID,
+        @RequestPart("file") file: MultipartFile,
+        @RequestPart("clientMessageId") clientMessageId: String
+    ): ResponseEntity<ChatMessageResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val parsedClientMessageId = UUID.fromString(clientMessageId)
+        val result = chatAudioUploadGuard.withPermit {
+            chatAudioService.sendAudioMessage(
+                chatId = chatId,
+                senderId = userId,
+                clientMessageId = parsedClientMessageId,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() }
+            )
+        }
+
+        return when (result) {
+            is ChatAudioSendResult.Created ->
+                ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ChatMessageResponse.from(result.message, ::audioReadUrl))
+            is ChatAudioSendResult.Replayed ->
+                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
         }
     }
 
@@ -109,7 +155,8 @@ class ChatController(
             return ResponseEntity.ok<Any>(
                 ChatMessagesResponse.from(
                     messages = page.messages,
-                    hasMore = page.hasMore
+                    hasMore = page.hasMore,
+                    audioUrlResolver = ::audioReadUrl
                 )
             )
         }
@@ -121,7 +168,7 @@ class ChatController(
         )
 
         return ResponseEntity.ok<Any>(
-            messages.map { ChatMessageResponse.from(it) }
+            messages.map { ChatMessageResponse.from(it, ::audioReadUrl) }
         )
     }
 
@@ -249,6 +296,12 @@ class ChatController(
         ChatExitOutcomeResponse.from(
             o = outcome,
             inactivityExpiresAt = chatService.inactivityExpiresAt(outcome.chat)
+        )
+
+    private fun audioReadUrl(message: com.reals.backend.domain.ChatMessage): String =
+        storageService.getReadUrl(
+            bucket = requireNotNull(message.audioBucket),
+            key = requireNotNull(message.audioObjectKey)
         )
 
 }
