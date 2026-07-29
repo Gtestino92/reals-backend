@@ -61,12 +61,28 @@ MVP APK distribution:
 These checks require real deployment secrets and real Firebase tokens, so they
 remain operational validation unless explicitly executed in that environment.
 
+## Firebase Auth Revocation Cache
+
+Firebase Authentication still runs on every protected request. The backend
+validates the ID token locally on every request, including signature,
+expiration, issuer and standard Firebase Admin token validity. Successful
+revocation/disabled-user checks are cached briefly by a SHA-256 hash of the
+exact bearer token, not the raw token.
+
+`security.firebase-auth.revocation-cache-ttl` defaults to `PT60S`. An external
+Firebase token revocation or disabled-user change can therefore take up to that
+TTL to affect a token that was successfully checked recently. Failed,
+malformed, expired, revoked or disabled-token results are not cached. Local
+deleted-account enforcement remains immediate because the backend resolves the
+local Reals user and checks `UserStatus.DELETED` on every request.
+
 ## Firebase App Check Boundary
 
 Firebase App Check is an application-attestation boundary for Android-facing
 API traffic. It is separate from Firebase Authentication: App Check identifies
 an accepted Firebase App ID, while Firebase Auth still identifies the user and
-still performs ID-token verification with revocation checks.
+still performs ID-token verification; successful revocation checks are cached
+briefly as described above.
 
 Android sends App Check through exactly one header:
 
