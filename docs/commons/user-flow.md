@@ -169,10 +169,15 @@ persisted visual-review record. These fields are `null` for pending actions that
 are not `VISUAL_REVIEW`.
 
 `GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`,
-`myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt` and nullable
+`myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt`, `serverTime`
+and nullable
 `guidance` metadata. New first chats initialize guidance; legacy chats may have
 `guidance = null`. The decision fields are API-facing statuses from the current
 user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+Clients may use `serverTime` as an advisory backend clock snapshot for first-chat
+countdown and suggestion UX. The backend remains authoritative for all mutations
+and expiration decisions, and this field does not make the backend responsible
+for suggestion visibility or local dismissal.
 
 First-chat guidance is an MVP conversation prompt mechanic owned by the backend.
 The Spanish question catalog is a static resource, and each first chat derives a

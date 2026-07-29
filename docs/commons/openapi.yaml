@@ -2613,11 +2613,15 @@ components:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
         - type: object
-          required: [partner, myDecision, partnerDecision]
+          required: [partner, myDecision, partnerDecision, serverTime]
           properties:
             partner: { $ref: '#/components/schemas/PartnerSummaryResponse' }
             myDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
             partnerDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
+            serverTime:
+              type: string
+              format: date-time
+              description: Backend timestamp captured while building this first-chat response.
             guidance:
               allOf:
                 - $ref: '#/components/schemas/FirstChatGuidanceResponse'
