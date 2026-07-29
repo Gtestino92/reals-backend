@@ -955,13 +955,13 @@ Core product metrics:
 
 Risk:
 - Auth verification and local user lookup happen on many API requests, especially with polling.
-- The current `FirebaseTokenFilter` uses `verifyIdToken(token, true)`, so revocation checking occurs on protected requests and may add Firebase/network verification cost.
+- `FirebaseTokenFilter` validates Firebase ID tokens on every protected request and caches only successful revocation/disabled-user checks for `security.firebase-auth.revocation-cache-ttl` (`PT60S` by default). External Firebase revocation can therefore be detected up to one TTL later for a recently checked token, while local deleted-account enforcement remains immediate.
 - Firebase App Check adds one JWT verification step before Firebase Authentication when enabled. JWKS keys are library-cached and rotated through Firebase JWKS, but first use or key refresh can still depend on Firebase JWKS availability.
 
 Before scale:
 - Measure auth-filter latency and the cost of revocation verification under expected request volume.
 - Measure App Check verification latency and unavailable rates after `MONITOR` rollout.
-- Do not remove revocation checking casually: deletion/session invalidation relies on rejected revoked tokens.
+- Do not remove revocation checking casually: deletion/session invalidation relies on rejected revoked tokens after the configured cache window.
 - Monitor 401/403 rates by reason.
 - Monitor App Check `missing`, `invalid` and `unavailable` outcomes before enforcing.
 - Avoid Android refresh loops.

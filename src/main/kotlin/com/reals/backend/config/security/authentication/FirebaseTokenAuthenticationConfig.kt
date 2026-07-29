@@ -1,0 +1,8 @@
+package com.reals.backend.config.security.authentication
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.context.annotation.Configuration
+
+@Configuration
+@EnableConfigurationProperties(FirebaseTokenAuthenticationProperties::class)
+class FirebaseTokenAuthenticationConfig

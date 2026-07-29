@@ -6,6 +6,7 @@ import com.reals.backend.config.security.appcheck.FirebaseAppCheckMode
 import com.reals.backend.config.security.appcheck.FirebaseAppCheckProperties
 import com.reals.backend.config.security.appcheck.FirebaseAppCheckVerificationResult
 import com.reals.backend.config.security.appcheck.FirebaseAppCheckVerifier
+import com.reals.backend.config.security.authentication.FirebaseTokenAuthenticationVerifier
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
 import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
@@ -80,9 +81,18 @@ class FirebaseAppCheckFilterOrderTest {
         @Bean
         fun firebaseTokenFilter(
             environmentExposurePolicy: EnvironmentExposurePolicy,
-            userService: UserService
+            userService: UserService,
+            firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier
         ): FirebaseTokenFilter =
-            FirebaseTokenFilter(environmentExposurePolicy, userService)
+            FirebaseTokenFilter(
+                environmentExposurePolicy,
+                userService,
+                firebaseTokenAuthenticationVerifier
+            )
+
+        @Bean
+        fun firebaseTokenAuthenticationVerifier(): FirebaseTokenAuthenticationVerifier =
+            mock(FirebaseTokenAuthenticationVerifier::class.java)
 
         @Bean
         fun firebaseAppCheckFilter(): FirebaseAppCheckFilter =

@@ -1,7 +1,6 @@
 package com.reals.backend.config.security.authentication
 
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
@@ -26,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 class FirebaseTokenFilter(
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val userService: UserService,
+    private val firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier,
     @param:Value("\${backoffice.admin-emails:}")
     private val adminEmailsProperty: String = ""
 ) : OncePerRequestFilter() {
@@ -84,8 +84,7 @@ class FirebaseTokenFilter(
         }
 
         try {
-            val decoded = FirebaseAuth.getInstance()
-                .verifyIdToken(token, true)
+            val decoded = firebaseTokenAuthenticationVerifier.verify(token)
 
             val user = userService.findByFirebaseUid(decoded.uid)
 

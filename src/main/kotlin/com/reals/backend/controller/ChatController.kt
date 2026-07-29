@@ -65,8 +65,6 @@ class ChatController(
         @Valid
         @RequestBody request: SendMessageRequest
     ): ResponseEntity<ChatMessageResponse> {
-        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
-
         return when (
             val result = chatService.sendMessageWithResult(
                 chatId = chatId,
@@ -92,8 +90,6 @@ class ChatController(
         @RequestPart("file") file: MultipartFile,
         @RequestPart("clientMessageId") clientMessageId: String
     ): ResponseEntity<ChatMessageResponse> {
-        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
-
         val parsedClientMessageId = UUID.fromString(clientMessageId)
         val result = chatAudioUploadGuard.withPermit {
             chatAudioService.sendAudioMessage(

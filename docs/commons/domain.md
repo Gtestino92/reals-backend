@@ -160,18 +160,19 @@ Audit events with `LEGAL_DOCUMENT_ACTION_RECORDED` are secondary operational
 evidence for newly-created rows only. They use `USER` aggregate and factual
 metadata: document type, document version, document content SHA-256 and action.
 
-Current legal status is authoritative for protected participation/content
-writes. `LegalComplianceService` delegates to `LegalDocumentService.getStatus`
-on each guarded operation; it does not cache state or duplicate status
-calculation. Empty configured catalogs are naturally satisfied. Historical
-actions remain persisted but do not satisfy a newer configured version.
+Current legal status is authoritative for selected protected
+participation/progression writes. `LegalComplianceService` delegates to
+`LegalDocumentService.getStatus` on each guarded operation; it does not cache
+state or duplicate status calculation. Empty configured catalogs are naturally
+satisfied. Historical actions remain persisted but do not satisfy a newer
+configured version.
 
 Unsatisfied protected participation/content writes fail with
 `409 LEGAL_ACTION_REQUIRED`. The detailed status contract remains
 `GET /api/me/legal-status`; generic conflict responses do not enumerate missing
-documents. Reads, account deletion/reactivation, legal action recording, chat
-exit/cancellation/safety operations and safety/reporting flows remain outside
-the legal gate.
+documents. Reads, individual text/audio chat message sends, account
+deletion/reactivation, legal action recording, chat exit/cancellation/safety
+operations and safety/reporting flows remain outside the legal gate.
 
 The legal model does not add legal fields to `User`, does not add a user status,
 and does not treat every action as legal consent.

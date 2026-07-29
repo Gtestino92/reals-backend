@@ -208,19 +208,45 @@ any more-specific nested `AGENTS.md` files first.
 - Do not treat control actions as conversational or business activity unless the
   relevant feature explicitly defines them that way.
 
-## 17. Validation Before Completion
+## 17. Text Encoding And User-Visible Strings
+
+- Treat every repository text file as UTF-8.
+- Preserve valid Unicode characters directly, including Spanish accents, `ñ`,
+  `ü`, `¿`, and `¡`.
+- Never introduce mojibake such as `Ã¡`, `Ã©`, `Ã­`, `Ã³`, `Ãº`, `Ã±`,
+  `Â¿`, `Â¡`, malformed smart quotes, or the Unicode replacement character
+  `�`.
+- When editing files on Windows, use tools and APIs that read and write UTF-8
+  explicitly. Do not use shell redirection or file-writing commands whose
+  encoding depends on the platform default.
+- Do not encode valid Spanish text as Latin-1, Windows-1252, escaped byte
+  sequences, or already-corrupted UTF-8 text.
+- Do not convert an entire file's encoding, line endings, formatting, or
+  unrelated contents merely to edit one string.
+- Before completion, inspect every newly added or modified user-visible string
+  in the final diff and confirm that accented characters appear correctly in the
+  source file.
+- Search added lines for common mojibake markers using an equivalent command to
+  `git diff --unified=0 | rg "^\+.*(Ã|Â|â€|�)"`.
+- Inspect and correct every match unless the malformed text is intentionally
+  present in an encoding-specific test fixture or documentation example.
+- Do not perform global replacement of suspected mojibake without determining
+  the intended original text.
+
+## 18. Validation Before Completion
 
 - Run `./mvnw -DskipTests compile` when code or configuration changes require
   compilation validation.
 - Run focused exact tests appropriate to the change.
 - Run `git diff --check`.
+- Inspect added and modified text for malformed Unicode or mojibake.
 - Inspect `git status --short`, `git diff --stat`, and the final diff for
   accidental unrelated changes.
 - Inspect changed migration and contract files when present.
 - Confirm current branch and comparison base before final reporting.
 - Do not claim validation passed unless its output was actually observed.
 
-## 18. Final Report
+## 19. Final Report
 
 - Report current branch and comparison base.
 - Report root cause or design rationale.
