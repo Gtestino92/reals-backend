@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.authentication
 
+import com.github.benmanes.caffeine.cache.Ticker
 import com.google.firebase.ErrorCode
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
@@ -25,17 +26,21 @@ import kotlin.test.assertTrue
 class FirebaseTokenFilterTest {
 
     private val userService = mock(UserService::class.java)
+    private val firebaseTokenAuthenticationVerifier = mock(FirebaseTokenAuthenticationVerifier::class.java)
     private val localFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("local-firebase"),
-        userService
+        userService,
+        firebaseTokenAuthenticationVerifier
     )
     private val prodFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("prod"),
-        userService
+        userService,
+        firebaseTokenAuthenticationVerifier
     )
     private val adminFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("prod"),
         userService,
+        firebaseTokenAuthenticationVerifier,
         "admin@example.com"
     )
 
@@ -202,64 +207,108 @@ class FirebaseTokenFilterTest {
 
     @Test
     fun `invalid firebase token cannot call local firebase email verification endpoint`() {
-        val firebaseAuth = mock(FirebaseAuth::class.java)
-
-        Mockito.mockStatic(FirebaseAuth::class.java).use { mockedFirebaseAuth ->
-            mockedFirebaseAuth.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }
-                .thenReturn(firebaseAuth)
-            `when`(firebaseAuth.verifyIdToken("invalid-token", true))
-                .thenThrow(
-                    FirebaseAuthException(
-                        ErrorCode.UNAUTHENTICATED,
-                        "invalid token",
-                        null,
-                        null,
-                        AuthErrorCode.INVALID_ID_TOKEN
-                    )
+        `when`(firebaseTokenAuthenticationVerifier.verify("invalid-token"))
+            .thenThrow(
+                FirebaseAuthException(
+                    ErrorCode.UNAUTHENTICATED,
+                    "invalid token",
+                    null,
+                    null,
+                    AuthErrorCode.INVALID_ID_TOKEN
                 )
+            )
 
-            val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
-            request.addHeader("Authorization", "Bearer invalid-token")
-            val response = MockHttpServletResponse()
+        val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
+        request.addHeader("Authorization", "Bearer invalid-token")
+        val response = MockHttpServletResponse()
 
-            localFilter.doFilter(request, response, MockFilterChain())
+        localFilter.doFilter(request, response, MockFilterChain())
 
-            assertEquals(401, response.status)
-            assertTrue(response.contentAsString.contains("INVALID_TOKEN"))
-        }
+        assertEquals(401, response.status)
+        assertTrue(response.contentAsString.contains("INVALID_TOKEN"))
     }
 
     @Test
     fun `deleted backend user cannot call local firebase email verification endpoint`() {
-        val firebaseAuth = mock(FirebaseAuth::class.java)
         val decodedToken = mock(FirebaseToken::class.java)
 
-        Mockito.mockStatic(FirebaseAuth::class.java).use { mockedFirebaseAuth ->
-            mockedFirebaseAuth.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }
-                .thenReturn(firebaseAuth)
-            `when`(firebaseAuth.verifyIdToken("valid-token", true))
-                .thenReturn(decodedToken)
-            `when`(decodedToken.uid).thenReturn("firebase-deleted")
-            `when`(decodedToken.email).thenReturn("deleted@example.com")
-            `when`(decodedToken.isEmailVerified).thenReturn(true)
-            `when`(userService.findByFirebaseUid("firebase-deleted"))
-                .thenReturn(
-                    user(
-                        firebaseUid = "firebase-deleted",
-                        email = "deleted@example.com",
-                        status = UserStatus.DELETED
-                    )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token"))
+            .thenReturn(decodedToken)
+        `when`(decodedToken.uid).thenReturn("firebase-deleted")
+        `when`(decodedToken.email).thenReturn("deleted@example.com")
+        `when`(decodedToken.isEmailVerified).thenReturn(true)
+        `when`(userService.findByFirebaseUid("firebase-deleted"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-deleted",
+                    email = "deleted@example.com",
+                    status = UserStatus.DELETED
                 )
+            )
 
-            val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
-            request.addHeader("Authorization", "Bearer valid-token")
-            val response = MockHttpServletResponse()
+        val request = MockHttpServletRequest("POST", "/api/me/local-dev/email-verification")
+        request.addHeader("Authorization", "Bearer valid-token")
+        val response = MockHttpServletResponse()
 
-            localFilter.doFilter(request, response, MockFilterChain())
+        localFilter.doFilter(request, response, MockFilterChain())
 
-            assertEquals(401, response.status)
-            assertTrue(response.contentAsString.contains("ACCOUNT_DELETED"))
-        }
+        assertEquals(401, response.status)
+        assertTrue(response.contentAsString.contains("ACCOUNT_DELETED"))
+    }
+
+    @Test
+    fun `deleted backend user remains rejected while revocation result is cached`() {
+        val firebaseAuth = mock(FirebaseAuth::class.java)
+        val decodedToken = mock(FirebaseToken::class.java)
+        val cachedVerifier = FirebaseTokenAuthenticationVerifier(
+            firebaseAuth = firebaseAuth,
+            properties = FirebaseTokenAuthenticationProperties(),
+            ticker = FakeTicker()
+        )
+        val filter = FirebaseTokenFilter(
+            EnvironmentExposurePolicy.forActiveProfiles("prod"),
+            userService,
+            cachedVerifier
+        )
+        val activeUser = user(
+            firebaseUid = "firebase-cached",
+            email = "cached@example.com"
+        )
+        val deletedUser = user(
+            firebaseUid = "firebase-cached",
+            email = "cached@example.com",
+            status = UserStatus.DELETED
+        )
+
+        `when`(firebaseAuth.verifyIdToken("cached-token", false))
+            .thenReturn(decodedToken)
+        `when`(firebaseAuth.verifyIdToken("cached-token", true))
+            .thenReturn(decodedToken)
+        `when`(decodedToken.uid).thenReturn("firebase-cached")
+        `when`(decodedToken.email).thenReturn("cached@example.com")
+        `when`(decodedToken.isEmailVerified).thenReturn(true)
+        `when`(userService.findByFirebaseUid("firebase-cached"))
+            .thenReturn(activeUser, deletedUser)
+
+        val firstResponse = MockHttpServletResponse()
+        filter.doFilter(
+            authorizedRequest("POST", "/api/chats/${UUID.randomUUID()}/messages", "cached-token"),
+            firstResponse,
+            MockFilterChain()
+        )
+
+        val secondResponse = MockHttpServletResponse()
+        filter.doFilter(
+            authorizedRequest("POST", "/api/chats/${UUID.randomUUID()}/messages", "cached-token"),
+            secondResponse,
+            MockFilterChain()
+        )
+
+        assertEquals(200, firstResponse.status)
+        assertEquals(401, secondResponse.status)
+        assertTrue(secondResponse.contentAsString.contains("ACCOUNT_DELETED"))
+        Mockito.verify(firebaseAuth, Mockito.times(2)).verifyIdToken("cached-token", false)
+        Mockito.verify(firebaseAuth, Mockito.times(1)).verifyIdToken("cached-token", true)
     }
 
     private fun user(
@@ -273,4 +322,17 @@ class FirebaseTokenFilterTest {
             email = email,
             status = status
         )
+
+    private fun authorizedRequest(
+        method: String,
+        path: String,
+        token: String
+    ): MockHttpServletRequest =
+        MockHttpServletRequest(method, path).apply {
+            addHeader("Authorization", "Bearer $token")
+        }
+
+    private class FakeTicker : Ticker {
+        override fun read(): Long = 0
+    }
 }

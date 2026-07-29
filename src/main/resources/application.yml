@@ -319,6 +319,8 @@ notifications:
     remaining-percentage: 40
 
 security:
+  firebase-auth:
+    revocation-cache-ttl: ${FIREBASE_AUTH_REVOCATION_CACHE_TTL:PT60S}
   app-check:
     mode: ${FIREBASE_APP_CHECK_MODE:DISABLED}
     project-number: ${FIREBASE_PROJECT_NUMBER:}
