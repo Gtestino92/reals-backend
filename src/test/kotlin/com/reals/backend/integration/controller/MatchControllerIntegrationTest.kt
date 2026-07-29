@@ -9,6 +9,7 @@ import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -45,7 +46,8 @@ class MatchControllerIntegrationTest : ControllerIT() {
             decision = ChatContinueDecision.APPROVED
         )
 
-        mockMvc.perform(
+        val beforeRequest = OffsetDateTime.now()
+        val result = mockMvc.perform(
             get("/api/matches/${setup.matchId}/chat")
                 .with(authenticatedAs(setup.userAId))
         )
@@ -57,6 +59,8 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))
             .andExpect(jsonPath("$.partnerDecision", equalTo("PENDING")))
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.serverTime").isNotEmpty())
             .andExpect(jsonPath("$.guidance.question.id").exists())
             .andExpect(jsonPath("$.guidance.question.text").exists())
             .andExpect(jsonPath("$.guidance.questionOrdinal", equalTo(1)))
@@ -67,6 +71,14 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.guidance.completed", equalTo(false)))
             .andExpect(jsonPath("$.guidance.partnerNextRequested").doesNotExist())
             .andExpect(jsonPath("$.guidance.partnerEligible").doesNotExist())
+            .andReturn()
+        val afterRequest = OffsetDateTime.now()
+
+        val serverTime = OffsetDateTime.parse(
+            objectMapper.readTree(result.response.contentAsString).get("serverTime").asString()
+        )
+        assertFalse(serverTime.toInstant().isBefore(beforeRequest.toInstant()))
+        assertFalse(serverTime.toInstant().isAfter(afterRequest.toInstant()))
     }
 
     @Test

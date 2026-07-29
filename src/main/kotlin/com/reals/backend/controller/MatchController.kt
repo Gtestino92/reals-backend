@@ -11,6 +11,7 @@ import com.reals.backend.service.*
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.OffsetDateTime
 import java.util.*
 
 @RestController
@@ -95,6 +96,7 @@ class MatchController(
             matchId = matchId,
             userId = userId
         )
+        val serverTime = OffsetDateTime.now()
 
         return ResponseEntity.ok(
             FirstChatResponse.from(
@@ -107,6 +109,7 @@ class MatchController(
                     chat = chat,
                     userId = userId
                 )?.let { FirstChatGuidanceResponse.from(it) },
+                serverTime = serverTime,
                 audioPolicy = ChatAudioPolicyResponse.from(
                     chatAudioPolicyService.policyFor(chat = chat, userId = userId)
                 )
