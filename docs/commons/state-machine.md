@@ -160,3 +160,5 @@ negotiation status.
 ## Second Chat
 
 Second-chat entry and conversation lifecycle are server-authoritative. Explicit join records attendance; mutual completion, partner inactivity, initial silence, absolute timeout and read-only cleanup are owned by `SecondChatLifecycleJob` and request-triggered lifecycle services. Ordinary mutual/unilateral cancellation is not available for second chats.
+
+Text and audio chat messages are both conversational messages for lifecycle purposes. Before insertion, message sends revalidate due terminal outcomes under the chat lock; if the chat remains writable, either message type updates conversational activity and cancels pending mutual-completion or partner-inactivity requests through the same pre-message path.

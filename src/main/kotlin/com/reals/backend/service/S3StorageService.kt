@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.config.s3.S3StorageProperties
 import com.reals.backend.config.s3.S3ReadUrlMode
 import com.reals.backend.domain.StoredObject
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.springframework.stereotype.Service
 import software.amazon.awssdk.core.sync.RequestBody
@@ -36,25 +37,54 @@ class S3StorageService(
                 objectId = photoId,
                 contentType = normalizedContentType
             )
-
-            val request = PutObjectRequest.builder()
-                .bucket(properties.bucket)
-                .key(key)
-                .contentType(normalizedContentType)
-                .contentLength(bytes.size.toLong())
-                .build()
-
-            s3Client.putObject(request, RequestBody.fromBytes(bytes))
-
-            StoredObject(
-                bucket = properties.bucket,
+            putObject(
                 key = key,
                 contentType = normalizedContentType,
-                sizeBytes = bytes.size.toLong()
+                bytes = bytes
             )
         } catch (ex: Exception) {
             throw ObjectStorageException("Could not upload profile photo", ex)
         }
+    }
+
+    fun uploadChatAudio(
+        chatId: UUID,
+        messageId: UUID,
+        contentType: String,
+        bytes: ByteArray
+    ): StoredObject {
+        return try {
+            putObject(
+                key = chatAudioObjectKey(chatId = chatId, messageId = messageId),
+                contentType = contentType.lowercase(),
+                bytes = bytes
+            )
+        } catch (ex: Exception) {
+            throw ChatAudioStorageException("Could not upload chat audio", ex)
+        }
+    }
+
+    fun putObject(
+        key: String,
+        contentType: String,
+        bytes: ByteArray
+    ): StoredObject {
+        val normalizedContentType = contentType.lowercase()
+        val request = PutObjectRequest.builder()
+            .bucket(properties.bucket)
+            .key(key)
+            .contentType(normalizedContentType)
+            .contentLength(bytes.size.toLong())
+            .build()
+
+        s3Client.putObject(request, RequestBody.fromBytes(bytes))
+
+        return StoredObject(
+            bucket = properties.bucket,
+            key = key,
+            contentType = normalizedContentType,
+            sizeBytes = bytes.size.toLong()
+        )
     }
 
     fun delete(key: String) {
@@ -98,10 +128,26 @@ class S3StorageService(
 
     fun profilePhotoBucket(): String = properties.bucket
 
-    fun getReadUrl(key: String): String {
+    fun chatAudioObjectKey(
+        chatId: UUID,
+        messageId: UUID
+    ): String = "chats/$chatId/messages/$messageId.m4a"
+
+    fun mediaBucket(): String = properties.bucket
+
+    fun getReadUrl(key: String): String =
+        getReadUrl(
+            bucket = properties.bucket,
+            key = key
+        )
+
+    fun getReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         return when (properties.readUrlMode) {
             S3ReadUrlMode.PUBLIC -> publicReadUrl(key)
-            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(key)
+            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(bucket, key)
         }
     }
 
@@ -117,9 +163,12 @@ class S3StorageService(
         return "${publicBaseUrl.removeSuffix("/")}/$key"
     }
 
-    private fun presignedReadUrl(key: String): String {
+    private fun presignedReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         val getObjectRequest = GetObjectRequest.builder()
-            .bucket(properties.bucket)
+            .bucket(bucket)
             .key(key)
             .build()
 

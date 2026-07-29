@@ -1,6 +1,7 @@
 package com.reals.backend.service.reports
 
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportEvidenceSnapshot
 import com.reals.backend.repository.ChatMessageRepository
@@ -45,7 +46,13 @@ class SafetyReportEvidenceSnapshotService(
 
     private fun transcriptHash(messages: List<ChatMessage>): String {
         val input = messages.joinToString(separator = "\n") { message ->
-            "${message.id}|${message.senderId}|${message.sentAt}|${message.content}"
+            when (message.messageType) {
+                ChatMessageType.TEXT ->
+                    "${message.id}|${message.senderId}|${message.sentAt}|${message.content}"
+                ChatMessageType.AUDIO ->
+                    "AUDIO|${message.id}|${message.senderId}|${message.sentAt}|" +
+                        "${message.audioDurationMillis}|${message.audioSha256}"
+            }
         }
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(input.toByteArray(Charsets.UTF_8))

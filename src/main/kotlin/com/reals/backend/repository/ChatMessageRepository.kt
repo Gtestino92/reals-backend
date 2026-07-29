@@ -1,6 +1,7 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageType
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -66,6 +67,18 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         senderId: UUID
     ): Long
 
+    fun countByChatSessionIdAndSenderIdAndMessageType(
+        chatSessionId: UUID,
+        senderId: UUID,
+        messageType: ChatMessageType
+    ): Long
+
+    fun findByChatSessionIdAndSenderIdAndClientMessageId(
+        chatSessionId: UUID,
+        senderId: UUID,
+        clientMessageId: UUID
+    ): ChatMessage?
+
     fun existsByChatSessionIdAndSenderId(
         chatSessionId: UUID,
         senderId: UUID
@@ -81,6 +94,8 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
             from chat_messages
             where chat_session_id = :chatId
               and sender_id = :senderId
+              and message_type = 'TEXT'
+              and content is not null
               and sent_at >= :sentAt
         """,
         nativeQuery = true

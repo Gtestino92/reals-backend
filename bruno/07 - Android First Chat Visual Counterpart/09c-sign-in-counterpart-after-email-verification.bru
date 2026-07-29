@@ -37,6 +37,6 @@ script:post-response {
     throw new Error(`Expected Firebase counterpart email ${expectedEmail}, got ${body.email}`);
   }
   
-  bru.setEnvVar("firebase_counterpart_id_token", body.idToken);
-  bru.setEnvVar("firebase_counterpart_uid", body.localId);
+  bru.setVar("firebase_counterpart_id_token", body.idToken);
+  bru.setVar("firebase_counterpart_uid", body.localId);
 }
