@@ -115,6 +115,7 @@ data class FirstChatResponse(
     val myDecision: ChatParticipantDecisionStatus,
     val partnerDecision: ChatParticipantDecisionStatus,
     val guidance: FirstChatGuidanceResponse?,
+    val serverTime: OffsetDateTime,
     val audioPolicy: ChatAudioPolicyResponse? = null
 ) {
     companion object {
@@ -124,6 +125,7 @@ data class FirstChatResponse(
             myDecision: ChatParticipantDecisionStatus,
             partnerDecision: ChatParticipantDecisionStatus,
             inactivityExpiresAt: OffsetDateTime?,
+            serverTime: OffsetDateTime,
             guidance: FirstChatGuidanceResponse? = null,
             audioPolicy: ChatAudioPolicyResponse? = null
         ) = FirstChatResponse(
@@ -147,6 +149,7 @@ data class FirstChatResponse(
             myDecision = myDecision,
             partnerDecision = partnerDecision,
             guidance = guidance,
+            serverTime = serverTime,
             audioPolicy = audioPolicy
         )
     }
