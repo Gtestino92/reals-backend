@@ -28,6 +28,9 @@ any more-specific nested `AGENTS.md` files first.
 - Do not report a commit, push, merge, deployment, PR, or clean working tree
   unless it was actually observed.
 - Final reports must describe the currently observed repository state.
+- When starting a new development task from `development`, create/use a focused
+  feature branch whose name starts with `feature/`. This is not required when
+  applying a patch on an already-active feature branch.
 
 ## 3. Scope And Architecture
 
