@@ -5,24 +5,39 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
+import com.reals.backend.service.ChatAudioSendResult
+import com.reals.backend.service.ChatAudioService
+import com.reals.backend.service.LegalComplianceService
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class ChatControllerIntegrationTest : ControllerIT() {
+
+    @MockitoBean
+    private lateinit var chatAudioService: ChatAudioService
+
+    @MockitoSpyBean
+    private lateinit var legalComplianceService: LegalComplianceService
 
     @Test
     fun `child safety cancellation is accepted over http without penalty`() {
@@ -142,6 +157,88 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.messages[0].content", equalTo("Respuesta desde controller")))
             .andExpect(jsonPath("$.hasMore", equalTo(false)))
             .andExpect(jsonPath("$.serverTime").exists())
+    }
+
+    @Test
+    fun `text message send does not require legal compliance lookup at endpoint`() {
+        val setup = createMatchWithFirstChat("message-no-legal-lookup")
+        Mockito.clearInvocations(legalComplianceService)
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"content":"Message without endpoint legal lookup"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.senderId", equalTo(setup.userAId.toString())))
+
+        Mockito.verify(legalComplianceService, Mockito.never())
+            .requireCurrentRequirementsSatisfied(anyUuid())
+    }
+
+    @Test
+    fun `audio message send does not require legal compliance lookup at endpoint`() {
+        val setup = createMatchWithFirstChat("audio-no-legal-lookup")
+        val clientMessageId = UUID.randomUUID()
+        val audioMessage = ChatMessage(
+            id = UUID.randomUUID(),
+            chatSessionId = setup.firstChatId,
+            senderId = setup.userAId,
+            messageType = ChatMessageType.AUDIO,
+            clientMessageId = clientMessageId,
+            content = null,
+            audioBucket = "reals-profile-photos-test",
+            audioObjectKey = "chats/${setup.firstChatId}/messages/$clientMessageId.m4a",
+            audioContentType = "audio/mp4",
+            audioSizeBytes = 3,
+            audioDurationMillis = 1_000,
+            audioSha256 = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+        )
+        Mockito.`when`(
+            chatAudioService.sendAudioMessage(
+                chatId = eqUuid(setup.firstChatId),
+                senderId = eqUuid(setup.userAId),
+                clientMessageId = eqUuid(clientMessageId),
+                contentType = Mockito.eq("audio/mp4"),
+                bytes = anyBytes()
+            )
+        ).thenReturn(ChatAudioSendResult.Created(audioMessage))
+        Mockito.clearInvocations(legalComplianceService)
+
+        mockMvc.perform(
+            multipart("/api/chats/${setup.firstChatId}/audio-messages")
+                .file(
+                    MockMultipartFile(
+                        "file",
+                        "message.m4a",
+                        "audio/mp4",
+                        byteArrayOf(1, 2, 3)
+                    )
+                )
+                .file(
+                    MockMultipartFile(
+                        "clientMessageId",
+                        "",
+                        "text/plain",
+                        clientMessageId.toString().toByteArray(Charsets.UTF_8)
+                    )
+                )
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id", equalTo(audioMessage.id.toString())))
+            .andExpect(jsonPath("$.messageType", equalTo(ChatMessageType.AUDIO.name)))
+
+        Mockito.verify(legalComplianceService, Mockito.never())
+            .requireCurrentRequirementsSatisfied(anyUuid())
+        Mockito.verify(chatAudioService).sendAudioMessage(
+            chatId = eqUuid(setup.firstChatId),
+            senderId = eqUuid(setup.userAId),
+            clientMessageId = eqUuid(clientMessageId),
+            contentType = Mockito.eq("audio/mp4"),
+            bytes = anyBytes()
+        )
     }
 
     @Test
@@ -794,5 +891,20 @@ class ChatControllerIntegrationTest : ControllerIT() {
         chatMessageRepository.saveAll(messages)
         chatMessageRepository.flush()
         return messages
+    }
+
+    private fun eqUuid(value: UUID): UUID {
+        Mockito.eq(value)
+        return value
+    }
+
+    private fun anyUuid(): UUID {
+        Mockito.any(UUID::class.java)
+        return UUID.randomUUID()
+    }
+
+    private fun anyBytes(): ByteArray {
+        Mockito.any(ByteArray::class.java)
+        return byteArrayOf()
     }
 }

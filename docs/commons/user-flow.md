@@ -92,24 +92,26 @@ validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
 Automatic provider moderation does not create child-safety reports, safety
 reports, blocks, penalties, bans or account deletions.
 
-Legal compliance is backend-authoritative for protected participation/content
-writes. After provisioning, clients can call `GET /api/me/legal-status`; when
-`requirementsSatisfied=false`, they should show the current legal requirements,
-use `GET /api/legal/documents/current` for URL metadata as needed, submit the
-required factual actions with `POST /api/me/legal-document-actions`, and refresh
-legal status. The Android client may route based on this status, but backend
-protected operations are the enforcement boundary.
+Legal compliance is backend-authoritative for selected protected
+participation/progression writes. After provisioning, clients can call
+`GET /api/me/legal-status`; when `requirementsSatisfied=false`, they should
+show the current legal requirements, use `GET /api/legal/documents/current` for
+URL metadata as needed, submit the required factual actions with
+`POST /api/me/legal-document-actions`, and refresh legal status. The Android
+client may route based on this status, but backend guarded operations are the
+enforcement boundary.
 
-Any protected backend request may return `409 LEGAL_ACTION_REQUIRED`. For
-future Android clients, that stable code means refresh legal status and route to
-the legal requirements UI. Legal state is not part of Home and is not modeled as
-a Home pending action.
+Guarded operations may return `409 LEGAL_ACTION_REQUIRED`. For future Android
+clients, that stable code means refresh legal status and route to the legal
+requirements UI. Legal state is not part of Home and is not modeled as a Home
+pending action.
 
-Reads, legal endpoints, account deletion/reactivation, chat exit/cancellation
-and safety/reporting flows remain available without current legal compliance.
-`APPROVED` first-chat and visual decisions require compliance; `REJECTED`
-decisions remain available. Scheduling proposal submission, proposal acceptance
-and partner scheduling-proposal rejection require compliance.
+Reads, legal endpoints, individual text/audio chat message sends, account
+deletion/reactivation, chat exit/cancellation and safety/reporting flows remain
+available without current legal compliance. `APPROVED` first-chat and visual
+decisions require compliance; `REJECTED` decisions remain available. Scheduling
+proposal submission, proposal acceptance and partner scheduling-proposal
+rejection require compliance.
 
 ## 2. Matchmaking Queue
 
