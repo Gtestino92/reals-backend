@@ -31,12 +31,19 @@ class FirebaseTokenAuthenticationVerifier(
         val decoded = firebaseAuth.verifyIdToken(token, false)
         val cacheKey = sha256Hex(token)
 
-        if (successfulRevocationChecks.getIfPresent(cacheKey) == true) {
-            return decoded
+        try {
+            successfulRevocationChecks.get(cacheKey) {
+                try {
+                    firebaseAuth.verifyIdToken(token, true)
+                    true
+                } catch (ex: FirebaseAuthException) {
+                    throw FirebaseRevocationCheckFailedException(ex)
+                }
+            }
+        } catch (ex: FirebaseRevocationCheckFailedException) {
+            throw ex.firebaseAuthException
         }
 
-        firebaseAuth.verifyIdToken(token, true)
-        successfulRevocationChecks.put(cacheKey, true)
         return decoded
     }
 
@@ -50,3 +57,7 @@ class FirebaseTokenAuthenticationVerifier(
         const val MAX_REVOCATION_CACHE_ENTRIES = 100_000L
     }
 }
+
+private class FirebaseRevocationCheckFailedException(
+    val firebaseAuthException: FirebaseAuthException
+) : RuntimeException(firebaseAuthException)

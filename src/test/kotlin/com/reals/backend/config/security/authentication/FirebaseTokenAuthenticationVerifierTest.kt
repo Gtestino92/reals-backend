@@ -12,7 +12,13 @@ import org.mockito.Mockito
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertEquals
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class FirebaseTokenAuthenticationVerifierTest {
 
@@ -107,9 +113,62 @@ class FirebaseTokenAuthenticationVerifierTest {
             verifier.verify("revoked-token")
         }
         verifier.verify("revoked-token")
+        verifier.verify("revoked-token")
 
-        Mockito.verify(firebaseAuth, Mockito.times(2)).verifyIdToken("revoked-token", false)
+        Mockito.verify(firebaseAuth, Mockito.times(3)).verifyIdToken("revoked-token", false)
         Mockito.verify(firebaseAuth, Mockito.times(2)).verifyIdToken("revoked-token", true)
+    }
+
+    @Test
+    fun `concurrent requests for same uncached token share one full revocation check`() {
+        val token = "concurrent-token"
+        val decodedToken = decodedToken()
+        val start = CountDownLatch(1)
+        val localValidated = CountDownLatch(2)
+        val fullStarted = CountDownLatch(1)
+        val releaseFull = CountDownLatch(1)
+        val fullInvocationCount = AtomicInteger(0)
+        val executor = Executors.newFixedThreadPool(2)
+
+        `when`(firebaseAuth.verifyIdToken(token, false))
+            .thenAnswer {
+                localValidated.countDown()
+                decodedToken
+            }
+        `when`(firebaseAuth.verifyIdToken(token, true))
+            .thenAnswer {
+                fullInvocationCount.incrementAndGet()
+                fullStarted.countDown()
+                assertTrue(localValidated.await(5, TimeUnit.SECONDS))
+                assertTrue(releaseFull.await(5, TimeUnit.SECONDS))
+                decodedToken
+            }
+
+        try {
+            val futures = List(2) {
+                executor.submit<FirebaseToken> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS))
+                    verifier.verify(token)
+                }
+            }
+
+            start.countDown()
+            assertTrue(fullStarted.await(5, TimeUnit.SECONDS))
+            assertTrue(localValidated.await(5, TimeUnit.SECONDS))
+            assertEquals(1, fullInvocationCount.get())
+            releaseFull.countDown()
+
+            futures.forEach { future ->
+                assertSame(decodedToken, future.get(5, TimeUnit.SECONDS))
+            }
+
+            Mockito.verify(firebaseAuth, Mockito.times(2)).verifyIdToken(token, false)
+            Mockito.verify(firebaseAuth, Mockito.times(1)).verifyIdToken(token, true)
+        } finally {
+            releaseFull.countDown()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        }
     }
 
     @Test
