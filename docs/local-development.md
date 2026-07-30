@@ -365,9 +365,11 @@ STORAGE_S3_READ_URL_MODE=PRESIGNED
 
 The backend uploads objects through the internal Docker hostname `minio`. It
 stores object keys in `profile_photos.storage_key` and
-`chat_messages.audio_object_key`. It generates browser-facing presigned read
-URLs with `localhost` when returning media responses. The local media bucket is
-`reals-media`. The backend uses one bucket for
+`chat_messages.audio_object_key`. It stores buckets in `profile_photos.storage_bucket`
+and `chat_messages.audio_bucket`. It generates browser-facing presigned read
+URLs from the persisted bucket and object key when returning media responses.
+New uploads use the currently configured media bucket. The local media bucket is
+`reals-media`. The backend uses one active bucket for
 `users/<userId>/profile-photos/<objectId>.<extension>` and
 `chats/<chatId>/messages/<messageId>.m4a`. Buckets remain private locally.
 Frontend clients should render the returned `url` directly. They must not

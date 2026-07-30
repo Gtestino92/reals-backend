@@ -99,7 +99,7 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly photo upload/replacement pipelines. Defaults to `2`. |
 | `PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an upload waits for a photo pipeline permit. Defaults to `PT0S` for immediate 503. |
 | `PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `PROFILE_PHOTO_UPLOAD_BUSY`. Defaults to `1`. |
-| `CHAT_AUDIO_ENABLED` | no | Enables creation of chat audio messages in dev/prod. Defaults to `false` in shared dev/prod; local and test profiles enable audio through profile config. Disabling this does not hide existing audio rows. |
+| `CHAT_AUDIO_ENABLED` | no | Enables creation of chat audio messages. Local profiles enable audio. Shared `dev` defaults to `true`. `prod` defaults to `true`. Set `CHAT_AUDIO_ENABLED=false` to disable creation of new audio messages. Disabling creation does not hide existing audio messages. |
 | `CHAT_AUDIO_MAX_DURATION_MILLIS` | no | Product maximum audio duration if externalized in a deployment. Current committed default is `60000`; equality is accepted. |
 | `CHAT_AUDIO_MAX_FILE_SIZE_BYTES` | no | Product maximum audio file size if externalized in a deployment. Current committed default is `2097152` bytes. The global multipart limit remains larger for profile photos; audio enforces this inside the audio pipeline. |
 | `CHAT_AUDIO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly audio upload pipelines. Defaults to `2`. |
@@ -313,13 +313,17 @@ It is not the bucket name. Profile photo rows and chat message rows store
 storage metadata, including the bucket and object key. Response URLs are
 generated from stored metadata when an API returns media.
 
+Read operations use the persisted bucket and object key from the media row. New
+uploads use the currently configured `STORAGE_S3_BUCKET` value. Changing the
+configured bucket does not move existing objects.
+
 `S3_PROFILE_PHOTOS_BUCKET` remains a deprecated compatibility input. New hosted
 deployments must use `STORAGE_S3_BUCKET`. Keep the fallback only until all
 hosted environments use the canonical variable.
 
 An existing S3 bucket cannot be renamed in place. A physical bucket migration is
-an infrastructure operation. It must copy objects, update runtime configuration,
-validate access, and only then retire the old bucket.
+an infrastructure operation. It must copy objects separately, update runtime
+configuration, validate access, and only then retire the old bucket.
 
 Credential modes:
 

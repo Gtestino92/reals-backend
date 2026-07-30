@@ -803,7 +803,12 @@ class ProfileService(
     }
 
     private fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
-        return storageService.getReadUrl(photo.storageKey)
+        return storageService.getReadUrl(
+            bucket = requireNotNull(photo.storageBucket) {
+                "profile photo storageBucket is required"
+            },
+            key = photo.storageKey
+        )
     }
 
     private fun photoAuditMetadata(photo: ProfilePhoto): Map<String, Any?> =
