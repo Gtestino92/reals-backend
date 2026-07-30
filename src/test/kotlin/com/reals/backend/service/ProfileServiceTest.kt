@@ -37,6 +37,42 @@ import java.util.UUID
 class ProfileServiceTest {
 
     @Test
+    fun `profile photo read url uses persisted bucket and key`() {
+        val photo = ProfilePhoto(
+            id = UUID.randomUUID(),
+            profileId = UUID.randomUUID(),
+            storageProvider = PhotoStorageProvider.S3,
+            storageBucket = "persisted-media-bucket",
+            storageKey = "users/user-id/profile-photos/photo.jpg",
+            position = 1,
+            validationStatus = PhotoValidationStatus.VALIDATED,
+            moderationStatus = PhotoModerationStatus.APPROVED
+        )
+        val storageService = Mockito.mock(S3StorageService::class.java)
+        Mockito.`when`(
+            storageService.getReadUrl(
+                "persisted-media-bucket",
+                "users/user-id/profile-photos/photo.jpg"
+            )
+        ).thenReturn("https://media.example.test/photo.jpg")
+        val service = profileService(
+            profileRepository = Mockito.mock(ProfileRepository::class.java),
+            auditEventService = Mockito.mock(AuditEventService::class.java),
+            storageService = storageService
+        )
+
+        assertEquals(
+            "https://media.example.test/photo.jpg",
+            service.resolvePhotoReadUrlForResponse(photo)
+        )
+        Mockito.verify(storageService).getReadUrl(
+            "persisted-media-bucket",
+            "users/user-id/profile-photos/photo.jpg"
+        )
+        Mockito.verify(storageService, Mockito.never()).getReadUrl(photo.storageKey)
+    }
+
+    @Test
     fun `failed prod none-provider authenticity verification does not persist verified state or audit event`() {
         val profile = Profile(
             id = UUID.randomUUID(),

@@ -66,7 +66,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
                 com.reals.backend.domain.ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = com.reals.backend.domain.PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "audit/profile/${profile.id}/${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,

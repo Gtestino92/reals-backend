@@ -379,7 +379,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         ).thenReturn(storedObject)
 
-        Mockito.`when`(storageService.getReadUrl(storedObject.key))
+        Mockito.`when`(storageService.getReadUrl(storedObject.bucket, storedObject.key))
             .thenReturn("http://localhost:9000/test-bucket/${storedObject.key}")
     }
 

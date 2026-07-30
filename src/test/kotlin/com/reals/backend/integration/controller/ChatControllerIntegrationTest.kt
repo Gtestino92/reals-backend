@@ -188,7 +188,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
             messageType = ChatMessageType.AUDIO,
             clientMessageId = clientMessageId,
             content = null,
-            audioBucket = "reals-profile-photos-test",
+            audioBucket = "reals-media-test",
             audioObjectKey = "chats/${setup.firstChatId}/messages/$clientMessageId.m4a",
             audioContentType = "audio/mp4",
             audioSizeBytes = 3,

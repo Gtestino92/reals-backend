@@ -76,7 +76,7 @@ class ProfilePhotoModerationActivationIntegrationTest : BaseIT() {
                 ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,

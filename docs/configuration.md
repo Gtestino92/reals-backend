@@ -85,7 +85,7 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_ENDPOINT` | S3-compatible providers only | Optional S3-compatible API endpoint used by the backend for object operations. Set it for MinIO/R2. Leave it absent/blank for native Amazon S3 so the AWS SDK resolves the normal regional endpoint. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |
 | `STORAGE_S3_PRESIGNED_URL_ENDPOINT` | when returned URLs need a different public host | Optional endpoint used only when generating presigned read URLs. Precedence is this value, then `STORAGE_S3_ENDPOINT`, then the AWS regional endpoint. For R2 this usually matches `STORAGE_S3_ENDPOINT`; for Android Emulator local MinIO it may be `http://10.0.2.2:9000`. Legacy fallback: `S3_PRESIGNED_URL_ENDPOINT`. |
 | `STORAGE_S3_REGION` | when media upload is enabled | Required and nonblank. Use a real AWS Region such as `us-east-1` when `STORAGE_S3_ENDPOINT` is absent. Use `auto` only with an explicit S3-compatible endpoint such as R2. Legacy fallback: `S3_REGION`. |
-| `STORAGE_S3_BUCKET` | when media upload is enabled | Bucket names are not treated as secrets, but keep one value per environment. Legacy fallback: `S3_PROFILE_PHOTOS_BUCKET`. |
+| `STORAGE_S3_BUCKET` | when media upload is enabled | Application media bucket. New hosted deployments must set this variable. Bucket names are not treated as secrets, but keep one value per environment. Deprecated fallback: `S3_PROFILE_PHOTOS_BUCKET`. |
 | `STORAGE_S3_PUBLIC_BASE_URL` | only with `STORAGE_S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. Not required for private R2 buckets in `PRESIGNED` mode. Legacy fallback: `S3_PUBLIC_BASE_URL`. |
 | `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Native Amazon S3 should normally use `false`. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media outside `prod`. `prod` refuses to start with `PUBLIC`. Legacy fallback: `S3_READ_URL_MODE`. |
@@ -99,7 +99,7 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly photo upload/replacement pipelines. Defaults to `2`. |
 | `PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION` | no | How long an upload waits for a photo pipeline permit. Defaults to `PT0S` for immediate 503. |
 | `PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `PROFILE_PHOTO_UPLOAD_BUSY`. Defaults to `1`. |
-| `CHAT_AUDIO_ENABLED` | no | Enables creation of chat audio messages in dev/prod. Defaults to `false` in shared dev/prod; local and test profiles enable audio through profile config. Disabling this does not hide existing audio rows. |
+| `CHAT_AUDIO_ENABLED` | no | Enables creation of chat audio messages. Local profiles enable audio. Shared `dev` defaults to `true`. `prod` defaults to `true`. Set `CHAT_AUDIO_ENABLED=false` to disable creation of new audio messages. Disabling creation does not hide existing audio messages. |
 | `CHAT_AUDIO_MAX_DURATION_MILLIS` | no | Product maximum audio duration if externalized in a deployment. Current committed default is `60000`; equality is accepted. |
 | `CHAT_AUDIO_MAX_FILE_SIZE_BYTES` | no | Product maximum audio file size if externalized in a deployment. Current committed default is `2097152` bytes. The global multipart limit remains larger for profile photos; audio enforces this inside the audio pipeline. |
 | `CHAT_AUDIO_UPLOAD_MAX_CONCURRENT` | no | Single-instance maximum concurrent costly audio upload pipelines. Defaults to `2`. |
@@ -294,16 +294,36 @@ Sensitive runtime secrets:
 S3-compatible storage has two optional endpoint concerns. `STORAGE_S3_ENDPOINT`
 is where the backend writes and deletes objects when using MinIO, R2 or another
 explicit S3-compatible API. `STORAGE_S3_PRESIGNED_URL_ENDPOINT` is the host
-embedded in returned presigned URLs and must be reachable by the client that
-renders the image. Presigner endpoint precedence is:
+embedded in returned presigned URLs. The client that renders media must reach
+that host. Presigner endpoint precedence is:
 
 1. `STORAGE_S3_PRESIGNED_URL_ENDPOINT`;
 2. `STORAGE_S3_ENDPOINT`;
 3. no endpoint override, which lets the AWS SDK use the normal Amazon S3
    regional endpoint.
 
-Profile photo rows store storage metadata, including the object key, and
-response URLs are generated from that key when the API returns a photo DTO.
+`STORAGE_S3_BUCKET` names the application media bucket. The same bucket stores
+profile photos and chat audio. The backend keeps these object-key namespaces:
+
+- `users/<userId>/profile-photos/<objectId>.<extension>`
+- `chats/<chatId>/messages/<messageId>.m4a`
+
+The `profile-photos` term remains correct inside the profile-photo object key.
+It is not the bucket name. Profile photo rows and chat message rows store
+storage metadata, including the bucket and object key. Response URLs are
+generated from stored metadata when an API returns media.
+
+Read operations use the persisted bucket and object key from the media row. New
+uploads use the currently configured `STORAGE_S3_BUCKET` value. Changing the
+configured bucket does not move existing objects.
+
+`S3_PROFILE_PHOTOS_BUCKET` remains a deprecated compatibility input. New hosted
+deployments must use `STORAGE_S3_BUCKET`. Keep the fallback only until all
+hosted environments use the canonical variable.
+
+An existing S3 bucket cannot be renamed in place. A physical bucket migration is
+an infrastructure operation. It must copy objects separately, update runtime
+configuration, validate access, and only then retire the old bucket.
 
 Credential modes:
 
@@ -345,7 +365,7 @@ STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=http://minio:9000
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
 STORAGE_S3_REGION=us-east-1
-STORAGE_S3_BUCKET=reals-profile-photos
+STORAGE_S3_BUCKET=reals-media
 STORAGE_S3_ACCESS_KEY_ID=<minio-access-key>
 STORAGE_S3_SECRET_ACCESS_KEY=<minio-secret-key>
 STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=true

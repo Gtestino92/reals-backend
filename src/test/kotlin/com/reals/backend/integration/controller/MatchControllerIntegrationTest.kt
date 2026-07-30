@@ -31,9 +31,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
 
     @BeforeEach
     fun stubPhotoReadUrls() {
-        Mockito.`when`(storageService.getReadUrl(anyString()))
+        Mockito.`when`(storageService.getReadUrl(anyString(), anyString()))
             .thenAnswer { invocation ->
-                "http://localhost:9000/reals-profile-photos-test/${invocation.arguments[0]}"
+                "http://localhost:9000/${invocation.arguments[0]}/${invocation.arguments[1]}"
             }
     }
 
@@ -269,7 +269,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(
                 jsonPath(
                     "$.photos[0].url",
-                    equalTo("http://localhost:9000/reals-profile-photos-test/$expectedFirstPhotoKey")
+                    equalTo("http://localhost:9000/reals-media-test/$expectedFirstPhotoKey")
                 )
             )
             .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))

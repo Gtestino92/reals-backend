@@ -145,10 +145,10 @@ storage:
     endpoint: http://localhost:9000
     presigned-url-endpoint: http://localhost:9000
     region: us-east-1
-    bucket: reals-profile-photos-test
+    bucket: reals-media-test
     access-key-id: test
     secret-access-key: test
-    public-base-url: http://localhost:9000/reals-profile-photos-test
+    public-base-url: http://localhost:9000/reals-media-test
     path-style-access-enabled: true
     signed-url-duration-minutes: 15
     read-url-mode: PRESIGNED

@@ -122,7 +122,12 @@ class ProfilePhotoModerationReviewService(
         AdminProfilePhotoModerationReview(
             photo = photo,
             profile = profile,
-            readUrl = storageService.getReadUrl(photo.storageKey)
+            readUrl = storageService.getReadUrl(
+                bucket = requireNotNull(photo.storageBucket) {
+                    "profile photo storageBucket is required"
+                },
+                key = photo.storageKey
+            )
         )
 
     private fun AdminPhotoModerationDecision.toModerationStatus(): PhotoModerationStatus =
