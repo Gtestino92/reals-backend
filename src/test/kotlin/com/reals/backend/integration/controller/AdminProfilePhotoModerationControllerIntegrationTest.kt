@@ -65,7 +65,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$[0].userId", equalTo(fixture.userId.toString())))
             .andExpect(jsonPath("$[0].displayName", equalTo("Review Filter")))
             .andExpect(jsonPath("$[0].position", equalTo(4)))
-            .andExpect(jsonPath("$[0].readUrl", equalTo(readUrl(needsReview.storageKey))))
+            .andExpect(jsonPath("$[0].readUrl", equalTo(readUrl(needsReview.storageBucket!!, needsReview.storageKey))))
             .andExpect(jsonPath("$[0].photoVersion", equalTo(needsReview.version.toInt())))
             .andExpect(jsonPath("$[0].validationStatus", equalTo("VALIDATED")))
             .andExpect(jsonPath("$[0].moderationStatus", equalTo("NEEDS_REVIEW")))
@@ -375,12 +375,20 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
         )
 
     private fun stubReadUrls() {
-        Mockito.`when`(storageService.getReadUrl(Mockito.anyString()))
-            .thenAnswer { invocation -> readUrl(invocation.getArgument<String>(0)) }
+        Mockito.`when`(storageService.getReadUrl(Mockito.anyString(), Mockito.anyString()))
+            .thenAnswer { invocation ->
+                readUrl(
+                    bucket = invocation.getArgument<String>(0),
+                    storageKey = invocation.getArgument<String>(1)
+                )
+            }
     }
 
-    private fun readUrl(storageKey: String): String =
-        "https://media.example.test/$storageKey"
+    private fun readUrl(
+        bucket: String,
+        storageKey: String
+    ): String =
+        "https://media.example.test/$bucket/$storageKey"
 
     private fun singlePhotoModerationAudit(photoId: UUID) =
         auditEventRepository.findAll().single {

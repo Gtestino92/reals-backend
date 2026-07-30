@@ -151,7 +151,9 @@ audio. The backend keeps these object-key namespaces:
 - `chats/<chatId>/messages/<messageId>.m4a`
 
 An existing S3 bucket cannot be renamed in place. A physical bucket migration is
-an infrastructure operation.
+an infrastructure operation. Changing `STORAGE_S3_BUCKET` does not move
+existing objects. Persisted rows use their persisted bucket and object key for
+reads. New uploads use the currently configured media bucket.
 
 Do not point shared dev at a developer-machine MinIO instance. See
 `docs/storage-r2-configuration.md` for S3-compatible provider behavior and

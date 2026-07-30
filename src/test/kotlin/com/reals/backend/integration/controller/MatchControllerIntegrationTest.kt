@@ -31,9 +31,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
 
     @BeforeEach
     fun stubPhotoReadUrls() {
-        Mockito.`when`(storageService.getReadUrl(anyString()))
+        Mockito.`when`(storageService.getReadUrl(anyString(), anyString()))
             .thenAnswer { invocation ->
-                "http://localhost:9000/reals-media-test/${invocation.arguments[0]}"
+                "http://localhost:9000/${invocation.arguments[0]}/${invocation.arguments[1]}"
             }
     }
 
