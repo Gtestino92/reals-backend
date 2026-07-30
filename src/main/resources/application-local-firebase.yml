@@ -29,11 +29,11 @@ storage:
     endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT:http://localhost:9000}}
     presigned-url-endpoint: ${STORAGE_S3_PRESIGNED_URL_ENDPOINT:${S3_PRESIGNED_URL_ENDPOINT:http://localhost:9000}}
     region: ${STORAGE_S3_REGION:${S3_REGION:us-east-1}}
-    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET:reals-profile-photos}}
+    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET:reals-media}}
     access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID:reals}}
     secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY:reals-password}}
     session-token: ${STORAGE_S3_SESSION_TOKEN:${S3_SESSION_TOKEN:}}
-    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:http://localhost:9000/reals-profile-photos}}
+    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:http://localhost:9000/reals-media}}
     path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
     signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
     read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}

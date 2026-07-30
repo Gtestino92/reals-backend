@@ -1,6 +1,6 @@
-# S3-Compatible Profile Photo Storage
+# S3-Compatible Application Media Storage
 
-Profile photo storage uses the S3-compatible `S3StorageService`, so shared dev
+Application media storage uses the S3-compatible `S3StorageService`. Shared dev
 and prod-like environments can use Cloudflare R2, hosted MinIO, or another
 S3-compatible object store.
 
@@ -154,8 +154,7 @@ STORAGE_S3_READ_URL_MODE=PRESIGNED
 No public bucket or `STORAGE_S3_PUBLIC_BASE_URL` is required in `PRESIGNED` mode.
 `PUBLIC` mode should be reserved for intentionally public media outside
 production. The backend refuses to start with `SPRING_PROFILES_ACTIVE=prod` and
-`STORAGE_S3_READ_URL_MODE=PUBLIC`; production profile-photo reads must use
-`PRESIGNED`.
+`STORAGE_S3_READ_URL_MODE=PUBLIC`; production media reads must use `PRESIGNED`.
 
 ## Current Non-Goals
 

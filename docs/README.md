@@ -14,7 +14,7 @@ This directory is the canonical documentation set for the project.
 - `matchmaking-ranking.md`: matching ranking modes and calibration notes.
 - `operational-state-model.md`: persisted operational state and lifecycle notes.
 - `security-mvp.md`: MVP security posture and explicit limitations.
-- `storage-r2-configuration.md`: S3-compatible setup for shared/dev/prod-like profile photo storage, including R2 and hosted MinIO.
+- `storage-r2-configuration.md`: S3-compatible setup for shared/dev/prod-like application media storage, including R2 and hosted MinIO.
 - `technical-debt-mvp.md`: known pending decisions and intentionally unimplemented behavior for MVP.
 - `technical-debt-prod.md`: known pending decisions and intentionally unimplemented behavior for production hardening.
 - `testing.md`: automated test strategy and commands.

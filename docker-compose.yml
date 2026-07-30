@@ -22,14 +22,14 @@ services:
       #RATE_LIMIT_PROVISION_REFILL_TOKENS: "1"
       #RATE_LIMIT_PROVISION_REFILL_PERIOD_SECONDS: "60"
       STORAGE_S3_CREDENTIALS_MODE: STATIC
-      S3_ENDPOINT: http://minio:9000
-      S3_PRESIGNED_URL_ENDPOINT: http://127.0.0.1:9000
-      S3_REGION: us-east-1
-      S3_PROFILE_PHOTOS_BUCKET: reals-profile-photos
-      S3_ACCESS_KEY_ID: reals
-      S3_SECRET_ACCESS_KEY: reals-password
-      S3_READ_URL_MODE: PRESIGNED
-      S3_PATH_STYLE_ACCESS_ENABLED: "true"
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_PRESIGNED_URL_ENDPOINT: http://127.0.0.1:9000
+      STORAGE_S3_REGION: us-east-1
+      STORAGE_S3_BUCKET: reals-media
+      STORAGE_S3_ACCESS_KEY_ID: reals
+      STORAGE_S3_SECRET_ACCESS_KEY: reals-password
+      STORAGE_S3_READ_URL_MODE: PRESIGNED
+      STORAGE_S3_PATH_STYLE_ACCESS_ENABLED: "true"
       BACKOFFICE_ADMIN_EMAILS: "gtestino1992@gmail.com"
       FIREBASE_APP_CHECK_MODE: ${FIREBASE_APP_CHECK_MODE:-DISABLED}
       FIREBASE_PROJECT_NUMBER: ${FIREBASE_PROJECT_NUMBER:-}
@@ -102,8 +102,8 @@ services:
         echo 'Waiting for MinIO...';
         sleep 2;
       done;
-      mc mb --ignore-existing local/reals-profile-photos;
-      mc anonymous set none local/reals-profile-photos;
+      mc mb --ignore-existing local/reals-media;
+      mc anonymous set none local/reals-media;
       "
 
 volumes:

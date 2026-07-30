@@ -232,7 +232,7 @@ class S3ClientConfigurationFactoryTest {
         endpoint: String? = "http://localhost:9000",
         presignedUrlEndpoint: String? = null,
         region: String = "us-east-1",
-        bucket: String = "reals-profile-photos",
+        bucket: String = "reals-media",
         accessKeyId: String? = "test-access-key",
         secretAccessKey: String? = "test-secret-key",
         sessionToken: String? = null,

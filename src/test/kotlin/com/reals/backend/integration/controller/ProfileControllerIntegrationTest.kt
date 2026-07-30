@@ -755,7 +755,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             ProfilePhoto(
                 profileId = profile.id,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "users/${user.id}/profile-photos/first.jpg",
                 position = 1,
                 isPersonPhoto = true,
@@ -768,7 +768,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             ProfilePhoto(
                 profileId = profile.id,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "users/${user.id}/profile-photos/second.jpg",
                 position = 2,
                 isPersonPhoto = false,
@@ -851,7 +851,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,

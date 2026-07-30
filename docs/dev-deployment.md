@@ -128,7 +128,7 @@ Flyway runs automatically in the `dev` profile and applies migrations at app
 startup. `spring.jpa.hibernate.ddl-auto` is `validate`, so schema drift should
 fail startup instead of silently mutating the database.
 
-## Profile Photo Storage For Dev
+## Application Media Storage For Dev
 
 For AWS-hosted dev with native Amazon S3, prefer role-based AWS SDK credentials:
 
@@ -139,6 +139,19 @@ STORAGE_S3_BUCKET=<dev-bucket-name>
 STORAGE_S3_PATH_STYLE_ACCESS_ENABLED=false
 STORAGE_S3_READ_URL_MODE=PRESIGNED
 ```
+
+`STORAGE_S3_BUCKET` is the canonical bucket variable. New dev deployments must
+use it. `S3_PROFILE_PHOTOS_BUCKET` remains a deprecated fallback only for
+temporary compatibility.
+
+The bucket is the application media bucket. It stores profile photos and chat
+audio. The backend keeps these object-key namespaces:
+
+- `users/<userId>/profile-photos/<objectId>.<extension>`
+- `chats/<chatId>/messages/<messageId>.m4a`
+
+An existing S3 bucket cannot be renamed in place. A physical bucket migration is
+an infrastructure operation.
 
 Do not point shared dev at a developer-machine MinIO instance. See
 `docs/storage-r2-configuration.md` for S3-compatible provider behavior and
