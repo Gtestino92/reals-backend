@@ -107,7 +107,7 @@ matchmaking:
 
 chat:
   audio:
-    enabled: ${CHAT_AUDIO_ENABLED:false}
+    enabled: ${CHAT_AUDIO_ENABLED:true}
   first-chat:
     duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}

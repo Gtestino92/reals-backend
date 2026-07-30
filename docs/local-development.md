@@ -71,11 +71,11 @@ Windows/macOS/Linux firewall rules must allow inbound traffic to the backend
 port. With Docker Compose, the backend is already published as `8080:8080`, so
 the host port is `8080`.
 
-Profile photo URLs need the same treatment. If the client renders photos from
-local MinIO, `S3_PRESIGNED_URL_ENDPOINT` must be reachable by that client:
+Media URLs need the same treatment. If the client renders media from local
+MinIO, `STORAGE_S3_PRESIGNED_URL_ENDPOINT` must be reachable by that client:
 
 ```text
-S3_PRESIGNED_URL_ENDPOINT=http://<developer-machine-lan-ip>:9000
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://<developer-machine-lan-ip>:9000
 ```
 
 If this stays as `http://localhost:9000`, another phone or computer will try to
@@ -155,9 +155,10 @@ If the host-run app uses Docker Compose MinIO, also use a host-reachable S3
 endpoint:
 
 ```text
-S3_CREDENTIALS_MODE=STATIC
-S3_ENDPOINT=http://localhost:9000
-S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+STORAGE_S3_CREDENTIALS_MODE=STATIC
+STORAGE_S3_ENDPOINT=http://localhost:9000
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+STORAGE_S3_BUCKET=reals-media
 ```
 
 ### Local Firebase Email Verification Helper
@@ -350,28 +351,33 @@ Stop backend and database without deleting the database volume:
 docker compose down
 ```
 
-### Local MinIO Profile Photos
+### Local MinIO Media
 
-The Docker Compose setup also runs MinIO for profile photo uploads:
+The Docker Compose setup also runs MinIO for application media uploads:
 
 ```text
-S3_CREDENTIALS_MODE=STATIC
-S3_ENDPOINT=http://minio:9000
-S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
-S3_READ_URL_MODE=PRESIGNED
+STORAGE_S3_CREDENTIALS_MODE=STATIC
+STORAGE_S3_ENDPOINT=http://minio:9000
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://localhost:9000
+STORAGE_S3_BUCKET=reals-media
+STORAGE_S3_READ_URL_MODE=PRESIGNED
 ```
 
-The backend uploads objects through the internal Docker hostname `minio`, stores
-the object key in `profile_photos.storage_key`, and generates browser-facing
-presigned read URLs with `localhost` when returning photo responses. Buckets
-remain private locally; frontend clients should render the returned `url`
-directly and must not persist it as a permanent object URL because it expires.
+The backend uploads objects through the internal Docker hostname `minio`. It
+stores object keys in `profile_photos.storage_key` and
+`chat_messages.audio_object_key`. It generates browser-facing presigned read
+URLs with `localhost` when returning media responses. The local media bucket is
+`reals-media`. The backend uses one bucket for
+`users/<userId>/profile-photos/<objectId>.<extension>` and
+`chats/<chatId>/messages/<messageId>.m4a`. Buckets remain private locally.
+Frontend clients should render the returned `url` directly. They must not
+persist it as a permanent object URL because it expires.
 
 For Android Emulator rendering, `localhost` points to the emulator itself. Use a
 local runtime override instead:
 
 ```text
-S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
+STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
 ```
 
 Keep that override local. It is developer-machine specific and should not be

@@ -199,7 +199,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
             ProfilePhoto(
                 profileId = profileId,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "authenticity/profile/$profileId/$position.jpg",
                 position = position,
                 isPersonPhoto = true,
