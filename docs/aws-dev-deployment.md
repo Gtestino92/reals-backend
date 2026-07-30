@@ -323,6 +323,7 @@ The host must already have:
 - SSM managed-instance connectivity.
 - Docker and a running Docker daemon.
 - `/etc/reals/backend.env`, readable by the SSM command execution user.
+- `STORAGE_S3_BUCKET` set to the application media bucket.
 - Nginx already proxying HTTPS traffic to `127.0.0.1:8080`.
 - Permission to pull `ghcr.io/gtestino92/reals-backend`.
 - Enough disk space for the new and immediately previous Docker images.

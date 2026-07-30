@@ -351,7 +351,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             ProfilePhoto(
                 profileId = profileId,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "users/$userId/profile-photos/$storageKeySuffix.jpg",
                 position = position,
                 isPersonPhoto = isPersonPhoto,

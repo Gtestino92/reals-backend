@@ -79,8 +79,8 @@ configRefs:
     key: firebase_project_number
   - name: FIREBASE_APP_CHECK_ALLOWED_APP_IDS
     key: firebase_app_check_allowed_app_ids
-  - name: S3_PROFILE_PHOTOS_BUCKET
-    key: reals-prod-profile-photos
+  - name: STORAGE_S3_BUCKET
+    key: reals-prod-media
   - name: PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER
     key: profile-authenticity-verification-provider
 

@@ -390,7 +390,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
         ).thenReturn(storedObjects.first(), *storedObjects.drop(1).toTypedArray())
 
         storedObjects.forEach { storedObject ->
-            Mockito.`when`(storageService.getReadUrl(storedObject.key))
+            Mockito.`when`(storageService.getReadUrl(storedObject.bucket, storedObject.key))
                 .thenReturn(readUrlFor(storedObject.key))
         }
     }
