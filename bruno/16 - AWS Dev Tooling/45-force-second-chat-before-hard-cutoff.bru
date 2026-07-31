@@ -1,0 +1,21 @@
+meta {
+  name: 45 Force Second Chat Before Hard Cutoff
+  type: http
+  seq: 45
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/connections/{{devConnectionId}}/second-chat-before-hard-cutoff
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "schedule-negotiation-second-chat-before-hard-cutoff") {
+    throw new Error("Expected dev timeout mutation before second-chat hard cutoff.");
+  }
+}

@@ -1,0 +1,21 @@
+meta {
+  name: 24 Run Visual Phase Expiration Job
+  type: http
+  seq: 24
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/visual-phase-expiration/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "VisualPhaseExpirationJob") {
+    throw new Error("Expected VisualPhaseExpirationJob to run.");
+  }
+}

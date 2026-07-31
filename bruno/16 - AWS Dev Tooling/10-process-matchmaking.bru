@@ -1,0 +1,42 @@
+meta {
+  name: 10 Process Matchmaking
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matchmaking/process?maxPairsPerRun={{maxPairsPerRun}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 401) {
+    throw new Error("Expected admin Firebase bearer token. Run 00 Admin Firebase Sign In first.");
+  }
+  if (status === 403) {
+    throw new Error("Expected allowlisted active admin user. Run 01 Provision Admin User and verify BACKOFFICE_ADMIN_EMAILS.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (!body || typeof body.matchesCreated !== "number" || !Array.isArray(body.pairs)) {
+    throw new Error("Expected matchmaking process response with matchesCreated and pairs.");
+  }
+
+  if (body.pairs.length > 0) {
+    const match = body.pairs[0];
+    bru.setEnvVar("devMatchId", match.id);
+  }
+}
+
+docs {
+  Triggers the same matchmaking processor used by the scheduled job in hosted dev.
+}
