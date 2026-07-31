@@ -1,0 +1,21 @@
+meta {
+  name: 50 Force Completion Cooldown Active
+  type: http
+  seq: 50
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/second-chat-resolution-requests/{{devResolutionRequestId}}/completion-cooldown-active
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "second-chat-completion-cooldown-active") {
+    throw new Error("Expected dev timeout mutation for active completion cooldown.");
+  }
+}

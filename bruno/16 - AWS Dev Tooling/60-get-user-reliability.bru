@@ -1,0 +1,28 @@
+meta {
+  name: 60 Get User Reliability
+  type: http
+  seq: 60
+}
+
+get {
+  url: {{baseUrl}}/api/local-dev/user-reliability/{{devUserId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.userId !== bru.getEnvVar("devUserId")) {
+    throw new Error("Expected reliability response for devUserId.");
+  }
+  if (typeof body.enabled !== "boolean") {
+    throw new Error("Expected enabled flag in reliability response.");
+  }
+  if (!Array.isArray(body.events)) {
+    throw new Error("Expected events array in reliability response.");
+  }
+}

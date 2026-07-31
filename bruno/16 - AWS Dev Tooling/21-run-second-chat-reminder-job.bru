@@ -1,0 +1,21 @@
+meta {
+  name: 21 Run Second Chat Reminder Job
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/second-chat-reminder/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "SecondChatReminderNotificationJob") {
+    throw new Error("Expected SecondChatReminderNotificationJob to run.");
+  }
+}
