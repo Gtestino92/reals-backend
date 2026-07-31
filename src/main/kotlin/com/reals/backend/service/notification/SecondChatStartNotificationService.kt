@@ -9,9 +9,11 @@ import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.notification.sender.PushNotification
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -35,7 +37,10 @@ class SecondChatStartNotificationService(
     private val participationRepository: SecondChatParticipationRepository,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
-    private val transactionTemplate: TransactionTemplate
+    private val transactionTemplate: TransactionTemplate,
+
+    @param:Value("\${chat.second-chat.on-time-window-minutes:10}")
+    private val secondChatOnTimeWindowMinutes: Long = 10
 ) {
 
     fun processSecondChatStart(
@@ -66,6 +71,9 @@ class SecondChatStartNotificationService(
             require(latestSendAfterStartMinutes > 0) {
                 "notifications.second-chat-start.latest-send-after-start-minutes must be positive"
             }
+            require(secondChatOnTimeWindowMinutes > 0) {
+                "chat.second-chat.on-time-window-minutes must be positive"
+            }
 
             val connection = connectionRepository.findByIdForUpdate(connectionId)
                 ?: return@execute PreparedPushBatch(skipped = 1, eligible = false)
@@ -84,6 +92,14 @@ class SecondChatStartNotificationService(
                 return@execute PreparedPushBatch(skipped = 1, eligible = false)
             }
             if (now.isAfter(confirmedDateTime.plusMinutes(latestSendAfterStartMinutes))) {
+                return@execute PreparedPushBatch(skipped = 1, eligible = false)
+            }
+            val remainingTtlMillis =
+                Duration.between(
+                    now,
+                    confirmedDateTime.plusMinutes(secondChatOnTimeWindowMinutes)
+                ).toMillis()
+            if (remainingTtlMillis <= 0) {
                 return@execute PreparedPushBatch(skipped = 1, eligible = false)
             }
 
@@ -137,7 +153,8 @@ class SecondChatStartNotificationService(
                     notification = secondChatStartedNotification(
                         connectionId = connectionId,
                         matchId = connection.matchId,
-                        confirmedDateTime = confirmedDateTime
+                        confirmedDateTime = confirmedDateTime,
+                        ttlMillis = remainingTtlMillis
                     ),
                     preparedAt = now
                 )
@@ -163,7 +180,8 @@ class SecondChatStartNotificationService(
     private fun secondChatStartedNotification(
         connectionId: UUID,
         matchId: UUID,
-        confirmedDateTime: OffsetDateTime
+        confirmedDateTime: OffsetDateTime,
+        ttlMillis: Long
     ): PushNotification =
         PushNotification(
             title = "Tu segunda charla ya empezó",
@@ -173,7 +191,9 @@ class SecondChatStartNotificationService(
                 "connectionId" to connectionId.toString(),
                 "matchId" to matchId.toString(),
                 "availableAt" to confirmedDateTime.toString()
-            )
+            ),
+            androidTtlMillis = ttlMillis,
+            androidNotificationTag = secondChatNotificationTag(connectionId)
         )
 
     private fun SecondChatParticipation?.hasJoined(): Boolean =
@@ -200,3 +220,6 @@ fun secondChatStartedAggregateId(connectionId: UUID): UUID =
         "second-chat-started:$connectionId"
             .toByteArray(StandardCharsets.UTF_8)
     )
+
+fun secondChatNotificationTag(connectionId: UUID): String =
+    "second-chat-$connectionId"

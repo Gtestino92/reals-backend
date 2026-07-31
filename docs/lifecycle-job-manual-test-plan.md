@@ -286,7 +286,9 @@ start.
 6. Confirm already-joined participants are recorded as
    `SKIPPED_ALREADY_JOINED`.
 7. Confirm no new push is initiated after `confirmedDateTime + 5 minutes`.
-8. Confirm Home shows the relevant current or nearest scheduled second chat
+8. Confirm Android uses `second-chat-<connectionId>` as the notification tag and
+   the start notification can replace the earlier reminder.
+9. Confirm Home shows the relevant current or nearest scheduled second chat
    first after opening the notification.
 
 ## Scheduled Second Chat No-Show

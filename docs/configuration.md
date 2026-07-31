@@ -170,7 +170,7 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
 | `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for no-show, conversation requests, inactivity, absolute timeout and read-only cleanup. Defaults to `120000`. |
 | `SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatReminderNotificationJob`. Defaults to `60000`, which gives a 1-minute reminder pickup window. |
-| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatStartNotificationJob`. Defaults to `300000`, matching the five-minute start-notification delivery window. |
+| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatStartNotificationJob`. Defaults to `240000`, which leaves scheduler slack inside the five-minute start-notification delivery window. Must remain lower than `NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES * 60000`. |
 | `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_BATCH_SIZE` | no | Dev/prod bounded batch size for `SecondChatStartNotificationJob`. Defaults to `100`. |
 | `SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `VisualReviewReminderNotificationJob`. Defaults to `1800000`, so due visual-review reminders are picked up about every 30 minutes. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for stale match expiration fallback. Defaults to `300000`. |

@@ -157,16 +157,23 @@ display title/body plus data fields; the data contract contains only `type`,
 
 `SecondChatStartNotificationJob` sends a privacy-safe external push shortly
 after a confirmed second-chat start. Eligibility is exact at the backend clock:
-`confirmedDateTime <= now <= confirmedDateTime + 5 minutes` by default. The
-candidate query is bounded, ordered by `confirmedDateTime` and negotiation id,
-requires `CONFIRMED`, and allows only `SECOND_CHAT_SCHEDULED`,
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes` by default. The job
+runs every 4 minutes by default, and startup validation requires that cadence to
+remain lower than the latest-send window. Candidate scanning uses a seek cursor
+ordered by `confirmedDateTime` and negotiation id, skips already fully handled
+connections, and continues through the bounded five-minute source window until
+the per-run batch of unhandled connections is full or the source is exhausted.
+The query requires `CONFIRMED`, and allows only `SECOND_CHAT_SCHEDULED`,
 `SECOND_CHAT_AVAILABLE` or `SECOND_CHAT` connections. The service rechecks the
 connection, negotiation window and each participation under the connection lock
 before preparing sends. Participants already joined through `ON_TIME` or `LATE`
 attendance with `joinedAt` set are recorded as `SKIPPED_ALREADY_JOINED` and are
 not sent to. Delivery is deduplicated per user, notification type and
 `secondChatStartedAggregateId(connectionId)`. The provider data contract is
-`type=SECOND_CHAT_STARTED`, `connectionId`, `matchId` and `availableAt`.
+`type=SECOND_CHAT_STARTED`, `connectionId`, `matchId` and `availableAt`. The
+Android FCM notification tag is `second-chat-<connectionId>` for both the
+reminder and start notification; transport TTL is capped at the confirmed start
+for reminders and at the configured second-chat on-time cutoff for start pushes.
 
 `VisualReviewReminderNotificationJob` sends privacy-safe external push reminders
 for active visual reviews whose persisted `reminderEligibleAt` is due and whose
