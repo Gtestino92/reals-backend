@@ -68,9 +68,9 @@ scheduler:
     batch-size: 100
 
   # Sends a privacy-safe reminder shortly after a confirmed second-chat start.
-  # Runs every 5 minutes; sends only while confirmedDateTime <= now <= confirmedDateTime + 5 minutes.
+  # Runs every 4 minutes; sends only while confirmedDateTime <= now <= confirmedDateTime + 5 minutes.
   second-chat-start-notification-job:
-    fixed-delay: 300000
+    fixed-delay: 240000
     batch-size: 100
 
   # Sends a privacy-safe visual-review reminder after the persisted eligibility timestamp.

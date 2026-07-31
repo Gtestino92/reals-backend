@@ -25,6 +25,7 @@ import com.reals.backend.service.notification.VisualReviewReminderNotificationSe
 import com.reals.backend.service.notification.schedulingAvailableAggregateId
 import com.reals.backend.service.notification.schedulingProposalsReceivedAggregateId
 import com.reals.backend.service.notification.secondChatReminderAggregateId
+import com.reals.backend.service.notification.secondChatNotificationTag
 import com.reals.backend.service.notification.secondChatStartedAggregateId
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationSender
@@ -1097,6 +1098,8 @@ class PushNotificationIntegrationTest : BaseIT() {
         pushSender.attempts.forEach { attempt ->
             assertEquals("Tu segunda charla empieza pronto", attempt.notification.title)
             assertEquals("Tenes una segunda charla programada en 10 minutos.", attempt.notification.body)
+            assertEquals("second-chat-${setup.connectionId}", attempt.notification.androidNotificationTag)
+            assertTrue(attempt.notification.androidTtlMillis in 1..Duration.ofMinutes(5).toMillis())
             assertEquals(
                 setOf("type", "connectionId", "availableAt"),
                 attempt.notification.data.keys
@@ -1273,6 +1276,24 @@ class PushNotificationIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `second chat reminder does not prepare stale push when ttl is non positive`() {
+        val now = OffsetDateTime.now()
+        val alreadyStarted = confirmSecondChat(confirmedDateTime = now.minusSeconds(1))
+        registerSecondChatReminderTokens(alreadyStarted, "stale-reminder")
+
+        val eligible =
+            secondChatReminderNotificationService.notifySecondChatReminder(
+                connectionId = alreadyStarted.connectionId,
+                confirmedDateTime = now.minusSeconds(1),
+                minutesBefore = 10
+            )
+
+        assertFalse(eligible)
+        assertEquals(0, secondChatReminderDeliveriesFor(alreadyStarted.connectionId, minutesBefore = 10).size)
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
     fun `second chat start candidate query uses inclusive start and latest send boundaries`() {
         val now = OffsetDateTime.parse("2041-07-17T12:00:00Z")
         val beforeStart = confirmSecondChat(confirmedDateTime = now.plusSeconds(1))
@@ -1336,6 +1357,8 @@ class PushNotificationIntegrationTest : BaseIT() {
         pushSender.attempts.forEach { attempt ->
             assertEquals("Tu segunda charla ya empezó", attempt.notification.title)
             assertEquals("Entrá ahora a Reals para sumarte.", attempt.notification.body)
+            assertEquals("second-chat-${setup.connectionId}", attempt.notification.androidNotificationTag)
+            assertEquals(Duration.ofMinutes(9).toMillis(), attempt.notification.androidTtlMillis)
             assertEquals(setOf("type", "connectionId", "matchId", "availableAt"), attempt.notification.data.keys)
             assertEquals(PushNotificationType.SECOND_CHAT_STARTED.name, attempt.notification.data["type"])
             assertEquals(setup.connectionId.toString(), attempt.notification.data["connectionId"])
@@ -1360,6 +1383,52 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(2, pushSender.attempts.size)
         assertEquals(secondChatStartedAggregateId(setup.connectionId), secondChatStartedAggregateId(setup.connectionId))
         assertTrue(secondChatStartedAggregateId(setup.connectionId) != secondChatStartedAggregateId(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `second chat reminder and start notification share Android replacement tag`() {
+        val scheduledAt = OffsetDateTime.now().plusMinutes(3)
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        registerSecondChatReminderTokens(setup, "shared-tag")
+
+        secondChatReminderNotificationService.notifySecondChatReminder(
+            connectionId = setup.connectionId,
+            confirmedDateTime = scheduledAt,
+            minutesBefore = 10
+        )
+        val reminderTags = pushSender.attempts.map { it.notification.androidNotificationTag }.toSet()
+        pushSender.reset()
+
+        secondChatStartNotificationService.processSecondChatStart(
+            connectionId = setup.connectionId,
+            now = scheduledAt,
+            latestSendAfterStartMinutes = 5
+        )
+
+        assertEquals(setOf(secondChatNotificationTag(setup.connectionId)), reminderTags)
+        assertEquals(
+            setOf(secondChatNotificationTag(setup.connectionId)),
+            pushSender.attempts.map { it.notification.androidNotificationTag }.toSet()
+        )
+    }
+
+    @Test
+    fun `second chat start notification does not prepare stale push when ttl is non positive`() {
+        val scheduledAt = OffsetDateTime.parse("2042-08-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        registerSecondChatStartTokens(setup, "stale-start-ttl")
+
+        val result =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = scheduledAt.plusMinutes(10),
+                latestSendAfterStartMinutes = 15
+            )
+
+        assertEquals(0, result.succeeded)
+        assertEquals(1, result.skipped)
+        assertEquals(0, secondChatStartedDeliveriesFor(setup.connectionId).size)
+        assertEquals(0, pushSender.attempts.size)
     }
 
     @Test
@@ -1492,7 +1561,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         val firstRun = secondChatStartNotificationJob.processSecondChatStartNotifications(now)
 
         assertEquals(2, firstRun.processed)
-        assertEquals(4, firstRun.succeeded)
+        assertEquals(2, firstRun.succeeded)
         assertEquals(2, secondChatStartedDeliveriesFor(first.connectionId).size)
         assertEquals(2, secondChatStartedDeliveriesFor(second.connectionId).size)
         assertEquals(0, secondChatStartedDeliveriesFor(third.connectionId).size)
@@ -1500,9 +1569,43 @@ class PushNotificationIntegrationTest : BaseIT() {
         val secondRun = secondChatStartNotificationJob.processSecondChatStartNotifications(now.plusMinutes(1))
 
         assertEquals(1, secondRun.processed)
-        assertEquals(2, secondRun.succeeded)
+        assertEquals(1, secondRun.succeeded)
         assertEquals(2, secondChatStartedDeliveriesFor(third.connectionId).size)
         assertEquals(6, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `second chat start job scans past handled candidates without exceeding batch size`() {
+        val now = OffsetDateTime.parse("2048-08-17T12:00:00Z")
+        val handled = (0 until 5).map { index ->
+            confirmSecondChat(confirmedDateTime = now.minusMinutes(4).plusSeconds(index.toLong()))
+        }
+        val unhandled = (5 until 8).map { index ->
+            confirmSecondChat(confirmedDateTime = now.minusMinutes(4).plusSeconds(index.toLong()))
+        }
+        (handled + unhandled).forEachIndexed { index, setup ->
+            registerSecondChatStartTokens(setup, "scan-$index")
+        }
+
+        handled.forEach { setup ->
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = now,
+                latestSendAfterStartMinutes = 5
+            )
+        }
+        pushSender.reset()
+
+        val summary = secondChatStartNotificationJob.processSecondChatStartNotifications(now)
+
+        assertEquals(2, summary.processed)
+        assertEquals(2, summary.succeeded)
+        assertEquals(0, summary.skipped)
+        assertEquals(0, summary.failed)
+        assertEquals(4, pushSender.attempts.size)
+        assertEquals(2, secondChatStartedDeliveriesFor(unhandled[0].connectionId).size)
+        assertEquals(2, secondChatStartedDeliveriesFor(unhandled[1].connectionId).size)
+        assertEquals(0, secondChatStartedDeliveriesFor(unhandled[2].connectionId).size)
     }
 
     @Test

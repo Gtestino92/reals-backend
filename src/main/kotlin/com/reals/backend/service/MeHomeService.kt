@@ -441,10 +441,10 @@ class MeHomeService(
             return categoryComparison
         }
 
-        if (left.category == HOME_ORDER_SCHEDULING_PHASE) {
-            val expiresAtComparison = left.timestamp.compareNullableTo(right.timestamp)
-            if (expiresAtComparison != 0) {
-                return expiresAtComparison
+        if (left.category == HOME_ORDER_CURRENT_SECOND_CHAT) {
+            val availableAtComparison = left.timestamp.compareNullableDescendingTo(right.timestamp)
+            if (availableAtComparison != 0) {
+                return availableAtComparison
             }
             return left.connectionId.compareTo(right.connectionId)
         }
@@ -482,7 +482,8 @@ class MeHomeService(
                 HOME_ORDER_CURRENT_SECOND_CHAT,
                 HOME_ORDER_SCHEDULED_SECOND_CHAT -> secondChat?.availableAt ?: confirmedDateTime
                 HOME_ORDER_SCHEDULING_PHASE -> connection.schedulingExpiresAt
-                HOME_ORDER_READ_ONLY_SECOND_CHAT -> secondChat?.endedAt
+                HOME_ORDER_READ_ONLY_SECOND_CHAT -> secondChat?.readOnlyUntil
+                    ?: secondChat?.endedAt
                     ?: secondChat?.timeoutAt
                     ?: secondChat?.availableAt
                     ?: confirmedDateTime
@@ -502,6 +503,14 @@ class MeHomeService(
             this == null -> 1
             other == null -> -1
             else -> compareTo(other)
+        }
+
+    private fun OffsetDateTime?.compareNullableDescendingTo(other: OffsetDateTime?): Int =
+        when {
+            this == null && other == null -> 0
+            this == null -> 1
+            other == null -> -1
+            else -> other.compareTo(this)
         }
 
     private fun partnerUserId(

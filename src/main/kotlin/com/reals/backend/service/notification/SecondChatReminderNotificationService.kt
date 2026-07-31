@@ -7,6 +7,7 @@ import com.reals.backend.service.notification.sender.PushNotification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -57,6 +58,10 @@ class SecondChatReminderNotificationService(
             val commands = mutableListOf<PreparedPushCommand>()
             var skipped = 0
             val now = OffsetDateTime.now()
+            val remainingTtlMillis = Duration.between(now, confirmedDateTime).toMillis()
+            if (remainingTtlMillis <= 0) {
+                return@execute PreparedPushBatch(skipped = 1, eligible = false)
+            }
 
             listOf(connection.userAId, connection.userBId).forEach { userId ->
                 if (
@@ -90,7 +95,8 @@ class SecondChatReminderNotificationService(
                     notification = secondChatReminderNotification(
                         connectionId = connectionId,
                         confirmedDateTime = confirmedDateTime,
-                        minutesBefore = minutesBefore
+                        minutesBefore = minutesBefore,
+                        ttlMillis = remainingTtlMillis
                     ),
                     preparedAt = now
                 )
@@ -110,7 +116,8 @@ class SecondChatReminderNotificationService(
     private fun secondChatReminderNotification(
         connectionId: UUID,
         confirmedDateTime: OffsetDateTime,
-        minutesBefore: Long
+        minutesBefore: Long,
+        ttlMillis: Long
     ): PushNotification =
         PushNotification(
             title = "Tu segunda charla empieza pronto",
@@ -119,7 +126,9 @@ class SecondChatReminderNotificationService(
                 "type" to PushNotificationType.SECOND_CHAT_REMINDER.name,
                 "connectionId" to connectionId.toString(),
                 "availableAt" to confirmedDateTime.toString()
-            )
+            ),
+            androidTtlMillis = ttlMillis,
+            androidNotificationTag = secondChatNotificationTag(connectionId)
         )
 
     private companion object {

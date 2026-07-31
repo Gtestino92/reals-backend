@@ -226,10 +226,138 @@ class MeHomeServiceTest {
             )
         )
         stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
 
-        val order = service.getHome(userId).nextSteps.map { it.connectionId }
+        val fullOrder = service.getHome(userId).nextSteps.map { it.connectionId }
+        val pendingOrder = service.getPendingHomeState(userId).nextSteps.map { it.connectionId }
 
-        assertEquals(listOf(earlier.id, tieFirst.id, tieSecond.id, later.id), order)
+        assertEquals(listOf(earlier.id, tieFirst.id, tieSecond.id, later.id), fullOrder)
+        assertEquals(fullOrder, pendingOrder)
+    }
+
+    @Test
+    fun `home orders current second chats by most recent available time first`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val older = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000051"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+        val recent = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000052"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(older, recent),
+            secondChats = listOf(
+                secondChat(
+                    connection = older,
+                    status = ChatStatus.ACTIVE,
+                    availableAt = now.minusMinutes(10),
+                    timeoutAt = now.plusMinutes(110)
+                ),
+                secondChat(
+                    connection = recent,
+                    status = ChatStatus.ACTIVE,
+                    availableAt = now.minusMinutes(1),
+                    timeoutAt = now.plusMinutes(119)
+                )
+            )
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val fullOrder = service.getHome(userId).nextSteps.map { it.connectionId }
+        val pendingOrder = service.getPendingHomeState(userId).nextSteps.map { it.connectionId }
+
+        assertEquals(listOf(recent.id, older.id), fullOrder)
+        assertEquals(fullOrder, pendingOrder)
+    }
+
+    @Test
+    fun `home orders read only second chats by earliest read only expiry first`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val laterExpiry = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000061"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+        val soonerExpiry = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000062"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(laterExpiry, soonerExpiry),
+            secondChats = listOf(
+                secondChat(
+                    connection = laterExpiry,
+                    status = ChatStatus.EXPIRED,
+                    availableAt = now.minusHours(3),
+                    timeoutAt = now.minusHours(1),
+                    readOnlyUntil = now.plusMinutes(30)
+                ),
+                secondChat(
+                    connection = soonerExpiry,
+                    status = ChatStatus.EXPIRED,
+                    availableAt = now.minusHours(4),
+                    timeoutAt = now.minusHours(2),
+                    readOnlyUntil = now.plusMinutes(10)
+                )
+            )
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val fullOrder = service.getHome(userId).nextSteps.map { it.connectionId }
+        val pendingOrder = service.getPendingHomeState(userId).nextSteps.map { it.connectionId }
+
+        assertEquals(listOf(soonerExpiry.id, laterExpiry.id), fullOrder)
+        assertEquals(fullOrder, pendingOrder)
+    }
+
+    @Test
+    fun `home orders missing second chat timestamps after valid timestamps`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val missingTimestamp = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000071"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+        val validTimestamp = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000072"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(missingTimestamp, validTimestamp),
+            negotiations = listOf(negotiation(validTimestamp, now.minusMinutes(1)))
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val fullOrder = service.getHome(userId).nextSteps.map { it.connectionId }
+        val pendingOrder = service.getPendingHomeState(userId).nextSteps.map { it.connectionId }
+
+        assertEquals(listOf(validTimestamp.id, missingTimestamp.id), fullOrder)
+        assertEquals(fullOrder, pendingOrder)
     }
 
     @Test
