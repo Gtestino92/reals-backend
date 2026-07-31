@@ -155,6 +155,19 @@ notification type, connection id and lead time. The provider payload includes a
 display title/body plus data fields; the data contract contains only `type`,
 `connectionId` and `availableAt`.
 
+`SecondChatStartNotificationJob` sends a privacy-safe external push shortly
+after a confirmed second-chat start. Eligibility is exact at the backend clock:
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes` by default. The
+candidate query is bounded, ordered by `confirmedDateTime` and negotiation id,
+requires `CONFIRMED`, and allows only `SECOND_CHAT_SCHEDULED`,
+`SECOND_CHAT_AVAILABLE` or `SECOND_CHAT` connections. The service rechecks the
+connection, negotiation window and each participation under the connection lock
+before preparing sends. Participants already joined through `ON_TIME` or `LATE`
+attendance with `joinedAt` set are recorded as `SKIPPED_ALREADY_JOINED` and are
+not sent to. Delivery is deduplicated per user, notification type and
+`secondChatStartedAggregateId(connectionId)`. The provider data contract is
+`type=SECOND_CHAT_STARTED`, `connectionId`, `matchId` and `availableAt`.
+
 `VisualReviewReminderNotificationJob` sends privacy-safe external push reminders
 for active visual reviews whose persisted `reminderEligibleAt` is due and whose
 `expiresAt` is still in the future. `reminderEligibleAt` is calculated once when

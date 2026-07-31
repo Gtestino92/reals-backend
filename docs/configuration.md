@@ -170,6 +170,8 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
 | `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for no-show, conversation requests, inactivity, absolute timeout and read-only cleanup. Defaults to `120000`. |
 | `SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatReminderNotificationJob`. Defaults to `60000`, which gives a 1-minute reminder pickup window. |
+| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatStartNotificationJob`. Defaults to `300000`, matching the five-minute start-notification delivery window. |
+| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_BATCH_SIZE` | no | Dev/prod bounded batch size for `SecondChatStartNotificationJob`. Defaults to `100`. |
 | `SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `VisualReviewReminderNotificationJob`. Defaults to `1800000`, so due visual-review reminders are picked up about every 30 minutes. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for stale match expiration fallback. Defaults to `300000`. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION` | no | Dev/prod ISO-8601 duration for first-chat match expiration fallback. Defaults to `PT20M`. |
@@ -182,6 +184,7 @@ Non-sensitive runtime configuration:
 | `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Cadence in milliseconds for enabling deferred scheduling. Defaults to `60000` in base/dev profiles and `21600000` in prod. |
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
+| `NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES` | no | Latest allowed initiation time after confirmed second-chat start. Defaults to `5`; eligibility is `confirmedDateTime <= now <= confirmedDateTime + value`. |
 | `NOTIFICATIONS_VISUAL_REVIEW_REMINDER_REMAINING_PERCENTAGE` | no | Remaining visual-review duration percentage used when persisting `VisualReview.reminderEligibleAt` at creation time. Defaults to `40`; must be greater than `0` and less than `100`. |
 
 Matchmaking pair eligibility has four separate controls:

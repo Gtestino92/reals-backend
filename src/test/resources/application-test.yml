@@ -60,6 +60,9 @@ scheduler:
   second-chat-reminder-job:
     fixed-delay: 60000
     batch-size: 2
+  second-chat-start-notification-job:
+    fixed-delay: 300000
+    batch-size: 2
   second-chat-lifecycle-job:
     fixed-delay: 3600000
     batch-size: 2
@@ -72,6 +75,8 @@ notifications:
   second-chat-reminder:
     # Comma-separated lead times in minutes.
     minutes-before: 10
+  second-chat-start:
+    latest-send-after-start-minutes: 5
   visual-review-reminder:
     remaining-percentage: 40
 

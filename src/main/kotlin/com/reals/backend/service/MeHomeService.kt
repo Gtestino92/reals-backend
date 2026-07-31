@@ -25,6 +25,7 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.Profile
+import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
@@ -225,7 +226,7 @@ class MeHomeService(
             }
             ?: emptyMap()
 
-        val activeMatches = candidateMatches
+        val eligibleMatches = candidateMatches
             .filter { match ->
                 if (match.state != MatchState.VISUAL_PHASE) {
                     true
@@ -239,20 +240,25 @@ class MeHomeService(
                         )
                 }
             }
-            .sortedByDescending { it.updatedAt }
 
-        val firstChatsByMatchId = if (activeMatches.isEmpty()) {
+        val firstChatsByMatchId = if (eligibleMatches.isEmpty()) {
             emptyMap()
         } else {
             chatRepository
                 .findByMatchIdInAndChatType(
-                    matchIds = activeMatches.map { it.id },
+                    matchIds = eligibleMatches.map { it.id },
                     chatType = ChatType.FIRST_CHAT
                 )
                 .associateBy { it.matchId }
         }
 
-        val chatDecisionsByMatchId = loadChatDecisionsByMatchId(activeMatches)
+        val chatDecisionsByMatchId = loadChatDecisionsByMatchId(eligibleMatches)
+        val activeMatches =
+            orderActiveMatches(
+                matches = eligibleMatches,
+                visualReviewByMatchId = visualReviewByMatchId,
+                firstChatsByMatchId = firstChatsByMatchId
+            )
 
         val activeConnections = connectionRepository
             .findByParticipantIdAndStateIn(
@@ -264,7 +270,6 @@ class MeHomeService(
                     ConnectionState.SECOND_CHAT
                 )
             ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
-            .sortedByDescending { it.updatedAt }
 
         val visibleConnections = filterDismissedConnections(
             userId = userId,
@@ -311,7 +316,12 @@ class MeHomeService(
             visualReviewByMatchId = visualReviewByMatchId,
             firstChatsByMatchId = firstChatsByMatchId,
             chatDecisionsByMatchId = chatDecisionsByMatchId,
-            visibleConnections = visibleConnections,
+            visibleConnections = orderVisibleConnections(
+                connections = visibleConnections,
+                secondChatsByConnectionId = secondChatsByConnectionId,
+                confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId,
+                now = now
+            ),
             pendingSchedulingConnections = pendingSchedulingConnections,
             secondChatsByConnectionId = secondChatsByConnectionId,
             confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId
@@ -354,6 +364,145 @@ class MeHomeService(
 
         return connections.filter { it.id !in dismissedConnectionIds }
     }
+
+    private fun orderVisibleConnections(
+        connections: List<Connection>,
+        secondChatsByConnectionId: Map<UUID, Chat>,
+        confirmedNegotiationsByConnectionId: Map<UUID, ScheduleNegotiation>,
+        now: OffsetDateTime
+    ): List<Connection> =
+        connections.sortedWith { leftConnection, rightConnection ->
+            compareHomeConnectionOrder(
+                left = homeConnectionOrderKey(
+                    connection = leftConnection,
+                    secondChat = secondChatsByConnectionId[leftConnection.id],
+                    confirmedDateTime = confirmedNegotiationsByConnectionId[leftConnection.id]?.confirmedDateTime,
+                    now = now
+                ),
+                right = homeConnectionOrderKey(
+                    connection = rightConnection,
+                    secondChat = secondChatsByConnectionId[rightConnection.id],
+                    confirmedDateTime = confirmedNegotiationsByConnectionId[rightConnection.id]?.confirmedDateTime,
+                    now = now
+                )
+            )
+        }
+
+    private fun orderActiveMatches(
+        matches: List<Match>,
+        visualReviewByMatchId: Map<UUID, VisualReview>,
+        firstChatsByMatchId: Map<UUID, Chat>
+    ): List<Match> =
+        matches.sortedWith { leftMatch, rightMatch ->
+            val leftKey =
+                homePendingActionOrderKey(
+                    match = leftMatch,
+                    visualReview = visualReviewByMatchId[leftMatch.id],
+                    firstChat = firstChatsByMatchId[leftMatch.id]
+                )
+            val rightKey =
+                homePendingActionOrderKey(
+                    match = rightMatch,
+                    visualReview = visualReviewByMatchId[rightMatch.id],
+                    firstChat = firstChatsByMatchId[rightMatch.id]
+                )
+            val dueAtComparison = leftKey.dueAt.compareNullableTo(rightKey.dueAt)
+            if (dueAtComparison != 0) {
+                dueAtComparison
+            } else {
+                leftKey.matchId.compareTo(rightKey.matchId)
+            }
+        }
+
+    private fun homePendingActionOrderKey(
+        match: Match,
+        visualReview: VisualReview?,
+        firstChat: Chat?
+    ): HomePendingActionOrderKey {
+        val dueAt =
+            when (match.state) {
+                MatchState.VISUAL_PHASE -> visualReview?.expiresAt
+                MatchState.CHAT_ACTIVE -> firstChat?.timeoutAt
+                else -> match.updatedAt
+            }
+
+        return HomePendingActionOrderKey(
+            dueAt = dueAt,
+            matchId = match.id
+        )
+    }
+
+    private fun compareHomeConnectionOrder(
+        left: HomeConnectionOrderKey,
+        right: HomeConnectionOrderKey
+    ): Int {
+        val categoryComparison = left.category.compareTo(right.category)
+        if (categoryComparison != 0) {
+            return categoryComparison
+        }
+
+        if (left.category == HOME_ORDER_SCHEDULING_PHASE) {
+            val expiresAtComparison = left.timestamp.compareNullableTo(right.timestamp)
+            if (expiresAtComparison != 0) {
+                return expiresAtComparison
+            }
+            return left.connectionId.compareTo(right.connectionId)
+        }
+
+        val timestampComparison = left.timestamp.compareNullableTo(right.timestamp)
+        if (timestampComparison != 0) {
+            return timestampComparison
+        }
+        return left.connectionId.compareTo(right.connectionId)
+    }
+
+    private fun homeConnectionOrderKey(
+        connection: Connection,
+        secondChat: Chat?,
+        confirmedDateTime: OffsetDateTime?,
+        now: OffsetDateTime
+    ): HomeConnectionOrderKey {
+        val category =
+            when (connection.state) {
+                ConnectionState.SECOND_CHAT_AVAILABLE -> HOME_ORDER_CURRENT_SECOND_CHAT
+                ConnectionState.SECOND_CHAT ->
+                    when (secondChatNextStepType(secondChat, now)) {
+                        HomeNextStepType.SECOND_CHAT_AVAILABLE -> HOME_ORDER_CURRENT_SECOND_CHAT
+                        HomeNextStepType.SECOND_CHAT_READ_ONLY -> HOME_ORDER_READ_ONLY_SECOND_CHAT
+                        else -> HOME_ORDER_OTHER
+                    }
+                ConnectionState.SECOND_CHAT_SCHEDULED -> HOME_ORDER_SCHEDULED_SECOND_CHAT
+                ConnectionState.SCHEDULING_PHASE -> HOME_ORDER_SCHEDULING_PHASE
+                ConnectionState.SCHEDULING_PENDING,
+                ConnectionState.CLOSED -> HOME_ORDER_OTHER
+            }
+
+        val timestamp =
+            when (category) {
+                HOME_ORDER_CURRENT_SECOND_CHAT,
+                HOME_ORDER_SCHEDULED_SECOND_CHAT -> secondChat?.availableAt ?: confirmedDateTime
+                HOME_ORDER_SCHEDULING_PHASE -> connection.schedulingExpiresAt
+                HOME_ORDER_READ_ONLY_SECOND_CHAT -> secondChat?.endedAt
+                    ?: secondChat?.timeoutAt
+                    ?: secondChat?.availableAt
+                    ?: confirmedDateTime
+                else -> connection.updatedAt
+            }
+
+        return HomeConnectionOrderKey(
+            category = category,
+            timestamp = timestamp,
+            connectionId = connection.id
+        )
+    }
+
+    private fun OffsetDateTime?.compareNullableTo(other: OffsetDateTime?): Int =
+        when {
+            this == null && other == null -> 0
+            this == null -> 1
+            other == null -> -1
+            else -> compareTo(other)
+        }
 
     private fun partnerUserId(
         userAId: UUID,
@@ -651,6 +800,25 @@ class MeHomeService(
         } else {
             emptyList()
         }
+
+    private data class HomeConnectionOrderKey(
+        val category: Int,
+        val timestamp: OffsetDateTime?,
+        val connectionId: UUID
+    )
+
+    private data class HomePendingActionOrderKey(
+        val dueAt: OffsetDateTime?,
+        val matchId: UUID
+    )
+
+    private companion object {
+        const val HOME_ORDER_CURRENT_SECOND_CHAT = 0
+        const val HOME_ORDER_SCHEDULED_SECOND_CHAT = 1
+        const val HOME_ORDER_SCHEDULING_PHASE = 2
+        const val HOME_ORDER_READ_ONLY_SECOND_CHAT = 3
+        const val HOME_ORDER_OTHER = 4
+    }
 }
 
 private fun Match.counterpartIdFor(userId: UUID): UUID =
