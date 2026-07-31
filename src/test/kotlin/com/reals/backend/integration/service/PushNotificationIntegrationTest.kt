@@ -11,6 +11,7 @@ import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
+import com.reals.backend.scheduler.SecondChatStartNotificationJob
 import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.service.SchedulingConfirmedEvent
@@ -19,10 +20,12 @@ import com.reals.backend.service.notification.SchedulingAvailableNotificationSer
 import com.reals.backend.service.notification.SchedulingConfirmedNotificationService
 import com.reals.backend.service.notification.SchedulingProposalsReceivedNotificationService
 import com.reals.backend.service.notification.SecondChatReminderNotificationService
+import com.reals.backend.service.notification.SecondChatStartNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.schedulingAvailableAggregateId
 import com.reals.backend.service.notification.schedulingProposalsReceivedAggregateId
 import com.reals.backend.service.notification.secondChatReminderAggregateId
+import com.reals.backend.service.notification.secondChatStartedAggregateId
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationSender
 import com.reals.backend.service.notification.sender.PushNotificationToken
@@ -77,6 +80,12 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var secondChatReminderNotificationJob: SecondChatReminderNotificationJob
+
+    @Autowired
+    private lateinit var secondChatStartNotificationService: SecondChatStartNotificationService
+
+    @Autowired
+    private lateinit var secondChatStartNotificationJob: SecondChatStartNotificationJob
 
     @BeforeEach
     fun resetPushSender() {
@@ -1263,6 +1272,255 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(0, pushSender.attempts.size)
     }
 
+    @Test
+    fun `second chat start candidate query uses inclusive start and latest send boundaries`() {
+        val now = OffsetDateTime.parse("2041-07-17T12:00:00Z")
+        val beforeStart = confirmSecondChat(confirmedDateTime = now.plusSeconds(1))
+        val atStart = confirmSecondChat(confirmedDateTime = now)
+        val insideWindow = confirmSecondChat(confirmedDateTime = now.minusMinutes(3))
+        val atLatestBoundary = confirmSecondChat(confirmedDateTime = now.minusMinutes(5))
+        val stale = confirmSecondChat(confirmedDateTime = now.minusMinutes(5).minusSeconds(1))
+        val available = confirmSecondChat(
+            confirmedDateTime = now.minusMinutes(1),
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+        val secondChat = confirmSecondChat(
+            confirmedDateTime = now.minusMinutes(1),
+            state = ConnectionState.SECOND_CHAT
+        )
+        val closed = confirmSecondChat(
+            confirmedDateTime = now.minusMinutes(1),
+            state = ConnectionState.CLOSED
+        )
+        val pending = confirmSecondChat(
+            confirmedDateTime = now.minusMinutes(1),
+            status = NegotiationStatus.PENDING
+        )
+
+        val dueConnectionIds =
+            negotiationRepository.findConfirmedSecondChatStartNotificationDueConnectionIds(
+                windowStartInclusive = now.minusMinutes(5),
+                now = now,
+                pageable = PageRequest.of(0, 10)
+            )
+
+        assertFalse(dueConnectionIds.contains(beforeStart.connectionId))
+        assertTrue(dueConnectionIds.contains(atStart.connectionId))
+        assertTrue(dueConnectionIds.contains(insideWindow.connectionId))
+        assertTrue(dueConnectionIds.contains(atLatestBoundary.connectionId))
+        assertFalse(dueConnectionIds.contains(stale.connectionId))
+        assertTrue(dueConnectionIds.contains(available.connectionId))
+        assertTrue(dueConnectionIds.contains(secondChat.connectionId))
+        assertFalse(dueConnectionIds.contains(closed.connectionId))
+        assertFalse(dueConnectionIds.contains(pending.connectionId))
+        assertEquals(5, dueConnectionIds.size)
+    }
+
+    @Test
+    fun `second chat start notification sends privacy safe payload to both unjoined users and deduplicates`() {
+        val now = OffsetDateTime.parse("2042-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = now.minusMinutes(1))
+        registerSecondChatStartTokens(setup, "start-both")
+
+        val firstResult =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = now,
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(2, firstResult.succeeded)
+        assertEquals(0, firstResult.skipped)
+        assertEquals(listOf("start-both-token-a", "start-both-token-b"), pushSender.attempts.flatMap { it.tokens }.sorted())
+        assertProviderCallsOutsideTransactions()
+        pushSender.attempts.forEach { attempt ->
+            assertEquals("Tu segunda charla ya empezó", attempt.notification.title)
+            assertEquals("Entrá ahora a Reals para sumarte.", attempt.notification.body)
+            assertEquals(setOf("type", "connectionId", "matchId", "availableAt"), attempt.notification.data.keys)
+            assertEquals(PushNotificationType.SECOND_CHAT_STARTED.name, attempt.notification.data["type"])
+            assertEquals(setup.connectionId.toString(), attempt.notification.data["connectionId"])
+            assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
+            assertEquals(now.minusMinutes(1).toString(), attempt.notification.data["availableAt"])
+        }
+
+        val deliveries = secondChatStartedDeliveriesFor(setup.connectionId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+
+        val secondResult =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = now.plusMinutes(1),
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(0, secondResult.succeeded)
+        assertEquals(2, secondResult.skipped)
+        assertEquals(2, secondChatStartedDeliveriesFor(setup.connectionId).size)
+        assertEquals(2, pushSender.attempts.size)
+        assertEquals(secondChatStartedAggregateId(setup.connectionId), secondChatStartedAggregateId(setup.connectionId))
+        assertTrue(secondChatStartedAggregateId(setup.connectionId) != secondChatStartedAggregateId(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `second chat start notification skips only already joined participant`() {
+        val scheduledAt = OffsetDateTime.parse("2043-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        pushDeviceTokenService.registerToken(setup.userAId, "joined-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "unjoined-token-b", PushPlatform.ANDROID)
+
+        val result =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = scheduledAt.plusMinutes(2),
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(1, result.succeeded)
+        assertEquals(1, result.skipped)
+        assertEquals(listOf("unjoined-token-b"), pushSender.attempts.flatMap { it.tokens })
+        val deliveries = secondChatStartedDeliveriesFor(setup.connectionId)
+        assertEquals(PushDeliveryStatus.SKIPPED_ALREADY_JOINED, deliveries.first { it.userId == setup.userAId }.status)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userBId }.status)
+    }
+
+    @Test
+    fun `second chat start notification skips symmetric joined participant`() {
+        val scheduledAt = OffsetDateTime.parse("2044-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        joinSecondChatOrThrow(setup.connectionId, setup.userBId, scheduledAt.plusMinutes(1))
+        pushDeviceTokenService.registerToken(setup.userAId, "unjoined-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "joined-token-b", PushPlatform.ANDROID)
+
+        val result =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = scheduledAt.plusMinutes(2),
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(1, result.succeeded)
+        assertEquals(1, result.skipped)
+        assertEquals(listOf("unjoined-token-a"), pushSender.attempts.flatMap { it.tokens })
+        val deliveries = secondChatStartedDeliveriesFor(setup.connectionId)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userAId }.status)
+        assertEquals(PushDeliveryStatus.SKIPPED_ALREADY_JOINED, deliveries.first { it.userId == setup.userBId }.status)
+    }
+
+    @Test
+    fun `second chat start notification records both joined participants without FCM dispatch`() {
+        val scheduledAt = OffsetDateTime.parse("2045-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        joinSecondChatOrThrow(setup.connectionId, setup.userBId, scheduledAt.plusMinutes(2))
+        registerSecondChatStartTokens(setup, "joined-both")
+
+        val result =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = scheduledAt.plusMinutes(3),
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(0, result.succeeded)
+        assertEquals(2, result.skipped)
+        assertEquals(0, pushSender.attempts.size)
+        assertTrue(secondChatStartedDeliveriesFor(setup.connectionId).all {
+            it.status == PushDeliveryStatus.SKIPPED_ALREADY_JOINED
+        })
+    }
+
+    @Test
+    fun `second chat start notification does not send before start or after delivery window`() {
+        val scheduledAt = OffsetDateTime.parse("2046-07-17T12:00:00Z")
+        val before = confirmSecondChat(confirmedDateTime = scheduledAt)
+        val stale = confirmSecondChat(confirmedDateTime = scheduledAt)
+        registerSecondChatStartTokens(before, "before-start")
+        registerSecondChatStartTokens(stale, "stale-start")
+
+        val beforeResult =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = before.connectionId,
+                now = scheduledAt.minusNanos(1),
+                latestSendAfterStartMinutes = 5
+            )
+        val staleResult =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = stale.connectionId,
+                now = scheduledAt.plusMinutes(5).plusNanos(1),
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(1, beforeResult.skipped)
+        assertEquals(1, staleResult.skipped)
+        assertEquals(0, secondChatStartedDeliveriesFor(before.connectionId).size)
+        assertEquals(0, secondChatStartedDeliveriesFor(stale.connectionId).size)
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `second chat start notification records missing token skips`() {
+        val scheduledAt = OffsetDateTime.parse("2047-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+
+        val result =
+            secondChatStartNotificationService.processSecondChatStart(
+                connectionId = setup.connectionId,
+                now = scheduledAt,
+                latestSendAfterStartMinutes = 5
+            )
+
+        assertEquals(0, result.succeeded)
+        assertEquals(2, result.skipped)
+        assertEquals(0, pushSender.attempts.size)
+        assertTrue(secondChatStartedDeliveriesFor(setup.connectionId).all {
+            it.status == PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN
+        })
+    }
+
+    @Test
+    fun `second chat start job is bounded and fully handled candidates do not occupy next run`() {
+        val now = OffsetDateTime.parse("2048-07-17T12:00:00Z")
+        val first = confirmSecondChat(confirmedDateTime = now.minusMinutes(1))
+        val second = confirmSecondChat(confirmedDateTime = now.minusMinutes(1).plusSeconds(1))
+        val third = confirmSecondChat(confirmedDateTime = now.minusMinutes(1).plusSeconds(2))
+        registerSecondChatStartTokens(first, "start-first")
+        registerSecondChatStartTokens(second, "start-second")
+        registerSecondChatStartTokens(third, "start-third")
+
+        val firstRun = secondChatStartNotificationJob.processSecondChatStartNotifications(now)
+
+        assertEquals(2, firstRun.processed)
+        assertEquals(4, firstRun.succeeded)
+        assertEquals(2, secondChatStartedDeliveriesFor(first.connectionId).size)
+        assertEquals(2, secondChatStartedDeliveriesFor(second.connectionId).size)
+        assertEquals(0, secondChatStartedDeliveriesFor(third.connectionId).size)
+
+        val secondRun = secondChatStartNotificationJob.processSecondChatStartNotifications(now.plusMinutes(1))
+
+        assertEquals(1, secondRun.processed)
+        assertEquals(2, secondRun.succeeded)
+        assertEquals(2, secondChatStartedDeliveriesFor(third.connectionId).size)
+        assertEquals(6, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `second chat start job observes participant join between executions`() {
+        val scheduledAt = OffsetDateTime.parse("2049-07-17T12:00:00Z")
+        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
+        registerSecondChatStartTokens(setup, "between-runs")
+
+        secondChatStartNotificationJob.processSecondChatStartNotifications(scheduledAt.minusSeconds(1))
+        joinSecondChatOrThrow(setup.connectionId, setup.userAId, scheduledAt.plusMinutes(1))
+        secondChatStartNotificationJob.processSecondChatStartNotifications(scheduledAt.plusMinutes(2))
+
+        assertEquals(listOf("between-runs-token-b"), pushSender.attempts.flatMap { it.tokens })
+        val deliveries = secondChatStartedDeliveriesFor(setup.connectionId)
+        assertEquals(PushDeliveryStatus.SKIPPED_ALREADY_JOINED, deliveries.first { it.userId == setup.userAId }.status)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userBId }.status)
+    }
+
     private fun assertProviderCallsOutsideTransactions() {
         assertTrue(pushSender.attempts.isNotEmpty())
         assertTrue(pushSender.attempts.none { it.transactionActive })
@@ -1322,6 +1580,12 @@ class PushNotificationIntegrationTest : BaseIT() {
             )
         )
 
+    private fun secondChatStartedDeliveriesFor(connectionId: UUID) =
+        pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.SECOND_CHAT_STARTED,
+            aggregateId = secondChatStartedAggregateId(connectionId)
+        )
+
     private fun confirmSecondChat(
         confirmedDateTime: OffsetDateTime,
         state: ConnectionState = ConnectionState.SECOND_CHAT_SCHEDULED,
@@ -1360,6 +1624,14 @@ class PushNotificationIntegrationTest : BaseIT() {
     }
 
     private fun registerSecondChatReminderTokens(
+        setup: ConnectionFixture,
+        tokenPrefix: String
+    ) {
+        pushDeviceTokenService.registerToken(setup.userAId, "$tokenPrefix-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "$tokenPrefix-token-b", PushPlatform.ANDROID)
+    }
+
+    private fun registerSecondChatStartTokens(
         setup: ConnectionFixture,
         tokenPrefix: String
     ) {

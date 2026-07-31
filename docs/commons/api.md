@@ -134,6 +134,15 @@ a display title/body plus data fields. The data contract contains only `type`,
 `connectionId` and `availableAt`. Delivery is deduplicated per user,
 notification type, connection id and lead time.
 
+After a confirmed second-chat start, `SecondChatStartNotificationJob` attempts
+a privacy-safe external push with type `SECOND_CHAT_STARTED` only for
+participants who have not joined. The default window is
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes`; later scheduler
+runs skip stale starts. The provider payload includes `type`, `connectionId`,
+`matchId` and `availableAt`. The backend title is `Tu segunda charla ya empezó`
+and the body is `Entrá ahora a Reals para sumarte.` Delivery is deduplicated
+per user, notification type and `secondChatStartedAggregateId(connectionId)`.
+
 Home returns `matchmaking` for search UX:
 
 - `inQueue`: current user is already in matchmaking queue.
@@ -529,6 +538,10 @@ Second-chat read-only lifecycle can be tested locally with:
 Second-chat reminder push notifications can be tested locally with:
 
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
+
+Second-chat start push notifications can be tested locally with:
+
+- `POST /api/local-dev/jobs/second-chat-start-notification/run`
 
 Visual-review reminder push notifications can be tested locally with:
 

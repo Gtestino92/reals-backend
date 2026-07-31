@@ -1,8 +1,9 @@
 package com.reals.backend.repository
 
-import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.ScheduleNegotiation
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import jakarta.persistence.LockModeType
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
@@ -169,6 +170,41 @@ interface ScheduleNegotiationRepository :
         ),
         pageable: Pageable
     ): List<ScheduleNegotiation>
+
+    @Query(
+        """select n.connectionId from ScheduleNegotiation n
+           , Connection c
+           where c.id = n.connectionId
+             and c.state in :states
+             and n.status = :status
+             and n.confirmedDateTime is not null
+             and n.confirmedDateTime >= :windowStartInclusive
+             and n.confirmedDateTime <= :now
+             and (
+                (select count(p.id) from SecondChatParticipation p where p.connectionId = c.id) < 2
+                or exists (
+                    select p.id from SecondChatParticipation p
+                    where p.connectionId = c.id
+                      and p.attendanceStatus not in :joinedStatuses
+                )
+             )
+           order by n.confirmedDateTime asc, n.id asc"""
+    )
+    fun findConfirmedSecondChatStartNotificationDueConnectionIds(
+        @Param("windowStartInclusive") windowStartInclusive: OffsetDateTime,
+        @Param("now") now: OffsetDateTime,
+        @Param("status") status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        @Param("states") states: Collection<ConnectionState> = listOf(
+            ConnectionState.SECOND_CHAT_SCHEDULED,
+            ConnectionState.SECOND_CHAT_AVAILABLE,
+            ConnectionState.SECOND_CHAT
+        ),
+        @Param("joinedStatuses") joinedStatuses: Collection<SecondChatAttendanceStatus> = listOf(
+            SecondChatAttendanceStatus.ON_TIME,
+            SecondChatAttendanceStatus.LATE
+        ),
+        pageable: Pageable
+    ): List<UUID>
 
     @Query(
         """select n from ScheduleNegotiation n
