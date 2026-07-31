@@ -1,0 +1,24 @@
+meta {
+  name: 02 Get Admin Me
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected authenticated admin user response with id.");
+  }
+
+  bru.setEnvVar("adminUserId", body.id);
+}

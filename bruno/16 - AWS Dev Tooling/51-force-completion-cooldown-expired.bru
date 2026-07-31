@@ -1,0 +1,21 @@
+meta {
+  name: 51 Force Completion Cooldown Expired
+  type: http
+  seq: 51
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/second-chat-resolution-requests/{{devResolutionRequestId}}/completion-cooldown-expired
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "second-chat-completion-cooldown-expired") {
+    throw new Error("Expected dev timeout mutation for expired completion cooldown.");
+  }
+}
