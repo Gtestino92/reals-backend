@@ -31,6 +31,9 @@ any more-specific nested `AGENTS.md` files first.
 - When starting a new development task from `development`, create/use a focused
   feature branch whose name starts with `feature/`. This is not required when
   applying a patch on an already-active feature branch.
+- A feature branch must track its same-named remote branch, for example
+  `feature/example` -> `origin/feature/example`. Do not leave a feature branch
+  with upstream `origin/development`; use `development` only as the base.
 
 ## 3. Scope And Architecture
 
