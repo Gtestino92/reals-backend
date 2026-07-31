@@ -1,0 +1,21 @@
+meta {
+  name: 29 Run User Reliability Cleanup Job
+  type: http
+  seq: 29
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/user-reliability-cleanup/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "UserReliabilityEventCleanupJob") {
+    throw new Error("Expected UserReliabilityEventCleanupJob to run.");
+  }
+}

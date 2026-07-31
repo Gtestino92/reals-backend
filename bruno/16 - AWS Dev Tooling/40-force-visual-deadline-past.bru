@@ -1,0 +1,21 @@
+meta {
+  name: 40 Force Visual Deadline Past
+  type: http
+  seq: 40
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/matches/{{devMatchId}}/visual-expire-now
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "visual-review") {
+    throw new Error("Expected dev timeout mutation for visual-review.");
+  }
+}

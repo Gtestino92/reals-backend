@@ -16,6 +16,12 @@ secrets/
 .env
 .env
 bruno/reals-backend-happy-path/environments/local.bru
+bruno/environments/dev.bru
+bruno/environments/*.local.bru
+bruno/environments/local.*.bru
+bruno/environments/dev.*.bru
+!bruno/environments/local.template.bru
+!bruno/environments/dev.template.bru
 *firebase*credentials*.json
 *firebase*service-account*.json
 *service-account*.json

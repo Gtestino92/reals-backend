@@ -27,6 +27,7 @@ The first request generates unique test emails and a future half-hour second-cha
 - `10 Local Dev Jobs`: local-only manual triggers for periodic jobs, including user reliability cleanup.
 - `12 User Reliability Debug`: local/dev-only Firebase sign-in/provision setup and read requests for `GET /api/local-dev/user-reliability/{userId}`.
 - `14 Second Chat Attendance Debug`: local-only second-chat attendance, no-show and conversation-lifecycle helpers, including forced join windows, explicit joins, no-show claims, mutual-completion requests, inactivity claims, forced request expiry, status inspection and lifecycle-job execution.
+- `16 AWS Dev Tooling`: hosted dev Firebase admin sign-in/provision plus authenticated `/api/local-dev/**` triggers for matchmaking, jobs, timeout mutations and reliability inspection.
 
 Hosted `dev` keeps the `/api/local-dev/**` path for compatibility, but requires
 `Authorization: Bearer {{firebase_admin_id_token}}` from an active Firebase user

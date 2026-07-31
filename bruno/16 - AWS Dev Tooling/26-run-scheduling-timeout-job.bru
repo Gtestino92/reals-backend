@@ -1,0 +1,21 @@
+meta {
+  name: 26 Run Scheduling Timeout Job
+  type: http
+  seq: 26
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/scheduling-timeout/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "SchedulingNegotiationTimeoutJob") {
+    throw new Error("Expected SchedulingNegotiationTimeoutJob to run.");
+  }
+}
