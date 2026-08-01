@@ -1387,27 +1387,31 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Test
     fun `second chat reminder and start notification share Android replacement tag`() {
-        val scheduledAt = OffsetDateTime.now().plusMinutes(3)
-        val setup = confirmSecondChat(confirmedDateTime = scheduledAt)
-        registerSecondChatReminderTokens(setup, "shared-tag")
+        val reminderScheduledAt = OffsetDateTime.now().plusMinutes(3)
+        val reminderSetup = confirmSecondChat(confirmedDateTime = reminderScheduledAt)
+        registerSecondChatReminderTokens(reminderSetup, "shared-reminder-tag")
 
         secondChatReminderNotificationService.notifySecondChatReminder(
-            connectionId = setup.connectionId,
-            confirmedDateTime = scheduledAt,
+            connectionId = reminderSetup.connectionId,
+            confirmedDateTime = reminderScheduledAt,
             minutesBefore = 10
         )
         val reminderTags = pushSender.attempts.map { it.notification.androidNotificationTag }.toSet()
         pushSender.reset()
 
+        val startScheduledAt = OffsetDateTime.parse("2042-08-17T12:00:00Z")
+        val startSetup = confirmSecondChat(confirmedDateTime = startScheduledAt)
+        registerSecondChatStartTokens(startSetup, "shared-start-tag")
+
         secondChatStartNotificationService.processSecondChatStart(
-            connectionId = setup.connectionId,
-            now = scheduledAt,
+            connectionId = startSetup.connectionId,
+            now = startScheduledAt,
             latestSendAfterStartMinutes = 5
         )
 
-        assertEquals(setOf(secondChatNotificationTag(setup.connectionId)), reminderTags)
+        assertEquals(setOf(secondChatNotificationTag(reminderSetup.connectionId)), reminderTags)
         assertEquals(
-            setOf(secondChatNotificationTag(setup.connectionId)),
+            setOf(secondChatNotificationTag(startSetup.connectionId)),
             pushSender.attempts.map { it.notification.androidNotificationTag }.toSet()
         )
     }
