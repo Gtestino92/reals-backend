@@ -5,7 +5,9 @@ import java.util.UUID
 data class PushNotification(
     val title: String,
     val body: String,
-    val data: Map<String, String>
+    val data: Map<String, String>,
+    val androidTtlMillis: Long? = null,
+    val androidNotificationTag: String? = null
 )
 
 data class PushNotificationToken(

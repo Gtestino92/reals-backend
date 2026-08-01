@@ -1,0 +1,21 @@
+﻿meta {
+  name: 04 Run Second Chat Start Notification Job
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/second-chat-start-notification/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "SecondChatStartNotificationJob") {
+    throw new Error("Expected SecondChatStartNotificationJob to run.");
+  }
+}
+
+docs {
+  Sends due confirmed second-chat start notifications to participants who have not joined yet. The connection must still be second-chat relevant and confirmedDateTime must be between now and five minutes ago.
+}

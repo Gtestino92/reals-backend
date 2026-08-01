@@ -19,6 +19,8 @@ import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.notification.SecondChatReminderNotificationService
+import com.reals.backend.service.notification.SecondChatStartNotificationProcessingResult
+import com.reals.backend.service.notification.SecondChatStartNotificationService
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderProcessingResult
@@ -339,6 +341,102 @@ class LifecycleJobSummaryTest {
     }
 
     @Test
+    fun `second chat start job scans handled candidates and counts one outcome per connection`() {
+        val negotiationRepository = Mockito.mock(ScheduleNegotiationRepository::class.java)
+        val deliveryRepository = Mockito.mock(PushNotificationDeliveryRepository::class.java)
+        val startService = Mockito.mock(SecondChatStartNotificationService::class.java)
+        val sentToBoth = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T11:55:00Z"))
+        val sentAndJoined = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T11:55:01Z"))
+        val bothJoined = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T11:55:02Z"))
+        val providerFailure = confirmedNegotiation(OffsetDateTime.parse("2026-07-17T11:55:03Z"))
+
+        Mockito.`when`(
+            deliveryRepository.findByNotificationTypeAndAggregateId(
+                anyPushNotificationType(),
+                anyUuid()
+            )
+        ).thenReturn(emptyList())
+        Mockito.`when`(
+            negotiationRepository.findConfirmedSecondChatStartNotificationDueCandidates(
+                anyOffsetDateTime(),
+                anyOffsetDateTime(),
+                anyNegotiationStatus(),
+                anyConnectionStates(),
+                anySecondChatAttendanceStatuses(),
+                anyPageable()
+            )
+        ).thenReturn(listOf(sentToBoth, sentAndJoined, bothJoined, providerFailure))
+        Mockito.`when`(
+            startService.processSecondChatStart(
+                eqValue(sentToBoth.connectionId),
+                anyOffsetDateTime(),
+                eqValue(5)
+            )
+        ).thenReturn(SecondChatStartNotificationProcessingResult(succeeded = 2))
+        Mockito.`when`(
+            startService.processSecondChatStart(
+                eqValue(sentAndJoined.connectionId),
+                anyOffsetDateTime(),
+                eqValue(5)
+            )
+        ).thenReturn(SecondChatStartNotificationProcessingResult(succeeded = 1, skipped = 1))
+        Mockito.`when`(
+            startService.processSecondChatStart(
+                eqValue(bothJoined.connectionId),
+                anyOffsetDateTime(),
+                eqValue(5)
+            )
+        ).thenReturn(SecondChatStartNotificationProcessingResult(skipped = 2))
+        Mockito.`when`(
+            startService.processSecondChatStart(
+                eqValue(providerFailure.connectionId),
+                anyOffsetDateTime(),
+                eqValue(5)
+            )
+        ).thenReturn(SecondChatStartNotificationProcessingResult(succeeded = 1, failed = 1))
+
+        val summary =
+            SecondChatStartNotificationJob(
+                negotiationRepository = negotiationRepository,
+                deliveryRepository = deliveryRepository,
+                secondChatStartNotificationService = startService,
+                fixedDelayMs = 240_000,
+                batchSize = 4,
+                latestSendAfterStartMinutes = 5
+            ).processSecondChatStartNotifications(OffsetDateTime.parse("2026-07-17T12:00:00Z"))
+
+        assertEquals(4, summary.processed)
+        assertEquals(2, summary.succeeded)
+        assertEquals(1, summary.skipped)
+        assertEquals(1, summary.failed)
+        assertEquals(summary.processed, summary.succeeded + summary.skipped + summary.failed)
+    }
+
+    @Test
+    fun `second chat start job requires cadence below latest send window`() {
+        val negotiationRepository = Mockito.mock(ScheduleNegotiationRepository::class.java)
+        val deliveryRepository = Mockito.mock(PushNotificationDeliveryRepository::class.java)
+        val startService = Mockito.mock(SecondChatStartNotificationService::class.java)
+
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                SecondChatStartNotificationJob(
+                    negotiationRepository = negotiationRepository,
+                    deliveryRepository = deliveryRepository,
+                    secondChatStartNotificationService = startService,
+                    fixedDelayMs = 300_000,
+                    batchSize = 2,
+                    latestSendAfterStartMinutes = 5
+                ).processSecondChatStartNotifications(OffsetDateTime.parse("2026-07-17T12:00:00Z"))
+            }
+
+        assertTrue(
+            exception.message?.contains("fixed-delay must be less than notifications.second-chat-start.latest-send-after-start-minutes") == true
+        )
+        Mockito.verifyNoInteractions(negotiationRepository, deliveryRepository, startService)
+    }
+
+    @Test
     fun `penalty expiration job counts changed skipped and failed records`() {
         val penaltyService = Mockito.mock(PenaltyService::class.java)
         val changed = expiredPenalty()
@@ -518,6 +616,11 @@ class LifecycleJobSummaryTest {
     private fun anyConnectionStates(): Collection<ConnectionState> {
         Mockito.anyCollection<ConnectionState>()
         return listOf(ConnectionState.SECOND_CHAT_SCHEDULED)
+    }
+
+    private fun anySecondChatAttendanceStatuses(): Collection<com.reals.backend.domain.SecondChatAttendanceStatus> {
+        Mockito.anyCollection<com.reals.backend.domain.SecondChatAttendanceStatus>()
+        return listOf(com.reals.backend.domain.SecondChatAttendanceStatus.ON_TIME)
     }
 
     private fun <T> eqValue(value: T): T {

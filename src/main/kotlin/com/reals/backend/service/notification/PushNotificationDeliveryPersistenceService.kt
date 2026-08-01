@@ -65,6 +65,24 @@ class PushNotificationDeliveryPersistenceService(
         )
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    fun saveSkippedAlreadyJoinedInCurrentTransaction(
+        userId: UUID,
+        notificationType: PushNotificationType,
+        aggregateId: UUID,
+        now: OffsetDateTime
+    ) {
+        deliveryRepository.saveAndFlush(
+            delivery(
+                userId = userId,
+                notificationType = notificationType,
+                aggregateId = aggregateId,
+                status = PushDeliveryStatus.SKIPPED_ALREADY_JOINED,
+                now = now
+            )
+        )
+    }
+
     override fun persistSendResult(
         command: PreparedPushCommand,
         sendResult: PushSendResult,
