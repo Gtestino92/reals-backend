@@ -10,6 +10,7 @@ import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
+import com.reals.backend.scheduler.SecondChatStartNotificationJob
 import com.reals.backend.scheduler.UserReliabilityEventCleanupJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
 import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
@@ -35,6 +36,7 @@ class DevJobController(
     private val schedulingNegotiationTimeoutJob: ObjectProvider<SchedulingNegotiationTimeoutJob>,
     private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
     private val secondChatReminderNotificationJob: ObjectProvider<SecondChatReminderNotificationJob>,
+    private val secondChatStartNotificationJob: ObjectProvider<SecondChatStartNotificationJob>,
     private val userReliabilityEventCleanupJob: ObjectProvider<UserReliabilityEventCleanupJob>,
     private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>,
     private val visualReviewReminderNotificationJob: ObjectProvider<VisualReviewReminderNotificationJob>
@@ -98,6 +100,12 @@ class DevJobController(
     fun runSecondChatReminder(): ResponseEntity<DevJobRunResponse> =
         runJob("SecondChatReminderNotificationJob") {
             requireJob(secondChatReminderNotificationJob, "SecondChatReminderNotificationJob").runNowForDev()
+        }
+
+    @PostMapping("/second-chat-start-notification/run")
+    fun runSecondChatStartNotification(): ResponseEntity<DevJobRunResponse> =
+        runJob("SecondChatStartNotificationJob") {
+            requireJob(secondChatStartNotificationJob, "SecondChatStartNotificationJob").runNowForDev()
         }
 
     @PostMapping("/user-reliability-cleanup/run")

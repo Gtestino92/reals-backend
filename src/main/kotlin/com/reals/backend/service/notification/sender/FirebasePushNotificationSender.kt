@@ -2,6 +2,8 @@ package com.reals.backend.service.notification.sender
 
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingException
+import com.google.firebase.messaging.AndroidConfig
+import com.google.firebase.messaging.AndroidNotification
 import com.google.firebase.messaging.Message
 import com.google.firebase.messaging.MessagingErrorCode
 import org.slf4j.LoggerFactory
@@ -30,7 +32,7 @@ class FirebasePushNotificationSender(
 
         tokens.forEach { deviceToken ->
             try {
-                val message = Message.builder()
+                val messageBuilder = Message.builder()
                     .setToken(deviceToken.token)
                     .setNotification(
                         com.google.firebase.messaging.Notification.builder()
@@ -39,6 +41,10 @@ class FirebasePushNotificationSender(
                             .build()
                     )
                     .putAllData(notification.data)
+
+                androidConfig(notification)?.let { messageBuilder.setAndroidConfig(it) }
+
+                val message = messageBuilder
                     .build()
 
                 providerMessageIds += firebaseMessaging.send(message)
@@ -77,6 +83,25 @@ class FirebasePushNotificationSender(
     }
 
     private fun FirebaseMessagingException.isInvalidRegistrationToken(): Boolean =
-        messagingErrorCode == MessagingErrorCode.UNREGISTERED ||
+            messagingErrorCode == MessagingErrorCode.UNREGISTERED ||
             messagingErrorCode == MessagingErrorCode.INVALID_ARGUMENT
+
+    private fun androidConfig(notification: PushNotification): AndroidConfig? {
+        if (notification.androidTtlMillis == null && notification.androidNotificationTag == null) {
+            return null
+        }
+
+        val builder = AndroidConfig.builder()
+        notification.androidTtlMillis?.let { builder.setTtl(it) }
+        notification.androidNotificationTag?.let { tag ->
+            builder.setNotification(
+                AndroidNotification.builder()
+                    .setTitle(notification.title)
+                    .setBody(notification.body)
+                    .setTag(tag)
+                    .build()
+            )
+        }
+        return builder.build()
+    }
 }

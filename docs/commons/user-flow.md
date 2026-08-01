@@ -345,6 +345,18 @@ attendance statuses and any active no-show claim. `GET
 /api/connections/{connectionId}/chat`, Home loads, polling and message fetches
 are side-effect free and do not count as attendance.
 
+After the scheduled start, the backend may send one `SECOND_CHAT_STARTED` push
+per participant who has not joined yet. The default delivery window is
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes`; stale missed runs
+after that window do not initiate new start notifications. The default job
+cadence is 4 minutes, leaving slack inside the five-minute send window. Users
+who already joined are recorded as handled and are not sent to. Android FCM uses
+the same `second-chat-<connectionId>` tag for the reminder and start push, so
+the start push can replace the reminder in background notification display.
+Opening the notification lands on Home, whose second-chat `nextSteps` are
+ordered by current/available chats first, then nearest scheduled future starts,
+then scheduling work, then read-only prior chats.
+
 Arrival windows are exact: `confirmedDateTime <= now < confirmedDateTime + 10
 minutes` is `ON_TIME`; `confirmedDateTime + 10 minutes <= now <
 confirmedDateTime + 20 minutes` is `LATE`; `now >= confirmedDateTime + 20

@@ -132,7 +132,22 @@ reminder range applies, and no reminder is sent after the confirmed start time.
 The notification type is `SECOND_CHAT_REMINDER`; the provider payload includes
 a display title/body plus data fields. The data contract contains only `type`,
 `connectionId` and `availableAt`. Delivery is deduplicated per user,
-notification type, connection id and lead time.
+notification type, connection id and lead time. Android FCM uses
+`second-chat-<connectionId>` as the notification tag and caps transport TTL at
+the confirmed start time.
+
+After a confirmed second-chat start, `SecondChatStartNotificationJob` attempts
+a privacy-safe external push with type `SECOND_CHAT_STARTED` only for
+participants who have not joined. The default window is
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes`; later scheduler
+runs skip stale starts. The job runs every 4 minutes by default so normal
+fixed-delay execution has slack inside the five-minute window. The provider
+payload includes `type`, `connectionId`, `matchId` and `availableAt`. The
+backend title is `Tu segunda charla ya empez?` and the body is `Entr? ahora a
+Reals para sumarte.` Android FCM uses `second-chat-<connectionId>` as the same
+replacement tag as the second-chat reminder, and transport TTL is capped at the
+configured second-chat on-time cutoff. Delivery is deduplicated per user,
+notification type and `secondChatStartedAggregateId(connectionId)`.
 
 Home returns `matchmaking` for search UX:
 
@@ -529,6 +544,10 @@ Second-chat read-only lifecycle can be tested locally with:
 Second-chat reminder push notifications can be tested locally with:
 
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
+
+Second-chat start push notifications can be tested locally with:
+
+- `POST /api/local-dev/jobs/second-chat-start-notification/run`
 
 Visual-review reminder push notifications can be tested locally with:
 

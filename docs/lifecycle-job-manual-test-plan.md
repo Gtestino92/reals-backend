@@ -271,6 +271,26 @@ Expected frontend behavior:
 - Do not rely on an in-app notification inbox or unread counter.
 - Do not expect a reminder once the connection reaches `SECOND_CHAT_AVAILABLE`.
 
+## Second Chat Start Notification
+
+Purpose: validate the `SECOND_CHAT_STARTED` push after a confirmed second-chat
+start.
+
+1. Confirm a second-chat schedule and move `confirmedDateTime` to now with
+   local-dev tooling.
+2. Confirm both Android clients have registered FCM tokens.
+3. Optionally join with one participant before running the job.
+4. Run `POST /api/local-dev/jobs/second-chat-start-notification/run`.
+5. Confirm only participants without `ON_TIME` or `LATE` attendance and
+   `joinedAt` receive the push.
+6. Confirm already-joined participants are recorded as
+   `SKIPPED_ALREADY_JOINED`.
+7. Confirm no new push is initiated after `confirmedDateTime + 5 minutes`.
+8. Confirm Android uses `second-chat-<connectionId>` as the notification tag and
+   the start notification can replace the earlier reminder.
+9. Confirm Home shows the relevant current or nearest scheduled second chat
+   first after opening the notification.
+
 ## Scheduled Second Chat No-Show
 
 Purpose: validate explicit attendance, manual no-show claims and hard cutoff
