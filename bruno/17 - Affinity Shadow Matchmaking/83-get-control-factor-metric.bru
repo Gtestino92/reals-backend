@@ -1,0 +1,43 @@
+meta {
+  name: 83 Control Factor Metric
+  type: http
+  seq: 83
+}
+
+get {
+  url: {{baseUrl}}/actuator/metrics/reals.matchmaking.affinity.factor?tag=mode:shadow&tag=evidence:none
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  function measurementValue(body, statistic) {
+    const measurement = (body.measurements || []).find((item) => item.statistic === statistic);
+    return measurement ? measurement.value : null;
+  }
+
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK for metric reals.matchmaking.affinity.factor filtered by mode=shadow,evidence=none, got ${status}. Ensure an admin token is available and the control match has been processed.`);
+  }
+  const body = res.getBody();
+  if (!body || body.name !== "reals.matchmaking.affinity.factor") {
+    throw new Error(`Expected metric name reals.matchmaking.affinity.factor, got ${body && body.name}.`);
+  }
+  if (!Array.isArray(body.measurements) || body.measurements.length < 1) {
+    throw new Error("Expected at least one filtered metric measurement after control matchmaking processing.");
+  }
+  const count = measurementValue(body, "COUNT");
+  const total = measurementValue(body, "TOTAL");
+  if (count === null || count < 1) {
+    throw new Error("Expected at least one neutral affinity factor observation for evidence=none.");
+  }
+  if (total === null || Math.abs(total - count) > 0.000001) {
+    throw new Error(`Expected neutral factor observations with total equal to count, got count=${count}, total=${total}.`);
+  }
+  // Metrics are cumulative since backend startup and are operational diagnostics, not compatibility output.
+}
