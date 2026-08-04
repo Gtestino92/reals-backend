@@ -301,6 +301,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/reference/affinity-questions:
+    get:
+      tags: [Reference]
+      summary: List active affinity questions
+      description: Authenticated reference-data endpoint. Returns the server-authoritative affinity-question catalog version, visible categories and active questions. Internal scoring policies, matrices and weights are never exposed.
+      responses:
+        '200':
+          description: Client-safe affinity-question catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityQuestionCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -405,6 +421,70 @@ paths:
                     code: LEGAL_ACTION_REQUIRED
                     error: Conflict
                     message: Current legal document actions are required before continuing
+  /api/me/profile/affinity-answers:
+    get:
+      tags: [Profiles]
+      summary: List authenticated user's private affinity answers
+      description: Returns only answers owned by the authenticated user's profile. Affinity answers are private and are not exposed through counterpart-facing profile, match, visual review, Home or chat responses.
+      responses:
+        '200':
+          description: Current user's private affinity answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Profiles]
+      summary: Partially upsert authenticated user's private affinity answers
+      description: Idempotent partial set operation. Only included question ids are modified; omitted existing answers remain unchanged. PATCH accepts only active current-catalog questions and valid current answer codes; duplicate question ids, inactive/deprecated/missing questions, and invalid answer codes return focused affinity validation errors. Requires current legal requirements but does not require verified email.
+      requestBody:
+        $ref: '#/components/requestBodies/PatchAffinityAnswers'
+      responses:
+        '200':
+          description: Complete authoritative current-user affinity answer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/affinity-answers/{questionId}:
+    parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 96
+    delete:
+      tags: [Profiles]
+      summary: Delete one authenticated-user affinity answer
+      description: Removes only the authenticated profile's answer for the normalized question id. Unlike PATCH, DELETE does not require the question to be active or present in the current catalog, so deprecated, removed or stale private answers can be cleared. Deleting a nonexistent owned answer is an idempotent no-op. Requires current legal requirements but does not require verified email.
+      responses:
+        '200':
+          description: Complete authoritative current-user affinity answer list after deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/me/profile/photos:
     post:
       tags: [Profiles]
@@ -1434,6 +1514,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateMatchFiltersRequest'
+    PatchAffinityAnswers:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PatchAffinityAnswersRequest'
     AddPhoto:
       required: true
       content:
@@ -2480,6 +2566,86 @@ components:
         displayName:
           type: string
           description: Spanish country display name from the Java runtime locale data.
+    AffinityQuestionCatalogResponse:
+      type: object
+      required: [catalogVersion, categories, questions]
+      properties:
+        catalogVersion:
+          type: string
+          description: Server-authoritative affinity catalog version.
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityQuestionCategoryResponse' }
+        questions:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityQuestionResponse' }
+    AffinityQuestionCategoryResponse:
+      type: object
+      required: [id, title, displayOrder]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        displayOrder: { type: integer }
+    AffinityQuestionResponse:
+      type: object
+      required: [id, semanticVersion, contentVersion, categoryId, primaryTopic, topicTags, answerType, prompt, options]
+      properties:
+        id: { type: string }
+        semanticVersion:
+          type: integer
+          description: Compatibility semantics version. Stored answers with older semantic versions are not evaluated under newer semantics.
+        contentVersion:
+          type: integer
+          description: Wording-only version. Content-only changes do not invalidate stored answers.
+        categoryId: { type: string }
+        primaryTopic: { type: string }
+        topicTags:
+          type: array
+          items: { type: string }
+        answerType: { $ref: '#/components/schemas/AffinityAnswerType' }
+        prompt: { type: string }
+        options:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityAnswerOptionResponse' }
+    AffinityAnswerOptionResponse:
+      type: object
+      required: [code, label, displayOrder]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        displayOrder: { type: integer }
+    PatchAffinityAnswersRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          maxItems: 100
+          description: Partial idempotent set/upsert list. Duplicate question ids are rejected.
+          items: { $ref: '#/components/schemas/PatchAffinityAnswerRequest' }
+    PatchAffinityAnswerRequest:
+      type: object
+      required: [questionId, answerCode]
+      properties:
+        questionId: { type: string, maxLength: 96 }
+        answerCode: { type: string, maxLength: 96 }
+    AffinityAnswersResponse:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityAnswerResponse' }
+    AffinityAnswerResponse:
+      type: object
+      required: [questionId, questionSemanticVersion, answerCode, createdAt, updatedAt]
+      properties:
+        questionId: { type: string }
+        questionSemanticVersion: { type: integer }
+        answerCode: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PhotoResponse:
       type: object
       required: [id, url, position, isPersonPhoto, isFullBody, validationStatus, moderationStatus]
@@ -3127,6 +3293,9 @@ components:
     ProfileAuthenticityVerificationStatus:
       type: string
       enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW, STALE]
+    AffinityAnswerType:
+      type: string
+      enum: [SINGLE_CHOICE, ORDINAL_SCALE]
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]

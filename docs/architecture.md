@@ -65,6 +65,19 @@ and provider transport:
 - `service.notification.sender`: provider adapters for external push delivery,
   such as Firebase and no-op local/test senders.
 
+Affinity-question responsibilities are intentionally isolated:
+
+- `service.affinity`: static catalog loading/validation, private current-profile answer writes and the pure pairwise evidence evaluator.
+- `AffinityQuestionAnswer`: the only persisted affinity table; catalog questions remain a versioned UTF-8 resource.
+- `GET /api/reference/affinity-questions` exposes only client-safe catalog data. It does not expose scoring policies, matrices or weights.
+- `GET/PATCH/DELETE /api/me/profile/affinity-answers` are current-user-only endpoints. They never accept arbitrary profile or user ids.
+- Affinity answer writes lock the current `Profile` row before reading or mutating answers. `PATCH` and `DELETE` use the same profile-lock order; read endpoints remain lock-free.
+
+Affinity currently produces no matchmaking score, ranking factor, Home state,
+first-chat guidance, visual-review data or counterpart-facing profile field.
+Free-text profile prompts are a separate future system, and first-chat
+conversation prompts remain owned by `FirstChatGuidanceService`.
+
 ## Persistence
 
 - Entities use UUID primary keys.

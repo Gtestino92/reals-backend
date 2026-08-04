@@ -1,0 +1,943 @@
+{
+  "catalogVersion": "2026.08.0",
+  "categories": [
+    {
+      "id": "CINEMA_SERIES_AND_STORIES",
+      "title": "Cine, series y relatos",
+      "description": "Historias, géneros y formas de disfrutar ficción.",
+      "displayOrder": 1
+    },
+    {
+      "id": "MUSIC",
+      "title": "Música",
+      "description": "Escucha, recitales y gustos musicales.",
+      "displayOrder": 2
+    },
+    {
+      "id": "ARTS_CULTURE_AND_IDEAS",
+      "title": "Arte, cultura e ideas",
+      "description": "Curiosidad cultural, aprendizaje y conversación.",
+      "displayOrder": 3
+    },
+    {
+      "id": "ACTIVITIES_SPORTS_AND_NATURE",
+      "title": "Actividades, deportes y naturaleza",
+      "description": "Movimiento, aire libre y ritmo de actividad.",
+      "displayOrder": 4
+    },
+    {
+      "id": "TRAVEL_AND_EXPLORATION",
+      "title": "Viajes y exploración",
+      "description": "Escapadas, aventura y maneras de conocer lugares.",
+      "displayOrder": 5
+    },
+    {
+      "id": "FOOD_AND_EXPERIENCES",
+      "title": "Comida y experiencias",
+      "description": "Sabores, salidas y planes alrededor de la mesa.",
+      "displayOrder": 6
+    },
+    {
+      "id": "PLANS_GAMES_AND_SOCIAL_LIFE",
+      "title": "Planes, juegos y vida social",
+      "description": "Energía social, juegos y tipo de plan preferido.",
+      "displayOrder": 7
+    },
+    {
+      "id": "VALUES_AND_SHARED_LIFE",
+      "title": "Valores y vida compartida",
+      "description": "Hábitos, prioridades y preferencias de convivencia futura.",
+      "displayOrder": 8
+    },
+    {
+      "id": "RELATIONSHIP_AND_COMMUNICATION",
+      "title": "Vínculo y comunicación",
+      "description": "Expectativas, comunicación y comodidad con diferencias.",
+      "displayOrder": 9
+    }
+  ],
+  "questions": [
+    {
+      "id": "CINEMA_IMPORTANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "CINEMA_SERIES_AND_STORIES",
+      "primaryTopic": "CINEMA",
+      "topicTags": ["series", "stories"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué lugar tienen el cine, las series o las historias en tu semana?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "Casi no forman parte de mis planes", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Cada tanto, si aparece algo bueno", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me gusta tener algo para ver o comentar", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Son una parte fuerte de mi disfrute", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.6 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.85, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "CINEMA_TASTE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "CINEMA_SERIES_AND_STORIES",
+      "primaryTopic": "CINEMA_TASTE",
+      "topicTags": ["genre", "stories"],
+      "construct": "TASTE_PREFERENCE",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Si vas a elegir una historia para ver, ¿qué te atrae más?",
+      "options": [
+        { "code": "COMFORT_STORIES", "label": "Algo cálido, liviano o reconfortante", "displayOrder": 1, "value": 0.85 },
+        { "code": "MYSTERY_TENSION", "label": "Misterio, tensión o giros inesperados", "displayOrder": 2, "value": 0.85 },
+        { "code": "COMEDY", "label": "Comedia o humor cotidiano", "displayOrder": 3, "value": 0.85 },
+        { "code": "FANTASY_WORLD", "label": "Fantasía, ciencia ficción o mundos grandes", "displayOrder": 4, "value": 0.85 },
+        { "code": "FLEXIBLE_STORIES", "label": "Me adapto bastante al plan", "displayOrder": 5, "value": 0.5 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.15 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.65, "contrastPotential": 0.8, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "READING_STORIES_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "CINEMA_SERIES_AND_STORIES",
+      "primaryTopic": "READING",
+      "topicTags": ["books", "storytelling"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan presente está leer ficción, crónicas o relatos en tu vida?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "Casi nunca leo ese tipo de textos", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Leo algo cuando me lo recomiendan", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me gusta tener lecturas empezadas", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Leer es uno de mis planes favoritos", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.45 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.8, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "STORY_DISCUSSION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "CINEMA_SERIES_AND_STORIES",
+      "primaryTopic": "STORY_CONVERSATION",
+      "topicTags": ["conversation"],
+      "construct": "CONVERSATION_ONLY",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Después de ver o leer algo que te gustó, ¿qué te sale más?",
+      "options": [
+        { "code": "ANALYZE_DETAILS", "label": "Hablar de detalles, escenas y decisiones", "displayOrder": 1, "value": 0.85 },
+        { "code": "FEELINGS_FIRST", "label": "Compartir cómo me hizo sentir", "displayOrder": 2, "value": 0.85 },
+        { "code": "RECOMMEND_MORE", "label": "Buscar recomendaciones parecidas", "displayOrder": 3, "value": 0.75 },
+        { "code": "KEEP_LIGHT", "label": "Comentarlo un poco y seguir con otra cosa", "displayOrder": 4, "value": 0.35 }
+      ],
+      "rankingPolicy": { "type": "NONE" },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.6, "contrastPotential": 0.65, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": false,
+      "conversationEnabled": true
+    },
+    {
+      "id": "MUSIC_IMPORTANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "MUSIC",
+      "primaryTopic": "MUSIC",
+      "topicTags": ["listening"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es la música en tu día a día?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "Casi no la busco", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "La escucho de vez en cuando", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me acompaña bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Es central en mi rutina", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.55 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.85, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "MUSIC_DISCOVERY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "MUSIC",
+      "primaryTopic": "MUSIC_DISCOVERY",
+      "topicTags": ["recommendations"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tanto disfrutás descubrir música nueva con otra persona?",
+      "options": [
+        { "code": "LOW", "label": "Prefiero quedarme con lo que ya conozco", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "A veces me copa", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me gusta intercambiar recomendaciones", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Me entusiasma mucho compartir descubrimientos", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.9, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "LIVE_MUSIC_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "MUSIC",
+      "primaryTopic": "LIVE_MUSIC",
+      "topicTags": ["concerts", "night_out"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan buen plan te parece ir a escuchar música en vivo?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "No suele ser mi plan", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Iría si el plan acompaña", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me gusta bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Lo elegiría seguido", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.75, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "MUSIC_MOOD_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "MUSIC",
+      "primaryTopic": "MUSIC_MOOD",
+      "topicTags": ["taste"],
+      "construct": "TASTE_PREFERENCE",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Cuando ponés música, ¿qué clima buscás más seguido?",
+      "options": [
+        { "code": "ENERGETIC", "label": "Energía para activar", "displayOrder": 1, "value": 0.85 },
+        { "code": "CHILL", "label": "Algo tranquilo para bajar un cambio", "displayOrder": 2, "value": 0.85 },
+        { "code": "EMOTIONAL", "label": "Canciones con carga emocional", "displayOrder": 3, "value": 0.85 },
+        { "code": "DANCEABLE", "label": "Ritmo para moverse", "displayOrder": 4, "value": 0.85 },
+        { "code": "VARIED", "label": "Voy cambiando según el día", "displayOrder": 5, "value": 0.55 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.12 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.6, "contrastPotential": 0.75, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "CULTURE_CURIOSITY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ARTS_CULTURE_AND_IDEAS",
+      "primaryTopic": "CULTURAL_CURIOSITY",
+      "topicTags": ["museums", "talks", "learning"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tanto te atraen museos, muestras, charlas o eventos culturales?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "No suelen interesarme", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Voy si surge algo concreto", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me gusta tenerlos en radar", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Los busco activamente", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.85, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "IDEAS_CONVERSATION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ARTS_CULTURE_AND_IDEAS",
+      "primaryTopic": "IDEAS_CONVERSATION",
+      "topicTags": ["conversation", "curiosity"],
+      "construct": "CONVERSATION_ONLY",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tanto disfrutás conversaciones que se van hacia ideas, aprendizajes o curiosidades?",
+      "options": [
+        { "code": "LOW", "label": "Prefiero charlas más livianas", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Me gustan si aparecen naturalmente", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Las disfruto bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Me entusiasman mucho", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "NONE" },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.9, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": false,
+      "conversationEnabled": true
+    },
+    {
+      "id": "CREATIVE_ACTIVITY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ARTS_CULTURE_AND_IDEAS",
+      "primaryTopic": "CREATIVE_ACTIVITY",
+      "topicTags": ["making", "art"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan cerca te sentís de actividades creativas como escribir, dibujar, cocinar algo nuevo, sacar fotos o hacer música?",
+      "options": [
+        { "code": "LOW", "label": "No mucho", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "A veces pruebo algo", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me gusta tener algún proyecto creativo", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Crear cosas es muy importante para mí", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.75, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "LEARNING_STYLE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ARTS_CULTURE_AND_IDEAS",
+      "primaryTopic": "LEARNING_STYLE",
+      "topicTags": ["learning"],
+      "construct": "TASTE_PREFERENCE",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Cuando querés aprender algo por gusto, ¿qué formato te llama más?",
+      "options": [
+        { "code": "READING_ARTICLES", "label": "Leer notas, libros o newsletters", "displayOrder": 1, "value": 0.8 },
+        { "code": "VIDEOS_DOCS", "label": "Videos, documentales o tutoriales", "displayOrder": 2, "value": 0.8 },
+        { "code": "PODCASTS_TALKS", "label": "Podcasts o charlas", "displayOrder": 3, "value": 0.8 },
+        { "code": "DOING_WORKSHOPS", "label": "Talleres o aprender haciendo", "displayOrder": 4, "value": 0.8 },
+        { "code": "MIXED_LEARNING", "label": "Un poco de todo", "displayOrder": 5, "value": 0.55 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.12 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.55, "contrastPotential": 0.65, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "SPORTS_ACTIVITY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ACTIVITIES_SPORTS_AND_NATURE",
+      "primaryTopic": "SPORTS_ACTIVITY",
+      "topicTags": ["movement"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es para vos moverte, entrenar o hacer alguna actividad física?",
+      "options": [
+        { "code": "LOW", "label": "No es una prioridad", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Algo hago cuando puedo", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me hace bien sostenerlo", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Es parte clave de mi rutina", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.75, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "OUTDOORS_NATURE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ACTIVITIES_SPORTS_AND_NATURE",
+      "primaryTopic": "NATURE",
+      "topicTags": ["outdoors"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan buen plan te parece pasar tiempo al aire libre o en naturaleza?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "Prefiero otros planes", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Me gusta de vez en cuando", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Lo elijo bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Lo necesito para sentirme bien", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.8, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "WEEKEND_ACTIVITY_LEVEL_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "ACTIVITIES_SPORTS_AND_NATURE",
+      "primaryTopic": "ACTIVITY_RHYTHM",
+      "topicTags": ["weekend"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "En un fin de semana ideal, ¿cuánta actividad querés tener?",
+      "options": [
+        { "code": "VERY_LOW", "label": "Descanso y poco calendario", "displayOrder": 1, "value": 0.0 },
+        { "code": "LOW_MID", "label": "Un plan tranquilo y espacio libre", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH_MID", "label": "Varios planes, pero sin agotarme", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Moverme mucho y aprovechar todo", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.45 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.6, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "TRAVEL_IMPORTANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "TRAVEL_AND_EXPLORATION",
+      "primaryTopic": "TRAVEL",
+      "topicTags": ["exploration"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es viajar o conocer lugares nuevos para vos?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "No es algo que busque mucho", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Me gusta si se da", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me entusiasma planear escapadas", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Es una prioridad en mi vida", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.85, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "TRAVEL_STYLE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "TRAVEL_AND_EXPLORATION",
+      "primaryTopic": "TRAVEL_STYLE",
+      "topicTags": ["planning", "adventure"],
+      "construct": "TASTE_PREFERENCE",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Si imaginás una escapada, ¿qué estilo te tienta más?",
+      "options": [
+        { "code": "CITY_WALKING", "label": "Ciudad, caminar y descubrir rincones", "displayOrder": 1, "value": 0.85 },
+        { "code": "NATURE_ESCAPE", "label": "Naturaleza y desconexión", "displayOrder": 2, "value": 0.85 },
+        { "code": "FOOD_CULTURE", "label": "Comida, cultura y lugares clásicos", "displayOrder": 3, "value": 0.85 },
+        { "code": "REST_COMFORT", "label": "Descanso, comodidad y buen alojamiento", "displayOrder": 4, "value": 0.85 },
+        { "code": "OPEN_ITINERARY", "label": "Ver qué pinta en el momento", "displayOrder": 5, "value": 0.55 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.12 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.55, "contrastPotential": 0.75, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "LOCAL_EXPLORATION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "TRAVEL_AND_EXPLORATION",
+      "primaryTopic": "LOCAL_EXPLORATION",
+      "topicTags": ["city", "dates"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tanto te gusta descubrir lugares nuevos dentro de tu propia ciudad?",
+      "options": [
+        { "code": "LOW", "label": "No suelo hacerlo", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Cada tanto me suma", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me gusta buscar lugares distintos", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Siempre tengo algo marcado para conocer", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.8, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "FOOD_EXPERIENCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "FOOD_AND_EXPERIENCES",
+      "primaryTopic": "FOOD_EXPERIENCE",
+      "topicTags": ["restaurants", "cooking"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es para vos compartir comidas, probar lugares o cocinar algo rico?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "No lo pienso demasiado", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Me gusta si aparece el plan", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Lo disfruto bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Es de mis formas favoritas de compartir", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.45 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.85, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "FOOD_ADVENTURE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "FOOD_AND_EXPERIENCES",
+      "primaryTopic": "FOOD_ADVENTURE",
+      "topicTags": ["taste", "novelty"],
+      "construct": "SHARED_ACTIVITY_ORIENTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan cómodo/a te sentís probando sabores o restaurantes nuevos?",
+      "options": [
+        { "code": "LOW", "label": "Prefiero ir a lo conocido", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Pruebo si hay buenas referencias", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me divierte probar cosas nuevas", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Cuanto más novedoso, mejor", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.35 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.55, "contrastPotential": 0.65, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "DATE_PLAN_FOOD_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "FOOD_AND_EXPERIENCES",
+      "primaryTopic": "DATE_PLAN",
+      "topicTags": ["food", "experience"],
+      "construct": "TASTE_PREFERENCE",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "Para una salida con comida, ¿qué plan elegirías primero?",
+      "options": [
+        { "code": "CASUAL_CAFE", "label": "Café o algo casual para charlar", "displayOrder": 1, "value": 0.85 },
+        { "code": "NEW_RESTAURANT", "label": "Restaurante nuevo o recomendado", "displayOrder": 2, "value": 0.85 },
+        { "code": "COOK_TOGETHER", "label": "Cocinar o armar algo casero", "displayOrder": 3, "value": 0.85 },
+        { "code": "STREET_MARKET", "label": "Feria, mercado o picoteo", "displayOrder": 4, "value": 0.85 },
+        { "code": "FLEXIBLE_FOOD_PLAN", "label": "Me adapto al momento", "displayOrder": 5, "value": 0.55 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.12 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.6, "contrastPotential": 0.7, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "SOCIAL_ENERGY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "PLANS_GAMES_AND_SOCIAL_LIFE",
+      "primaryTopic": "SOCIAL_ENERGY",
+      "topicTags": ["plans", "groups"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "¿Qué tipo de energía social te queda más cómoda?",
+      "options": [
+        { "code": "QUIET_ONE_ON_ONE", "label": "Planes tranquilos de a dos o pocos", "displayOrder": 1, "value": 0.0 },
+        { "code": "MIXED_BALANCE", "label": "Equilibrio entre planes chicos y grupo", "displayOrder": 2, "value": 0.5 },
+        { "code": "GROUP_ENERGY", "label": "Grupos, movimiento y planes con gente", "displayOrder": 3, "value": 1.0 }
+      ],
+      "rankingPolicy": {
+        "type": "CUSTOM_MATRIX",
+        "matrix": {
+          "QUIET_ONE_ON_ONE": { "QUIET_ONE_ON_ONE": 0.45, "MIXED_BALANCE": 0.2, "GROUP_ENERGY": -0.25 },
+          "MIXED_BALANCE": { "QUIET_ONE_ON_ONE": 0.2, "MIXED_BALANCE": 0.4, "GROUP_ENERGY": 0.2 },
+          "GROUP_ENERGY": { "QUIET_ONE_ON_ONE": -0.25, "MIXED_BALANCE": 0.2, "GROUP_ENERGY": 0.45 }
+        }
+      },
+      "conversationPolicy": {
+        "type": "CUSTOM_MATRIX",
+        "matrix": {
+          "QUIET_ONE_ON_ONE": {
+            "QUIET_ONE_ON_ONE": { "potential": 0.55, "kind": "SHARED_AFFINITY" },
+            "MIXED_BALANCE": { "potential": 0.55, "kind": "CONSTRUCTIVE_CONTRAST" },
+            "GROUP_ENERGY": { "potential": 0.75, "kind": "CONSTRUCTIVE_CONTRAST" }
+          },
+          "MIXED_BALANCE": {
+            "QUIET_ONE_ON_ONE": { "potential": 0.55, "kind": "CONSTRUCTIVE_CONTRAST" },
+            "MIXED_BALANCE": { "potential": 0.5, "kind": "SHARED_AFFINITY" },
+            "GROUP_ENERGY": { "potential": 0.55, "kind": "CONSTRUCTIVE_CONTRAST" }
+          },
+          "GROUP_ENERGY": {
+            "QUIET_ONE_ON_ONE": { "potential": 0.75, "kind": "CONSTRUCTIVE_CONTRAST" },
+            "MIXED_BALANCE": { "potential": 0.55, "kind": "CONSTRUCTIVE_CONTRAST" },
+            "GROUP_ENERGY": { "potential": 0.55, "kind": "SHARED_AFFINITY" }
+          }
+        }
+      },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "BOARD_GAMES_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "PLANS_GAMES_AND_SOCIAL_LIFE",
+      "primaryTopic": "GAMES",
+      "topicTags": ["board_games", "video_games"],
+      "construct": "DOMAIN_ENGAGEMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan buen plan te parecen los juegos de mesa, cartas, trivias o videojuegos compartidos?",
+      "options": [
+        { "code": "NOT_FOR_ME", "label": "No suelen engancharme", "displayOrder": 1, "value": 0.0 },
+        { "code": "OCCASIONAL", "label": "Juego si el grupo propone", "displayOrder": 2, "value": 0.35 },
+        { "code": "IMPORTANT", "label": "Me divierten bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_IMPORTANT", "label": "Son de mis planes favoritos", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "SHARED_ENGAGEMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.8, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "NIGHTLIFE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "PLANS_GAMES_AND_SOCIAL_LIFE",
+      "primaryTopic": "NIGHTLIFE",
+      "topicTags": ["social_plans"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué lugar tienen las salidas de noche, bares o fiestas en tus planes?",
+      "options": [
+        { "code": "LOW", "label": "Casi nunca las elijo", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Cada tanto, con ganas", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me gustan bastante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Son una parte fuerte de mi vida social", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.35 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.55, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "SPONTANEOUS_PLANS_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "PLANS_GAMES_AND_SOCIAL_LIFE",
+      "primaryTopic": "SPONTANEITY",
+      "topicTags": ["planning"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan cómodo/a estás con planes espontáneos de último momento?",
+      "options": [
+        { "code": "VERY_LOW", "label": "Prefiero planificar con tiempo", "displayOrder": 1, "value": 0.0 },
+        { "code": "LOW_MID", "label": "Puede ser, si no desordena mucho", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH_MID", "label": "Me gusta dejar espacio para improvisar", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Me encantan los planes que aparecen", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.4 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.6, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "DAILY_ROUTINE_RHYTHM_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "ROUTINE_RHYTHM",
+      "topicTags": ["lifestyle"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan estructurada preferís que sea tu rutina cotidiana?",
+      "options": [
+        { "code": "VERY_FLEXIBLE", "label": "Muy flexible y cambiante", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOMEWHAT_FLEXIBLE", "label": "Con estructura básica, pero adaptable", "displayOrder": 2, "value": 0.35 },
+        { "code": "SOMEWHAT_STRUCTURED", "label": "Bastante ordenada", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_STRUCTURED", "label": "Muy organizada y previsible", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.45 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.55, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "AMBITION_BALANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "AMBITION_BALANCE",
+      "topicTags": ["work_life", "priorities"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Pensando en metas, trabajo, tiempo personal y descanso, ¿qué equilibrio te describe mejor hoy?",
+      "options": [
+        { "code": "PERSONAL_TIME_FIRST", "label": "Priorizar descanso y tiempo personal, con metas a ritmo tranquilo", "displayOrder": 1, "value": 0.0 },
+        { "code": "BALANCED_STEADY", "label": "Cuidar un equilibrio estable entre responsabilidades, metas y descanso", "displayOrder": 2, "value": 0.35 },
+        { "code": "GOALS_WITH_SPACE", "label": "Empujar metas con constancia, reservando espacio personal", "displayOrder": 3, "value": 0.7 },
+        { "code": "HIGH_GOAL_FOCUS", "label": "Poner mucha energía en objetivos, proyectos y crecimiento", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.55 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.65, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "HOME_SOCIAL_BALANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "HOME_SOCIAL_BALANCE",
+      "topicTags": ["shared_life"],
+      "construct": "LIFESTYLE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Pensando en una vida compartida, ¿qué equilibrio preferís entre casa tranquila y vida social activa?",
+      "options": [
+        { "code": "HOME_FOCUSED", "label": "Más casa y calma", "displayOrder": 1, "value": 0.0 },
+        { "code": "HOME_LEANING", "label": "Casa tranquila con algunas salidas", "displayOrder": 2, "value": 0.35 },
+        { "code": "SOCIAL_LEANING", "label": "Bastantes planes afuera", "displayOrder": 3, "value": 0.7 },
+        { "code": "SOCIAL_FOCUSED", "label": "Vida social muy activa", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.55, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "MONEY_PLANS_STYLE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "MONEY_PLANS_STYLE",
+      "topicTags": ["shared_life", "planning"],
+      "construct": "VALUES_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Cuando pensás en gastos, disfrute y planes a futuro, ¿qué estilo te representa más?",
+      "options": [
+        { "code": "PRESENT_ENJOYMENT", "label": "Disfrutar más el presente cuando se puede", "displayOrder": 1, "value": 0.0 },
+        { "code": "ENJOY_WITH_SOME_PLANNING", "label": "Disfrutar, cuidando algunos planes básicos", "displayOrder": 2, "value": 0.35 },
+        { "code": "BALANCED_PLANNING", "label": "Equilibrar disfrute actual y preparación futura", "displayOrder": 3, "value": 0.7 },
+        { "code": "FUTURE_PREPARATION", "label": "Priorizar ahorro y preparación para más adelante", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.5 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "FAMILY_FRIENDS_PLACE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "DEPRECATED",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "FAMILY_FRIENDS",
+      "topicTags": ["relationships", "shared_life"],
+      "construct": "VALUES_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es para vos que una pareja valore el vínculo con familia o amistades cercanas?",
+      "options": [
+        { "code": "LOW", "label": "No necesito que lo viva igual", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Me suma, pero no es central", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me parece importante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Es muy importante para mí", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.45 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.6, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "SOCIAL_TOPICS_DISCUSSION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "PUBLIC_LIFE_DISCUSSION",
+      "topicTags": ["sensitive", "conversation"],
+      "construct": "SALIENCE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es para vos poder hablar con una pareja sobre temas sociales o de actualidad?",
+      "options": [
+        { "code": "LOW", "label": "No lo necesito mucho", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Puede sumar si aparece", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me parece importante", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Es algo muy relevante para mí", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.18 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.45, "minSharedValue": 0.5 },
+      "sensitivity": "SENSITIVE_LOW_RANKING",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "SPIRITUALITY_SALIENCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "VALUES_AND_SHARED_LIFE",
+      "primaryTopic": "BELIEFS_SALIENCE",
+      "topicTags": ["sensitive", "shared_life"],
+      "construct": "SALIENCE_ALIGNMENT",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan importante es para vos que una pareja pueda conversar con respeto sobre espiritualidad, sentido o creencias personales?",
+      "options": [
+        { "code": "LOW", "label": "No es importante para mí", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Me alcanza con respeto básico", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me parece importante poder hablarlo", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Es muy importante en mi vida", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.18 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.45, "minSharedValue": 0.5 },
+      "sensitivity": "SENSITIVE_LOW_RANKING",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "COMMUNICATION_FREQUENCY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "RELATIONSHIP_AND_COMMUNICATION",
+      "primaryTopic": "COMMUNICATION_FREQUENCY",
+      "topicTags": ["relationship"],
+      "construct": "RELATIONAL_EXPECTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Cuando estás conociendo a alguien, ¿qué frecuencia de comunicación te hace sentir cómodo/a?",
+      "options": [
+        { "code": "LOW", "label": "Poca, sin estar tan pendiente", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Regular, pero con bastante espacio", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Bastante presente", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Muy frecuente y cotidiana", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.6 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.6, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "CONFLICT_REPAIR_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "RELATIONSHIP_AND_COMMUNICATION",
+      "primaryTopic": "CONFLICT_REPAIR",
+      "topicTags": ["relationship", "communication"],
+      "construct": "RELATIONAL_EXPECTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Cuando aparece un desacuerdo, ¿qué ritmo de conversación preferís normalmente?",
+      "options": [
+        { "code": "NEED_LONG_PROCESSING", "label": "Tomarme bastante tiempo para procesar antes de seguir", "displayOrder": 1, "value": 0.0 },
+        { "code": "NEED_SOME_SPACE", "label": "Hacer una pausa y retomarlo con más claridad", "displayOrder": 2, "value": 0.35 },
+        { "code": "TALK_AFTER_SHORT_PAUSE", "label": "Retomar relativamente pronto después de ordenar ideas", "displayOrder": 3, "value": 0.7 },
+        { "code": "TALK_PROMPTLY", "label": "Conversarlo enseguida mientras el tema está presente", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.65 },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "DIFFERENCE_TOLERANCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "RELATIONSHIP_AND_COMMUNICATION",
+      "primaryTopic": "DIFFERENCE_TOLERANCE",
+      "topicTags": ["relationship", "differences"],
+      "construct": "DIFFERENCE_TOLERANCE",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "¿Qué tan cómodo/a estás construyendo vínculo con alguien que tiene gustos o hábitos distintos a los tuyos?",
+      "options": [
+        { "code": "LOW", "label": "Prefiero mucha similitud", "displayOrder": 1, "value": 0.0 },
+        { "code": "SOME", "label": "Algunas diferencias están bien", "displayOrder": 2, "value": 0.35 },
+        { "code": "HIGH", "label": "Me interesa aprender de diferencias", "displayOrder": 3, "value": 0.7 },
+        { "code": "VERY_HIGH", "label": "Las diferencias pueden enriquecer mucho", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "NONE" },
+      "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": false,
+      "conversationEnabled": true
+    },
+    {
+      "id": "AFFECTION_STYLE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "RELATIONSHIP_AND_COMMUNICATION",
+      "primaryTopic": "AFFECTION_STYLE",
+      "topicTags": ["relationship"],
+      "construct": "RELATIONAL_EXPECTATION",
+      "answerType": "SINGLE_CHOICE",
+      "prompt": "¿Qué gesto cotidiano te hace sentir más cuidado/a?",
+      "options": [
+        { "code": "WORDS", "label": "Palabras claras y mensajes atentos", "displayOrder": 1, "value": 0.85 },
+        { "code": "TIME", "label": "Tiempo de calidad sin apuro", "displayOrder": 2, "value": 0.85 },
+        { "code": "HELP", "label": "Ayuda concreta en lo cotidiano", "displayOrder": 3, "value": 0.85 },
+        { "code": "DETAILS", "label": "Detalles o gestos pensados", "displayOrder": 4, "value": 0.85 },
+        { "code": "PHYSICAL_CLOSENESS", "label": "Cercanía física y afecto", "displayOrder": 5, "value": 0.85 }
+      ],
+      "rankingPolicy": { "type": "SAME_ANSWER_OR_NEUTRAL_DIFFERENCE", "sameAnswerContribution": 0.2 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.55, "contrastPotential": 0.65, "minSharedValue": 0.5 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    },
+    {
+      "id": "PACE_EXPECTATION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "status": "ACTIVE",
+      "categoryId": "RELATIONSHIP_AND_COMMUNICATION",
+      "primaryTopic": "RELATIONSHIP_PACE",
+      "topicTags": ["relationship", "expectations"],
+      "construct": "RELATIONAL_EXPECTATION",
+      "answerType": "ORDINAL_SCALE",
+      "prompt": "Al conocer a alguien, ¿qué ritmo te resulta más cómodo?",
+      "options": [
+        { "code": "SLOW", "label": "Ir lento y ver qué pasa", "displayOrder": 1, "value": 0.0 },
+        { "code": "GRADUAL", "label": "Avanzar de a poco, con señales claras", "displayOrder": 2, "value": 0.35 },
+        { "code": "INTENTIONAL", "label": "Con intención y continuidad", "displayOrder": 3, "value": 0.7 },
+        { "code": "DIRECT", "label": "Saber rápido si hay proyecto", "displayOrder": 4, "value": 1.0 }
+      ],
+      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.55 },
+      "conversationPolicy": { "type": "CONSTRUCTIVE_CONTRAST_CONVERSATION", "sharedPotential": 0.45, "contrastPotential": 0.6, "minSharedValue": 0.35 },
+      "sensitivity": "STANDARD",
+      "rankingEnabled": true,
+      "conversationEnabled": true
+    }
+  ]
+}
