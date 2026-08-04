@@ -25,6 +25,11 @@ class AffinityQuestionAnswerService(
     private val profileRepository: ProfileRepository,
     private val catalogProvider: AffinityQuestionCatalogProvider
 ) {
+    private companion object {
+        private const val MAX_STABLE_CODE_LENGTH = 96
+        private val STABLE_CODE_PATTERN = Regex("^[A-Z0-9_]+$")
+    }
+
     @Transactional(readOnly = true)
     fun getMyAnswers(userId: UUID): List<AffinityQuestionAnswer> {
         val profile = profileForCurrentUserOrThrow(userId)
@@ -35,16 +40,16 @@ class AffinityQuestionAnswerService(
         userId: UUID,
         patches: List<AffinityAnswerPatch>
     ): List<AffinityQuestionAnswer> {
-        val profile = profileForCurrentUserOrThrow(userId)
+        val profile = profileForCurrentUserForUpdateOrThrow(userId)
         requireAnswerableProfile(profile.status)
-        rejectDuplicateQuestionIds(patches)
+        val normalizedPatches = normalizePatches(patches)
+        rejectDuplicateQuestionIds(normalizedPatches)
 
         val catalog = catalogProvider.getCatalog()
         val now = OffsetDateTime.now()
-        patches.forEach { patch ->
+        normalizedPatches.forEach { patch ->
             val question = activeQuestionOrThrow(catalog, patch.questionId)
-            val answerCode = patch.answerCode.trim()
-            if (question.optionByCode(answerCode) == null) {
+            if (question.optionByCode(patch.answerCode) == null) {
                 throw DomainBadRequestException(
                     code = DomainErrorCode.INVALID_AFFINITY_ANSWER,
                     message = "Invalid affinity answer option ${patch.answerCode} for question ${patch.questionId}"
@@ -63,16 +68,16 @@ class AffinityQuestionAnswerService(
                         profileId = profile.id,
                         questionId = question.id,
                         questionSemanticVersion = question.semanticVersion,
-                        answerCode = answerCode,
+                        answerCode = patch.answerCode,
                         createdAt = now,
                         updatedAt = now
                     )
                 )
             } else if (
-                existing.answerCode != answerCode ||
+                existing.answerCode != patch.answerCode ||
                 existing.questionSemanticVersion != question.semanticVersion
             ) {
-                existing.answerCode = answerCode
+                existing.answerCode = patch.answerCode
                 existing.questionSemanticVersion = question.semanticVersion
                 existing.updatedAt = now
                 answerRepository.save(existing)
@@ -86,13 +91,17 @@ class AffinityQuestionAnswerService(
         userId: UUID,
         questionId: String
     ): List<AffinityQuestionAnswer> {
-        val profile = profileForCurrentUserOrThrow(userId)
+        val profile = profileForCurrentUserForUpdateOrThrow(userId)
         requireAnswerableProfile(profile.status)
-        activeQuestionOrThrow(catalogProvider.getCatalog(), questionId)
+        val normalizedQuestionId = normalizeStableCode(
+            value = questionId,
+            field = "question id",
+            code = DomainErrorCode.INVALID_AFFINITY_QUESTION
+        )
 
         answerRepository.deleteByProfileIdAndQuestionId(
             profileId = profile.id,
-            questionId = questionId
+            questionId = normalizedQuestionId
         )
 
         return answersForProfile(profile.id)
@@ -124,6 +133,13 @@ class AffinityQuestionAnswerService(
                 message = "Profile not found for current user"
             )
 
+    private fun profileForCurrentUserForUpdateOrThrow(userId: UUID) =
+        profileRepository.findByUserIdForUpdate(userId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.PROFILE_NOT_FOUND,
+                message = "Profile not found for current user"
+            )
+
     private fun requireAnswerableProfile(status: ProfileStatus) {
         if (status !in setOf(ProfileStatus.DRAFT, ProfileStatus.ACTIVE)) {
             throw DomainConflictException(
@@ -133,9 +149,25 @@ class AffinityQuestionAnswerService(
         }
     }
 
+    private fun normalizePatches(patches: List<AffinityAnswerPatch>): List<AffinityAnswerPatch> =
+        patches.map { patch ->
+            AffinityAnswerPatch(
+                questionId = normalizeStableCode(
+                    value = patch.questionId,
+                    field = "question id",
+                    code = DomainErrorCode.INVALID_AFFINITY_QUESTION
+                ),
+                answerCode = normalizeStableCode(
+                    value = patch.answerCode,
+                    field = "answer code",
+                    code = DomainErrorCode.INVALID_AFFINITY_ANSWER
+                )
+            )
+        }
+
     private fun rejectDuplicateQuestionIds(patches: List<AffinityAnswerPatch>) {
         val duplicateQuestionIds =
-            patches.map { it.questionId.trim() }
+            patches.map { it.questionId }
                 .groupingBy { it }
                 .eachCount()
                 .filterValues { it > 1 }
@@ -149,11 +181,30 @@ class AffinityQuestionAnswerService(
         }
     }
 
+    private fun normalizeStableCode(
+        value: String,
+        field: String,
+        code: DomainErrorCode
+    ): String {
+        val normalized = value.trim()
+        if (
+            normalized.isBlank() ||
+            normalized.length > MAX_STABLE_CODE_LENGTH ||
+            !STABLE_CODE_PATTERN.matches(normalized)
+        ) {
+            throw DomainBadRequestException(
+                code = code,
+                message = "Invalid affinity $field: $value"
+            )
+        }
+        return normalized
+    }
+
     private fun activeQuestionOrThrow(
         catalog: AffinityQuestionCatalog,
         questionId: String
     ): AffinityQuestion =
-        catalog.activeQuestionById(questionId.trim())
+        catalog.activeQuestionById(questionId)
             ?: throw DomainBadRequestException(
                 code = DomainErrorCode.INVALID_AFFINITY_QUESTION,
                 message = "Affinity question is missing, inactive, or unsupported: $questionId"

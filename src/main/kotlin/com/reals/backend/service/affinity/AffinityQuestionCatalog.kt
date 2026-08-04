@@ -256,10 +256,8 @@ object AffinityQuestionCatalogValidator {
             }
         }
 
-        if (question.status == AffinityQuestionStatus.ACTIVE) {
-            validateRankingPolicy(question)
-            validateConversationPolicy(question)
-        }
+        validateRankingPolicy(question)
+        validateConversationPolicy(question)
     }
 
     private fun validateRankingPolicy(question: AffinityQuestion) {
@@ -270,16 +268,16 @@ object AffinityQuestionCatalogValidator {
         require(policy.sameAnswerContribution in -1.0..1.0) {
             "Affinity question ${question.id} ranking sameAnswerContribution is outside [-1.0, 1.0]"
         }
+        require(question.rankingEnabled == (policy.type != RankingComparisonPolicyType.NONE)) {
+            "Affinity question ${question.id} rankingEnabled must match non-NONE ranking policy"
+        }
 
         if (!question.rankingEnabled) {
-            require(policy.type == RankingComparisonPolicyType.NONE) {
-                "Affinity question ${question.id} disables ranking but does not use NONE policy"
-            }
             return
         }
 
         when (policy.type) {
-            RankingComparisonPolicyType.NONE -> Unit
+            RankingComparisonPolicyType.NONE -> error("Affinity question ${question.id} ranking is enabled with NONE policy")
             RankingComparisonPolicyType.SHARED_ENGAGEMENT,
             RankingComparisonPolicyType.ORDINAL_ALIGNMENT -> requireOptionValues(question)
             RankingComparisonPolicyType.SAME_ANSWER_OR_NEUTRAL_DIFFERENCE -> Unit
@@ -310,16 +308,16 @@ object AffinityQuestionCatalogValidator {
         require(policy.minSharedValue in 0.0..1.0) {
             "Affinity question ${question.id} minSharedValue is outside [0.0, 1.0]"
         }
+        require(question.conversationEnabled == (policy.type != ConversationComparisonPolicyType.NONE)) {
+            "Affinity question ${question.id} conversationEnabled must match non-NONE conversation policy"
+        }
 
         if (!question.conversationEnabled) {
-            require(policy.type == ConversationComparisonPolicyType.NONE) {
-                "Affinity question ${question.id} disables conversation but does not use NONE policy"
-            }
             return
         }
 
         when (policy.type) {
-            ConversationComparisonPolicyType.NONE -> Unit
+            ConversationComparisonPolicyType.NONE -> error("Affinity question ${question.id} conversation is enabled with NONE policy")
             ConversationComparisonPolicyType.SHARED_AFFINITY_CONVERSATION,
             ConversationComparisonPolicyType.CONSTRUCTIVE_CONTRAST_CONVERSATION -> requireOptionValues(question)
             ConversationComparisonPolicyType.CUSTOM_MATRIX -> {
@@ -348,9 +346,16 @@ object AffinityQuestionCatalogValidator {
         label: String
     ) {
         val optionCodes = question.options.map { it.code }
+        val expectedOptionCodes = optionCodes.toSet()
+        require(matrix.keys == expectedOptionCodes) {
+            "Affinity question ${question.id} $label matrix rows must exactly match answer options"
+        }
         optionCodes.forEach { left ->
             val row = matrix[left]
                 ?: error("Affinity question ${question.id} $label matrix is missing row $left")
+            require(row.keys == expectedOptionCodes) {
+                "Affinity question ${question.id} $label matrix row $left columns must exactly match answer options"
+            }
             optionCodes.forEach { right ->
                 val value = row[right]
                     ?: error("Affinity question ${question.id} $label matrix is missing entry $left/$right")
@@ -371,9 +376,16 @@ object AffinityQuestionCatalogValidator {
         matrix: Map<String, Map<String, ConversationMatrixCell>>
     ) {
         val optionCodes = question.options.map { it.code }
+        val expectedOptionCodes = optionCodes.toSet()
+        require(matrix.keys == expectedOptionCodes) {
+            "Affinity question ${question.id} conversation matrix rows must exactly match answer options"
+        }
         optionCodes.forEach { left ->
             val row = matrix[left]
                 ?: error("Affinity question ${question.id} conversation matrix is missing row $left")
+            require(row.keys == expectedOptionCodes) {
+                "Affinity question ${question.id} conversation matrix row $left columns must exactly match answer options"
+            }
             optionCodes.forEach { right ->
                 val value = row[right]
                     ?: error("Affinity question ${question.id} conversation matrix is missing entry $left/$right")

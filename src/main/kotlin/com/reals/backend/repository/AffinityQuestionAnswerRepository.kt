@@ -16,4 +16,9 @@ interface AffinityQuestionAnswerRepository : JpaRepository<AffinityQuestionAnswe
         profileId: UUID,
         questionId: String
     ): Long
+
+    fun countByProfileIdAndQuestionId(
+        profileId: UUID,
+        questionId: String
+    ): Long
 }
