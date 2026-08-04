@@ -1,0 +1,50 @@
+meta {
+  name: 50 Process One Match
+  type: http
+  seq: 50
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matchmaking/process?maxPairsPerRun={{affinity_test_max_pairs}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 401) {
+    throw new Error("Got 401 from local matchmaking process. Refresh User A sign-in token or confirm local endpoint auth policy.");
+  }
+  if (status === 403) {
+    throw new Error("Got 403 from local matchmaking process. Ensure User A is allowlisted locally for admin tooling if auth is enforced.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK from local matchmaking process, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.pairs)) {
+    throw new Error("Expected process response with pairs array.");
+  }
+  if (body.matchesCreated !== 1 || body.pairs.length !== 1) {
+    throw new Error(
+      `Expected exactly one created match, got matchesCreated=${body.matchesCreated}, pairs=${body.pairs.length}. ` +
+      "Check inactive profiles, incompatible gender/age/intention/distance filters, legal requirements, penalties, queue state, and existing active-pair restrictions."
+    );
+  }
+  const match = body.pairs[0];
+  if (!match.id || !match.userAId || !match.userBId) {
+    throw new Error("Expected created match with id, userAId and userBId.");
+  }
+  const anchorUserId = bru.getEnvVar("affinity_user_a_backend_user_id");
+  if (match.userAId !== anchorUserId && match.userBId !== anchorUserId) {
+    throw new Error(`Expected User A to participate in the created match, got ${match.userAId}/${match.userBId}.`);
+  }
+  bru.setEnvVar("affinity_test_match_id", match.id);
+  bru.setEnvVar("affinity_test_selected_user_a_id", match.userAId);
+  bru.setEnvVar("affinity_test_selected_user_b_id", match.userBId);
+  // Do not assert whether B or C was selected. SHADOW mode must not affect randomized actual ordering.
+}

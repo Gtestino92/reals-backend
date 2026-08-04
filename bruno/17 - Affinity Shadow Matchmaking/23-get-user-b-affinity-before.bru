@@ -1,0 +1,26 @@
+meta {
+  name: 23 Get User B Affinity Before
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/affinity-answers
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while reading User B affinity answers, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.answers)) {
+    throw new Error("Expected affinity answers response with answers array.");
+  }
+}

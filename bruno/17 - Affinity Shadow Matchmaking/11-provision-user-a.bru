@@ -1,0 +1,31 @@
+meta {
+  name: 11 Provision User A
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK or 201 Created while provisioning User A, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected provision response with backend user id.");
+  }
+  const expectedEmail = bru.getEnvVar("affinity_user_a_email");
+  if (body.email && body.email !== expectedEmail) {
+    throw new Error(`Expected User A backend email ${expectedEmail}, got ${body.email}.`);
+  }
+  bru.setEnvVar("affinity_user_a_backend_user_id", body.id);
+}

@@ -1,0 +1,37 @@
+meta {
+  name: 22 Get User B Profile
+  type: http
+  seq: 22
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 404) {
+    throw new Error("User B needs an existing ACTIVE profile before matchmaking.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while reading User B profile, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !body.id || !body.userId || !body.status) {
+    throw new Error("Expected profile response with id, userId and status.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_user_b_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected User B profile to belong to ${expectedUserId}, got ${body.userId}.`);
+  }
+  if (body.status !== "ACTIVE") {
+    throw new Error(`User B profile status is ${body.status}. Matchmaking requires ACTIVE profiles.`);
+  }
+  bru.setEnvVar("affinity_user_b_profile_id", body.id);
+}
