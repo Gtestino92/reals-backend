@@ -111,6 +111,7 @@ For those cases, service-level integration tests catch more realistic regression
 Controller integration tests cover representative HTTP contract checks for:
 
 - `ProfileController` and `MeController`: authenticated current-user resolution and profile creation JSON.
+- `AffinityQuestionAnswerController` and `ReferenceController`: private current-user affinity answers, authenticated catalog reads, legal write gates and absence of scoring policy internals from responses.
 - `MatchController`: chat decision response, conflict mapping and personal-message write.
 - `ConnectionController`: proposal submission, negotiation confirmation and proposal validation errors.
 - `ChatController`: sending/listing messages, non-participant rejection and mutual cancellation over HTTP.
@@ -144,6 +145,20 @@ They generate local RSA keys and never contact Firebase JWKS. Use:
 ```text
 .\mvnw.cmd "-Dtest=FirebaseAppCheck*Test,NimbusFirebaseAppCheckVerifierTest" test
 ```
+
+Affinity-question tests are intentionally focused:
+
+- catalog unit tests validate startup-failure rules, required visible
+  categories, matrix completeness/symmetry, range checks, unsupported answer
+  types and sensitive-question wording boundaries;
+- service integration tests cover private answer create/update/delete,
+  idempotent partial PATCH semantics, duplicate question rejection, invalid
+  question/option errors, ownership isolation, `DRAFT` and `ACTIVE` profiles,
+  missing profile behavior and the database uniqueness invariant;
+- pure evaluator tests cover neutral missing answers, shared-domain evidence,
+  low-interest non-reward, taste differences, constructive-conversation
+  potential, ordinal extreme negatives, semantic-version mismatch, symmetry and
+  declared output ranges.
 
 The App Check filter is expected between the pre-authentication rate limiter
 and `FirebaseTokenFilter`. In `DISABLED` mode it does not require or verify the

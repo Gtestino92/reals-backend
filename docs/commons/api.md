@@ -70,10 +70,11 @@ actions without a stored content SHA-256 and historical actions with a different
 content SHA-256 also do not satisfy the current configured document.
 
 The gate applies to profile creation/editing/activation/match filters/profile
-authenticity verification/photo upload/photo reorder/photo replacement, entering
-matchmaking, sending chat messages, first-chat guidance next requests, visual
-personal-message writes, positive first-chat and visual decisions, and
-scheduling proposal submission/acceptance/partner proposal rejection.
+authenticity verification/private affinity-answer writes/photo upload/photo
+reorder/photo replacement, entering matchmaking, sending chat messages,
+first-chat guidance next requests, visual personal-message writes, positive
+first-chat and visual decisions, and scheduling proposal
+submission/acceptance/partner proposal rejection.
 
 Reads remain available. Account deletion/reactivation, legal endpoints, chat
 exit/cancellation/safety operations, safety reports, queue inspection/leaving,
@@ -81,9 +82,10 @@ push-token registration, admin endpoints, actuator endpoints and local-dev
 tooling are not gated. `REJECTED` first-chat and visual decisions remain
 available; only `APPROVED` requires current legal compliance.
 
-Reference-data reads such as `GET /api/reference/countries` are authenticated
-under the normal `/api/** -> ROLE_USER` rule, but are not legal-compliance
-gated and do not require an existing profile.
+Reference-data reads such as `GET /api/reference/countries` and `GET
+/api/reference/affinity-questions` are authenticated under the normal `/api/**`
+-> `ROLE_USER` rule, but are not legal-compliance gated and do not require an
+existing profile.
 
 For first-chat navigation, `GET /api/me/home` exposes a
 `pendingActions[]` item with `type = FIRST_CHAT` only while the match remains in
@@ -237,6 +239,10 @@ these values as text, not HTML.
 - `POST /api/me/profile/activation`: activate authenticated user's profile. Requires the current Firebase ID token to have `emailVerified=true`; otherwise returns `409 EMAIL_NOT_VERIFIED` with message `Verificá tu email antes de activar el perfil.` Email verification is not required for profile creation, editing, photo deletion, photo reorder or match-filter configuration.
 - `PUT /api/me/profile/match-filters`: replace matchmaking preferences. Body: `intention`, `lookingForGenders`, `preferredMinAge`, `preferredMaxAge`, `maxDistanceKm`.
 - `POST /api/me/profile/authenticity-verification`: optionally run profile authenticity verification for the authenticated user's profile. Profile Authenticity Verification is not legal identity verification. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent liveness, face comparison, legal identity, document verification or age assurance. With provider `none` in `prod`, verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
+- `GET /api/reference/affinity-questions`: list the server-authoritative Spanish affinity-question catalog, including catalog version, visible categories, active questions, prompt text, answer type and ordered answer options. The response intentionally omits ranking policies, conversation policies, matrices, weights and hidden scoring configuration.
+- `GET /api/me/profile/affinity-answers`: list only the authenticated user's private affinity answers.
+- `PATCH /api/me/profile/affinity-answers`: partial idempotent upsert for private affinity answers. Only included question ids are modified; omitted answers remain unchanged. Duplicate question ids return `400 DUPLICATE_AFFINITY_QUESTION`; missing, inactive or unsupported questions return `400 INVALID_AFFINITY_QUESTION`; invalid options return `400 INVALID_AFFINITY_ANSWER`. The current catalog semantic version is stored with each answer. Requires current legal requirements and an existing `DRAFT` or `ACTIVE` profile; verified email is not required.
+- `DELETE /api/me/profile/affinity-answers/{questionId}`: delete only the authenticated profile's answer for one active catalog question. Requires current legal requirements and returns the complete remaining answer list.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
@@ -275,6 +281,21 @@ country list, uses `Locale.forLanguageTag("es")` for display names, sorts by
 Spanish display name with country code as tie-breaker, and keeps immutable
 in-memory list/set state. It does not call an external country API, GeoNames,
 Redis or Caffeine for this data.
+
+Affinity answers are always private. They are returned only through the
+authenticated current-profile endpoints and are not exposed through another
+user's profile, match responses, visual review, first-chat snapshots, Home,
+partner summaries or counterpart-facing endpoints. This backend foundation does
+not affect matchmaking scores, first-chat guidance, visual review or Home. Free
+text profile prompts are a separate future system; conversation prompts remain
+the existing first-chat guidance flow.
+
+Affinity question `semanticVersion` changes represent answer meaning or
+comparison-semantics changes. A stored answer whose semantic version no longer
+matches the current catalog is excluded from pairwise affinity evaluation until
+the user answers the current semantic version. `contentVersion` changes are
+wording-only and do not invalidate stored answers. Missing answers are neutral
+and never count as incompatibility.
 
 Photo response `url` values are renderable read URLs generated by the backend
 from each photo's stored object key. Storage keys and bucket names are never

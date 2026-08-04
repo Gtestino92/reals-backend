@@ -7,6 +7,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `User`
 - `Profile`
 - `ProfilePhoto`
+- `AffinityQuestionAnswer`
 - `MatchmakingQueueEntry`
 - `Match`
 - `Chat`
@@ -36,6 +37,14 @@ Profile:
 - `Intention`: `DATE`, `FRIENDSHIP`, `CASUAL`
 - `ProfileStatus`: `DRAFT`, `ACTIVE`, `INACTIVE`
 - `ProfileAuthenticityVerificationStatus`: `NOT_STARTED`, `PENDING`, `VERIFIED`, `REJECTED`, `NEEDS_REVIEW`, `STALE`
+
+Affinity questions:
+
+- `AffinityAnswerType`: `SINGLE_CHOICE`, `ORDINAL_SCALE`
+- `AffinityQuestionStatus`: `ACTIVE`, `DEPRECATED`
+- `AffinityConstruct`: `DOMAIN_ENGAGEMENT`, `TASTE_PREFERENCE`, `SHARED_ACTIVITY_ORIENTATION`, `VALUES_ALIGNMENT`, `LIFESTYLE_ALIGNMENT`, `RELATIONAL_EXPECTATION`, `DIFFERENCE_TOLERANCE`, `SALIENCE_ALIGNMENT`, `CONVERSATION_ONLY`
+- `AffinitySensitivity`: `STANDARD`, `SENSITIVE_LOW_RANKING`
+- `ConversationKind`: `SHARED_AFFINITY`, `CONSTRUCTIVE_CONTRAST`, `NEUTRAL`, `NOT_ELIGIBLE`
 
 Matching and chat:
 
@@ -106,6 +115,7 @@ Push notifications:
 
 - A `User` may have one `Profile`.
 - A `Profile` has many `ProfilePhoto` records.
+- A `Profile` has many private `AffinityQuestionAnswer` records, unique by `(profileId, questionId)`. Answers are owned by the current user's profile and are never exposed through counterpart-facing profile, match, visual-review, first-chat, Home or partner-summary responses.
 - A `Match` has `userAId` and `userBId`.
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
 - `FirstChatGuidance` belongs to one `FIRST_CHAT` through a unique `chatId`. It stores the active question id/text snapshot, ordinal, activation timestamp, per-participant next-question request timestamps and optional completion timestamp. It does not store message counters or the full selected sequence.
@@ -132,6 +142,63 @@ Matchmaking pair eligibility distinguishes active interactions, temporary histor
 - When `matchmaking.exclude-previous-pairing` is enabled, previous terminal outcomes create temporary exclusions calculated from existing history: 30 days for explicit first-chat rejection, visual rejection, visual-review expiration and closed connections; 7 days for first-chat absolute timeout or inactivity abandonment.
 - `MatchState.EXPIRED` is classified from persisted phase evidence. An expired match with no `VisualReview` is treated as first-chat expiration; an expired match with a `VisualReview` is treated as visual-review expiration. First-chat `Chat.endedAt` is preferred for timeout/abandonment timestamps, with `Match.updatedAt` as legacy fallback.
 - A cooldown expires naturally when its cutoff elapses. No cleanup job, derived cooldown table, new match state or automatic `UserBlock` is created for normal product outcomes.
+
+## Affinity Questions
+
+Affinity questions are closed, private profile-owned answers used only as a
+foundation for future compatibility evidence and conversation-prompt selection.
+They are separate from free-text profile prompts and from the existing
+first-chat conversation guidance. This foundation does not modify matchmaking,
+first-chat guidance, visual review, Home or any counterpart-facing response.
+
+The static catalog lives in `src/main/resources/affinity-questions.es-AR.json`
+and is loaded once at application startup. The top-level catalog contains a
+catalog version, ordered visible categories and ordered question definitions.
+Categories are catalog-driven UI reference data; labels are not hardcoded in
+controllers.
+
+Each active question has one category, one primary topic, one primary construct,
+one answer type, ordered options, explicit ranking and conversation comparison
+policies, sensitivity classification, and independent `rankingEnabled` /
+`conversationEnabled` flags. Supported answer types are `SINGLE_CHOICE` and
+`ORDINAL_SCALE`; both accept exactly one stored option code.
+
+Catalog validation fails startup for empty catalogs, duplicate category ids or
+display orders, duplicate question ids, invalid category references, blank
+Spanish text, unsupported answer types, duplicate option codes or display
+orders, invalid versions, invalid sensitivity values, incomplete/range-unsafe
+policies, asymmetric custom matrices and active questions that reference missing
+categories or options.
+
+Stored answers persist only `profileId`, `questionId`, the current
+`questionSemanticVersion`, `answerCode` and timestamps. Catalog questions are
+not stored in the database. `semanticVersion` changes represent answer meaning
+or comparison-semantics changes; stale stored answers are excluded from pair
+evaluation until the user answers the current semantic version. `contentVersion`
+changes are wording-only and do not invalidate stored answers.
+
+`AffinityQuestionPairEvaluator` is pure and performs no repository access. It
+compares only questions answered by both users and valid under the current
+semantic catalog definition. Missing or unshared answers are neutral and never
+count as incompatibility. The evaluator returns `PairAffinityEvidence` with
+question-level signals and category evidence only; it does not produce a final
+matchmaking score, ranking factor or global category weight.
+
+Current policy families are explicit and test-covered:
+
+- no ranking contribution;
+- shared engagement;
+- ordinal alignment;
+- same answer or neutral difference;
+- custom symmetric ranking matrix;
+- shared-affinity conversation potential;
+- constructive-contrast conversation potential;
+- custom symmetric conversation matrix.
+
+Sensitive public-life and belief/spirituality questions ask only about salience,
+discussion comfort or respectful differences. They do not ask for orientation,
+affiliation, denomination or doctrine, and their ranking contribution is capped
+low and explicit.
 
 ## Legal Documents
 
