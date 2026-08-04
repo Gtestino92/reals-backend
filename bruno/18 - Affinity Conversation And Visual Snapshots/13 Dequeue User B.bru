@@ -1,0 +1,30 @@
+meta {
+  name: 13 Dequeue User B
+  type: http
+  seq: 13
+}
+
+delete {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while dequeuing User B, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.inQueue !== false) {
+    throw new Error("Expected idempotent dequeue response with inQueue=false.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_user_b_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected User B queue response for ${expectedUserId}, got ${body.userId}.`);
+  }
+}

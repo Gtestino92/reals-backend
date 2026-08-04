@@ -1,0 +1,33 @@
+meta {
+  name: 32 Approve First Chat As B
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{affinity_pr3_match_id}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while approving first chat, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.state !== "VISUAL_PHASE") {
+    throw new Error(`Expected match state VISUAL_PHASE, got ${body && body.state}.`);
+  }
+}

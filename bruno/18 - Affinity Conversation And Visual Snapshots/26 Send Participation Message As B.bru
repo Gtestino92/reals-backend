@@ -1,0 +1,33 @@
+meta {
+  name: 26 Send Participation Message As B
+  type: http
+  seq: 26
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{affinity_pr3_chat_id}}/messages
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+body:json {
+  {
+    "content": "B aporta texto suficiente para avanzar"
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while sending participation message, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.chatSessionId !== bru.getEnvVar("affinity_pr3_chat_id") || body.content.length < 20) {
+    throw new Error("Expected persisted participation text message for PR3 chat.");
+  }
+}

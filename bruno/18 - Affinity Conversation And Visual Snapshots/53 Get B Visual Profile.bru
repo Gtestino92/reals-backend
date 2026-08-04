@@ -1,0 +1,65 @@
+meta {
+  name: 53 Get B Visual Profile
+  type: http
+  seq: 53
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{affinity_pr3_control_match_id}}/visual-profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+script:post-response {
+  function assertIndicatorShape(indicator) {
+    const keys = Object.keys(indicator || {}).sort();
+    if (JSON.stringify(keys) !== JSON.stringify(["categoryId", "title"])) {
+      throw new Error(`Expected indicator keys categoryId,title only, got ${keys.join(",")}.`);
+    }
+    if (!indicator.title || indicator.title.trim().length === 0) {
+      throw new Error("Expected nonblank visual affinity indicator title.");
+    }
+    for (const field of ["answerCode", "answerLabel", "questionId", "semanticVersion", "conversationKind", "conversationPotential", "score", "percentage", "sharedQuestionCount"]) {
+      if (Object.prototype.hasOwnProperty.call(indicator, field)) {
+        throw new Error(`visual affinity indicator leaked forbidden field ${field}.`);
+      }
+    }
+  }
+  function assertPositiveIndicators(indicators) {
+    if (!Array.isArray(indicators)) {
+      throw new Error("Expected affinityIndicators array.");
+    }
+    if (indicators.length < 1 || indicators.length > 3) {
+      throw new Error(`Expected 1-3 visual affinity indicators, got ${indicators.length}.`);
+    }
+    indicators.forEach(assertIndicatorShape);
+    if (!indicators.some((indicator) => indicator.categoryId === "MUSIC")) {
+      throw new Error("Expected snapshotted visual affinity indicators to contain MUSIC after User A answer mutation.");
+    }
+  }
+  function assertEmptyIndicators(indicators) {
+    if (!Array.isArray(indicators)) {
+      throw new Error("Expected affinityIndicators array.");
+    }
+    if (indicators.length !== 0) {
+      throw new Error(`Expected empty visual affinity indicators, got ${indicators.length}.`);
+    }
+  }
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while getting visual profile, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "affinityIndicators")) {
+    throw new Error("Expected visual profile response to serialize affinityIndicators.");
+  }
+  assertEmptyIndicators(body.affinityIndicators);
+  const expected = bru.getEnvVar("affinity_pr3_control_indicator_snapshot");
+  if (expected && JSON.stringify(body.affinityIndicators) !== expected) {
+    throw new Error("Expected B visual affinity indicators to equal Control User empty snapshot.");
+  }
+}

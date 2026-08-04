@@ -1,0 +1,30 @@
+meta {
+  name: 41 Dequeue Control User
+  type: http
+  seq: 41
+}
+
+delete {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while dequeuing Control User, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.inQueue !== false) {
+    throw new Error("Expected idempotent dequeue response with inQueue=false.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_control_user_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected Control User queue response for ${expectedUserId}, got ${body.userId}.`);
+  }
+}
