@@ -16,6 +16,7 @@ secrets/
 .env
 .env
 bruno/reals-backend-happy-path/environments/local.bru
+bruno/environments/local.bru
 bruno/environments/dev.bru
 bruno/environments/*.local.bru
 bruno/environments/local.*.bru
