@@ -63,35 +63,35 @@ class AffinityDerivedSnapshotInitializationService(
         val profiles =
             profileRepository.findByUserIdIn(listOf(match.userAId, match.userBId))
                 .associateBy { it.userId }
-        val profileA = requireNotNull(profiles[match.userAId]) {
-            "Profile not found for match user A"
-        }
-        val profileB = requireNotNull(profiles[match.userBId]) {
-            "Profile not found for match user B"
-        }
-
-        val answersByProfile =
-            answerRepository.findByProfileIdIn(listOf(profileA.id, profileB.id))
-                .groupBy { it.profileId }
+        val profileA = profiles[match.userAId]
+        val profileB = profiles[match.userBId]
 
         val evidence =
-            pairEvaluator.evaluate(
-                leftAnswers = answersByProfile[profileA.id].orEmpty().map {
-                    AffinityAnswerSnapshot(
-                        questionId = it.questionId,
-                        questionSemanticVersion = it.questionSemanticVersion,
-                        answerCode = it.answerCode
-                    )
-                },
-                rightAnswers = answersByProfile[profileB.id].orEmpty().map {
-                    AffinityAnswerSnapshot(
-                        questionId = it.questionId,
-                        questionSemanticVersion = it.questionSemanticVersion,
-                        answerCode = it.answerCode
-                    )
-                },
-                catalog = catalog
-            )
+            if (profileA == null || profileB == null) {
+                emptyEvidence()
+            } else {
+                val answersByProfile =
+                    answerRepository.findByProfileIdIn(listOf(profileA.id, profileB.id))
+                        .groupBy { it.profileId }
+
+                pairEvaluator.evaluate(
+                    leftAnswers = answersByProfile[profileA.id].orEmpty().map {
+                        AffinityAnswerSnapshot(
+                            questionId = it.questionId,
+                            questionSemanticVersion = it.questionSemanticVersion,
+                            answerCode = it.answerCode
+                        )
+                    },
+                    rightAnswers = answersByProfile[profileB.id].orEmpty().map {
+                        AffinityAnswerSnapshot(
+                            questionId = it.questionId,
+                            questionSemanticVersion = it.questionSemanticVersion,
+                            answerCode = it.answerCode
+                        )
+                    },
+                    catalog = catalog
+                )
+            }
 
         val prompts =
             promptSelector.select(
@@ -141,4 +141,11 @@ class AffinityDerivedSnapshotInitializationService(
                 }
         )
     }
+
+    private fun emptyEvidence(): PairAffinityEvidence =
+        PairAffinityEvidence(
+            sharedQuestionCount = 0,
+            questionSignals = emptyList(),
+            categoryEvidence = emptyList()
+        )
 }
