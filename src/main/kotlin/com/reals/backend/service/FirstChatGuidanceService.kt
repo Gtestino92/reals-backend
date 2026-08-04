@@ -94,6 +94,7 @@ class FirstChatGuidedQuestionCatalog(
         }
 
         loaded.forEach { question ->
+            require(question.id.length <= 64)
             require(question.id.isNotBlank()) {
                 "First-chat guided question catalog contains a blank id"
             }

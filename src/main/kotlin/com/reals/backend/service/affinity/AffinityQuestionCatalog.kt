@@ -225,6 +225,7 @@ object AffinityQuestionCatalogValidator {
         require(question.id.isNotBlank()) {
             "Affinity question catalog contains a blank question id"
         }
+        require(question.id.length <= 64)
         require(question.semanticVersion > 0) {
             "Affinity question ${question.id} semanticVersion must be positive"
         }
