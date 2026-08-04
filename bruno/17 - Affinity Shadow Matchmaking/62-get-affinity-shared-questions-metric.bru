@@ -1,0 +1,31 @@
+meta {
+  name: 62 Get Affinity Shared Questions Metric
+  type: http
+  seq: 62
+}
+
+get {
+  url: {{baseUrl}}/actuator/metrics/reals.matchmaking.affinity.shared_questions
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK for metric reals.matchmaking.affinity.shared_questions, got ${status}. Ensure User A has ROLE_ADMIN locally and matchmaking has been processed.`);
+  }
+  const body = res.getBody();
+  if (!body || body.name !== "reals.matchmaking.affinity.shared_questions") {
+    throw new Error(`Expected metric name reals.matchmaking.affinity.shared_questions, got ${body && body.name}.`);
+  }
+  if (!Array.isArray(body.measurements) || body.measurements.length < 1) {
+    throw new Error("Expected at least one metric measurement after matchmaking processing.");
+  }
+  // Expected bounded tags for this flow: mode=shadow, evidence=present, direction=positive and direction=negative.
+  // Do not treat this metric as user-facing compatibility output.
+}

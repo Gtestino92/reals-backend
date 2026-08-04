@@ -145,6 +145,11 @@ Non-sensitive runtime configuration:
 | `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Defaults to `10.0`; must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS` | no | Hours for each `+1` waiting relaxation multiplier before the cap. Defaults to `72.0`; must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER` | no | Maximum waiting relaxation multiplier. Defaults to `3.0`; must be finite and at least `1`. |
+| `MATCHMAKING_RANKING_AFFINITY_MODE` | no | Private affinity ranking mode: `OFF`, `SHADOW` or `ACTIVE`. Defaults to `OFF` globally/dev/prod and `SHADOW` in `local-firebase`. `ACTIVE` requires `PROBABILISTIC_WEIGHTED`. |
+| `MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT` | no | Maximum multiplicative affinity adjustment. Defaults to `0.10`; must be finite and in `[0.0, 0.25]`. |
+| `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS` | no | Shared ranking-enabled question count for full global affinity confidence. Defaults to `12`; must be positive. |
+| `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES` | no | Ranking-evidence category count for full global affinity confidence. Defaults to `4`; must be positive. |
+| `MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS` | no | Per-category ranking-enabled question count for full category confidence. Defaults to `3`; must be positive. |
 | `ENGAGEMENT_MAX_ACTIVE_MATCHES` | no | Local Firebase override for per-user active match capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
 | `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS` | no | Local Firebase override for per-user active connection capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
 | `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
@@ -617,6 +622,8 @@ and should stay empty until that provider is implemented.
 `matchmaking.candidate-pair-limit` controls the bounded partner-candidate window scored after one eligible anchor queue row has been claimed. Hard SQL filters, including exact mutual distance, run before this limit. Local and test profiles keep the window low for deterministic, cheap checks. Dev/prod use higher starting values and should be adjusted using queue size, job duration, partner-claim contention and match creation metrics.
 
 `matchmaking.min-compatibility-score` has mode-specific semantics. In `LEGACY_EARLY_ACCEPT`, it applies to the combined legacy score: raw compatibility plus the bounded legacy reliability modifier. This preserves the pre-refactor behavior. In `PROBABILISTIC_WEIGHTED`, it applies only to raw compatibility before reliability similarity and Gumbel randomness are applied. `matchmaking.early-accept-compatibility-score` is used only by `LEGACY_EARLY_ACCEPT`; probabilistic mode ignores it and ranks every candidate that passes the raw compatibility minimum in a weighted permutation without replacement. See `docs/matchmaking-ranking.md` for formulas and calibration notes.
+
+`matchmaking.ranking.affinity` is private affinity evidence for probabilistic ranking. `OFF` performs no answer loading or evaluation. `SHADOW` batch-loads answers for the bounded candidate window and records aggregate low-cardinality observations without changing order. `ACTIVE` adds the bounded affinity log-weight to `PROBABILISTIC_WEIGHTED` only and is rejected with `LEGACY_EARLY_ACCEPT`. The default rollback is `MATCHMAKING_RANKING_AFFINITY_MODE=OFF`.
 
 ## How Injection Works
 

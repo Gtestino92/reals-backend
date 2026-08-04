@@ -1,0 +1,66 @@
+meta {
+  name: 00 Get Affinity Catalog
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/reference/affinity-questions
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK for affinity catalog, got ${status}`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.categories) || !Array.isArray(body.questions)) {
+    throw new Error("Expected affinity catalog response with categories and questions arrays.");
+  }
+  if (body.categories.length !== 9) {
+    throw new Error(`Expected 9 visible affinity categories, got ${body.categories.length}.`);
+  }
+  if (!body.catalogVersion) {
+    throw new Error("Expected catalogVersion in affinity catalog response.");
+  }
+  bru.setEnvVar("affinity_catalog_version", body.catalogVersion);
+
+  const expected = {
+    "CINEMA_IMPORTANCE_001": ["VERY_IMPORTANT", "NOT_FOR_ME"],
+    "CINEMA_TASTE_001": ["MYSTERY_TENSION", "COMFORT_STORIES"],
+    "READING_STORIES_001": ["VERY_IMPORTANT", "NOT_FOR_ME"],
+    "MUSIC_IMPORTANCE_001": ["VERY_IMPORTANT", "NOT_FOR_ME"],
+    "MUSIC_DISCOVERY_001": ["VERY_HIGH", "LOW"],
+    "LIVE_MUSIC_001": ["VERY_IMPORTANT", "NOT_FOR_ME"],
+    "DAILY_ROUTINE_RHYTHM_001": ["SOMEWHAT_STRUCTURED", "VERY_FLEXIBLE"],
+    "AMBITION_BALANCE_001": ["GOALS_WITH_SPACE", "PERSONAL_TIME_FIRST"],
+    "MONEY_PLANS_STYLE_001": ["BALANCED_PLANNING", "PRESENT_ENJOYMENT"],
+    "COMMUNICATION_FREQUENCY_001": ["HIGH", "LOW"],
+    "CONFLICT_REPAIR_001": ["TALK_AFTER_SHORT_PAUSE", "NEED_LONG_PROCESSING"],
+    "PACE_EXPECTATION_001": ["INTENTIONAL", "SLOW"]
+  };
+  const questionsById = new Map(body.questions.map((question) => [question.id, question]));
+  for (const [questionId, answerCodes] of Object.entries(expected)) {
+    const question = questionsById.get(questionId);
+    if (!question) {
+      throw new Error(`Catalog drift: selected question ${questionId} is missing or inactive.`);
+    }
+    const optionCodes = new Set((question.options || []).map((option) => option.code));
+    for (const answerCode of answerCodes) {
+      if (!optionCodes.has(answerCode)) {
+        throw new Error(`Catalog drift: answer ${answerCode} is missing for question ${questionId}.`);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(question, "rankingEnabled") && question.rankingEnabled !== true) {
+      throw new Error(`Catalog drift: selected question ${questionId} is not ranking-enabled.`);
+    }
+  }
+  // Public catalog intentionally omits internal policy matrices and normally omits rankingEnabled.
+  // Ranking eligibility was validated against src/main/resources/affinity-questions.es-AR.json when this request was created.
+}

@@ -1,7 +1,10 @@
 package com.reals.backend.service.matching
 
+import com.reals.backend.config.MatchmakingAffinityRankingMode
+import com.reals.backend.config.MatchmakingAffinityRankingProperties
 import com.reals.backend.config.MatchmakingRankingMode
 import com.reals.backend.config.MatchmakingRankingProperties
+import com.reals.backend.domain.AffinityQuestionAnswer
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
 import com.reals.backend.domain.MatchmakingAnchor
@@ -9,13 +12,29 @@ import com.reals.backend.domain.MatchmakingCandidatePair
 import com.reals.backend.domain.MatchmakingPartnerCandidate
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.repository.AffinityQuestionAnswerRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.repository.matching.MatchmakingPairExclusionPolicy
 import com.reals.backend.service.HomeStateInvalidationService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.affinity.AffinityAnswerOption
+import com.reals.backend.service.affinity.AffinityAnswerType
+import com.reals.backend.service.affinity.AffinityConstruct
+import com.reals.backend.service.affinity.AffinityQuestion
+import com.reals.backend.service.affinity.AffinityQuestionCatalog
+import com.reals.backend.service.affinity.AffinityQuestionCatalogProvider
+import com.reals.backend.service.affinity.AffinityQuestionCategory
+import com.reals.backend.service.affinity.AffinityQuestionPairEvaluator
+import com.reals.backend.service.affinity.AffinityQuestionStatus
+import com.reals.backend.service.affinity.AffinitySensitivity
+import com.reals.backend.service.affinity.ConversationComparisonPolicyConfig
+import com.reals.backend.service.affinity.ConversationComparisonPolicyType
+import com.reals.backend.service.affinity.RankingComparisonPolicyConfig
+import com.reals.backend.service.affinity.RankingComparisonPolicyType
 import com.reals.backend.service.reliability.UserReliabilityScoreService
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -449,6 +468,168 @@ class MatchmakingServiceRankingTest {
         assertEquals(Pair(anchorUserId, window.last().pair.userBId), pair)
     }
 
+    @Test
+    fun `affinity off performs zero answer repository calls`() {
+        val candidate = candidate("affinity-off", partnerAUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(candidate))
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val answerRepository = Mockito.mock(AffinityQuestionAnswerRepository::class.java)
+
+        service(
+            mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+            candidateRepository = candidateRepository,
+            reliabilityService = reliabilityService(enabled = false),
+            randomValues = listOf(0.5),
+            affinityMode = MatchmakingAffinityRankingMode.OFF,
+            affinityAnswerRepository = answerRepository
+        ).claimNextCandidatePair()
+
+        Mockito.verify(answerRepository, Mockito.never()).findByProfileIdIn(anyUuidCollection())
+    }
+
+    @Test
+    fun `legacy shadow affinity remains dormant and never loads answers`() {
+        val candidate = candidate("legacy-shadow", partnerAUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(candidate))
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val answerRepository = Mockito.mock(AffinityQuestionAnswerRepository::class.java)
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.LEGACY_EARLY_ACCEPT,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService(enabled = false),
+                randomValues = emptyList(),
+                affinityMode = MatchmakingAffinityRankingMode.SHADOW,
+                affinityAnswerRepository = answerRepository
+            ).claimNextCandidatePair()
+
+        assertEquals(Pair(anchorUserId, partnerAUserId), pair)
+        Mockito.verify(answerRepository, Mockito.never()).findByProfileIdIn(anyUuidCollection())
+    }
+
+    @Test
+    fun `shadow affinity batch loads answers once and passes base weights to orderer`() {
+        val first = candidate("shadow-first", partnerAUserId)
+        val second = candidate("shadow-second", partnerBUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(first, second))
+        candidateRepository.claimResults[first.partnerQueueEntryId] = first
+        val answerRepository = Mockito.mock(AffinityQuestionAnswerRepository::class.java)
+        val orderer = Mockito.mock(WeightedMatchmakingCandidateOrderer::class.java)
+        Mockito.`when`(orderer.order(anyWeightedCandidateList()))
+            .thenAnswer { invocation -> invocation.arguments[0] as List<WeightedMatchmakingPartnerCandidate> }
+
+        service(
+            mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+            candidateRepository = candidateRepository,
+            reliabilityService = reliabilityService(enabled = false),
+            randomValues = emptyList(),
+            affinityMode = MatchmakingAffinityRankingMode.SHADOW,
+            affinityAnswerRepository = answerRepository,
+            affinityAnswers = listOf(
+                affinityAnswer(anchorUserId, "YES"),
+                affinityAnswer(partnerAUserId, "YES"),
+                affinityAnswer(partnerBUserId, "NO")
+            ),
+            weightedCandidateOrderer = orderer
+        ).claimNextCandidatePair()
+
+        @Suppress("UNCHECKED_CAST")
+        val profileIdsCaptor =
+            ArgumentCaptor.forClass(Collection::class.java) as ArgumentCaptor<Collection<UUID>>
+        Mockito.verify(answerRepository, Mockito.times(1)).findByProfileIdIn(captureUuidCollection(profileIdsCaptor))
+        assertEquals(
+            setOf(anchorUserId, partnerAUserId, partnerBUserId).map { profileIdForUser(it) }.toSet(),
+            profileIdsCaptor.value.toSet()
+        )
+        val weightedCaptor = weightedCandidateListCaptor()
+        Mockito.verify(orderer, Mockito.times(1)).order(captureWeightedCandidateList(weightedCaptor))
+        assertEquals(listOf(0.0, 0.0), weightedCaptor.value.map { it.logWeight })
+    }
+
+    @Test
+    fun `active affinity adds log weight and negative affinity never removes candidate`() {
+        val first = candidate("active-first", partnerAUserId)
+        val second = candidate("active-second", partnerBUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(first, second))
+        candidateRepository.claimResults[first.partnerQueueEntryId] = null
+        candidateRepository.claimResults[second.partnerQueueEntryId] = second
+        val orderer = Mockito.mock(WeightedMatchmakingCandidateOrderer::class.java)
+        Mockito.`when`(orderer.order(anyWeightedCandidateList()))
+            .thenAnswer { invocation -> invocation.arguments[0] as List<WeightedMatchmakingPartnerCandidate> }
+
+        val pair =
+            service(
+                mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                candidateRepository = candidateRepository,
+                reliabilityService = reliabilityService(enabled = false),
+                randomValues = emptyList(),
+                affinityMode = MatchmakingAffinityRankingMode.ACTIVE,
+                affinityAnswers = listOf(
+                    affinityAnswer(anchorUserId, "YES"),
+                    affinityAnswer(partnerAUserId, "YES"),
+                    affinityAnswer(partnerBUserId, "NO")
+                ),
+                weightedCandidateOrderer = orderer
+            ).claimNextCandidatePair()
+
+        val weightedCaptor = weightedCandidateListCaptor()
+        Mockito.verify(orderer, Mockito.times(1)).order(captureWeightedCandidateList(weightedCaptor))
+        assertTrue(weightedCaptor.value[0].logWeight > 0.0)
+        assertTrue(weightedCaptor.value[1].logWeight < 0.0)
+        assertEquals(Pair(anchorUserId, partnerBUserId), pair)
+        assertEquals(listOf(first.partnerQueueEntryId, second.partnerQueueEntryId), candidateRepository.claimAttempts)
+    }
+
+    @Test
+    fun `active affinity with no evidence produces exact baseline log weight`() {
+        val candidate = candidate("active-no-evidence", partnerAUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(candidate))
+        candidateRepository.claimResults[candidate.partnerQueueEntryId] = candidate
+        val orderer = Mockito.mock(WeightedMatchmakingCandidateOrderer::class.java)
+        Mockito.`when`(orderer.order(anyWeightedCandidateList()))
+            .thenAnswer { invocation -> invocation.arguments[0] as List<WeightedMatchmakingPartnerCandidate> }
+
+        service(
+            mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+            candidateRepository = candidateRepository,
+            reliabilityService = reliabilityService(enabled = false),
+            randomValues = emptyList(),
+            affinityMode = MatchmakingAffinityRankingMode.ACTIVE,
+            affinityAnswers = emptyList(),
+            weightedCandidateOrderer = orderer
+        ).claimNextCandidatePair()
+
+        val weightedCaptor = weightedCandidateListCaptor()
+        Mockito.verify(orderer).order(captureWeightedCandidateList(weightedCaptor))
+        assertEquals(0.0, weightedCaptor.value.single().logWeight)
+    }
+
+    @Test
+    fun `shadow diagnostics do not consume random values beyond one weighted ordering`() {
+        val first = candidate("shadow-random-first", partnerAUserId)
+        val second = candidate("shadow-random-second", partnerBUserId)
+        val candidateRepository = FakeCandidateRepository(listOf(first, second))
+        candidateRepository.claimResults[first.partnerQueueEntryId] = first
+        val randomSource = CountingRandomSource(listOf(0.5, 0.5))
+
+        service(
+            mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+            candidateRepository = candidateRepository,
+            reliabilityService = reliabilityService(enabled = false),
+            randomValues = emptyList(),
+            affinityMode = MatchmakingAffinityRankingMode.SHADOW,
+            affinityAnswers = listOf(
+                affinityAnswer(anchorUserId, "YES"),
+                affinityAnswer(partnerAUserId, "YES"),
+                affinityAnswer(partnerBUserId, "NO")
+            ),
+            weightedCandidateOrderer = WeightedMatchmakingCandidateOrderer(randomSource)
+        ).claimNextCandidatePair()
+
+        assertEquals(2, randomSource.calls)
+    }
+
     private fun service(
         mode: MatchmakingRankingMode,
         candidateRepository: FakeCandidateRepository,
@@ -460,7 +641,11 @@ class MatchmakingServiceRankingTest {
         candidatePairLimit: Int = 10,
         compatibilityScorer: CompatibilityScorer? = null,
         rankingProperties: MatchmakingRankingProperties? = null,
-        probabilisticWeightPolicy: ProbabilisticMatchmakingWeightPolicy? = null
+        probabilisticWeightPolicy: ProbabilisticMatchmakingWeightPolicy? = null,
+        affinityMode: MatchmakingAffinityRankingMode = MatchmakingAffinityRankingMode.OFF,
+        affinityAnswerRepository: AffinityQuestionAnswerRepository = Mockito.mock(AffinityQuestionAnswerRepository::class.java),
+        affinityAnswers: List<AffinityQuestionAnswer> = emptyList(),
+        weightedCandidateOrderer: WeightedMatchmakingCandidateOrderer? = null
     ): MatchmakingService {
         val profileService = Mockito.mock(ProfileService::class.java)
         Mockito.`when`(profileService.findByUserIds(anyUuidCollection()))
@@ -469,9 +654,9 @@ class MatchmakingServiceRankingTest {
                     .distinct()
                     .map { userId ->
                         if (userId == anchorUserId) {
-                            profile(userId, Gender.FEMALE, Gender.MALE)
+                            profile(userId, Gender.FEMALE, Gender.MALE, profileIdForUser(userId))
                         } else {
-                            profile(userId, Gender.MALE, Gender.FEMALE)
+                            profile(userId, Gender.MALE, Gender.FEMALE, profileIdForUser(userId))
                         }
                     }
             )
@@ -492,8 +677,13 @@ class MatchmakingServiceRankingTest {
                 compatibilityTemperature = 0.20,
                 reliabilitySimilarityScale = 10.0,
                 waitingRelaxationPeriodHours = 72.0,
-                maximumSimilarityScaleMultiplier = 3.0
+                maximumSimilarityScaleMultiplier = 3.0,
+                affinity = MatchmakingAffinityRankingProperties(mode = affinityMode)
             )
+        Mockito.`when`(affinityAnswerRepository.findByProfileIdIn(anyUuidCollection()))
+            .thenReturn(affinityAnswers)
+        val affinityCatalogProvider = Mockito.mock(AffinityQuestionCatalogProvider::class.java)
+        Mockito.`when`(affinityCatalogProvider.getCatalog()).thenReturn(testAffinityCatalog())
 
         return MatchmakingService(
             queueRepository = Mockito.mock(MatchmakingQueueRepository::class.java),
@@ -508,7 +698,12 @@ class MatchmakingServiceRankingTest {
             matchmakingPairEligibilityService = pairEligibilityService,
             rankingProperties = resolvedRankingProperties,
             probabilisticWeightPolicy = probabilisticWeightPolicy ?: ProbabilisticMatchmakingWeightPolicy(resolvedRankingProperties),
-            weightedCandidateOrderer = WeightedMatchmakingCandidateOrderer(sequenceRandom(randomValues)),
+            weightedCandidateOrderer = weightedCandidateOrderer ?: WeightedMatchmakingCandidateOrderer(sequenceRandom(randomValues)),
+            affinityAnswerRepository = affinityAnswerRepository,
+            affinityCatalogProvider = affinityCatalogProvider,
+            affinityQuestionPairEvaluator = AffinityQuestionPairEvaluator(),
+            affinityPairAssessmentAggregator = AffinityPairAssessmentAggregator(resolvedRankingProperties),
+            affinityMetrics = MatchmakingAffinityMetrics(SimpleMeterRegistry()),
             candidatePairLimit = candidatePairLimit,
             minCompatibilityScore = minCompatibilityScore,
             earlyAcceptCompatibilityScore = earlyAcceptCompatibilityScore
@@ -552,9 +747,11 @@ class MatchmakingServiceRankingTest {
     private fun profile(
         userId: UUID,
         gender: Gender,
-        lookingFor: Gender
+        lookingFor: Gender,
+        profileId: UUID
     ): Profile =
         Profile(
+            id = profileId,
             userId = userId,
             displayName = "Profile",
             birthDate = LocalDate.now().minusYears(30),
@@ -565,6 +762,9 @@ class MatchmakingServiceRankingTest {
             countryCode = "AR",
             status = ProfileStatus.ACTIVE
         )
+
+    private fun profileIdForUser(userId: UUID): UUID =
+        UUID.nameUUIDFromBytes("profile-$userId".toByteArray())
 
     private class FakeCandidateRepository(
         val candidates: List<MatchmakingPartnerCandidate>
@@ -650,6 +850,67 @@ class MatchmakingServiceRankingTest {
     private fun anyOffsetDateTime(): OffsetDateTime =
         Mockito.any(OffsetDateTime::class.java).let { OffsetDateTime.now() }
 
+    private fun anyWeightedCandidateList(): List<WeightedMatchmakingPartnerCandidate> {
+        Mockito.anyList<WeightedMatchmakingPartnerCandidate>()
+        return emptyList()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun weightedCandidateListCaptor(): ArgumentCaptor<List<WeightedMatchmakingPartnerCandidate>> =
+        ArgumentCaptor.forClass(List::class.java) as ArgumentCaptor<List<WeightedMatchmakingPartnerCandidate>>
+
+    private fun captureWeightedCandidateList(
+        captor: ArgumentCaptor<List<WeightedMatchmakingPartnerCandidate>>
+    ): List<WeightedMatchmakingPartnerCandidate> {
+        captor.capture()
+        return emptyList()
+    }
+
+    private fun affinityAnswer(
+        userId: UUID,
+        answerCode: String
+    ): AffinityQuestionAnswer =
+        AffinityQuestionAnswer(
+            profileId = profileIdForUser(userId),
+            questionId = "AFFINITY_TEST_001",
+            questionSemanticVersion = 1,
+            answerCode = answerCode
+        )
+
+    private fun testAffinityCatalog(): AffinityQuestionCatalog =
+        AffinityQuestionCatalog(
+            catalogVersion = "test",
+            categories = listOf(AffinityQuestionCategory("VALUES", "Values", displayOrder = 1)),
+            questions = listOf(
+                AffinityQuestion(
+                    id = "AFFINITY_TEST_001",
+                    semanticVersion = 1,
+                    contentVersion = 1,
+                    status = AffinityQuestionStatus.ACTIVE,
+                    categoryId = "VALUES",
+                    primaryTopic = "test",
+                    construct = AffinityConstruct.VALUES_ALIGNMENT,
+                    answerType = AffinityAnswerType.SINGLE_CHOICE,
+                    prompt = "Test question",
+                    options = listOf(
+                        AffinityAnswerOption("YES", "Yes", 1),
+                        AffinityAnswerOption("NO", "No", 2)
+                    ),
+                    rankingPolicy = RankingComparisonPolicyConfig(
+                        type = RankingComparisonPolicyType.CUSTOM_MATRIX,
+                        matrix = mapOf(
+                            "YES" to mapOf("YES" to 1.0, "NO" to -1.0),
+                            "NO" to mapOf("YES" to -1.0, "NO" to 1.0)
+                        )
+                    ),
+                    conversationPolicy = ConversationComparisonPolicyConfig(type = ConversationComparisonPolicyType.NONE),
+                    sensitivity = AffinitySensitivity.STANDARD,
+                    rankingEnabled = true,
+                    conversationEnabled = false
+                )
+            )
+        )
+
     private class CountingCompatibilityScorer(
         private val score: Double
     ) : CompatibilityScorer {
@@ -662,6 +923,23 @@ class MatchmakingServiceRankingTest {
         ): Double {
             calls += 1
             return score
+        }
+    }
+
+    private class CountingRandomSource(
+        values: List<Double>
+    ) : MatchmakingRandomSource {
+        private val iterator = values.iterator()
+        var calls: Int = 0
+            private set
+
+        override fun nextUnitDouble(): Double {
+            calls += 1
+            return if (iterator.hasNext()) {
+                iterator.next()
+            } else {
+                0.5
+            }
         }
     }
 }

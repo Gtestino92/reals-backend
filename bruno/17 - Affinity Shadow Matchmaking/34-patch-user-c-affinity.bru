@@ -1,0 +1,102 @@
+meta {
+  name: 34 Patch User C Affinity
+  type: http
+  seq: 34
+}
+
+patch {
+  url: {{baseUrl}}/api/me/profile/affinity-answers
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{affinity_user_c_id_token}}
+}
+
+body:json {
+  {
+    "answers": [
+      {
+        "questionId": "CINEMA_IMPORTANCE_001",
+        "answerCode": "NOT_FOR_ME"
+      },
+      {
+        "questionId": "CINEMA_TASTE_001",
+        "answerCode": "COMFORT_STORIES"
+      },
+      {
+        "questionId": "READING_STORIES_001",
+        "answerCode": "NOT_FOR_ME"
+      },
+      {
+        "questionId": "MUSIC_IMPORTANCE_001",
+        "answerCode": "NOT_FOR_ME"
+      },
+      {
+        "questionId": "MUSIC_DISCOVERY_001",
+        "answerCode": "LOW"
+      },
+      {
+        "questionId": "LIVE_MUSIC_001",
+        "answerCode": "NOT_FOR_ME"
+      },
+      {
+        "questionId": "DAILY_ROUTINE_RHYTHM_001",
+        "answerCode": "VERY_FLEXIBLE"
+      },
+      {
+        "questionId": "AMBITION_BALANCE_001",
+        "answerCode": "PERSONAL_TIME_FIRST"
+      },
+      {
+        "questionId": "MONEY_PLANS_STYLE_001",
+        "answerCode": "PRESENT_ENJOYMENT"
+      },
+      {
+        "questionId": "COMMUNICATION_FREQUENCY_001",
+        "answerCode": "LOW"
+      },
+      {
+        "questionId": "CONFLICT_REPAIR_001",
+        "answerCode": "NEED_LONG_PROCESSING"
+      },
+      {
+        "questionId": "PACE_EXPECTATION_001",
+        "answerCode": "SLOW"
+      }
+    ]
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status} while reading USER C affinity answers.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.answers)) {
+    throw new Error("Expected affinity answers response with answers array.");
+  }
+  const expected = {
+    "CINEMA_IMPORTANCE_001": "NOT_FOR_ME",
+    "CINEMA_TASTE_001": "COMFORT_STORIES",
+    "READING_STORIES_001": "NOT_FOR_ME",
+    "MUSIC_IMPORTANCE_001": "NOT_FOR_ME",
+    "MUSIC_DISCOVERY_001": "LOW",
+    "LIVE_MUSIC_001": "NOT_FOR_ME",
+    "DAILY_ROUTINE_RHYTHM_001": "VERY_FLEXIBLE",
+    "AMBITION_BALANCE_001": "PERSONAL_TIME_FIRST",
+    "MONEY_PLANS_STYLE_001": "PRESENT_ENJOYMENT",
+    "COMMUNICATION_FREQUENCY_001": "LOW",
+    "CONFLICT_REPAIR_001": "NEED_LONG_PROCESSING",
+    "PACE_EXPECTATION_001": "SLOW"
+  };
+  const byQuestion = new Map(body.answers.map((answer) => [answer.questionId, answer.answerCode]));
+  for (const [questionId, answerCode] of Object.entries(expected)) {
+    if (byQuestion.get(questionId) !== answerCode) {
+      throw new Error(`Expected USER C affinity answer ${questionId}=${answerCode}, got ${byQuestion.get(questionId)}.`);
+    }
+  }
+}

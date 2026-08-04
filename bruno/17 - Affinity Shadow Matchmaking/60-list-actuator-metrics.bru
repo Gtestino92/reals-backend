@@ -1,0 +1,38 @@
+meta {
+  name: 60 List Actuator Metrics
+  type: http
+  seq: 60
+}
+
+get {
+  url: {{baseUrl}}/actuator/metrics
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK from Actuator metrics list, got ${status}. Ensure User A has ROLE_ADMIN locally.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.names)) {
+    throw new Error("Expected Actuator metrics list with names array.");
+  }
+  const required = [
+    "reals.matchmaking.affinity.evaluations",
+    "reals.matchmaking.affinity.shared_questions",
+    "reals.matchmaking.affinity.evidence_confidence",
+    "reals.matchmaking.affinity.factor",
+    "reals.matchmaking.affinity.absolute_rank_delta"
+  ];
+  for (const name of required) {
+    if (!body.names.includes(name)) {
+      throw new Error(`Expected Actuator metric ${name} to be present after processing.`);
+    }
+  }
+}

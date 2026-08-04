@@ -148,8 +148,9 @@ Matchmaking pair eligibility distinguishes active interactions, temporary histor
 Affinity questions are closed, private profile-owned answers used only as a
 foundation for future compatibility evidence and conversation-prompt selection.
 They are separate from free-text profile prompts and from the existing
-first-chat conversation guidance. This foundation does not modify matchmaking,
-first-chat guidance, visual review, Home or any counterpart-facing response.
+first-chat conversation guidance. Affinity answers remain private and do not
+modify first-chat guidance, visual review, Home or any counterpart-facing
+response.
 
 The static catalog lives in `src/main/resources/affinity-questions.es-AR.json`
 and is loaded once at application startup. The top-level catalog contains a
@@ -189,8 +190,11 @@ Deleting a nonexistent owned answer is an idempotent no-op.
 compares only questions answered by both users and valid under the current
 semantic catalog definition. Missing or unshared answers are neutral and never
 count as incompatibility. The evaluator returns `PairAffinityEvidence` with
-question-level signals and category evidence only; it does not produce a final
-matchmaking score, ranking factor or global category weight.
+question-level signals and category evidence only; it does not perform final
+multidimensional aggregation or repository reads. Probabilistic matchmaking may
+aggregate ranking-enabled evidence internally under
+`matchmaking.ranking.affinity`, but affinity is never a hard eligibility filter
+and is not exposed through public APIs.
 
 Current policy families are explicit and test-covered:
 

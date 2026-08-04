@@ -1,0 +1,46 @@
+meta {
+  name: 15 Get User A Affinity After
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/affinity-answers
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status} while reading USER A affinity answers.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.answers)) {
+    throw new Error("Expected affinity answers response with answers array.");
+  }
+  const expected = {
+    "CINEMA_IMPORTANCE_001": "VERY_IMPORTANT",
+    "CINEMA_TASTE_001": "MYSTERY_TENSION",
+    "READING_STORIES_001": "VERY_IMPORTANT",
+    "MUSIC_IMPORTANCE_001": "VERY_IMPORTANT",
+    "MUSIC_DISCOVERY_001": "VERY_HIGH",
+    "LIVE_MUSIC_001": "VERY_IMPORTANT",
+    "DAILY_ROUTINE_RHYTHM_001": "SOMEWHAT_STRUCTURED",
+    "AMBITION_BALANCE_001": "GOALS_WITH_SPACE",
+    "MONEY_PLANS_STYLE_001": "BALANCED_PLANNING",
+    "COMMUNICATION_FREQUENCY_001": "HIGH",
+    "CONFLICT_REPAIR_001": "TALK_AFTER_SHORT_PAUSE",
+    "PACE_EXPECTATION_001": "INTENTIONAL"
+  };
+  const byQuestion = new Map(body.answers.map((answer) => [answer.questionId, answer.answerCode]));
+  for (const [questionId, answerCode] of Object.entries(expected)) {
+    if (byQuestion.get(questionId) !== answerCode) {
+      throw new Error(`Expected USER A affinity answer ${questionId}=${answerCode}, got ${byQuestion.get(questionId)}.`);
+    }
+  }
+}
