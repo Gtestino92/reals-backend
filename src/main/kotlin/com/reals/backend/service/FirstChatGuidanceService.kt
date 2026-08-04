@@ -1,8 +1,10 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ConversationPromptSnapshot
 import com.reals.backend.domain.FirstChatGuidance
 import com.reals.backend.repository.ChatMessageRepository
+import com.reals.backend.repository.ConversationPromptSnapshotRepository
 import com.reals.backend.repository.FirstChatGuidanceRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -92,6 +94,7 @@ class FirstChatGuidedQuestionCatalog(
         }
 
         loaded.forEach { question ->
+            require(question.id.length <= 64)
             require(question.id.isNotBlank()) {
                 "First-chat guided question catalog contains a blank id"
             }
@@ -161,6 +164,7 @@ class FirstChatGuidanceService(
     private val chatMessageRepository: ChatMessageRepository,
     private val matchService: MatchService,
     private val questionCatalog: FirstChatGuidedQuestionCatalog,
+    private val promptSnapshotRepository: ConversationPromptSnapshotRepository,
     @param:Value("\${chat.first-chat.guidance.required-characters:40}")
     private val requiredCharacters: Int,
     @param:Value("\${chat.first-chat.guidance.max-questions:3}")
@@ -180,13 +184,13 @@ class FirstChatGuidanceService(
         chat: Chat,
         now: OffsetDateTime = OffsetDateTime.now()
     ): FirstChatGuidance {
-        val question = questionCatalog.questionFor(chat.id, 1)
+        val question = snapshotOrGenericQuestion(chat.id, 1)
 
         return guidanceRepository.save(
             FirstChatGuidance(
                 chatId = chat.id,
-                currentQuestionId = question.id,
-                currentQuestionText = question.text,
+                currentQuestionId = question.questionId,
+                currentQuestionText = question.questionText,
                 currentQuestionOrdinal = 1,
                 currentQuestionActivatedAt = now,
                 completedAt = if (maxQuestions == 1) now else null,
@@ -276,10 +280,10 @@ class FirstChatGuidanceService(
         now: OffsetDateTime
     ) {
         val nextOrdinal = guidance.currentQuestionOrdinal + 1
-        val nextQuestion = questionCatalog.questionFor(chat.id, nextOrdinal)
+        val nextQuestion = snapshotOrGenericQuestion(chat.id, nextOrdinal)
 
-        guidance.currentQuestionId = nextQuestion.id
-        guidance.currentQuestionText = nextQuestion.text
+        guidance.currentQuestionId = nextQuestion.questionId
+        guidance.currentQuestionText = nextQuestion.questionText
         guidance.currentQuestionOrdinal = nextOrdinal
         guidance.currentQuestionActivatedAt = now
         guidance.userANextRequestedAt = null
@@ -299,6 +303,23 @@ class FirstChatGuidanceService(
         guidance.updatedAt = now
         guidanceRepository.save(guidance)
     }
+
+    private fun snapshotOrGenericQuestion(
+        chatId: UUID,
+        ordinal: Int
+    ): GuidanceQuestion =
+        promptSnapshotRepository.findByChatIdAndOrdinal(
+            chatId = chatId,
+            ordinal = ordinal
+        )?.toGuidanceQuestion()
+            ?: questionCatalog.questionFor(chatId, ordinal)
+                .let { GuidanceQuestion(questionId = it.id, questionText = it.text) }
+
+    private fun ConversationPromptSnapshot.toGuidanceQuestion(): GuidanceQuestion =
+        GuidanceQuestion(
+            questionId = sourceQuestionId,
+            questionText = promptText
+        )
 
     private fun FirstChatGuidance.toState(
         chat: Chat,
@@ -350,4 +371,9 @@ class FirstChatGuidanceService(
             code = DomainErrorCode.FIRST_CHAT_GUIDANCE_NOT_FOUND,
             message = "First-chat guidance was not found"
         )
+
+    private data class GuidanceQuestion(
+        val questionId: String,
+        val questionText: String
+    )
 }

@@ -1,0 +1,30 @@
+meta {
+  name: 52 Get User B Chat
+  type: http
+  seq: 54
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{matchId}}/chat
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while checking User A queue status, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.inQueue !== true) {
+    throw new Error("Expected queue status inQueue=true before processing.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_user_a_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected User A queue status for ${expectedUserId}, got ${body.userId}.`);
+  }
+}

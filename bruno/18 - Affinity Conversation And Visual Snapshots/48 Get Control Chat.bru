@@ -1,0 +1,62 @@
+meta {
+  name: 48 Get Control Chat
+  type: http
+  seq: 48
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{affinity_pr3_control_match_id}}/chat
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+script:post-response {
+  function expectSame(actual, expected, label) {
+    if (actual !== expected) {
+      throw new Error(`Expected same ${label}=${expected}, got ${actual}.`);
+    }
+  }
+  function assertQuestionShape(question) {
+    if (!question || typeof question !== "object") {
+      throw new Error("Expected guidance.question object.");
+    }
+    const keys = Object.keys(question).sort();
+    const expectedKeys = ["id", "text"];
+    if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+      throw new Error(`Expected guidance.question keys id,text only, got ${keys.join(",")}.`);
+    }
+    for (const field of ["answerCode", "answerLabel", "categoryId", "semanticVersion", "conversationKind", "conversationPotential", "score", "percentage"]) {
+      if (Object.prototype.hasOwnProperty.call(question, field)) {
+        throw new Error(`guidance.question leaked forbidden field ${field}.`);
+      }
+    }
+  }
+  function assertFirstChat(body) {
+    if (!body || body.chatType !== "FIRST_CHAT" || body.status !== "ACTIVE") {
+      throw new Error(`Expected ACTIVE FIRST_CHAT, got chatType=${body && body.chatType}, status=${body && body.status}.`);
+    }
+    if (!body.guidance || !body.guidance.question) {
+      throw new Error("Expected guidance question in first-chat response.");
+    }
+  }
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while getting chat, got ${status}.`);
+  }
+  const body = res.getBody();
+  assertFirstChat(body);
+  assertQuestionShape(body.guidance.question);
+  if (!/^Q00[1-5]$/.test(body.guidance.question.id)) {
+    throw new Error(`Expected generic first-chat question id Q001-Q005, got ${body.guidance.question.id}.`);
+  }
+  if (body.guidance.questionOrdinal !== 1) {
+    throw new Error(`Expected control initial questionOrdinal=1, got ${body.guidance.questionOrdinal}.`);
+  }
+  bru.setEnvVar("affinity_pr3_control_chat_id", body.id);
+  bru.setEnvVar("affinity_pr3_initial_question_id", body.guidance.question.id);
+  bru.setEnvVar("affinity_pr3_initial_question_text", body.guidance.question.text);
+}

@@ -284,11 +284,13 @@ Redis or Caffeine for this data.
 
 Affinity answers are always private. They are returned only through the
 authenticated current-profile endpoints and are not exposed through another
-user's profile, match responses, visual review, first-chat snapshots, Home,
-partner summaries or counterpart-facing endpoints. This backend foundation does
-not affect matchmaking scores, first-chat guidance, visual review or Home. Free
-text profile prompts are a separate future system; conversation prompts remain
-the existing first-chat guidance flow.
+user's profile, match responses, visual review, first-chat responses, Home,
+partner summaries or counterpart-facing endpoints. New first chats may derive
+immutable prompt-text snapshots, and visual review may expose positive shared
+category indicators. Neither output includes answer codes, answer labels,
+question ids in visual review, semantic versions, conversation kinds,
+conversation potential, scores, percentages, shared-question counts, confidence
+or affinity factors. Matchmaking ranking and eligibility behavior are unchanged.
 
 Private affinity write operations serialize on the authenticated user's profile
 row. `PATCH` and `DELETE` use the same lock order: resolve current profile,
@@ -403,7 +405,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 - `GET /api/matches/{matchId}`: fetch match details and linked connection id if present. Includes `visualExpiresAt` when a visual review deadline exists for the match.
 - `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt`, `serverTime` and nullable `guidance` metadata. New first chats initialize guidance; legacy rows may return `guidance = null`. Clients may use `serverTime` as an advisory backend clock snapshot for first-chat countdown and suggestion UX; the backend remains authoritative for mutations and expiration decisions, and does not own suggestion visibility or local dismissal.
-- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile only while visual content is available. During `VISUAL_PHASE`, the visual review must exist and its `visualExpiresAt` deadline must still be in the future by server time. After `VISUAL_APPROVED`, a non-closed connection for the same match must exist and include the requester. Blocked pairs, unrelated users, `CHAT_ACTIVE`, `CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches are denied. The response includes partner photos with freshly generated read URLs, `visualExpiresAt`, `myPersonalMessageSubmitted`, partner personal-message submitted/read flags for client emphasis, and `decisionRequiresPartnerPersonalMessageRead`, which is retained temporarily for response compatibility and is always `false`.
+- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile only while visual content is available. During `VISUAL_PHASE`, the visual review must exist and its `visualExpiresAt` deadline must still be in the future by server time. After `VISUAL_APPROVED`, a non-closed connection for the same match must exist and include the requester. Blocked pairs, unrelated users, `CHAT_ACTIVE`, `CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches are denied. The response includes partner photos with freshly generated read URLs, `visualExpiresAt`, `myPersonalMessageSubmitted`, partner personal-message submitted/read flags for client emphasis, `decisionRequiresPartnerPersonalMessageRead` retained temporarily as always `false`, and required `affinityIndicators: [] | [{ categoryId, title }]` containing at most three positive shared category snapshots.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. Reading an optional partner personal message is encouraged but is not required before `APPROVED` or `REJECTED`. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
 - `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message while visual content is available. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
@@ -432,9 +434,11 @@ Audio creation is feature-flagged. Local profiles and tests enable it. Shared `d
 
 First-chat guidance is backend-owned for MVP:
 
-- The question catalog is a static Spanish resource loaded from `first-chat-guided-questions.es.json`.
+- The generic fallback catalog is a static Spanish resource loaded from `first-chat-guided-questions.es.json`; affinity-derived prompts use the active Spanish prompt text from `affinity-questions.es-AR.json` at first-chat initialization time.
 - Each first chat has one active question shared by both participants.
-- The sequence is deterministic from the chat id and catalog order; changing or reordering the catalog may affect not-yet-selected future questions for an already-active first chat, but the active question id/text are persisted as a snapshot.
+- New first chats persist the complete prompt sequence in `conversation_prompt_snapshots` before guidance is initialized. Advancement reads the next persisted `(chatId, ordinal)` row and never rereads affinity answers, affinity prompt text or category titles.
+- Affinity prompt selection uses positive `STANDARD` shared-affinity or constructive-contrast conversation signals, sorted by potential, category display order, catalog question order and question id. It takes one per category first, fills from remaining eligible signals second, then fills from the deterministic generic catalog. Affinity prompts appear before generic fallback prompts and source questions are not duplicated.
+- Later affinity-answer edits/deletions and later catalog wording changes do not alter active or future prompts in that first chat. Legacy first chats without prompt snapshots keep their persisted active guidance question authoritative and advance with generic deterministic fallback.
 - Chat remains free-form. The backend does not semantically evaluate whether a user answered the prompt.
 - A participant must have sent at least `chat.first-chat.guidance.required-characters` persisted characters since the current question was activated before requesting another question. One long message can satisfy the threshold; multiple messages accumulate.
 - Advancement requires both participants to independently request the next question. The API exposes only `myNextRequested`, `canRequestNext`, `completed`, current question, ordinal, `maxQuestions` and `requiredCharacters`; it does not expose partner readiness, partner request timestamp or partner character count.

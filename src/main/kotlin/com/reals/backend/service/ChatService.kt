@@ -30,6 +30,7 @@ import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.affinity.AffinityDerivedSnapshotInitializationService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.data.domain.PageRequest
@@ -54,6 +55,7 @@ class ChatService(
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
     private val firstChatGuidanceService: FirstChatGuidanceService,
+    private val affinityDerivedSnapshotInitializationService: AffinityDerivedSnapshotInitializationService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
@@ -142,6 +144,11 @@ class ChatService(
                 startedAt = now,
                 timeoutAt = now.plusMinutes(firstChatDurationMinutes)
             )
+        )
+        affinityDerivedSnapshotInitializationService.initializeForFirstChat(
+            chat = chat,
+            match = match,
+            now = now
         )
         firstChatGuidanceService.initializeForFirstChat(
             chat = chat,

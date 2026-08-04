@@ -1,0 +1,40 @@
+meta {
+  name: 28 Request Next Question As B
+  type: http
+  seq: 28
+}
+
+post {
+  url: {{baseUrl}}/api/chats/{{affinity_pr3_chat_id}}/guidance/next-request
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_b_id_token}}
+}
+
+script:post-response {
+  function assertQuestionShape(question) {
+    const keys = Object.keys(question || {}).sort();
+    if (JSON.stringify(keys) !== JSON.stringify(["id", "text"])) {
+      throw new Error(`Expected guidance question keys id,text only, got ${keys.join(",")}.`);
+    }
+  }
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while requesting next question, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !body.question) {
+    throw new Error("Expected first-chat guidance response.");
+  }
+  assertQuestionShape(body.question);
+  if (body.questionOrdinal !== 2) {
+    throw new Error(`Expected User B request to advance to ordinal 2, got ${body.questionOrdinal}.`);
+  }
+  if (body.question.id === bru.getEnvVar("affinity_pr3_initial_question_id")) {
+    throw new Error("Expected second question id to differ from first question id.");
+  }
+  bru.setEnvVar("affinity_pr3_second_question_id", body.question.id);
+}

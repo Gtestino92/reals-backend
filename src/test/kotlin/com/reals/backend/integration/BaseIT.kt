@@ -15,12 +15,14 @@ import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.AuditEventRepository
+import com.reals.backend.repository.AffinityQuestionAnswerRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.ConversationPromptSnapshotRepository
 import com.reals.backend.repository.FirstChatGuidanceRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
@@ -40,6 +42,9 @@ import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.UserHomeStatusRepository
 import com.reals.backend.repository.UserReliabilityEventRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
+import com.reals.backend.service.affinity.AffinityAnswerPatch
+import com.reals.backend.service.affinity.AffinityQuestionAnswerService
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
@@ -126,6 +131,12 @@ abstract class BaseIT {
     protected lateinit var visualReviewService: VisualReviewService
 
     @Autowired
+    protected lateinit var baseAffinityQuestionAnswerService: AffinityQuestionAnswerService
+
+    @Autowired
+    protected lateinit var baseAffinityQuestionAnswerRepository: AffinityQuestionAnswerRepository
+
+    @Autowired
     protected lateinit var connectionService: ConnectionService
 
     @Autowired
@@ -186,6 +197,9 @@ abstract class BaseIT {
     protected lateinit var firstChatGuidanceRepository: FirstChatGuidanceRepository
 
     @Autowired
+    protected lateinit var conversationPromptSnapshotRepository: ConversationPromptSnapshotRepository
+
+    @Autowired
     protected lateinit var connectionHomeDismissalRepository: ConnectionHomeDismissalRepository
 
     @Autowired
@@ -220,6 +234,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var visualReviewRepository: VisualReviewRepository
+
+    @Autowired
+    protected lateinit var visualReviewAffinityIndicatorRepository: VisualReviewAffinityIndicatorRepository
 
     @Autowired
     protected lateinit var userRepository: UserRepository
@@ -367,6 +384,17 @@ abstract class BaseIT {
             userBId = userB,
             matchId = match.id,
             firstChatId = chat.id
+        )
+    }
+
+    protected fun answerAffinityQuestion(
+        userId: UUID,
+        questionId: String,
+        answerCode: String
+    ) {
+        baseAffinityQuestionAnswerService.patchMyAnswers(
+            userId = userId,
+            patches = listOf(AffinityAnswerPatch(questionId = questionId, answerCode = answerCode))
         )
     }
 

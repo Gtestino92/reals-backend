@@ -1,0 +1,29 @@
+meta {
+  name: 40 Confirm Control User Has Zero Answers
+  type: http
+  seq: 40
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/affinity-answers
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while reading Control User affinity answers, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.answers)) {
+    throw new Error("Expected affinity answers response with answers array.");
+  }
+  if (body.answers.length !== 0) {
+    throw new Error(`Control User must have zero affinity answers for PR3 no-evidence scenario, got ${body.answers.length}.`);
+  }
+}

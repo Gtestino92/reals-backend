@@ -1,0 +1,33 @@
+meta {
+  name: 50 Approve Control First Chat
+  type: http
+  seq: 50
+}
+
+post {
+  url: {{baseUrl}}/api/matches/{{affinity_pr3_control_match_id}}/chat-decision
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+body:json {
+  {
+    "decision": "APPROVED"
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while approving first chat, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.state !== "CHAT_ACTIVE") {
+    throw new Error(`Expected match state CHAT_ACTIVE, got ${body && body.state}.`);
+  }
+}

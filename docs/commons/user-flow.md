@@ -180,9 +180,12 @@ and expiration decisions, and this field does not make the backend responsible
 for suggestion visibility or local dismissal.
 
 First-chat guidance is an MVP conversation prompt mechanic owned by the backend.
-The Spanish question catalog is a static resource, and each first chat derives a
-deterministic sequence from the chat id and catalog order. One active question is
-shared by both participants and persisted as an id/text snapshot when activated.
+When a new first chat is created, the backend persists the complete prompt
+sequence as immutable snapshots. Affinity-derived prompts use the active Spanish
+affinity catalog and the pair's valid answers visible at that moment; remaining
+slots use the deterministic generic Spanish catalog sequence from the chat id.
+One active question is shared by both participants and copied into
+`first_chat_guidance`.
 Users can chat freely; the backend does not semantically evaluate answers. A
 participant can request another question only after sending at least the
 configured `chat.first-chat.guidance.required-characters` threshold during the
@@ -193,8 +196,11 @@ exposed. A first chat has at most 3 questions. When both users request
 continuation from the penultimate question and the final configured question
 becomes active, guidance completes immediately, no question 4 is selected, and
 the final question remains available as the final prompt. Clients observe
-question changes through the existing first-chat polling response. No analytics
-events are implemented for guidance.
+question changes through the existing first-chat polling response. Later
+affinity-answer edits/deletions or catalog wording changes do not alter active
+or future prompts in that first chat. Legacy chats without prompt snapshots keep
+their persisted active guidance question and advance with generic deterministic
+fallback. No analytics events are implemented for guidance.
 
 For compatibility with rows created before this completion semantics change, a
 guidance row already at the final configured ordinal with `completedAt = null`
@@ -247,6 +253,14 @@ Match and visual-profile responses expose `visualExpiresAt` so clients can warn
 before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
 `visualStartedAt` and `visualExpiresAt` for the currently actionable phase. New
 visual decisions after that deadline are rejected by the backend.
+
+The visual-profile response also includes required `affinityIndicators`. It is
+empty when the first-chat initialization evidence had no eligible positive
+shared `STANDARD` category. Otherwise it contains at most three snapshotted
+positive category `{categoryId, title}` values. Constructive contrast can drive
+a first-chat prompt but never creates a visual indicator. Exact answers, answer
+labels, question ids, scores, percentages and compatibility judgments are not
+returned.
 
 Visual-profile and visual personal-message content is also request-time guarded.
 During `VISUAL_PHASE`, the visual review must exist and the server clock must
