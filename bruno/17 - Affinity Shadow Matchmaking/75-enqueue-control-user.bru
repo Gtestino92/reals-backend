@@ -1,0 +1,39 @@
+meta {
+  name: 75 Enqueue Control User
+  type: http
+  seq: 75
+}
+
+post {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+body:json {
+  {
+    "latitude": {{affinity_test_latitude}},
+    "longitude": {{affinity_test_longitude}},
+    "accuracyMeters": {{affinity_test_accuracy_meters}}
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while enqueueing Control User, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.inQueue !== true) {
+    throw new Error("Expected enqueue response with inQueue=true.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_control_user_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected Control User queue response for ${expectedUserId}, got ${body.userId}.`);
+  }
+}

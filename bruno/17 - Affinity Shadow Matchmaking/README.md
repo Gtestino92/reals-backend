@@ -106,22 +106,56 @@ Expected bounded tags include `mode=shadow`, `evidence=present`, and both positi
 
 Run `90`, `91`, and `92` after the experiment. Matched users may already be removed from the queue automatically; idempotent dequeue should still return `inQueue=false`. Do not delete matches, profiles, users, affinity answers or Firebase accounts as part of this flow.
 
-## Later No-Answer Control
+## No-answer Control
 
-A fourth control user is intentionally not part of the initial sequence. Later manual scenario:
+This focused control scenario uses one control user with zero affinity answers
+as the queue anchor and User B as the only candidate. Do not patch affinity
+answers for the control user.
 
-1. Populate `affinity_control_user_*` credentials in the ignored local Bruno environment.
-2. Sign in and provision the control user.
-3. Verify its profile is `ACTIVE`.
-4. Call `GET /api/me/profile/affinity-answers`.
-5. Require `answers` to be empty.
-6. Clean all queue entries.
-7. Enqueue the no-answer control first as anchor.
-8. Enqueue one answered user second.
-9. Process one match.
-10. Verify no shared affinity evidence, neutral factor, no evidence-bearing INFO summary required, possible `evidence=none` metrics, and baseline behavior preserved.
+Manual execution order:
 
-Do not patch affinity answers for the control user.
+```text
+70 Sign In Control User
+71 Provision Control User
+72 Get Control User Profile
+73 Get Control User Affinity Answers
+
+20 Sign In User B
+25 Get User B Affinity After
+
+74 Dequeue Control User
+41 Dequeue User B
+
+75 Enqueue Control User
+45 Enqueue User B
+
+76 Get Control User Queue Status
+47 Get User B Queue Status
+
+77 Process Control Match
+
+80 through 84 control metrics
+
+89 Cleanup Control User Queue
+91 Cleanup User B Queue
+```
+
+Expected behavior:
+
+- The control user has zero affinity answers.
+- Missing affinity evidence does not block matchmaking.
+- The pair is treated neutrally.
+- The affinity factor remains neutral.
+- Rank delta remains zero.
+- Metrics use `evidence=none`.
+- An `affinity_matchmaking_window` INFO log may be absent when there are no evidence-bearing candidates.
+
+Optional log check:
+
+```powershell
+docker compose logs --since=5m backend |
+  Select-String "affinity_matchmaking_window"
+```
 
 ## Troubleshooting
 

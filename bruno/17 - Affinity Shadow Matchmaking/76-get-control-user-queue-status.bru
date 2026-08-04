@@ -1,0 +1,30 @@
+meta {
+  name: 76 Get Control User Queue Status
+  type: http
+  seq: 76
+}
+
+get {
+  url: {{baseUrl}}/api/matchmaking/queue
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK while checking Control User queue status, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || body.inQueue !== true) {
+    throw new Error("Expected Control User queue status inQueue=true before processing.");
+  }
+  const expectedUserId = bru.getEnvVar("affinity_control_user_backend_user_id");
+  if (expectedUserId && body.userId !== expectedUserId) {
+    throw new Error(`Expected Control User queue status for ${expectedUserId}, got ${body.userId}.`);
+  }
+}

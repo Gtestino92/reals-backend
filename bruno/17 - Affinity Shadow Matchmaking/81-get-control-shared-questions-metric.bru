@@ -1,0 +1,44 @@
+meta {
+  name: 81 Control Shared Questions Metric
+  type: http
+  seq: 81
+}
+
+get {
+  url: {{baseUrl}}/actuator/metrics/reals.matchmaking.affinity.shared_questions?tag=mode:shadow&tag=evidence:none
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_user_a_id_token}}
+}
+
+script:post-response {
+  function measurementValue(body, statistic) {
+    const measurement = (body.measurements || []).find((item) => item.statistic === statistic);
+    return measurement ? measurement.value : null;
+  }
+
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK for metric reals.matchmaking.affinity.shared_questions filtered by mode=shadow,evidence=none, got ${status}. Ensure an admin token is available and the control match has been processed.`);
+  }
+  const body = res.getBody();
+  if (!body || body.name !== "reals.matchmaking.affinity.shared_questions") {
+    throw new Error(`Expected metric name reals.matchmaking.affinity.shared_questions, got ${body && body.name}.`);
+  }
+  if (!Array.isArray(body.measurements) || body.measurements.length < 1) {
+    throw new Error("Expected at least one filtered metric measurement after control matchmaking processing.");
+  }
+  const count = measurementValue(body, "COUNT");
+  const total = measurementValue(body, "TOTAL");
+  const max = measurementValue(body, "MAX");
+  if (count === null || count < 1) {
+    throw new Error("Expected at least one evidence=none metric observation after the control match.");
+  }
+  if ((total !== null && Math.abs(total) > 0.000001) || (max !== null && Math.abs(max) > 0.000001)) {
+    throw new Error(`Expected evidence=none metric values to remain zero, got total=${total}, max=${max}.`);
+  }
+  // Metrics are cumulative since backend startup and are operational diagnostics, not compatibility output.
+}
