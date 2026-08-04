@@ -98,6 +98,12 @@ matchmaking:
     reliability-similarity-scale: ${MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE:2.0}
     waiting-relaxation-period-hours: ${MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS:72.0}
     maximum-similarity-scale-multiplier: ${MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER:3.0}
+    affinity:
+      mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:OFF}
+      max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
+      full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
+      full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
+      category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
 
 chat:
   audio:

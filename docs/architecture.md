@@ -73,10 +73,13 @@ Affinity-question responsibilities are intentionally isolated:
 - `GET/PATCH/DELETE /api/me/profile/affinity-answers` are current-user-only endpoints. They never accept arbitrary profile or user ids.
 - Affinity answer writes lock the current `Profile` row before reading or mutating answers. `PATCH` and `DELETE` use the same profile-lock order; read endpoints remain lock-free.
 
-Affinity currently produces no matchmaking score, ranking factor, Home state,
-first-chat guidance, visual-review data or counterpart-facing profile field.
-Free-text profile prompts are a separate future system, and first-chat
-conversation prompts remain owned by `FirstChatGuidanceService`.
+Affinity does not expose Home state, first-chat guidance, visual-review data or
+counterpart-facing profile fields. Private affinity answers can be evaluated
+inside probabilistic matchmaking only when `matchmaking.ranking.affinity` is
+`SHADOW` or `ACTIVE`; the global/dev/prod default is `OFF`, and affinity never
+becomes a hard eligibility filter. Free-text profile prompts are a separate
+future system, and first-chat conversation prompts remain owned by
+`FirstChatGuidanceService`.
 
 ## Persistence
 
@@ -134,10 +137,15 @@ FIFO group and score-descending fallback. `PROBABILISTIC_WEIGHTED` gates by raw
 compatibility, combines compatibility quality with individual reliability-score
 similarity, relaxes reliability similarity as partner wait time grows and uses a
 Gumbel weighted permutation without replacement. Reliability scores are loaded
-once for the partner window. The selected partners are claimed one at a time by
-exact queue-entry id with hard revalidation and `FOR UPDATE OF qb SKIP LOCKED`;
-normal partner contention falls through to the next ranked candidate instead of
-becoming a processing failure. See `docs/matchmaking-ranking.md`.
+once for the partner window. When private affinity ranking is enabled in
+probabilistic mode, affinity answers are also loaded once for the bounded window
+by profile id, evaluated in memory and used only as a bounded multiplicative
+factor; affinity never becomes a hard filter. `SHADOW` mode records aggregate
+privacy-safe diagnostics without changing weights or consuming extra random
+values. The selected partners are claimed one at a time by exact queue-entry id
+with hard revalidation and `FOR UPDATE OF qb SKIP LOCKED`; normal partner
+contention falls through to the next ranked candidate instead of becoming a
+processing failure. See `docs/matchmaking-ranking.md`.
 
 Defensive direct match creation still locks both users through
 `UserRepository.findAllByIdForUpdate` before persisting a match. After those

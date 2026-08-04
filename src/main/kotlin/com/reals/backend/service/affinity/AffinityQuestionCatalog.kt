@@ -146,6 +146,7 @@ data class PairAffinityQuestionSignal(
     val categoryId: String,
     val primaryTopic: String,
     val construct: AffinityConstruct,
+    val rankingEligible: Boolean,
     val rankingAffinityContribution: Double,
     val conversationPotential: Double,
     val conversationKind: ConversationKind,
@@ -416,6 +417,7 @@ object AffinityQuestionCatalogValidator {
     }
 }
 
+@Component
 class AffinityQuestionPairEvaluator {
     fun evaluate(
         leftAnswers: Collection<AffinityAnswerSnapshot>,
@@ -488,6 +490,7 @@ class AffinityQuestionPairEvaluator {
             categoryId = question.categoryId,
             primaryTopic = question.primaryTopic,
             construct = question.construct,
+            rankingEligible = question.rankingEnabled,
             rankingAffinityContribution = rankingContribution,
             conversationPotential = conversation.potential.coerceIn(0.0, 1.0),
             conversationKind = conversation.kind,

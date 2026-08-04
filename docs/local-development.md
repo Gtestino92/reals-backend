@@ -18,6 +18,10 @@ Docker-oriented local setup, a PostgreSQL database:
 jdbc:postgresql://postgres:5432/reals
 ```
 
+`local-firebase` also defaults matchmaking to `PROBABILISTIC_WEIGHTED` and
+private affinity ranking to `SHADOW` for manual observation. Set
+`MATCHMAKING_RANKING_AFFINITY_MODE=OFF` to disable local affinity evaluation.
+
 ## Run Locally
 
 The project is set up to run from IntelliJ IDEA. Maven CLI may not be installed on the target machine, so do not assume `mvn` is available unless confirmed.

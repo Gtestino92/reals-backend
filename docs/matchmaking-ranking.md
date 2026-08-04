@@ -108,6 +108,94 @@ logWeight = compatibilityLogWeight + reliabilityLogWeight
 Log space avoids underflow when weights become very small and makes the
 components additive.
 
+## Affinity Shadow Ranking
+
+`matchmaking.ranking.affinity.mode` controls private affinity evidence:
+
+- `OFF`: does not load affinity answers, evaluate affinity or emit affinity
+  metrics/logs. This is the global, dev and prod default.
+- `SHADOW`: only in `PROBABILISTIC_WEIGHTED`, batch-loads affinity answers for
+  the bounded partner window, evaluates hypothetical factors and records
+  privacy-safe logs and metrics. It does not change eligibility, weights,
+  random draws, claim order or selected matches.
+- `ACTIVE`: only in `PROBABILISTIC_WEIGHTED`, performs the same observation as
+  `SHADOW` and adds affinity log-weight to the actual probabilistic weight.
+  `ACTIVE` is rejected with `LEGACY_EARLY_ACCEPT`.
+
+`local-firebase` defaults affinity to `SHADOW` because it already defaults
+ranking to `PROBABILISTIC_WEIGHTED`. Affinity observation requires
+probabilistic ranking mode; under legacy mode shadow affinity remains dormant
+and does not query answers. Roll back by setting affinity mode to `OFF`.
+
+Affinity answers are private. Matchmaking does not log, serialize or expose
+answer codes, question-answer pairs, user ids, profile ids, match ids,
+sensitive-question evidence, category ids or per-user affinity profiles.
+Affinity is never a hard eligibility filter: missing answers, no shared
+answers, semantic-version mismatches, conversation-only evidence and absent rows
+are neutral; negative affinity lowers weight only and never removes a candidate.
+
+Category aggregation uses only shared valid signals whose active catalog
+question has `rankingEnabled = true`:
+
+```text
+rawCategoryAffinity =
+    arithmetic mean(rankingAffinityContribution)
+
+categoryEvidenceConfidence =
+    min(1, rankingEligibleSharedQuestionCount / categoryFullConfidenceQuestions)
+```
+
+Categories are then confidence-weighted equally at category level:
+
+```text
+overallAffinity =
+    sum(rawCategoryAffinity * categoryEvidenceConfidence)
+    / sum(categoryEvidenceConfidence)
+```
+
+No ranking evidence produces `overallAffinity = 0`. The final value is clamped
+to `[-1, 1]`, so a category with more questions does not dominate solely by
+count.
+
+Global confidence requires both shared-question depth and category breadth:
+
+```text
+sharedQuestionConfidence =
+    min(1, rankingEligibleSharedQuestionCount / fullConfidenceSharedQuestions)
+
+categoryBreadthConfidence =
+    min(1, categoriesWithRankingEvidence / fullConfidenceCategories)
+
+evidenceConfidence =
+    min(sharedQuestionConfidence, categoryBreadthConfidence)
+```
+
+The bounded multiplicative factor is:
+
+```text
+relativeAdjustment =
+    maxRelativeAdjustment * evidenceConfidence * overallAffinity
+
+affinityFactor = 1 + relativeAdjustment
+affinityLogWeight = ln(affinityFactor)
+```
+
+With defaults, `maxRelativeAdjustment = 0.10`, so `affinityFactor` is bounded to
+`[0.90, 1.10]`. In `ACTIVE`:
+
+```text
+logWeight =
+    compatibilityLogWeight
+    + reliabilityLogWeight
+    + affinityLogWeight
+```
+
+Shadow diagnostics do not compare randomized permutations. They calculate two
+deterministic rankings for observation only: baseline `baseLogWeight`
+descending then FIFO order, and shadow `baseLogWeight + affinityLogWeight`
+descending then FIFO order. These ranks never consume random values and never
+affect the actual Gumbel weighted permutation.
+
 ## Weighted Permutation
 
 The claim flow needs a full fallback order, not a single random pick.
@@ -207,6 +295,11 @@ Properties:
 | `matchmaking.ranking.reliability-similarity-scale` | `10.0` | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. |
 | `matchmaking.ranking.waiting-relaxation-period-hours` | `72.0` | Must be finite and greater than `0`. Controls how quickly waiting relaxes similarity. |
 | `matchmaking.ranking.maximum-similarity-scale-multiplier` | `3.0` | Must be finite and at least `1`. Caps waiting relaxation. |
+| `matchmaking.ranking.affinity.mode` | `OFF` | `OFF`, `SHADOW` or `ACTIVE`; `local-firebase` defaults to `SHADOW`. |
+| `matchmaking.ranking.affinity.max-relative-adjustment` | `0.10` | Must be finite and in `[0.0, 0.25]`. |
+| `matchmaking.ranking.affinity.full-confidence-shared-questions` | `12` | Positive integer. |
+| `matchmaking.ranking.affinity.full-confidence-categories` | `4` | Positive integer. |
+| `matchmaking.ranking.affinity.category-full-confidence-questions` | `3` | Positive integer. |
 
 Environment variables:
 
@@ -216,6 +309,11 @@ MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE
 MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE
 MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS
 MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER
+MATCHMAKING_RANKING_AFFINITY_MODE
+MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT
+MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS
+MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES
+MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS
 ```
 
 Examples:

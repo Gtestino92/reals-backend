@@ -2,8 +2,13 @@ package com.reals.backend.service.matching
 
 import com.reals.backend.config.MatchmakingRankingMode
 import com.reals.backend.config.MatchmakingRankingProperties
+import com.reals.backend.config.MatchmakingAffinityRankingMode
 import com.reals.backend.domain.*
+import com.reals.backend.repository.AffinityQuestionAnswerRepository
 import com.reals.backend.repository.matching.MatchmakingCandidateRepository
+import com.reals.backend.service.affinity.AffinityAnswerSnapshot
+import com.reals.backend.service.affinity.AffinityQuestionCatalogProvider
+import com.reals.backend.service.affinity.AffinityQuestionPairEvaluator
 import com.reals.backend.service.HomeStateInvalidationService
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.ProfileService
@@ -13,11 +18,13 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.*
+import kotlin.math.abs
 
 @Service
 @Transactional
@@ -36,6 +43,11 @@ class MatchmakingService(
     private val rankingProperties: MatchmakingRankingProperties,
     private val probabilisticWeightPolicy: ProbabilisticMatchmakingWeightPolicy,
     private val weightedCandidateOrderer: WeightedMatchmakingCandidateOrderer,
+    private val affinityAnswerRepository: AffinityQuestionAnswerRepository,
+    private val affinityCatalogProvider: AffinityQuestionCatalogProvider,
+    private val affinityQuestionPairEvaluator: AffinityQuestionPairEvaluator,
+    private val affinityPairAssessmentAggregator: AffinityPairAssessmentAggregator,
+    private val affinityMetrics: MatchmakingAffinityMetrics,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -278,7 +290,21 @@ class MatchmakingService(
         rankingNow: OffsetDateTime
     ): List<RankedMatchmakingPartnerCandidate> {
         val reliabilityScores = reliabilityScoresFor(candidateUserIds, rankingNow)
-        val weightedCandidates = mutableListOf<WeightedMatchmakingPartnerCandidate>()
+        val affinityMode = rankingProperties.affinity.mode
+        val affinityEnabled = affinityMode.enabledForProbabilisticRanking()
+        val affinityAnswersByProfileId =
+            if (affinityEnabled) {
+                affinityAnswerSnapshotsByProfileId(profilesByUserId.values)
+            } else {
+                emptyMap()
+            }
+        val catalog =
+            if (affinityEnabled) {
+                affinityCatalogProvider.getCatalog()
+            } else {
+                null
+            }
+        val assessedCandidates = mutableListOf<AffinityWeightedCandidate>()
 
         for ((index, candidate) in partnerCandidates.withIndex()) {
             val pair = candidate.pair
@@ -307,14 +333,55 @@ class MatchmakingService(
                     )
                 )
 
-            weightedCandidates.add(
-                WeightedMatchmakingPartnerCandidate(
+            val affinityAssessment =
+                if (catalog != null) {
+                    val evidence =
+                        affinityQuestionPairEvaluator.evaluate(
+                            leftAnswers = affinityAnswersByProfileId[profileA.id].orEmpty(),
+                            rightAnswers = affinityAnswersByProfileId[profileB.id].orEmpty(),
+                            catalog = catalog
+                        )
+                    affinityPairAssessmentAggregator.aggregate(evidence)
+                } else {
+                    null
+                }
+
+            assessedCandidates.add(
+                AffinityWeightedCandidate(
                     candidate = candidate,
-                    logWeight = weight.logWeight,
-                    order = index
+                    baseLogWeight = weight.logWeight,
+                    shadowLogWeight = weight.logWeight + (affinityAssessment?.affinityLogWeight ?: 0.0),
+                    order = index,
+                    assessment = affinityAssessment
                 )
             )
         }
+
+        val diagnostics =
+            if (affinityEnabled) {
+                affinityDiagnostics(assessedCandidates)
+            } else {
+                emptyList()
+            }
+        recordAffinityWindow(
+            affinityMode = affinityMode,
+            candidateCount = assessedCandidates.size,
+            diagnostics = diagnostics
+        )
+
+        val weightedCandidates =
+            assessedCandidates.map { assessed ->
+                WeightedMatchmakingPartnerCandidate(
+                    candidate = assessed.candidate,
+                    logWeight =
+                        if (affinityMode == MatchmakingAffinityRankingMode.ACTIVE) {
+                            assessed.shadowLogWeight
+                        } else {
+                            assessed.baseLogWeight
+                        },
+                    order = assessed.order
+                )
+            }
 
         return weightedCandidateOrderer
             .order(weightedCandidates)
@@ -325,6 +392,131 @@ class MatchmakingService(
                     order = it.order
                 )
             }
+    }
+
+    private fun affinityAnswerSnapshotsByProfileId(
+        profiles: Collection<Profile>
+    ): Map<UUID, List<AffinityAnswerSnapshot>> {
+        val profileIds = profiles.map { it.id }.distinct()
+        if (profileIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        return affinityAnswerRepository.findByProfileIdIn(profileIds)
+            .groupBy { it.profileId }
+            .mapValues { (_, answers) ->
+                answers.map { answer ->
+                    AffinityAnswerSnapshot(
+                        questionId = answer.questionId,
+                        questionSemanticVersion = answer.questionSemanticVersion,
+                        answerCode = answer.answerCode
+                    )
+                }
+            }
+    }
+
+    private fun affinityDiagnostics(
+        candidates: List<AffinityWeightedCandidate>
+    ): List<AffinityCandidateDiagnostics> {
+        val assessedCandidates = candidates.filter { it.assessment != null }
+        if (assessedCandidates.isEmpty()) {
+            return emptyList()
+        }
+
+        val baselineRanks =
+            assessedCandidates
+                .sortedWith(
+                    compareByDescending<AffinityWeightedCandidate> { it.baseLogWeight }
+                        .thenBy { it.order }
+                )
+                .withIndex()
+                .associate { it.value.order to it.index + 1 }
+        val shadowRanks =
+            assessedCandidates
+                .sortedWith(
+                    compareByDescending<AffinityWeightedCandidate> { it.shadowLogWeight }
+                        .thenBy { it.order }
+                )
+                .withIndex()
+                .associate { it.value.order to it.index + 1 }
+
+        return assessedCandidates.map { candidate ->
+            val baselineRank = baselineRanks.getValue(candidate.order)
+            val shadowRank = shadowRanks.getValue(candidate.order)
+            AffinityCandidateDiagnostics(
+                assessment = candidate.assessment ?: error("Affinity assessment missing after filtering"),
+                baselineDeterministicRank = baselineRank,
+                shadowDeterministicRank = shadowRank,
+                rankDelta = shadowRank - baselineRank
+            )
+        }
+    }
+
+    private fun recordAffinityWindow(
+        affinityMode: MatchmakingAffinityRankingMode,
+        candidateCount: Int,
+        diagnostics: List<AffinityCandidateDiagnostics>
+    ) {
+        if (!affinityMode.enabledForProbabilisticRanking()) {
+            return
+        }
+
+        affinityMetrics.recordEvaluatedWindow(
+            mode = affinityMode,
+            diagnostics = diagnostics
+        )
+
+        val candidatesWithRankingEvidence =
+            diagnostics.count { it.assessment.rankingEligibleSharedQuestionCount > 0 }
+        if (candidatesWithRankingEvidence == 0) {
+            if (diagnostics.isNotEmpty()) {
+                log.debug(
+                    "event=affinity_matchmaking_window mode={} candidateCount={} candidatesWithRankingEvidence=0",
+                    affinityMode.name.lowercase(),
+                    candidateCount
+                )
+            }
+            return
+        }
+
+        val averageSharedQuestionCount =
+            diagnostics.map { it.assessment.sharedValidQuestionCount.toDouble() }.averageOrZero()
+        val maximumSharedQuestionCount =
+            diagnostics.maxOfOrNull { it.assessment.sharedValidQuestionCount } ?: 0
+        val averageEvidenceConfidence =
+            diagnostics.map { it.assessment.evidenceConfidence }.averageOrZero()
+        val maximumEvidenceConfidence =
+            diagnostics.maxOfOrNull { it.assessment.evidenceConfidence } ?: 0.0
+        val minimumOverallAffinity =
+            diagnostics.minOfOrNull { it.assessment.overallAffinity } ?: 0.0
+        val maximumOverallAffinity =
+            diagnostics.maxOfOrNull { it.assessment.overallAffinity } ?: 0.0
+        val maximumAbsoluteRankDelta =
+            diagnostics.maxOfOrNull { abs(it.rankDelta) } ?: 0
+        val deterministicTopCandidateChanged =
+            diagnostics.any {
+                (it.baselineDeterministicRank == 1 || it.shadowDeterministicRank == 1) &&
+                    it.baselineDeterministicRank != it.shadowDeterministicRank
+            }
+
+        log.info(
+            "event=affinity_matchmaking_window mode={} candidateCount={} candidatesWithRankingEvidence={} " +
+                "averageSharedQuestionCount={} maximumSharedQuestionCount={} averageEvidenceConfidence={} " +
+                "maximumEvidenceConfidence={} minimumOverallAffinity={} maximumOverallAffinity={} " +
+                "maximumAbsoluteRankDelta={} deterministicTopCandidateChanged={} affinityApplied={}",
+            affinityMode.name.lowercase(),
+            candidateCount,
+            candidatesWithRankingEvidence,
+            averageSharedQuestionCount,
+            maximumSharedQuestionCount,
+            averageEvidenceConfidence,
+            maximumEvidenceConfidence,
+            minimumOverallAffinity,
+            maximumOverallAffinity,
+            maximumAbsoluteRankDelta,
+            deterministicTopCandidateChanged,
+            affinityMode == MatchmakingAffinityRankingMode.ACTIVE
+        )
     }
 
     private fun scoreLegacyCandidatePair(
@@ -440,9 +632,31 @@ class MatchmakingService(
         val firstChatExpirationCutoff: OffsetDateTime?
     )
 
+    private data class AffinityWeightedCandidate(
+        val candidate: MatchmakingPartnerCandidate,
+        val baseLogWeight: Double,
+        val shadowLogWeight: Double,
+        val order: Int,
+        val assessment: AffinityPairAssessment?
+    )
+
     private data class RankedMatchmakingPartnerCandidate(
         val candidate: MatchmakingPartnerCandidate,
         val score: Double,
         val order: Int
     )
+
+    private fun MatchmakingAffinityRankingMode.enabledForProbabilisticRanking(): Boolean =
+        this == MatchmakingAffinityRankingMode.SHADOW || this == MatchmakingAffinityRankingMode.ACTIVE
+
+    private fun List<Double>.averageOrZero(): Double =
+        if (isEmpty()) {
+            0.0
+        } else {
+            average()
+        }
+
+    private companion object {
+        private val log = LoggerFactory.getLogger(MatchmakingService::class.java)
+    }
 }

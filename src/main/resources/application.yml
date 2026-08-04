@@ -149,6 +149,12 @@ matchmaking:
     reliability-similarity-scale: 2.0
     waiting-relaxation-period-hours: 72.0
     maximum-similarity-scale-multiplier: 3.0
+    affinity:
+      mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:OFF}
+      max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
+      full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
+      full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
+      category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
 
 chat:
   audio:
