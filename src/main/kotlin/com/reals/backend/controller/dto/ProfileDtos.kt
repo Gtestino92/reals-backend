@@ -8,6 +8,7 @@ import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileAuthenticityVerificationStatus
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.domain.VisualReviewAffinityIndicator
 import com.reals.backend.validation.PlainText
 import com.reals.backend.validation.SingleLinePlainText
 import jakarta.validation.Valid
@@ -205,6 +206,7 @@ data class VisualProfileResponse(
     val age: Int,
     val bio: String?,
     val photos: List<PhotoResponse>,
+    val affinityIndicators: List<VisualAffinityIndicatorResponse>,
     val myPersonalMessageSubmitted: Boolean,
     val partnerPersonalMessageSubmitted: Boolean,
     val partnerPersonalMessageRead: Boolean,
@@ -219,18 +221,33 @@ data class VisualProfileResponse(
             partnerPersonalMessageSubmitted: Boolean,
             partnerPersonalMessageRead: Boolean,
             decisionRequiresPartnerPersonalMessageRead: Boolean,
-            visualExpiresAt: OffsetDateTime?
+            visualExpiresAt: OffsetDateTime?,
+            affinityIndicators: List<VisualReviewAffinityIndicator> = emptyList()
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
             photos = photos.sortedBy { it.position },
+            affinityIndicators = affinityIndicators.map { VisualAffinityIndicatorResponse.from(it) },
             myPersonalMessageSubmitted = myPersonalMessageSubmitted,
             partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,
             partnerPersonalMessageRead = partnerPersonalMessageRead,
             decisionRequiresPartnerPersonalMessageRead = decisionRequiresPartnerPersonalMessageRead,
             visualExpiresAt = visualExpiresAt
         )
+    }
+}
+
+data class VisualAffinityIndicatorResponse(
+    val categoryId: String,
+    val title: String
+) {
+    companion object {
+        fun from(indicator: VisualReviewAffinityIndicator) =
+            VisualAffinityIndicatorResponse(
+                categoryId = indicator.categoryId,
+                title = indicator.categoryTitle
+            )
     }
 }

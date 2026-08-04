@@ -1,6 +1,7 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
+import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -19,6 +20,7 @@ import java.util.UUID
 class VisualReviewService(
 
     private val visualReviewRepository: VisualReviewRepository,
+    private val visualReviewAffinityIndicatorRepository: VisualReviewAffinityIndicatorRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
@@ -303,6 +305,9 @@ class VisualReviewService(
             userId = userId
         )
     }
+
+    fun getAffinityIndicators(matchId: UUID): List<VisualReviewAffinityIndicator> =
+        visualReviewAffinityIndicatorRepository.findByMatchIdOrderByOrdinal(matchId)
 
     private fun requireVisualReviewNotExpired(review: VisualReview) {
         review.expiresAt?.let { expiresAt ->

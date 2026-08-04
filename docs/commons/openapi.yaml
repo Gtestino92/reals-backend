@@ -2670,6 +2670,7 @@ components:
         - displayName
         - age
         - photos
+        - affinityIndicators
         - myPersonalMessageSubmitted
         - partnerPersonalMessageSubmitted
         - partnerPersonalMessageRead
@@ -2682,6 +2683,10 @@ components:
         photos:
           type: array
           items: { $ref: '#/components/schemas/PhotoResponse' }
+        affinityIndicators:
+          type: array
+          description: Privacy-safe positive shared affinity category indicators snapshotted when the first chat was initialized. Empty when there is no eligible evidence. Items expose only category id and title; exact answers, questions, scores, percentages and conversation metadata are never included.
+          items: { $ref: '#/components/schemas/VisualAffinityIndicatorResponse' }
         myPersonalMessageSubmitted:
           type: boolean
           description: True when the authenticated user has already submitted their visual personal message for this match.
@@ -2699,6 +2704,18 @@ components:
           format: date-time
           nullable: true
           description: Visual review deadline used by clients for advisory countdowns; backend remains the source of truth.
+    VisualAffinityIndicatorResponse:
+      type: object
+      required:
+        - categoryId
+        - title
+      properties:
+        categoryId:
+          type: string
+          description: Stable affinity category id.
+        title:
+          type: string
+          description: Spanish category title snapshotted from the catalog when the first chat was initialized.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]

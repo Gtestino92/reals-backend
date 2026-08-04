@@ -118,7 +118,8 @@ Push notifications:
 - A `Profile` has many private `AffinityQuestionAnswer` records, unique by `(profileId, questionId)`. Answers are owned by the current user's profile and are never exposed through counterpart-facing profile, match, visual-review, first-chat, Home or partner-summary responses.
 - A `Match` has `userAId` and `userBId`.
 - A `Chat` belongs to a `Match`; `SECOND_CHAT` also has `connectionId`.
-- `FirstChatGuidance` belongs to one `FIRST_CHAT` through a unique `chatId`. It stores the active question id/text snapshot, ordinal, activation timestamp, per-participant next-question request timestamps and optional completion timestamp. It does not store message counters or the full selected sequence.
+- `FirstChatGuidance` belongs to one `FIRST_CHAT` through a unique `chatId`. It stores the active question id/text snapshot, ordinal, activation timestamp, per-participant next-question request timestamps and optional completion timestamp. It does not store message counters.
+- `ConversationPromptSnapshot` belongs to one first chat and stores the complete immutable prompt sequence by `(chatId, ordinal)`. Affinity rows snapshot source question id, semantic version, prompt text, category and conversation kind; generic rows snapshot only generic source id/text. No answer code, answer label, ranking contribution, score, percentage, confidence or affinity factor is stored.
 - `ChatDecision` belongs to a chat and match.
 - `ChatExitRequest` records mutual cancellation requests, unilateral cancellations and safety-report chat closures.
 - `SafetyReport` is the moderation source of truth for reported safety incidents. It stores an explicit source, context type and context id; chat safety cancellation uses `CHAT` with the chat id, visual profile and personal message reports use the match id, profile photo reports use the photo id, and admin-only general user reports use `USER` with the reported user id.
@@ -127,6 +128,7 @@ Push notifications:
 - `AuditEvent` records safety-relevant operational events with minimal metadata. It must not store raw IP addresses, raw user agents, chat message contents, report details, emails, Firebase UIDs, photo URLs, storage keys or other sensitive payloads.
 - `UserBlock` records directional blocks. Matchmaking treats a block in either direction between two users as a bidirectional exclusion.
 - `VisualReview` belongs to a match.
+- `VisualReviewAffinityIndicator` belongs to a match and stores at most three positive shared category id/title snapshots for visual review. Indicator rows may exist before `VisualReview`, are exposed only through visual-profile access, and never store question ids, answers, scores, kinds or evidence counts.
 - `Connection` belongs to a match.
 - `ScheduleNegotiation` belongs to a connection.
 - `ScheduleProposal` belongs to a connection and user.
@@ -145,12 +147,11 @@ Matchmaking pair eligibility distinguishes active interactions, temporary histor
 
 ## Affinity Questions
 
-Affinity questions are closed, private profile-owned answers used only as a
-foundation for future compatibility evidence and conversation-prompt selection.
-They are separate from free-text profile prompts and from the existing
-first-chat conversation guidance. Affinity answers remain private and do not
-modify first-chat guidance, visual review, Home or any counterpart-facing
-response.
+Affinity questions are closed, private profile-owned answers used as
+compatibility evidence and as input to answer-free first-chat/visual snapshots.
+They are separate from free-text profile prompts. Raw affinity answers remain
+private: counterpart-facing responses receive only snapshotted prompt text in
+first chat and positive shared category labels during visual review.
 
 The static catalog lives in `src/main/resources/affinity-questions.es-AR.json`
 and is loaded once at application startup. The top-level catalog contains a
@@ -195,6 +196,28 @@ multidimensional aggregation or repository reads. Probabilistic matchmaking may
 aggregate ranking-enabled evidence internally under
 `matchmaking.ranking.affinity`, but affinity is never a hard eligibility filter
 and is not exposed through public APIs.
+
+When `ChatService.startFirstChat` creates a first chat, the backend loads both
+profiles' affinity answers in one bounded batch, evaluates them with the current
+catalog and persists immutable output snapshots. Conversation prompt selection
+uses only `STANDARD` sensitivity signals with `conversationPotential > 0` and
+kind `SHARED_AFFINITY` or `CONSTRUCTIVE_CONTRAST`. Eligible signals sort by
+conversation potential descending, category display order ascending, catalog
+question order ascending and question id ascending. The first pass takes at most
+one question per category; the second pass fills remaining slots with the best
+unselected eligible signals; any remaining slots use the deterministic generic
+first-chat catalog sequence. Affinity prompts precede generic fallback prompts,
+sources are not duplicated, and the persisted sequence has exactly the
+configured `maxQuestions` when the generic catalog is valid. Later answer edits,
+answer deletions or catalog wording changes do not alter that first chat.
+
+Visual-review affinity indicators are generated from the same initialization
+evidence. Only `STANDARD` shared-affinity signals with positive conversation
+potential are eligible; constructive contrast, neutral/not-eligible, sensitive,
+negative and one-sided evidence never create indicators. Eligible signals are
+aggregated by category, ordered by maximum internal conversation potential
+descending, category display order ascending and category id ascending, then
+capped at three. Only catalog category id/title are snapshotted and exposed.
 
 Current policy families are explicit and test-covered:
 

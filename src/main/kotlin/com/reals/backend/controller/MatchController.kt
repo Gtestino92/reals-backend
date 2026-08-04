@@ -171,7 +171,8 @@ class MatchController(
                     personalMessageStatus.partnerPersonalMessageRead,
                 decisionRequiresPartnerPersonalMessageRead =
                     personalMessageStatus.decisionRequiresPartnerPersonalMessageRead,
-                visualExpiresAt = visualExpiresAt
+                visualExpiresAt = visualExpiresAt,
+                affinityIndicators = visualReviewService.getAffinityIndicators(matchId)
             )
         )
     }

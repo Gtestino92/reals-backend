@@ -67,19 +67,23 @@ and provider transport:
 
 Affinity-question responsibilities are intentionally isolated:
 
-- `service.affinity`: static catalog loading/validation, private current-profile answer writes and the pure pairwise evidence evaluator.
-- `AffinityQuestionAnswer`: the only persisted affinity table; catalog questions remain a versioned UTF-8 resource.
+- `service.affinity`: static catalog loading/validation, private current-profile answer writes, the pure pairwise evidence evaluator and answer-free first-chat/visual snapshot initialization.
+- `AffinityQuestionAnswer`: the private current-answer table; catalog questions remain a versioned UTF-8 resource.
+- `conversation_prompt_snapshots`: immutable first-chat prompt sequence rows created once when a first chat starts. They store prompt text and source metadata, but never answer codes, labels, ranking contributions, scores or compatibility percentages.
+- `visual_review_affinity_indicators`: immutable match-owned positive category labels created from the same initialization evidence and exposed only through visual-profile access. They store at most three category ids/titles and no question, answer, score, kind or evidence-count fields.
 - `GET /api/reference/affinity-questions` exposes only client-safe catalog data. It does not expose scoring policies, matrices or weights.
 - `GET/PATCH/DELETE /api/me/profile/affinity-answers` are current-user-only endpoints. They never accept arbitrary profile or user ids.
 - Affinity answer writes lock the current `Profile` row before reading or mutating answers. `PATCH` and `DELETE` use the same profile-lock order; read endpoints remain lock-free.
 
-Affinity does not expose Home state, first-chat guidance, visual-review data or
-counterpart-facing profile fields. Private affinity answers can be evaluated
-inside probabilistic matchmaking only when `matchmaking.ranking.affinity` is
-`SHADOW` or `ACTIVE`; the global/dev/prod default is `OFF`, and affinity never
-becomes a hard eligibility filter. Free-text profile prompts are a separate
-future system, and first-chat conversation prompts remain owned by
-`FirstChatGuidanceService`.
+Raw affinity answers remain private and are returned only through current-user
+answer endpoints. Affinity can derive two answer-free outputs when a new first
+chat is initialized: prompt text in the first-chat guidance sequence and
+positive shared category labels in visual review. These snapshots do not expose
+exact answers, answer labels, scores, percentages, confidence, factors or
+ranking internals. Private affinity answers can also be evaluated inside
+probabilistic matchmaking only when `matchmaking.ranking.affinity` is `SHADOW`
+or `ACTIVE`; that behavior is unchanged and affinity never becomes a hard
+eligibility filter. Free-text profile prompts remain a separate future system.
 
 ## Persistence
 

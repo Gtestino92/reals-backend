@@ -2,6 +2,7 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualDecision
@@ -63,6 +64,11 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.serverTime").isNotEmpty())
             .andExpect(jsonPath("$.guidance.question.id").exists())
             .andExpect(jsonPath("$.guidance.question.text").exists())
+            .andExpect(jsonPath("$.guidance.question.answerCode").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.conversationKind").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.conversationPotential").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.categoryId").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.semanticVersion").doesNotExist())
             .andExpect(jsonPath("$.guidance.questionOrdinal", equalTo(1)))
             .andExpect(jsonPath("$.guidance.maxQuestions", equalTo(3)))
             .andExpect(jsonPath("$.guidance.requiredCharacters", equalTo(40)))
@@ -266,6 +272,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
             .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
             .andExpect(jsonPath("$.visualExpiresAt").exists())
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(0)))
             .andExpect(
                 jsonPath(
                     "$.photos[0].url",
@@ -296,6 +303,47 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(false)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
             .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
+    }
+
+    @Test
+    fun `visual profile returns symmetric privacy safe affinity indicators`() {
+        val setup = createAnsweredMatchWithFirstChat("visual-affinity-indicators")
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        val userAResponse = mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(1)))
+            .andExpect(jsonPath("$.affinityIndicators[0].categoryId", equalTo("CINEMA_SERIES_AND_STORIES")))
+            .andExpect(jsonPath("$.affinityIndicators[0].title").exists())
+            .andExpect(jsonPath("$.affinityIndicators[0].answerCode").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].answerLabel").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].questionId").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].semanticVersion").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].conversationKind").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].conversationPotential").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].score").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].percentage").doesNotExist())
+            .andReturn()
+
+        val userBResponse = mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(1)))
+            .andExpect(jsonPath("$.affinityIndicators[0].categoryId", equalTo("CINEMA_SERIES_AND_STORIES")))
+            .andExpect(jsonPath("$.affinityIndicators[0].title").exists())
+            .andReturn()
+
+        val userAIndicator = objectMapper.readTree(userAResponse.response.contentAsString).get("affinityIndicators").first()
+        val userBIndicator = objectMapper.readTree(userBResponse.response.contentAsString).get("affinityIndicators").first()
+
+        assertEquals(2, userAIndicator.size())
+        assertEquals(userAIndicator, userBIndicator)
     }
 
     @Test
@@ -609,5 +657,31 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+    }
+
+    private fun createAnsweredMatchWithFirstChat(emailPrefix: String): MatchFixture {
+        val userA = createActiveProfile(
+            email = "$emailPrefix-a-${java.util.UUID.randomUUID()}@example.com",
+            displayName = "Match A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val userB = createActiveProfile(
+            email = "$emailPrefix-b-${java.util.UUID.randomUUID()}@example.com",
+            displayName = "Match B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        answerAffinityQuestion(userA, "CINEMA_IMPORTANCE_001", "VERY_IMPORTANT")
+        answerAffinityQuestion(userB, "CINEMA_IMPORTANCE_001", "IMPORTANT")
+        val match = matchService.createMatch(userA, userB)
+        val chat = chatService.startFirstChat(match.id)
+
+        return MatchFixture(
+            userAId = userA,
+            userBId = userB,
+            matchId = match.id,
+            firstChatId = chat.id
+        )
     }
 }
