@@ -17,8 +17,16 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
     @Autowired
@@ -26,6 +34,9 @@ class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var affinityQuestionAnswerRepository: AffinityQuestionAnswerRepository
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     @Test
     fun `create answer`() {
@@ -164,6 +175,77 @@ class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `delete deprecated catalog answer`() {
+        val userId = createDraftProfile()
+        val profile = profileRepository.findByUserId(userId) ?: error("Profile missing")
+        affinityQuestionAnswerRepository.saveAndFlush(
+            AffinityQuestionAnswer(
+                profileId = profile.id,
+                questionId = "FAMILY_FRIENDS_PLACE_001",
+                questionSemanticVersion = 1,
+                answerCode = "HIGH"
+            )
+        )
+
+        val answers =
+            affinityQuestionAnswerService.deleteMyAnswer(
+                userId = userId,
+                questionId = " FAMILY_FRIENDS_PLACE_001 "
+            )
+
+        assertTrue(answers.isEmpty())
+        assertEquals(
+            0L,
+            affinityQuestionAnswerRepository.countByProfileIdAndQuestionId(
+                profileId = profile.id,
+                questionId = "FAMILY_FRIENDS_PLACE_001"
+            )
+        )
+    }
+
+    @Test
+    fun `delete removed catalog answer`() {
+        val userId = createDraftProfile()
+        val profile = profileRepository.findByUserId(userId) ?: error("Profile missing")
+        affinityQuestionAnswerRepository.saveAndFlush(
+            AffinityQuestionAnswer(
+                profileId = profile.id,
+                questionId = "REMOVED_QUESTION_001",
+                questionSemanticVersion = 1,
+                answerCode = "OLD"
+            )
+        )
+
+        val answers =
+            affinityQuestionAnswerService.deleteMyAnswer(
+                userId = userId,
+                questionId = "REMOVED_QUESTION_001"
+            )
+
+        assertTrue(answers.isEmpty())
+        assertEquals(
+            0L,
+            affinityQuestionAnswerRepository.countByProfileIdAndQuestionId(
+                profileId = profile.id,
+                questionId = "REMOVED_QUESTION_001"
+            )
+        )
+    }
+
+    @Test
+    fun `delete nonexistent answer is idempotent no-op`() {
+        val userId = createDraftProfile()
+
+        val answers =
+            affinityQuestionAnswerService.deleteMyAnswer(
+                userId = userId,
+                questionId = "REMOVED_QUESTION_001"
+            )
+
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
     fun `cannot affect another profile answer`() {
         val ownerUserId = createDraftProfile("owner")
         val otherUserId = createDraftProfile("other")
@@ -184,6 +266,34 @@ class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
         assertEquals(
             "IMPORTANT",
             affinityQuestionAnswerService.getMyAnswers(otherUserId).single().answerCode
+        )
+    }
+
+    @Test
+    fun `delete removed question cannot affect another profile answer`() {
+        val ownerUserId = createDraftProfile("removed-owner")
+        val otherUserId = createDraftProfile("removed-other")
+        val otherProfile = profileRepository.findByUserId(otherUserId) ?: error("Profile missing")
+        affinityQuestionAnswerRepository.saveAndFlush(
+            AffinityQuestionAnswer(
+                profileId = otherProfile.id,
+                questionId = "REMOVED_QUESTION_001",
+                questionSemanticVersion = 1,
+                answerCode = "OLD"
+            )
+        )
+
+        affinityQuestionAnswerService.deleteMyAnswer(
+            userId = ownerUserId,
+            questionId = "REMOVED_QUESTION_001"
+        )
+
+        assertEquals(
+            1L,
+            affinityQuestionAnswerRepository.countByProfileIdAndQuestionId(
+                profileId = otherProfile.id,
+                questionId = "REMOVED_QUESTION_001"
+            )
         )
     }
 
@@ -247,6 +357,109 @@ class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
         }
     }
 
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `concurrent identical patches preserve one row`() {
+        val userId =
+            TransactionTemplate(transactionManager).execute {
+                createDraftProfile("affinity-concurrent-identical")
+            }
+
+        val outcomes =
+            runConcurrently(
+                {
+                    affinityQuestionAnswerService.patchMyAnswers(
+                        userId = userId,
+                        patches = listOf(AffinityAnswerPatch("CINEMA_IMPORTANCE_001", "IMPORTANT"))
+                    )
+                },
+                {
+                    affinityQuestionAnswerService.patchMyAnswers(
+                        userId = userId,
+                        patches = listOf(AffinityAnswerPatch("CINEMA_IMPORTANCE_001", "IMPORTANT"))
+                    )
+                }
+            )
+
+        assertTrue(outcomes.all { it.throwable == null }, outcomes.toString())
+        val profile = profileRepository.findByUserId(userId) ?: error("Profile missing")
+        assertEquals(
+            1L,
+            affinityQuestionAnswerRepository.countByProfileIdAndQuestionId(
+                profileId = profile.id,
+                questionId = "CINEMA_IMPORTANCE_001"
+            )
+        )
+        assertEquals(
+            "IMPORTANT",
+            affinityQuestionAnswerService.getMyAnswers(userId).single().answerCode
+        )
+    }
+
+    @Test
+    fun `repeated competing write operations preserve one authoritative row`() {
+        val userId = createDraftProfile("affinity-competing")
+        val profile = profileRepository.findByUserId(userId) ?: error("Profile missing")
+
+        affinityQuestionAnswerService.patchMyAnswers(
+            userId = userId,
+            patches = listOf(AffinityAnswerPatch("CINEMA_IMPORTANCE_001", "IMPORTANT"))
+        )
+        affinityQuestionAnswerService.deleteMyAnswer(
+            userId = userId,
+            questionId = "CINEMA_IMPORTANCE_001"
+        )
+        affinityQuestionAnswerService.patchMyAnswers(
+            userId = userId,
+            patches = listOf(AffinityAnswerPatch("CINEMA_IMPORTANCE_001", "VERY_IMPORTANT"))
+        )
+        affinityQuestionAnswerService.patchMyAnswers(
+            userId = userId,
+            patches = listOf(AffinityAnswerPatch("CINEMA_IMPORTANCE_001", "VERY_IMPORTANT"))
+        )
+
+        assertEquals(
+            1L,
+            affinityQuestionAnswerRepository.countByProfileIdAndQuestionId(
+                profileId = profile.id,
+                questionId = "CINEMA_IMPORTANCE_001"
+            )
+        )
+        assertEquals(
+            "VERY_IMPORTANT",
+            affinityQuestionAnswerService.getMyAnswers(userId).single().answerCode
+        )
+    }
+
+    private fun runConcurrently(vararg actions: () -> Any): List<ConcurrentOutcome> {
+        val ready = CountDownLatch(actions.size)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(actions.size)
+
+        try {
+            val futures = actions.map { action ->
+                executor.submit(
+                    Callable {
+                        ready.countDown()
+                        assertTrue(start.await(5, TimeUnit.SECONDS))
+                        try {
+                            ConcurrentOutcome(value = action(), throwable = null)
+                        } catch (ex: Throwable) {
+                            ConcurrentOutcome(value = null, throwable = ex)
+                        }
+                    }
+                )
+            }
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            return futures.map { it.get(10, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        }
+    }
+
     private fun createDraftProfile(prefix: String = "affinity"): UUID {
         val user = userService.createUser("$prefix-${UUID.randomUUID()}@example.com")
         val profile =
@@ -268,4 +481,9 @@ class AffinityQuestionAnswerServiceIntegrationTest : BaseIT() {
         assertEquals(ProfileStatus.DRAFT, profile.status)
         return user.id
     }
+
+    private data class ConcurrentOutcome(
+        val value: Any?,
+        val throwable: Throwable?
+    )
 }

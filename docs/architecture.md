@@ -71,6 +71,7 @@ Affinity-question responsibilities are intentionally isolated:
 - `AffinityQuestionAnswer`: the only persisted affinity table; catalog questions remain a versioned UTF-8 resource.
 - `GET /api/reference/affinity-questions` exposes only client-safe catalog data. It does not expose scoring policies, matrices or weights.
 - `GET/PATCH/DELETE /api/me/profile/affinity-answers` are current-user-only endpoints. They never accept arbitrary profile or user ids.
+- Affinity answer writes lock the current `Profile` row before reading or mutating answers. `PATCH` and `DELETE` use the same profile-lock order; read endpoints remain lock-free.
 
 Affinity currently produces no matchmaking score, ranking factor, Home state,
 first-chat guidance, visual-review data or counterpart-facing profile field.

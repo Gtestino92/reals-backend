@@ -149,12 +149,14 @@ They generate local RSA keys and never contact Firebase JWKS. Use:
 Affinity-question tests are intentionally focused:
 
 - catalog unit tests validate startup-failure rules, required visible
-  categories, matrix completeness/symmetry, range checks, unsupported answer
-  types and sensitive-question wording boundaries;
+  categories, enabled-flag/policy consistency, matrix completeness/exact
+  keys/symmetry, range checks, unsupported answer types and
+  sensitive-question wording boundaries;
 - service integration tests cover private answer create/update/delete,
   idempotent partial PATCH semantics, duplicate question rejection, invalid
-  question/option errors, ownership isolation, `DRAFT` and `ACTIVE` profiles,
-  missing profile behavior and the database uniqueness invariant;
+  question/option errors, stale/deprecated answer deletion, ownership
+  isolation, `DRAFT` and `ACTIVE` profiles, missing profile behavior,
+  serialized write behavior and the database uniqueness invariant;
 - pure evaluator tests cover neutral missing answers, shared-domain evidence,
   low-interest non-reward, taste differences, constructive-conversation
   potential, ordinal extreme negatives, semantic-version mismatch, symmetry and

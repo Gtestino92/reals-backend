@@ -241,8 +241,8 @@ these values as text, not HTML.
 - `POST /api/me/profile/authenticity-verification`: optionally run profile authenticity verification for the authenticated user's profile. Profile Authenticity Verification is not legal identity verification. With provider `none` outside `prod`, the MVP compatibility path may mark the profile `VERIFIED`; this does not represent liveness, face comparison, legal identity, document verification or age assurance. With provider `none` in `prod`, verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`; no `VERIFIED` state is persisted.
 - `GET /api/reference/affinity-questions`: list the server-authoritative Spanish affinity-question catalog, including catalog version, visible categories, active questions, prompt text, answer type and ordered answer options. The response intentionally omits ranking policies, conversation policies, matrices, weights and hidden scoring configuration.
 - `GET /api/me/profile/affinity-answers`: list only the authenticated user's private affinity answers.
-- `PATCH /api/me/profile/affinity-answers`: partial idempotent upsert for private affinity answers. Only included question ids are modified; omitted answers remain unchanged. Duplicate question ids return `400 DUPLICATE_AFFINITY_QUESTION`; missing, inactive or unsupported questions return `400 INVALID_AFFINITY_QUESTION`; invalid options return `400 INVALID_AFFINITY_ANSWER`. The current catalog semantic version is stored with each answer. Requires current legal requirements and an existing `DRAFT` or `ACTIVE` profile; verified email is not required.
-- `DELETE /api/me/profile/affinity-answers/{questionId}`: delete only the authenticated profile's answer for one active catalog question. Requires current legal requirements and returns the complete remaining answer list.
+- `PATCH /api/me/profile/affinity-answers`: partial idempotent upsert for private affinity answers. Only included question ids are modified; omitted answers remain unchanged. Duplicate question ids return `400 DUPLICATE_AFFINITY_QUESTION`; missing, inactive, deprecated or unsupported questions return `400 INVALID_AFFINITY_QUESTION`; invalid options return `400 INVALID_AFFINITY_ANSWER`. The current catalog semantic version is stored with each answer. Requires current legal requirements and an existing `DRAFT` or `ACTIVE` profile; verified email is not required.
+- `DELETE /api/me/profile/affinity-answers/{questionId}`: delete only the authenticated profile's answer for one normalized question id. Unlike `PATCH`, deletion does not require the question to be active or present in the current catalog, so stale, deprecated or removed private answers can be cleared. Deleting a nonexistent owned answer is an idempotent no-op. Requires current legal requirements and returns the complete remaining answer list.
 - `POST /api/me/profile/photos`: add a profile photo using multipart file upload with `file` and `position`.
 - `GET /api/me/profile/photos`: list profile photos.
 - `PUT /api/me/profile/photos/reorder`: reorder authenticated user's existing profile photos. The JSON body must include every current photo exactly once with final positions from 1 to 9; holes are allowed. This only changes `position`, does not reupload files, does not re-run validation or moderation, and does not move an active profile back to draft.
@@ -289,6 +289,11 @@ partner summaries or counterpart-facing endpoints. This backend foundation does
 not affect matchmaking scores, first-chat guidance, visual review or Home. Free
 text profile prompts are a separate future system; conversation prompts remain
 the existing first-chat guidance flow.
+
+Private affinity write operations serialize on the authenticated user's profile
+row. `PATCH` and `DELETE` use the same lock order: resolve current profile,
+acquire a pessimistic write lock on that profile, then read and mutate
+`affinity_question_answers`. Reads do not acquire this lock.
 
 Affinity question `semanticVersion` changes represent answer meaning or
 comparison-semantics changes. A stored answer whose semantic version no longer

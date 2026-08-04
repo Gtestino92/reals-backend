@@ -98,6 +98,20 @@ class AffinityQuestionPairEvaluatorTest {
     }
 
     @Test
+    fun `low difference tolerance does not independently reward ranking`() {
+        val evidence =
+            evaluator.evaluate(
+                leftAnswers = listOf(answer("DIFFERENCE_TOLERANCE_001", "LOW")),
+                rightAnswers = listOf(answer("DIFFERENCE_TOLERANCE_001", "LOW")),
+                catalog = catalog
+            )
+
+        val signal = evidence.questionSignals.single()
+        assertEquals(0.0, signal.rankingAffinityContribution)
+        assertEquals(ConversationKind.NEUTRAL, signal.conversationKind)
+    }
+
+    @Test
     fun `semantic version mismatch is ignored safely`() {
         val evidence =
             evaluator.evaluate(

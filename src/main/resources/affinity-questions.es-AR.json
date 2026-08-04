@@ -693,14 +693,14 @@
       "categoryId": "VALUES_AND_SHARED_LIFE",
       "primaryTopic": "AMBITION_BALANCE",
       "topicTags": ["work_life", "priorities"],
-      "construct": "VALUES_ALIGNMENT",
+      "construct": "LIFESTYLE_ALIGNMENT",
       "answerType": "ORDINAL_SCALE",
-      "prompt": "¿Qué tan importante es para vos compartir una mirada parecida sobre metas, trabajo y descanso?",
+      "prompt": "Pensando en metas, trabajo, tiempo personal y descanso, ¿qué equilibrio te describe mejor hoy?",
       "options": [
-        { "code": "LOW", "label": "No necesito que sea parecido", "displayOrder": 1, "value": 0.0 },
-        { "code": "SOME", "label": "Ayuda, pero no es central", "displayOrder": 2, "value": 0.35 },
-        { "code": "HIGH", "label": "Me parece bastante importante", "displayOrder": 3, "value": 0.7 },
-        { "code": "VERY_HIGH", "label": "Es clave para proyectar", "displayOrder": 4, "value": 1.0 }
+        { "code": "PERSONAL_TIME_FIRST", "label": "Priorizar descanso y tiempo personal, con metas a ritmo tranquilo", "displayOrder": 1, "value": 0.0 },
+        { "code": "BALANCED_STEADY", "label": "Cuidar un equilibrio estable entre responsabilidades, metas y descanso", "displayOrder": 2, "value": 0.35 },
+        { "code": "GOALS_WITH_SPACE", "label": "Empujar metas con constancia, reservando espacio personal", "displayOrder": 3, "value": 0.7 },
+        { "code": "HIGH_GOAL_FOCUS", "label": "Poner mucha energía en objetivos, proyectos y crecimiento", "displayOrder": 4, "value": 1.0 }
       ],
       "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.55 },
       "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.65, "minSharedValue": 0.5 },
@@ -741,12 +741,12 @@
       "topicTags": ["shared_life", "planning"],
       "construct": "VALUES_ALIGNMENT",
       "answerType": "ORDINAL_SCALE",
-      "prompt": "¿Qué tan importante te parece tener una mirada compatible sobre gastos, ahorro y planes?",
+      "prompt": "Cuando pensás en gastos, disfrute y planes a futuro, ¿qué estilo te representa más?",
       "options": [
-        { "code": "LOW", "label": "No lo veo tan importante al principio", "displayOrder": 1, "value": 0.0 },
-        { "code": "SOME", "label": "Importa, pero se puede conversar", "displayOrder": 2, "value": 0.35 },
-        { "code": "HIGH", "label": "Me parece bastante importante", "displayOrder": 3, "value": 0.7 },
-        { "code": "VERY_HIGH", "label": "Para mí es clave", "displayOrder": 4, "value": 1.0 }
+        { "code": "PRESENT_ENJOYMENT", "label": "Disfrutar más el presente cuando se puede", "displayOrder": 1, "value": 0.0 },
+        { "code": "ENJOY_WITH_SOME_PLANNING", "label": "Disfrutar, cuidando algunos planes básicos", "displayOrder": 2, "value": 0.35 },
+        { "code": "BALANCED_PLANNING", "label": "Equilibrar disfrute actual y preparación futura", "displayOrder": 3, "value": 0.7 },
+        { "code": "FUTURE_PREPARATION", "label": "Priorizar ahorro y preparación para más adelante", "displayOrder": 4, "value": 1.0 }
       ],
       "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.5 },
       "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
@@ -856,12 +856,12 @@
       "topicTags": ["relationship", "communication"],
       "construct": "RELATIONAL_EXPECTATION",
       "answerType": "ORDINAL_SCALE",
-      "prompt": "Si aparece una diferencia, ¿qué tan importante es para vos hablarla pronto y reparar?",
+      "prompt": "Cuando aparece un desacuerdo, ¿qué ritmo de conversación preferís normalmente?",
       "options": [
-        { "code": "LOW", "label": "Prefiero dejar pasar bastante", "displayOrder": 1, "value": 0.0 },
-        { "code": "SOME", "label": "Depende del tema", "displayOrder": 2, "value": 0.35 },
-        { "code": "HIGH", "label": "Me importa hablarlo sin estirar demasiado", "displayOrder": 3, "value": 0.7 },
-        { "code": "VERY_HIGH", "label": "Para mí es clave reparar rápido", "displayOrder": 4, "value": 1.0 }
+        { "code": "NEED_LONG_PROCESSING", "label": "Tomarme bastante tiempo para procesar antes de seguir", "displayOrder": 1, "value": 0.0 },
+        { "code": "NEED_SOME_SPACE", "label": "Hacer una pausa y retomarlo con más claridad", "displayOrder": 2, "value": 0.35 },
+        { "code": "TALK_AFTER_SHORT_PAUSE", "label": "Retomar relativamente pronto después de ordenar ideas", "displayOrder": 3, "value": 0.7 },
+        { "code": "TALK_PROMPTLY", "label": "Conversarlo enseguida mientras el tema está presente", "displayOrder": 4, "value": 1.0 }
       ],
       "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.65 },
       "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
@@ -886,10 +886,10 @@
         { "code": "HIGH", "label": "Me interesa aprender de diferencias", "displayOrder": 3, "value": 0.7 },
         { "code": "VERY_HIGH", "label": "Las diferencias pueden enriquecer mucho", "displayOrder": 4, "value": 1.0 }
       ],
-      "rankingPolicy": { "type": "ORDINAL_ALIGNMENT", "maxContribution": 0.45 },
+      "rankingPolicy": { "type": "NONE" },
       "conversationPolicy": { "type": "SHARED_AFFINITY_CONVERSATION", "maxPotential": 0.55, "minSharedValue": 0.5 },
       "sensitivity": "STANDARD",
-      "rankingEnabled": true,
+      "rankingEnabled": false,
       "conversationEnabled": true
     },
     {

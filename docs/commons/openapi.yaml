@@ -440,7 +440,7 @@ paths:
     patch:
       tags: [Profiles]
       summary: Partially upsert authenticated user's private affinity answers
-      description: Idempotent partial set operation. Only included question ids are modified; omitted existing answers remain unchanged. Duplicate question ids, inactive or missing questions, and invalid answer codes return focused affinity validation errors. Requires current legal requirements but does not require verified email.
+      description: Idempotent partial set operation. Only included question ids are modified; omitted existing answers remain unchanged. PATCH accepts only active current-catalog questions and valid current answer codes; duplicate question ids, inactive/deprecated/missing questions, and invalid answer codes return focused affinity validation errors. Requires current legal requirements but does not require verified email.
       requestBody:
         $ref: '#/components/requestBodies/PatchAffinityAnswers'
       responses:
@@ -469,7 +469,7 @@ paths:
     delete:
       tags: [Profiles]
       summary: Delete one authenticated-user affinity answer
-      description: Removes only the authenticated profile's answer for the active catalog question. Requires current legal requirements but does not require verified email.
+      description: Removes only the authenticated profile's answer for the normalized question id. Unlike PATCH, DELETE does not require the question to be active or present in the current catalog, so deprecated, removed or stale private answers can be cleared. Deleting a nonexistent owned answer is an idempotent no-op. Requires current legal requirements but does not require verified email.
       responses:
         '200':
           description: Complete authoritative current-user affinity answer list after deletion

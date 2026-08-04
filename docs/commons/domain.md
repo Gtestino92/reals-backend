@@ -157,18 +157,20 @@ catalog version, ordered visible categories and ordered question definitions.
 Categories are catalog-driven UI reference data; labels are not hardcoded in
 controllers.
 
-Each active question has one category, one primary topic, one primary construct,
-one answer type, ordered options, explicit ranking and conversation comparison
-policies, sensitivity classification, and independent `rankingEnabled` /
-`conversationEnabled` flags. Supported answer types are `SINGLE_CHOICE` and
-`ORDINAL_SCALE`; both accept exactly one stored option code.
+Each question, including retained deprecated definitions, has one category, one
+primary topic, one primary construct, one answer type, ordered options, explicit
+ranking and conversation comparison policies, sensitivity classification, and
+independent `rankingEnabled` / `conversationEnabled` flags. Enabled flags must
+exactly match non-`NONE` comparison policies. Supported answer types are
+`SINGLE_CHOICE` and `ORDINAL_SCALE`; both accept exactly one stored option code.
 
 Catalog validation fails startup for empty catalogs, duplicate category ids or
 display orders, duplicate question ids, invalid category references, blank
 Spanish text, unsupported answer types, duplicate option codes or display
 orders, invalid versions, invalid sensitivity values, incomplete/range-unsafe
-policies, asymmetric custom matrices and active questions that reference missing
-categories or options.
+policies, enabled-flag/policy contradictions, asymmetric custom matrices,
+custom matrices with missing or extra option rows/columns, and questions that
+reference missing categories or options.
 
 Stored answers persist only `profileId`, `questionId`, the current
 `questionSemanticVersion`, `answerCode` and timestamps. Catalog questions are
@@ -176,6 +178,12 @@ not stored in the database. `semanticVersion` changes represent answer meaning
 or comparison-semantics changes; stale stored answers are excluded from pair
 evaluation until the user answers the current semantic version. `contentVersion`
 changes are wording-only and do not invalidate stored answers.
+
+Answer writes serialize on the owning profile row. `PATCH` accepts only active
+current-catalog questions and current option codes. `DELETE` normalizes the path
+question id, deletes only the authenticated profile's matching answer, and does
+not require the question to remain active or present in the current catalog.
+Deleting a nonexistent owned answer is an idempotent no-op.
 
 `AffinityQuestionPairEvaluator` is pure and performs no repository access. It
 compares only questions answered by both users and valid under the current
