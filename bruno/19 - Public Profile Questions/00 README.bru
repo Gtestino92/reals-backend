@@ -1,0 +1,31 @@
+meta {
+  name: 00 README
+  type: http
+  seq: 0
+}
+
+docs {
+  Public profile questions smoke flow.
+
+  User A owns the answers configured by this folder. The counterpart token is only used for the visual-profile read against profile_questions_visual_match_id.
+
+  Required environment variables:
+  - profile_questions_user_a_id_token
+  - profile_questions_counterpart_id_token
+  - profile_questions_visual_match_id
+
+  Run in order:
+  10 Get Profile Question Catalog
+  20 Upsert User A Answer 1
+  21 Upsert User A Answer 2
+  22 Upsert User A Answer 3
+  23 Upsert User A Unselected Answer 4
+  30 Select User A Public Questions
+  31 Get User A Private Answers
+  32 Reorder User A Public Questions
+  33 Replace One Selected Question
+  34 Get User A Private Answers After Selection Change
+  40 Get User A Visual Profile As Existing Counterpart
+  50 Delete Selected User A Answer
+  51 Confirm Selection Compacted
+}

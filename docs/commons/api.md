@@ -31,6 +31,7 @@ are intentionally deferred.
 
 ## Users
 
+
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
@@ -82,10 +83,44 @@ push-token registration, admin endpoints, actuator endpoints and local-dev
 tooling are not gated. `REJECTED` first-chat and visual decisions remain
 available; only `APPROVED` requires current legal compliance.
 
-Reference-data reads such as `GET /api/reference/countries` and `GET
-/api/reference/affinity-questions` are authenticated under the normal `/api/**`
--> `ROLE_USER` rule, but are not legal-compliance gated and do not require an
-existing profile.
+Reference-data reads such as `GET /api/reference/countries`, `GET
+/api/reference/affinity-questions` and `GET /api/reference/profile-questions`
+are authenticated under the normal `/api/**` -> `ROLE_USER` rule, but are not
+legal-compliance gated and do not require an existing profile.
+
+
+## Public Profile Questions
+
+Public profile questions are separate from private affinity questions. Profile
+questions are free-text, single-line, optional profile-owned answers. Users may
+save answers for any active catalog question, edit them, delete them and replace
+the ordered public selection without deleting other saved answers. At most three
+answered current questions may be selected for public display; zero selections is
+valid.
+
+- `GET /api/reference/profile-questions`: authenticated reference catalog read.
+  Returns active questions only, in catalog order, without the internal `active`
+  flag.
+- `GET /api/me/profile/question-answers`: authenticated private read for the
+  current user. Returns every saved answer, including unselected and stale
+  semantic-version answers, with `current`, semantic version and timestamps.
+- `PUT /api/me/profile/question-answers/{questionId}`: legal-gated create or
+  update. The answer is trimmed, must be nonblank single-line plain text and may
+  contain at most 160 characters after normalization. The current question
+  semantic version is stored. Existing selection position is preserved.
+- `DELETE /api/me/profile/question-answers/{questionId}`: legal-gated idempotent
+  delete. Deleting a selected answer compacts remaining selected positions.
+- `PUT /api/me/profile/question-selections`: legal-gated full replacement. The
+  request order defines contiguous public positions 1..3. Every selected id must
+  have a saved current answer for an active catalog question. Failed validation
+  leaves previous positions unchanged.
+
+Profile-question mutations do not activate a draft profile and do not move an
+active profile back to draft. Selected current answers are exposed only through
+`GET /api/matches/{matchId}/visual-profile` after the normal visual-content
+access guard succeeds. Unselected answers, stale semantic answers, timestamps
+and semantic/content versions are never returned to counterparts.
+
 
 For first-chat navigation, `GET /api/me/home` exposes a
 `pendingActions[]` item with `type = FIRST_CHAT` only while the match remains in

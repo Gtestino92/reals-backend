@@ -317,6 +317,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/reference/profile-questions:
+    get:
+      tags: [Reference]
+      summary: List active public profile questions
+      description: Authenticated reference-data endpoint. Returns the server-authoritative profile-question catalog version and active questions in catalog order. The internal active flag is never exposed. Profile questions are free-text public-profile prompts and are separate from private affinity questions.
+      responses:
+        '200':
+          description: Client-safe profile-question catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -477,6 +493,93 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AffinityAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/question-answers:
+    get:
+      tags: [Profiles]
+      summary: List authenticated user's profile-question answers
+      description: Returns every saved profile-question answer for the current user's profile, including unselected answers and semantic-version-stale answers. This is private current-user data and is not exposed to counterparts.
+      responses:
+        '200':
+          description: Current user's private profile-question answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/me/profile/question-answers/{questionId}:
+    parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+    put:
+      tags: [Profiles]
+      summary: Create or update one profile-question answer
+      description: Legal-gated upsert for a current active profile question. The answer is trimmed, must be nonblank single-line plain text and is limited to 160 normalized characters. Existing selected position is preserved. Does not activate draft profiles or move active profiles to draft.
+      requestBody:
+        $ref: '#/components/requestBodies/UpsertProfileQuestionAnswer'
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Profiles]
+      summary: Delete one profile-question answer
+      description: Legal-gated idempotent delete scoped to the authenticated user's profile. If the deleted answer was selected, remaining selected positions are compacted while preserving order.
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list after deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/question-selections:
+    put:
+      tags: [Profiles]
+      summary: Replace public profile-question selection
+      description: Legal-gated full ordered replacement. The list may contain zero to three question ids. Every selected question must have a saved current answer for an active catalog definition. Validation is all-or-nothing; failed requests leave previous selected positions unchanged.
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProfileQuestionSelections'
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list after selection replacement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1520,6 +1623,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/PatchAffinityAnswersRequest'
+    UpsertProfileQuestionAnswer:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpsertProfileQuestionAnswerRequest'
+    UpdateProfileQuestionSelections:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProfileQuestionSelectionsRequest'
     AddPhoto:
       required: true
       content:
@@ -2646,6 +2761,85 @@ components:
         answerCode: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ProfileQuestionCatalogResponse:
+      type: object
+      required: [catalogVersion, questions]
+      properties:
+        catalogVersion:
+          type: string
+          description: Server-authoritative profile-question catalog version.
+        questions:
+          type: array
+          description: Active profile questions in catalog order.
+          items: { $ref: '#/components/schemas/ProfileQuestionResponse' }
+    ProfileQuestionResponse:
+      type: object
+      required: [id, semanticVersion, contentVersion, prompt, displayOrder]
+      properties:
+        id:
+          type: string
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+        semanticVersion:
+          type: integer
+          minimum: 1
+          description: Semantics version. Stored answers with older semantic versions are private stale answers and cannot be selected or exposed publicly.
+        contentVersion:
+          type: integer
+          minimum: 1
+          description: Wording-only version. Content-only changes do not invalidate stored answers.
+        prompt:
+          type: string
+          description: Single-line Spanish prompt.
+        displayOrder:
+          type: integer
+          minimum: 1
+    UpsertProfileQuestionAnswerRequest:
+      type: object
+      required: [answer]
+      properties:
+        answer:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Single-line plain-text answer after server-side trimming. Blank answers, markup and control characters are rejected.
+    UpdateProfileQuestionSelectionsRequest:
+      type: object
+      required: [questionIds]
+      properties:
+        questionIds:
+          type: array
+          maxItems: 3
+          description: Full ordered public selection replacement. Empty clears the public selection without deleting saved answers.
+          items:
+            type: string
+            maxLength: 64
+            pattern: '^[A-Z0-9_]+$'
+    ProfileQuestionAnswersResponse:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          description: All private saved answers for the current user, including unselected and stale answers.
+          items: { $ref: '#/components/schemas/ProfileQuestionAnswerResponse' }
+    ProfileQuestionAnswerResponse:
+      type: object
+      required: [questionId, questionSemanticVersion, answer, current, createdAt, updatedAt]
+      properties:
+        questionId: { type: string }
+        questionSemanticVersion: { type: integer }
+        answer: { type: string, maxLength: 160 }
+        selectedPosition:
+          type: integer
+          minimum: 1
+          maximum: 3
+          nullable: true
+        current:
+          type: boolean
+          description: True only when the question exists, is active and the stored semantic version equals the current catalog semantic version.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PhotoResponse:
       type: object
       required: [id, url, position, isPersonPhoto, isFullBody, validationStatus, moderationStatus]
@@ -2670,6 +2864,7 @@ components:
         - displayName
         - age
         - photos
+        - profileQuestions
         - affinityIndicators
         - myPersonalMessageSubmitted
         - partnerPersonalMessageSubmitted
@@ -2683,6 +2878,11 @@ components:
         photos:
           type: array
           items: { $ref: '#/components/schemas/PhotoResponse' }
+        profileQuestions:
+          type: array
+          description: Live selected current public profile-question answers loaded only after visual-profile access succeeds. Always present, maximum three, ordered by contiguous response position. Does not include stale, inactive, missing or unselected answers.
+          maxItems: 3
+          items: { $ref: '#/components/schemas/PublicProfileQuestionResponse' }
         affinityIndicators:
           type: array
           description: Privacy-safe positive shared affinity category indicators snapshotted when the first chat was initialized. Empty when there is no eligible evidence. Items expose only category id and title; exact answers, questions, scores, percentages and conversation metadata are never included.
@@ -2704,6 +2904,25 @@ components:
           format: date-time
           nullable: true
           description: Visual review deadline used by clients for advisory countdowns; backend remains the source of truth.
+    PublicProfileQuestionResponse:
+      type: object
+      required: [questionId, prompt, answer, position]
+      additionalProperties: false
+      properties:
+        questionId:
+          type: string
+          maxLength: 64
+        prompt:
+          type: string
+          description: Current catalog prompt for the selected question.
+        answer:
+          type: string
+          maxLength: 160
+        position:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: Contiguous public response position after filtering invalid stale selections.
     VisualAffinityIndicatorResponse:
       type: object
       required:

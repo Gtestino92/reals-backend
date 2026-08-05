@@ -116,6 +116,30 @@ Once both participants have joined a second chat, the conversation lifecycle is 
 
 `POST /api/connections/{connectionId}/second-chat/join` owns second-chat materialization for user entry. It creates or activates the `SECOND_CHAT` idempotently when `confirmedDateTime <= now < confirmedDateTime + 20 minutes`, records exactly one attendance classification for the caller and keeps `timeoutAt` anchored to the agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat`, Home reads, polling and message fetches are side-effect free and do not imply attendance.
 
+
+### Public Profile Questions
+
+Public profile questions use a dedicated classpath JSON catalog
+(`profile-questions.es-AR.json`) and a dedicated `profile_question_answers`
+table. The catalog is validated at startup for stable ids, positive versions,
+unique display order, bounded single-line prompts and deterministic order. The
+implementation intentionally does not reuse affinity entities, repositories,
+answer tables or DTOs.
+
+Writes serialize on the owning profile row through
+`ProfileRepository.findByUserIdForUpdate(...)`, then mutate only
+`profile_question_answers` and `Profile.updatedAt`. This lock order is shared by
+answer upsert, answer delete and selection replacement, so concurrent operations
+for one profile cannot create non-contiguous public ordering. Selection
+replacement validates the full request before mutation, clears positions, flushes
+past the partial unique index, then assigns contiguous positions.
+
+Counterpart exposure is limited to the guarded visual-profile endpoint. The
+controller calls `visualReviewService.requireVisualContentAccess(...)` before
+resolving and loading the partner's selected profile-question answers. The data
+is live at request time and is not copied to match, chat, visual-review,
+connection or affinity snapshot rows.
+
 ## Matchmaking Persistence
 
 Matchmaking queue CRUD and candidate discovery are intentionally separate.

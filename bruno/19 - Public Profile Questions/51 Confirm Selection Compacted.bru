@@ -1,0 +1,29 @@
+meta {
+  name: Confirm Selection Compacted
+  type: http
+  seq: 51
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/question-answers
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const answers = res.getBody().answers;
+  const selected = answers.filter((answer) => answer.selectedPosition !== null && answer.selectedPosition !== undefined);
+  if (selected.length !== 2) throw new Error(`Expected two selected answers after delete, got ${selected.length}.`);
+  const positions = new Map(selected.map((answer) => [answer.questionId, answer.selectedPosition]));
+  if (positions.get("CURRENT_OBSESSION_001") !== 1 || positions.get("PERFECT_SUNDAY_001") !== 2) {
+    throw new Error("Selection did not remain compacted.");
+  }
+
+}

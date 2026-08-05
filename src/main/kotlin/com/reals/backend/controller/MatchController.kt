@@ -8,6 +8,7 @@ import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
+import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -24,7 +25,8 @@ class MatchController(
     private val profileService: ProfileService,
     private val userBlockCommandService: UserBlockCommandService,
     private val legalComplianceService: LegalComplianceService,
-    private val chatAudioPolicyService: ChatAudioPolicyService
+    private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val profileQuestionAnswerService: ProfileQuestionAnswerService
 ) {
 
     @PostMapping("/{matchId}/block")
@@ -150,6 +152,9 @@ class MatchController(
         val photos = profileService.getPhotoResponses(
             profileId = partnerProfile.id
         )
+        val profileQuestions =
+            profileQuestionAnswerService.getPublicSelectedAnswers(partnerProfile.id)
+                .map(PublicProfileQuestionResponse::from)
         val personalMessageStatus = visualReviewService.getPersonalMessageStatusForUser(
             matchId = matchId,
             userId = userId
@@ -172,7 +177,8 @@ class MatchController(
                 decisionRequiresPartnerPersonalMessageRead =
                     personalMessageStatus.decisionRequiresPartnerPersonalMessageRead,
                 visualExpiresAt = visualExpiresAt,
-                affinityIndicators = visualReviewService.getAffinityIndicators(matchId)
+                affinityIndicators = visualReviewService.getAffinityIndicators(matchId),
+                profileQuestions = profileQuestions
             )
         )
     }

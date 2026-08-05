@@ -162,6 +162,21 @@ Affinity-question tests are intentionally focused:
   potential, ordinal extreme negatives, semantic-version mismatch, symmetry and
   declared output ranges.
 
+
+Profile-question tests are intentionally focused:
+
+- catalog unit tests validate the bundled Spanish resource, startup-failure
+  rules, stable id boundaries, single-line prompts, unique ids/orders, positive
+  versions and inactive-question filtering;
+- service integration tests cover create/update/delete, idempotency, answer
+  normalization, 160-character boundaries, stale semantic-version behavior,
+  selection replacement, compaction, repository constraints and profile-status
+  invariants;
+- controller and visual-profile integration tests cover authenticated catalog
+  reads, private current-user API shape, legal write gates, stable error codes,
+  visual access ordering and privacy boundaries for selected versus unselected
+  answers.
+
 The App Check filter is expected between the pre-authentication rate limiter
 and `FirebaseTokenFilter`. In `DISABLED` mode it does not require or verify the
 header. In `MONITOR` it allows missing, invalid and temporarily unverifiable

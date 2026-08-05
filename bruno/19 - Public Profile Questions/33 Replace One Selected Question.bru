@@ -1,0 +1,34 @@
+meta {
+  name: Replace One Selected Question
+  type: http
+  seq: 33
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/question-selections
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {"questionIds":["CURRENT_OBSESSION_001","TALK_FOR_HOURS_001","PERFECT_SUNDAY_001"]}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const positions = new Map(res.getBody().answers.map((answer) => [answer.questionId, answer.selectedPosition]));
+  if (positions.get("CURRENT_OBSESSION_001") !== 1 || positions.get("TALK_FOR_HOURS_001") !== 2 || positions.get("PERFECT_SUNDAY_001") !== 3) {
+    throw new Error("Unexpected replaced selected positions.");
+  }
+  if (positions.get("LIFE_SOUNDTRACK_001") !== null && positions.get("LIFE_SOUNDTRACK_001") !== undefined) {
+    throw new Error("Replaced answer must become unselected.");
+  }
+
+}

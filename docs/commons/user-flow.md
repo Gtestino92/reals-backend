@@ -8,6 +8,16 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+
+Public profile questions are optional profile content, separate from affinity
+questions. A user may save many current-catalog free-text answers privately, then
+select zero to three answered current questions for public display. The ordered
+selection is replaced as a complete list, and deleting a selected answer compacts
+remaining positions. Answer edits, deletes and selection changes do not activate
+a draft profile, deactivate a profile, move an active profile to draft, affect
+photo authenticity or change matchmaking filters.
+
+
 Before profile creation, authenticated clients can fetch
 `GET /api/reference/countries` to populate a country selector. The response is a
 complete list of `{ "code", "displayName" }` entries built by the backend from
@@ -261,6 +271,15 @@ positive category `{categoryId, title}` values. Constructive contrast can drive
 a first-chat prompt but never creates a visual indicator. Exact answers, answer
 labels, question ids, scores, percentages and compatibility judgments are not
 returned.
+
+
+The visual-profile response also includes `profileQuestions`, always present as
+a list. It is the partner's live current selection at request time, consistent
+with live bio and photo behavior; no match, chat, visual-review or connection
+snapshot is created. Items expose only `{questionId, prompt, answer, position}`.
+Only current selected answers for active catalog questions are included; stale
+semantic-version answers, inactive/missing questions and unselected saved
+answers are omitted. Response positions are compacted to `1..N` after filtering.
 
 Visual-profile and visual personal-message content is also request-time guarded.
 During `VISUAL_PHASE`, the visual review must exist and the server clock must

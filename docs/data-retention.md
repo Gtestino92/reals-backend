@@ -82,7 +82,7 @@ No retention duration is selected here. Separate product, privacy, legal, securi
 
 - post-recovery profile retention/purge
 - profile-photo metadata and object deletion, including stored-object backups or versions
-- private affinity-question answer retention or purge after final deletion
+- private affinity-question and profile-question answer retention or purge after final deletion
 - chat/message and visual-review personal-message retention
 - lifecycle-row retention or anonymization
 - block retention after final deletion

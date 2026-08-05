@@ -1,0 +1,28 @@
+meta {
+  name: Delete Selected User A Answer
+  type: http
+  seq: 50
+}
+
+delete {
+  url: {{baseUrl}}/api/me/profile/question-answers/TALK_FOR_HOURS_001
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const ids = res.getBody().answers.map((answer) => answer.questionId);
+  if (ids.includes("TALK_FOR_HOURS_001")) throw new Error("Deleted answer still present.");
+  const positions = new Map(res.getBody().answers.map((answer) => [answer.questionId, answer.selectedPosition]));
+  if (positions.get("CURRENT_OBSESSION_001") !== 1 || positions.get("PERFECT_SUNDAY_001") !== 2) {
+    throw new Error("Expected selected positions compacted after delete.");
+  }
+
+}
