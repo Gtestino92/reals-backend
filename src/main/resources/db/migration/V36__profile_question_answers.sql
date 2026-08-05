@@ -5,7 +5,7 @@ CREATE TABLE profile_question_answers (
     question_id               VARCHAR(64)              NOT NULL,
     question_semantic_version INTEGER                  NOT NULL,
     answer_text               VARCHAR(160)             NOT NULL,
-    selected_position         SMALLINT,
+    selected_position         INTEGER,
     created_at                TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at                TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
 
