@@ -28,6 +28,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ProfilePhotoRepository
+import com.reals.backend.repository.ProfileQuestionAnswerRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
@@ -60,6 +61,7 @@ import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.SecondChatConversationLifecycleService
@@ -135,6 +137,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var baseAffinityQuestionAnswerRepository: AffinityQuestionAnswerRepository
+
+    @Autowired
+    protected lateinit var baseProfileQuestionAnswerService: ProfileQuestionAnswerService
+
+    @Autowired
+    protected lateinit var baseProfileQuestionAnswerRepository: ProfileQuestionAnswerRepository
 
     @Autowired
     protected lateinit var connectionService: ConnectionService
@@ -255,6 +263,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var profilePhotoRepository: ProfilePhotoRepository
+
+    @Autowired
+    protected lateinit var profileQuestionAnswerRepository: ProfileQuestionAnswerRepository
 
     @Autowired
     protected lateinit var pushDeviceTokenRepository: PushDeviceTokenRepository

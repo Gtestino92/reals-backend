@@ -1,0 +1,30 @@
+meta {
+  name: Get Profile Question Catalog
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/reference/profile-questions
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const body = res.getBody();
+  if (body.catalogVersion !== "2026-08-01") throw new Error("Unexpected profile-question catalog version.");
+  if (!Array.isArray(body.questions) || body.questions.length < 18) throw new Error("Expected active profile questions.");
+  const first = body.questions[0];
+  if (first.id !== "PERFECT_SUNDAY_001" || first.prompt !== "Mi domingo perfecto incluye..." || first.displayOrder !== 1) {
+    throw new Error("Unexpected first profile question.");
+  }
+  if (Object.prototype.hasOwnProperty.call(first, "active")) throw new Error("Catalog leaked internal active field.");
+
+}

@@ -53,7 +53,7 @@ class GlobalExceptionHandler {
     fun handleMethodArgumentNotValid(
         ex: MethodArgumentNotValidException
     ): ResponseEntity<ErrorResponse> {
-        val code = ex.chatValidationErrorCode() ?: "VALIDATION_ERROR"
+        val code = ex.stableValidationErrorCode() ?: "VALIDATION_ERROR"
 
         return ResponseEntity.badRequest()
             .body(
@@ -431,7 +431,7 @@ class GlobalExceptionHandler {
     private fun FieldError.toValidationMessage(): String =
         "$field: ${defaultMessage ?: "invalid value"}"
 
-    private fun MethodArgumentNotValidException.chatValidationErrorCode(): String? {
+    private fun MethodArgumentNotValidException.stableValidationErrorCode(): String? {
         val chatMessageRequestObjects =
             setOf(
                 "sendMessageRequest",
@@ -440,14 +440,26 @@ class GlobalExceptionHandler {
                 "chatSafetyCancellationRequest"
             )
 
-        return if (
+        if (
             bindingResult.objectName in chatMessageRequestObjects &&
             bindingResult.fieldErrors.any { it.field == "content" || it.field == "details" }
         ) {
-            DomainErrorCode.CHAT_MESSAGE_INVALID.name
-        } else {
-            null
+            return DomainErrorCode.CHAT_MESSAGE_INVALID.name
         }
+
+        if (bindingResult.objectName == "upsertProfileQuestionAnswerRequest") {
+            return DomainErrorCode.INVALID_PROFILE_QUESTION_ANSWER.name
+        }
+
+        if (bindingResult.objectName == "updateProfileQuestionSelectionsRequest") {
+            return if (bindingResult.fieldErrors.any { it.field == "questionIds" }) {
+                DomainErrorCode.PROFILE_QUESTION_SELECTION_LIMIT_EXCEEDED.name
+            } else {
+                DomainErrorCode.INVALID_PROFILE_QUESTION_SELECTION.name
+            }
+        }
+
+        return null
     }
 
     private fun Throwable.isDatabaseUnavailable(): Boolean {

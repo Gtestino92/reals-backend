@@ -1,0 +1,32 @@
+meta {
+  name: Get User A Private Answers
+  type: http
+  seq: 31
+}
+
+get {
+  url: {{baseUrl}}/api/me/profile/question-answers
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const answers = res.getBody().answers;
+  if (!Array.isArray(answers) || answers.length < 4) throw new Error("Expected all four private answers.");
+  const byId = new Map(answers.map((answer) => [answer.questionId, answer]));
+  for (const id of ["PERFECT_SUNDAY_001", "LIFE_SOUNDTRACK_001", "CURRENT_OBSESSION_001", "TALK_FOR_HOURS_001"]) {
+    if (!byId.has(id)) throw new Error(`Missing private answer ${id}.`);
+    if (byId.get(id).current !== true) throw new Error(`Expected current=true for ${id}.`);
+  }
+  if (byId.get("TALK_FOR_HOURS_001").selectedPosition !== null && byId.get("TALK_FOR_HOURS_001").selectedPosition !== undefined) {
+    throw new Error("Fourth answer must remain unselected.");
+  }
+
+}

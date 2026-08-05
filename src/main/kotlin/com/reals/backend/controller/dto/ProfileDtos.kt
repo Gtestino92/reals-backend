@@ -206,6 +206,7 @@ data class VisualProfileResponse(
     val age: Int,
     val bio: String?,
     val photos: List<PhotoResponse>,
+    val profileQuestions: List<PublicProfileQuestionResponse>,
     val affinityIndicators: List<VisualAffinityIndicatorResponse>,
     val myPersonalMessageSubmitted: Boolean,
     val partnerPersonalMessageSubmitted: Boolean,
@@ -222,13 +223,15 @@ data class VisualProfileResponse(
             partnerPersonalMessageRead: Boolean,
             decisionRequiresPartnerPersonalMessageRead: Boolean,
             visualExpiresAt: OffsetDateTime?,
-            affinityIndicators: List<VisualReviewAffinityIndicator> = emptyList()
+            affinityIndicators: List<VisualReviewAffinityIndicator> = emptyList(),
+            profileQuestions: List<PublicProfileQuestionResponse> = emptyList()
         ) = VisualProfileResponse(
             profileId = profile.id,
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
             photos = photos.sortedBy { it.position },
+            profileQuestions = profileQuestions.sortedBy { it.position },
             affinityIndicators = affinityIndicators.map { VisualAffinityIndicatorResponse.from(it) },
             myPersonalMessageSubmitted = myPersonalMessageSubmitted,
             partnerPersonalMessageSubmitted = partnerPersonalMessageSubmitted,

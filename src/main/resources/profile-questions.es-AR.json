@@ -1,0 +1,149 @@
+{
+  "catalogVersion": "2026-08-01",
+  "questions": [
+    {
+      "id": "PERFECT_SUNDAY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Mi domingo perfecto incluye...",
+      "displayOrder": 1,
+      "active": true
+    },
+    {
+      "id": "TALK_FOR_HOURS_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Podría hablar durante horas sobre...",
+      "displayOrder": 2,
+      "active": true
+    },
+    {
+      "id": "SMALL_JOY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Una pequeña cosa que siempre me alegra el día es...",
+      "displayOrder": 3,
+      "active": true
+    },
+    {
+      "id": "IDEAL_FIRST_DATE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Mi primera cita ideal sería...",
+      "displayOrder": 4,
+      "active": true
+    },
+    {
+      "id": "RECENT_DISCOVERY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Algo que descubrí hace poco y me encantó fue...",
+      "displayOrder": 5,
+      "active": true
+    },
+    {
+      "id": "UNEXPECTED_TALENT_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Un talento inesperado que tengo es...",
+      "displayOrder": 6,
+      "active": true
+    },
+    {
+      "id": "WIN_ME_OVER_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "La mejor forma de conquistarme es...",
+      "displayOrder": 7,
+      "active": true
+    },
+    {
+      "id": "POSITIVE_SIGNAL_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Una señal positiva que valoro mucho en alguien es...",
+      "displayOrder": 8,
+      "active": true
+    },
+    {
+      "id": "LIFE_SOUNDTRACK_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Una canción que podría estar en la banda sonora de mi vida es...",
+      "displayOrder": 9,
+      "active": true
+    },
+    {
+      "id": "NEVER_REFUSE_PLAN_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Un plan al que casi nunca digo que no es...",
+      "displayOrder": 10,
+      "active": true
+    },
+    {
+      "id": "RETURN_PLACE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Un lugar al que siempre volvería es...",
+      "displayOrder": 11,
+      "active": true
+    },
+    {
+      "id": "LEARNING_NOW_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Algo que estoy aprendiendo o quiero aprender es...",
+      "displayOrder": 12,
+      "active": true
+    },
+    {
+      "id": "COMFORTABLE_SILENCE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Para mí, un silencio cómodo se siente como...",
+      "displayOrder": 13,
+      "active": true
+    },
+    {
+      "id": "FRIENDS_SAY_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Mis amigos dirían que yo...",
+      "displayOrder": 14,
+      "active": true
+    },
+    {
+      "id": "UNPOPULAR_OPINION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Una opinión poco popular que tengo es...",
+      "displayOrder": 15,
+      "active": true
+    },
+    {
+      "id": "ALWAYS_LAUGH_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Algo que siempre me hace reír es...",
+      "displayOrder": 16,
+      "active": true
+    },
+    {
+      "id": "RELATIONSHIP_VALUE_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "En una relación, para mí es importante...",
+      "displayOrder": 17,
+      "active": true
+    },
+    {
+      "id": "CURRENT_OBSESSION_001",
+      "semanticVersion": 1,
+      "contentVersion": 1,
+      "prompt": "Mi obsesión actual es...",
+      "displayOrder": 18,
+      "active": true
+    }
+  ]
+}

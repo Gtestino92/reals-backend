@@ -1,0 +1,37 @@
+meta {
+  name: Get User A Visual Profile As Existing Counterpart
+  type: http
+  seq: 40
+}
+
+get {
+  url: {{baseUrl}}/api/matches/{{profile_questions_visual_match_id}}/visual-profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_counterpart_id_token}}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}. Check profile_questions_visual_match_id and visual access state.`);
+  const questions = res.getBody().profileQuestions;
+  if (!Array.isArray(questions)) throw new Error("Expected profileQuestions array.");
+  if (questions.length !== 3) throw new Error(`Expected exactly three public profile questions, got ${questions.length}.`);
+  const expected = ["CURRENT_OBSESSION_001", "TALK_FOR_HOURS_001", "PERFECT_SUNDAY_001"];
+  questions.forEach((item, index) => {
+    const keys = Object.keys(item).sort();
+    const expectedKeys = ["answer", "position", "prompt", "questionId"];
+    if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) throw new Error(`Unexpected visual item shape: ${keys.join(",")}.`);
+    if (item.questionId !== expected[index] || item.position !== index + 1) throw new Error("Unexpected visual profile-question order.");
+  });
+  const serialized = JSON.stringify(questions);
+  if (serialized.includes("M?sica para caminar")) throw new Error("Visual response leaked unselected fourth/replaced answer.");
+  for (const forbidden of ["questionSemanticVersion", "selectedPosition", "current", "createdAt", "updatedAt", "contentVersion", "affinity"]) {
+    if (serialized.includes(forbidden)) throw new Error(`Visual response leaked forbidden field ${forbidden}.`);
+  }
+
+}

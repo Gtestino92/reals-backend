@@ -1,0 +1,34 @@
+meta {
+  name: Select User A Public Questions
+  type: http
+  seq: 30
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/question-selections
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{profile_questions_user_a_id_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {"questionIds":["PERFECT_SUNDAY_001","LIFE_SOUNDTRACK_001","CURRENT_OBSESSION_001"]}
+}
+
+script:post-response {
+
+  const status = res.getStatus();
+  if (status !== 200) throw new Error(`Expected 200, got ${status}.`);
+  const selected = res.getBody().answers.filter((answer) => answer.selectedPosition !== null && answer.selectedPosition !== undefined);
+  if (selected.length !== 3) throw new Error(`Expected three selected answers, got ${selected.length}.`);
+  const positions = new Map(selected.map((answer) => [answer.questionId, answer.selectedPosition]));
+  if (positions.get("PERFECT_SUNDAY_001") !== 1 || positions.get("LIFE_SOUNDTRACK_001") !== 2 || positions.get("CURRENT_OBSESSION_001") !== 3) {
+    throw new Error("Unexpected initial selected positions.");
+  }
+  if (positions.has("TALK_FOR_HOURS_001")) throw new Error("Unselected fourth answer was selected.");
+
+}

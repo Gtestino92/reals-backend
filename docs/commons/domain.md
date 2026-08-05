@@ -8,6 +8,7 @@ The domain is state-driven and anonymous-first. Business transitions are validat
 - `Profile`
 - `ProfilePhoto`
 - `AffinityQuestionAnswer`
+- `ProfileQuestionAnswer`
 - `MatchmakingQueueEntry`
 - `Match`
 - `Chat`
@@ -40,11 +41,26 @@ Profile:
 
 Affinity questions:
 
+- private closed-choice answers used for compatibility, matchmaking and first-chat context. Exact affinity answers are not exposed to counterparts.
 - `AffinityAnswerType`: `SINGLE_CHOICE`, `ORDINAL_SCALE`
 - `AffinityQuestionStatus`: `ACTIVE`, `DEPRECATED`
 - `AffinityConstruct`: `DOMAIN_ENGAGEMENT`, `TASTE_PREFERENCE`, `SHARED_ACTIVITY_ORIENTATION`, `VALUES_ALIGNMENT`, `LIFESTYLE_ALIGNMENT`, `RELATIONAL_EXPECTATION`, `DIFFERENCE_TOLERANCE`, `SALIENCE_ALIGNMENT`, `CONVERSATION_ONLY`
 - `AffinitySensitivity`: `STANDARD`, `SENSITIVE_LOW_RANKING`
 - `ConversationKind`: `SHARED_AFFINITY`, `CONSTRUCTIVE_CONTRAST`, `NEUTRAL`, `NOT_ELIGIBLE`
+
+
+Profile questions:
+
+- free-text optional answers owned by the profile and backed by a dedicated
+  versioned catalog, not by affinity entities or answer tables.
+- saved answer count is limited only by active catalog questions; public display
+  is limited to three selected current answers.
+- `questionSemanticVersion` is stored on create/update. A semantic-version
+  mismatch makes an answer stale: it remains visible to the current user as
+  private data, cannot be selected and is omitted from visual-profile output.
+  Content-version-only catalog changes do not invalidate answers.
+- selected positions are explicit and contiguous in public responses. Selection
+  replacement is a full ordered operation protected by the profile row lock.
 
 Matching and chat:
 
