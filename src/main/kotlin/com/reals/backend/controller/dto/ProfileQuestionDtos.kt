@@ -80,7 +80,6 @@ data class ProfileQuestionAnswerResponse(
 
 data class UpsertProfileQuestionAnswerRequest(
     @field:NotBlank
-    @field:Size(max = 160)
     @field:Pattern(
         regexp = SingleLinePlainText.REGEX,
         message = SingleLinePlainText.MESSAGE

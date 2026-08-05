@@ -219,10 +219,17 @@ class ProfileQuestionAnswerService(
         val selected =
             answerRepository.findByProfileIdAndSelectedPositionIsNotNull(profileId)
                 .sortedBy { it.selectedPosition ?: Int.MAX_VALUE }
+        val originalPositions = selected.associate { it.id to it.selectedPosition }
+        selected.forEach { answer ->
+            answer.selectedPosition = null
+        }
+        answerRepository.saveAll(selected)
+        answerRepository.flush()
+
         selected.forEachIndexed { index, answer ->
             val compactedPosition = index + 1
-            if (answer.selectedPosition != compactedPosition) {
-                answer.selectedPosition = compactedPosition
+            answer.selectedPosition = compactedPosition
+            if (originalPositions[answer.id] != compactedPosition) {
                 answer.updatedAt = now
             }
         }
