@@ -4,8 +4,10 @@ import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchmakingPairProcessingException
 import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.service.ChatService
+import com.reals.backend.service.MatchFoundEvent
 import com.reals.backend.service.MatchService
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
@@ -15,6 +17,7 @@ class MatchmakingProcessorService(
     private val matchmakingService: MatchmakingService,
     private val matchService: MatchService,
     private val chatService: ChatService,
+    private val eventPublisher: ApplicationEventPublisher,
     transactionManager: PlatformTransactionManager
 ) {
 
@@ -79,8 +82,16 @@ class MatchmakingProcessorService(
                     userBId = userBId
                 )
 
-                chatService.startFirstChat(
-                    matchId = match.id
+                val chat =
+                    chatService.startFirstChat(
+                        matchId = match.id
+                    )
+
+                eventPublisher.publishEvent(
+                    MatchFoundEvent(
+                        matchId = match.id,
+                        chatId = chat.id
+                    )
                 )
 
                 match
