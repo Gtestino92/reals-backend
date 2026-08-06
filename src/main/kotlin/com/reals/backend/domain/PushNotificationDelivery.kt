@@ -11,6 +11,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 enum class PushNotificationType {
+    MATCH_FOUND,
     VISUAL_REVIEW_AVAILABLE,
     VISUAL_REVIEW_REMINDER,
     SCHEDULING_AVAILABLE,
