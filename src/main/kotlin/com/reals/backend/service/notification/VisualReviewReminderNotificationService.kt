@@ -58,6 +58,9 @@ class VisualReviewReminderNotificationService(
             if (reminderEligibleAt.isAfter(now)) {
                 return@execute PreparedPushBatch(skipped = 1)
             }
+            if (now.isBefore(review.availableAt)) {
+                return@execute PreparedPushBatch(skipped = 1)
+            }
 
             val expiresAt = review.expiresAt
                 ?: return@execute PreparedPushBatch(skipped = 1)

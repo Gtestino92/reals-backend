@@ -480,6 +480,11 @@ class ChatService(
         val bDecision = chatDecision.userBDecision
 
         if (aDecision != null && bDecision != null) {
+            val preResolutionPairReliabilityScore =
+                preResolutionPairReliabilityScore(
+                    userAId = match.userAId,
+                    userBId = match.userBId
+                )
             chat.status = ChatStatus.FINISHED
             chat.endedAt = OffsetDateTime.now()
             chat.endedReason = ChatEndReason.SYSTEM_CLOSED
@@ -497,7 +502,10 @@ class ChatService(
             }
 
             matchService.transitionToVisualPhase(matchId)
-            visualReviewService.initializeForMatch(matchId)
+            visualReviewService.initializeForMatch(
+                matchId = matchId,
+                preResolutionPairReliabilityScore = preResolutionPairReliabilityScore
+            )
         }
 
         homeStateInvalidationService.bumpBoth(
@@ -1189,6 +1197,21 @@ class ChatService(
         }
 
         connectionService.transitionToSecondChatIdempotent(connectionId)
+    }
+
+    private fun preResolutionPairReliabilityScore(
+        userAId: UUID,
+        userBId: UUID
+    ): Double? {
+        if (!userReliabilityScoreService.enabled) {
+            return null
+        }
+
+        val scores = userReliabilityScoreService.effectiveScores(
+            userIds = listOf(userAId, userBId)
+        )
+
+        return ((scores[userAId] ?: return null) + (scores[userBId] ?: return null)) / 2.0
     }
 
     fun isSecondChatWindowExpired(

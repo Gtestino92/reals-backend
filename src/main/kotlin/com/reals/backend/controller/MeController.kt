@@ -44,12 +44,13 @@ class MeController(
         @CurrentUserId userId: UUID
     ): ResponseEntity<HomeResponse> {
         val statusBefore = homeStatusService.getOrCreateStatus(userId = userId)
-        val home = meHomeService.getHome(userId = userId)
-        homeStatusService.markCleanIfVersionStill(
+        val projection = meHomeService.getHomeProjection(userId = userId)
+        homeStatusService.reconcileAfterFullHomeIfVersionStill(
             userId = userId,
-            expectedVersion = statusBefore.version
+            expectedVersion = statusBefore.version,
+            nextRefreshAt = projection.nextRefreshAt
         )
-        return ResponseEntity.ok(home)
+        return ResponseEntity.ok(projection.home)
     }
 
     @GetMapping("/api/me/home/status")
@@ -61,6 +62,7 @@ class MeController(
             HomeStatusResponse(
                 version = status.version,
                 dirty = status.dirty,
+                nextRefreshAt = status.nextRefreshAt,
                 serverTime = OffsetDateTime.now()
             )
         )

@@ -263,6 +263,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
 
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me caiste bien")
 

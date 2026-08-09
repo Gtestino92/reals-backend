@@ -5,6 +5,7 @@ import com.reals.backend.controller.dev.DevMatchmakingController
 import com.reals.backend.controller.dev.DevTimeoutController
 import com.reals.backend.controller.dev.DevUserController
 import com.reals.backend.controller.dev.DevUserReliabilityController
+import com.reals.backend.controller.dev.DevVisualReviewController
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
@@ -13,6 +14,7 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.UserService
+import com.reals.backend.service.VisualReviewService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -69,6 +71,10 @@ class DevControllerProfileRegistrationTest {
                 UserReliabilityScoreService::class.java,
                 Supplier { Mockito.mock(UserReliabilityScoreService::class.java) }
             )
+            .withBean(
+                VisualReviewService::class.java,
+                Supplier { Mockito.mock(VisualReviewService::class.java) }
+            )
 
     @Test
     fun `dev profile registers current dev tooling controllers`() {
@@ -80,6 +86,7 @@ class DevControllerProfileRegistrationTest {
                 assertTrue(context.containsBeanDefinition("devTimeoutController"))
                 assertTrue(context.containsBeanDefinition("devUserController"))
                 assertTrue(context.containsBeanDefinition("devUserReliabilityController"))
+                assertTrue(context.containsBeanDefinition("devVisualReviewController"))
             }
     }
 
@@ -93,6 +100,7 @@ class DevControllerProfileRegistrationTest {
                 assertFalse(context.containsBeanDefinition("devTimeoutController"))
                 assertFalse(context.containsBeanDefinition("devUserController"))
                 assertFalse(context.containsBeanDefinition("devUserReliabilityController"))
+                assertFalse(context.containsBeanDefinition("devVisualReviewController"))
             }
     }
 
@@ -102,7 +110,8 @@ class DevControllerProfileRegistrationTest {
         DevMatchmakingController::class,
         DevTimeoutController::class,
         DevUserController::class,
-        DevUserReliabilityController::class
+        DevUserReliabilityController::class,
+        DevVisualReviewController::class
     ])
     class DevControllerScanConfig
 }

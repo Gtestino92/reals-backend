@@ -204,6 +204,18 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `visual profile is denied before visual review availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+    }
+
+    @Test
     fun `visual profile is denied after visual approval with closed connection`() {
         val setup = createMatchInVisualPhase()
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
@@ -310,6 +322,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
         val setup = createAnsweredMatchWithFirstChat("visual-affinity-indicators")
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
 
         val userAResponse = mockMvc.perform(
             get("/api/matches/${setup.matchId}/visual-profile")
@@ -480,6 +493,20 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_EXPIRED")))
+    }
+
+    @Test
+    fun `visual decision before visual review availability returns stable conflict code`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
     }
 
     @Test

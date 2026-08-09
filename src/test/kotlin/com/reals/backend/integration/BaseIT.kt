@@ -410,6 +410,13 @@ abstract class BaseIT {
     }
 
     protected fun createMatchInVisualPhase(): MatchFixture {
+        val setup = createMatchInDelayedVisualPhase()
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
+
+        return setup
+    }
+
+    protected fun createMatchInDelayedVisualPhase(): MatchFixture {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)

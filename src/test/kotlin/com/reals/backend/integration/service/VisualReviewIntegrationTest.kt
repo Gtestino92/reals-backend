@@ -24,6 +24,155 @@ import java.util.UUID
 class VisualReviewIntegrationTest : BaseIT() {
 
     @Test
+    fun `visual review initialization persists availableAt and expires from availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+
+        assertTrue(review.availableAt.isAfter(review.createdAt))
+        assertEquals(
+            review.availableAt.plusMinutes(1440).toInstant(),
+            review.expiresAt?.toInstant()
+        )
+        assertTrue(review.reminderEligibleAt?.isAfter(review.availableAt) == true)
+    }
+
+    @Test
+    fun `visual review initialization retry returns existing review without resampling availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+        val original = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        val originalAvailableAt = original.availableAt
+        val originalExpiresAt = original.expiresAt
+
+        val replayed = visualReviewService.initializeForMatch(
+            matchId = setup.matchId,
+            preResolutionPairReliabilityScore = 120.0
+        )
+
+        assertEquals(original.id, replayed.id)
+        assertEquals(originalAvailableAt.toInstant(), replayed.availableAt.toInstant())
+        assertEquals(originalExpiresAt?.toInstant(), replayed.expiresAt?.toInstant())
+    }
+
+    @Test
+    fun `visual content access is denied before visual review availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.requireVisualContentAccess(setup.matchId, setup.userAId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+    }
+
+    @Test
+    fun `visual decision is denied before visual review availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).userAVisualDecision)
+    }
+
+    @Test
+    fun `personal message is denied before visual review availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.recordPersonalMessage(setup.matchId, setup.userAId, "Mensaje oculto")
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageA)
+    }
+
+    @Test
+    fun `visual content access is allowed at exact availability boundary`() {
+        val setup = createMatchInDelayedVisualPhase()
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+
+        val access = visualResourceAccessPolicyForTest().requireCanAccess(
+            matchId = setup.matchId,
+            requestingUserId = setup.userAId,
+            now = review.availableAt
+        )
+
+        assertEquals(setup.matchId, access.match.id)
+    }
+
+    @Test
+    fun `local dev availability override makes pending review available now and preserves creation time`() {
+        val setup = createMatchInDelayedVisualPhase()
+        val before = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        val originalCreatedAt = before.createdAt
+        val originalAvailableAt = before.availableAt
+        val originalEventCount = userReliabilityEventRepository.count()
+
+        val updated = visualReviewService.makeAvailableNowForLocalDev(setup.matchId)
+
+        assertEquals(originalCreatedAt.toInstant(), updated.createdAt.toInstant())
+        assertTrue(updated.availableAt.isBefore(originalAvailableAt))
+        assertEquals(updated.availableAt.plusMinutes(1440).toInstant(), updated.expiresAt?.toInstant())
+        assertTrue(updated.reminderEligibleAt?.isAfter(updated.availableAt) == true)
+        assertEquals(originalEventCount, userReliabilityEventRepository.count())
+        assertTrue(homeStatusService.getOrCreateStatus(setup.userAId).dirty)
+        assertTrue(homeStatusService.getOrCreateStatus(setup.userBId).dirty)
+    }
+
+    @Test
+    fun `local dev availability override is idempotent once review is available`() {
+        val setup = createMatchInVisualPhase()
+        val before = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        val originalExpiresAt = before.expiresAt
+
+        val updated = visualReviewService.makeAvailableNowForLocalDev(setup.matchId)
+
+        assertEquals(originalExpiresAt?.toInstant(), updated.expiresAt?.toInstant())
+    }
+
+    @Test
+    fun `local dev availability override does not revive expired review`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.makeAvailableNowForLocalDev(setup.matchId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_REVIEW_EXPIRED, exception.code)
+    }
+
+    @Test
+    fun `local dev availability override rejects missing review`() {
+        val setup = createMatchWithFirstChat()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = MatchState.VISUAL_PHASE
+        matchRepository.saveAndFlush(match)
+
+        assertThrows<NoSuchElementException> {
+            visualReviewService.makeAvailableNowForLocalDev(setup.matchId)
+        }
+    }
+
+    @Test
+    fun `local dev availability override rejects match outside visual phase without mutation`() {
+        val setup = createMatchInVisualPhase()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = MatchState.VISUAL_REJECTED
+        matchRepository.saveAndFlush(match)
+        val before = visualReviewService.findByMatchIdOrThrow(setup.matchId).availableAt
+
+        val exception = assertThrows<DomainConflictException> {
+            visualReviewService.makeAvailableNowForLocalDev(setup.matchId)
+        }
+
+        assertEquals(DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE, exception.code)
+        assertEquals(before.toInstant(), visualReviewService.findByMatchIdOrThrow(setup.matchId).availableAt.toInstant())
+    }
+
+    @Test
     fun `visual content access is allowed in visual phase before expiration`() {
         val setup = createMatchInVisualPhase()
         visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().plusMinutes(5))

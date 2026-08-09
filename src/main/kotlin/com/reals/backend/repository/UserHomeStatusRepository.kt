@@ -58,4 +58,42 @@ interface UserHomeStatusRepository : JpaRepository<UserHomeStatus, UUID> {
         @Param("expectedVersion") expectedVersion: Long,
         @Param("updatedAt") updatedAt: OffsetDateTime
     ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update UserHomeStatus s
+        set s.nextRefreshAt =
+            case
+                when s.nextRefreshAt is null then :nextRefreshAt
+                when :nextRefreshAt < s.nextRefreshAt then :nextRefreshAt
+                else s.nextRefreshAt
+            end,
+            s.updatedAt = :updatedAt
+        where s.userId = :userId
+        """
+    )
+    fun scheduleNextRefreshAt(
+        @Param("userId") userId: UUID,
+        @Param("nextRefreshAt") nextRefreshAt: OffsetDateTime,
+        @Param("updatedAt") updatedAt: OffsetDateTime
+    ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        """
+        update UserHomeStatus s
+        set s.dirty = false,
+            s.nextRefreshAt = :nextRefreshAt,
+            s.updatedAt = :updatedAt
+        where s.userId = :userId
+          and s.version = :expectedVersion
+        """
+    )
+    fun reconcileAfterFullHomeIfVersionStill(
+        @Param("userId") userId: UUID,
+        @Param("expectedVersion") expectedVersion: Long,
+        @Param("nextRefreshAt") nextRefreshAt: OffsetDateTime?,
+        @Param("updatedAt") updatedAt: OffsetDateTime
+    ): Int
 }

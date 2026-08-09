@@ -33,7 +33,7 @@ interface VisualReviewRepository :
     @Query(
         """
         select v.matchId from VisualReview v
-        where v.expiresAt < :expiresAt
+        where v.expiresAt <= :expiresAt
         order by v.expiresAt asc, v.id asc
         """
     )
@@ -48,6 +48,7 @@ interface VisualReviewRepository :
         from VisualReview v
         where v.reminderEligibleAt is not null
           and v.reminderEligibleAt <= :now
+          and v.availableAt <= :now
           and v.expiresAt is not null
           and v.expiresAt > :now
           and (

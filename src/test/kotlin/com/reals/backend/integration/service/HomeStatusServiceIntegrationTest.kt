@@ -3,6 +3,7 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.Gender
 import com.reals.backend.integration.BaseIT
 import org.junit.jupiter.api.Test
+import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -116,5 +117,59 @@ class HomeStatusServiceIntegrationTest : BaseIT() {
         assertFalse(cleaned)
         assertEquals(before.version + 1, after.version)
         assertTrue(after.dirty)
+    }
+
+    @Test
+    fun `nextRefreshAt scheduling keeps earliest wake-up`() {
+        val user = userService.createUser("home-status-refresh-earliest-${UUID.randomUUID()}@example.com")
+        val later = OffsetDateTime.now().plusMinutes(20)
+        val earlier = OffsetDateTime.now().plusMinutes(10)
+
+        homeStatusService.scheduleNextRefreshAt(user.id, later)
+        homeStatusService.scheduleNextRefreshAt(user.id, earlier)
+        homeStatusService.scheduleNextRefreshAt(user.id, later.plusMinutes(10))
+
+        assertEquals(
+            earlier.toInstant().toEpochMilli(),
+            homeStatusService.getOrCreateStatus(user.id).nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
+    }
+
+    @Test
+    fun `full home reconciliation clears due wake-up only when version is unchanged`() {
+        val user = userService.createUser("home-status-refresh-reconcile-${UUID.randomUUID()}@example.com")
+        val status = homeStatusService.bump(user.id, "test_refresh_reconcile")
+        val nextRefreshAt = OffsetDateTime.now().plusMinutes(5)
+
+        val reconciled = homeStatusService.reconcileAfterFullHomeIfVersionStill(
+            userId = user.id,
+            expectedVersion = status.version,
+            nextRefreshAt = nextRefreshAt
+        )
+
+        val afterReconcile = homeStatusService.getOrCreateStatus(user.id)
+        assertTrue(reconciled)
+        assertFalse(afterReconcile.dirty)
+        assertEquals(
+            nextRefreshAt.toInstant().toEpochMilli(),
+            afterReconcile.nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
+
+        val staleVersion = afterReconcile.version
+        homeStatusService.bump(user.id, "test_refresh_concurrent_bump")
+
+        val staleReconciled = homeStatusService.reconcileAfterFullHomeIfVersionStill(
+            userId = user.id,
+            expectedVersion = staleVersion,
+            nextRefreshAt = null
+        )
+
+        val afterStale = homeStatusService.getOrCreateStatus(user.id)
+        assertFalse(staleReconciled)
+        assertTrue(afterStale.dirty)
+        assertEquals(
+            nextRefreshAt.toInstant().toEpochMilli(),
+            afterStale.nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
     }
 }

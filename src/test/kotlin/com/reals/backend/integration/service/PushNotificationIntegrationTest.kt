@@ -1981,6 +1981,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         chatService.startFirstChat(match.id)
         chatService.recordChatDecision(match.id, userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(match.id, userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(match.id)
         visualReviewService.recordDecision(match.id, userAId, VisualDecision.APPROVED)
         visualReviewService.recordDecision(match.id, userBId, VisualDecision.APPROVED)
 
@@ -2030,6 +2031,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         val setup = createMatchWithFirstChat(emailPrefix)
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
         val review = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Expected visual review")
         review.reminderEligibleAt = reminderEligibleAt

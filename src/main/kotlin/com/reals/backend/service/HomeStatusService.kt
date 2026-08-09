@@ -26,6 +26,7 @@ class HomeStatusService(
                     userId = userId,
                     version = 0,
                     dirty = false,
+                    nextRefreshAt = null,
                     updatedAt = now
                 )
             )
@@ -88,6 +89,53 @@ class HomeStatusService(
             updatedAt = OffsetDateTime.now()
         ) == 1
 
+    @Transactional
+    fun scheduleNextRefreshAt(
+        userId: UUID,
+        nextRefreshAt: OffsetDateTime
+    ) {
+        val now = OffsetDateTime.now()
+        val updated = homeStatusRepository.scheduleNextRefreshAt(
+            userId = userId,
+            nextRefreshAt = nextRefreshAt,
+            updatedAt = now
+        )
+
+        if (updated == 0) {
+            createDefaultStatusIfMissing(userId = userId, now = now)
+            homeStatusRepository.scheduleNextRefreshAt(
+                userId = userId,
+                nextRefreshAt = nextRefreshAt,
+                updatedAt = now
+            )
+        }
+    }
+
+    @Transactional
+    fun scheduleNextRefreshAtForBoth(
+        userAId: UUID,
+        userBId: UUID,
+        nextRefreshAt: OffsetDateTime
+    ) {
+        scheduleNextRefreshAt(userId = userAId, nextRefreshAt = nextRefreshAt)
+        if (userBId != userAId) {
+            scheduleNextRefreshAt(userId = userBId, nextRefreshAt = nextRefreshAt)
+        }
+    }
+
+    @Transactional
+    fun reconcileAfterFullHomeIfVersionStill(
+        userId: UUID,
+        expectedVersion: Long,
+        nextRefreshAt: OffsetDateTime?
+    ): Boolean =
+        homeStatusRepository.reconcileAfterFullHomeIfVersionStill(
+            userId = userId,
+            expectedVersion = expectedVersion,
+            nextRefreshAt = nextRefreshAt,
+            updatedAt = OffsetDateTime.now()
+        ) == 1
+
     private fun createDefaultStatusIfMissing(
         userId: UUID,
         now: OffsetDateTime
@@ -98,6 +146,7 @@ class HomeStatusService(
                     userId = userId,
                     version = 0,
                     dirty = false,
+                    nextRefreshAt = null,
                     updatedAt = now
                 )
             )

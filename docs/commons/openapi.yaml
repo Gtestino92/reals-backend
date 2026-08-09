@@ -2339,6 +2339,10 @@ components:
       properties:
         version: { type: integer, format: int64, minimum: 0 }
         dirty: { type: boolean }
+        nextRefreshAt:
+          type: string
+          format: date-time
+          nullable: true
         serverTime: { type: string, format: date-time }
     HomePendingStateResponse:
       type: object

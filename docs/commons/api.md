@@ -35,7 +35,7 @@ are intentionally deferred.
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
-- `GET /api/me/home/status`: fetch the authenticated user's persisted Home `version`, `dirty` flag and `serverTime`. This is cheap and does not aggregate full Home state.
+- `GET /api/me/home/status`: fetch the authenticated user's persisted Home `version`, `dirty` flag, nullable `nextRefreshAt` wake-up marker and `serverTime`. This is cheap and does not aggregate full Home state.
 - `GET /api/me/home/pending`: fetch lightweight pending/actionable Home navigation state with the current Home `version`. It returns pending actions, next steps and passive notices without partner summaries, matchmaking availability or active interaction counts.
 - `PUT /api/me/push-tokens`: register or refresh the authenticated user's Android FCM device token. Body: `{ "token": "...", "platform": "ANDROID" }`. Returns `{ "registered": true }`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
@@ -136,13 +136,21 @@ inactivity timeout.
 
 For visual review navigation, Home exposes a `pendingActions[]` item with
 `type = VISUAL_REVIEW` only while the match remains in `VISUAL_PHASE`, the
-visual review exists, the visual phase has not expired and the current user has
-not decided. Expired or already-decided visual reviews are not returned as
-actions. For a currently actionable visual review, both `GET /api/me/home` and
-`GET /api/me/home/pending` include `visualStartedAt`, the authoritative start of
-that visual-review phase, and `visualExpiresAt`, the authoritative expiration of
-that phase, on the pending action. Both fields are `null` for pending actions
+visual review exists, server time is greater than or equal to the review
+availability timestamp, the visual phase has not expired and the current user
+has not decided. Expired, hidden-not-yet-available or already-decided visual
+reviews are not returned as actions. For a currently actionable visual review,
+both `GET /api/me/home` and `GET /api/me/home/pending` include
+`visualStartedAt`, the authoritative availability/start of the usable
+visual-review window, and `visualExpiresAt`, the authoritative expiration of
+that window, on the pending action. Both fields are `null` for pending actions
 that are not `VISUAL_REVIEW`.
+
+When a delayed visual review is hidden, `/api/me/home/status` may expose
+`nextRefreshAt`, the earliest unconsumed server-side Home wake-up marker for the
+user. Clients should compare it to the response `serverTime`; when
+`serverTime >= nextRefreshAt`, a full `GET /api/me/home` refresh reconciles the
+marker. The marker may remain in the past until that full Home refresh succeeds.
 
 When a visual review first becomes available, the backend no longer sends an
 immediate availability push. At `VisualReview` creation time it persists
@@ -440,7 +448,7 @@ queue entry has become an active match. Do not infer match/chat ids locally.
 
 - `GET /api/matches/{matchId}`: fetch match details and linked connection id if present. Includes `visualExpiresAt` when a visual review deadline exists for the match.
 - `GET /api/matches/{matchId}/chat`: fetch active first chat for match. Includes `partner`, `myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt`, `serverTime` and nullable `guidance` metadata. New first chats initialize guidance; legacy rows may return `guidance = null`. Clients may use `serverTime` as an advisory backend clock snapshot for first-chat countdown and suggestion UX; the backend remains authoritative for mutations and expiration decisions, and does not own suggestion visibility or local dismissal.
-- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile only while visual content is available. During `VISUAL_PHASE`, the visual review must exist and its `visualExpiresAt` deadline must still be in the future by server time. After `VISUAL_APPROVED`, a non-closed connection for the same match must exist and include the requester. Blocked pairs, unrelated users, `CHAT_ACTIVE`, `CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches are denied. The response includes partner photos with freshly generated read URLs, `visualExpiresAt`, `myPersonalMessageSubmitted`, partner personal-message submitted/read flags for client emphasis, `decisionRequiresPartnerPersonalMessageRead` retained temporarily as always `false`, and required `affinityIndicators: [] | [{ categoryId, title }]` containing at most three positive shared category snapshots.
+- `GET /api/matches/{matchId}/visual-profile`: fetch partner profile only while visual content is available. During `VISUAL_PHASE`, the visual review must exist, server time must be greater than or equal to its availability timestamp, and its `visualExpiresAt` deadline must still be in the future by server time. After `VISUAL_APPROVED`, a non-closed connection for the same match must exist and include the requester. Blocked pairs, unrelated users, `CHAT_ACTIVE`, `CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches are denied. The response includes partner photos with freshly generated read URLs, `visualExpiresAt`, `myPersonalMessageSubmitted`, partner personal-message submitted/read flags for client emphasis, `decisionRequiresPartnerPersonalMessageRead` retained temporarily as always `false`, and required `affinityIndicators: [] | [{ categoryId, title }]` containing at most three positive shared category snapshots.
 - `POST /api/matches/{matchId}/chat-decision`: submit first-chat continuation decision. `APPROVED` is individual and requires both users to move the match to `VISUAL_PHASE`. `REJECTED` is unilateral cancellation: it closes the first chat, moves the match to `CHAT_REJECTED`, releases locks and applies cancellation penalty policy. If the first-chat deadline already passed, the backend rejects with `CHAT_EXPIRED`; if the inactivity deadline already passed, it rejects with `CHAT_ABANDONED`.
 - `POST /api/matches/{matchId}/visual-decision`: submit visual decision. The current user's visual review disappears after deciding and that user's match lock is released. A repeated identical decision is idempotent; a contradictory decision is rejected. Reading an optional partner personal message is encouraged but is not required before `APPROVED` or `REJECTED`. A rejection is not immediately surfaced to the other participant through Home while their own visual decision is still pending. New decisions after the visual deadline are rejected with `VISUAL_REVIEW_EXPIRED`.
 - `PUT /api/matches/{matchId}/personal-messages/me`: store the authenticated user's personal visual-review message while visual content is available. Personal messages are write-once; a second submission returns `409 Conflict` and does not overwrite the first message.
@@ -566,6 +574,7 @@ These endpoints are profile-gated tooling for controlled Bruno/manual testing:
 - `POST /api/local-dev/matchmaking/process?maxPairsPerRun=10`: manually process queued candidate pairs and start first chats.
 - `POST /api/local-dev/jobs/{job}/run`: trigger supported background jobs.
 - `POST /api/local-dev/timeouts/...`: move selected deadlines into the past for deterministic timeout testing.
+- `POST /api/local-dev/matches/{matchId}/visual-review/make-available-now`: local-dev-only helper that moves an existing pending visual review's availability to server now and rebases its expiration from now. It does not create a review, change match state, decisions or reliability.
 - `GET /api/local-dev/user-reliability/{userId}`: inspect the internal user reliability score breakdown and active contributing events without mutating state.
 
 These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`

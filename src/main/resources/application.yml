@@ -191,6 +191,12 @@ chat:
   # Maximum duration for the visual phase
   visual-phase:
     duration-minutes: 1440 # 24 hours
+    availability:
+      base-reliability-score: ${CHAT_VISUAL_PHASE_AVAILABILITY_BASE_RELIABILITY_SCORE:100}
+      base-delay-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_BASE_DELAY_MINUTES:10}
+      jitter-range-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_JITTER_RANGE_MINUTES:5}
+      max-reliability-shift-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_MAX_RELIABILITY_SHIFT_MINUTES:4}
+      reliability-influence-span-points: ${CHAT_VISUAL_PHASE_AVAILABILITY_RELIABILITY_INFLUENCE_SPAN_POINTS:20}
 
   # Maximum duration for the second chat after the agreed start time.
   second-chat:

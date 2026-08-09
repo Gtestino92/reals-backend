@@ -427,6 +427,29 @@ class MeControllerIntegrationTest : ControllerIT() {
             ChatContinueDecision.APPROVED
         )
 
+        val pendingReview = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Visual review was not created")
+
+        mockMvc.perform(
+            get("/api/me/home/status")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextRefreshAt").exists())
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeInitialCount", equalTo(0)))
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(0)))
+
+        val statusAfterHiddenHome = homeStatusService.getOrCreateStatus(setup.userAId)
+        kotlin.test.assertEquals(pendingReview.availableAt.toInstant(), statusAfterHiddenHome.nextRefreshAt?.toInstant())
+
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
+
         mockMvc.perform(
             get("/api/me/home")
                 .with(authenticatedAs(setup.userAId))
@@ -468,7 +491,7 @@ class MeControllerIntegrationTest : ControllerIT() {
         val visualReview = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Visual review was not created")
         val expectedVisualStartedAt =
-            DateTimeFormatter.ISO_INSTANT.format(visualReview.createdAt.toInstant())
+            DateTimeFormatter.ISO_INSTANT.format(visualReview.availableAt.toInstant())
         val expectedVisualExpiresAt =
             DateTimeFormatter.ISO_INSTANT.format(
                 (visualReview.expiresAt ?: error("Visual review expiresAt was not set")).toInstant()
@@ -498,7 +521,7 @@ class MeControllerIntegrationTest : ControllerIT() {
         val visualReview = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Visual review was not created")
         val expectedVisualStartedAt =
-            DateTimeFormatter.ISO_INSTANT.format(visualReview.createdAt.toInstant())
+            DateTimeFormatter.ISO_INSTANT.format(visualReview.availableAt.toInstant())
         val expectedVisualExpiresAt =
             DateTimeFormatter.ISO_INSTANT.format(
                 (visualReview.expiresAt ?: error("Visual review expiresAt was not set")).toInstant()
@@ -519,6 +542,89 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.pendingActions[0].partner").doesNotExist())
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
             .andExpect(jsonPath("$.passiveNotices.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home status keeps due nextRefreshAt until full home consumes it`() {
+        val setup = createMatchInDelayedVisualPhase()
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        val originallyScheduledAt = review.availableAt
+        review.availableAt = OffsetDateTime.now().minusSeconds(1)
+        review.expiresAt = OffsetDateTime.now().plusMinutes(30)
+        visualReviewRepository.saveAndFlush(review)
+
+        mockMvc.perform(
+            get("/api/me/home/status")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect { result ->
+                val nextRefreshAt = OffsetDateTime.parse(
+                    JsonPath.read(result.response.contentAsString, "$.nextRefreshAt")
+                )
+                assertEquals(originallyScheduledAt.toInstant(), nextRefreshAt.toInstant())
+            }
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+
+        kotlin.test.assertNull(homeStatusService.getOrCreateStatus(setup.userAId).nextRefreshAt)
+    }
+
+    @Test
+    fun `full home advances nextRefreshAt to next hidden visual review`() {
+        val userAId = createActiveProfile(
+            email = "home-refresh-advance-a-${UUID.randomUUID()}@example.com",
+            displayName = "Home Refresh Advance A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val firstPartner = createActiveProfile(
+            email = "home-refresh-advance-b1-${UUID.randomUUID()}@example.com",
+            displayName = "Home Refresh Advance B1",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        val secondPartner = createActiveProfile(
+            email = "home-refresh-advance-b2-${UUID.randomUUID()}@example.com",
+            displayName = "Home Refresh Advance B2",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        val firstMatch = matchService.createMatch(userAId, firstPartner)
+        val secondMatch = matchService.createMatch(userAId, secondPartner)
+        chatService.startFirstChat(firstMatch.id)
+        chatService.startFirstChat(secondMatch.id)
+        chatService.recordChatDecision(firstMatch.id, userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(firstMatch.id, firstPartner, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(secondMatch.id, userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(secondMatch.id, secondPartner, ChatContinueDecision.APPROVED)
+
+        val now = OffsetDateTime.now()
+        val firstReview = visualReviewService.findByMatchIdOrThrow(firstMatch.id)
+        firstReview.availableAt = now.minusSeconds(1)
+        firstReview.expiresAt = now.plusMinutes(30)
+        visualReviewRepository.saveAndFlush(firstReview)
+        val secondReview = visualReviewService.findByMatchIdOrThrow(secondMatch.id)
+        secondReview.availableAt = now.plusMinutes(20)
+        secondReview.expiresAt = now.plusMinutes(60)
+        visualReviewRepository.saveAndFlush(secondReview)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.pendingActions.length()", equalTo(1)))
+
+        assertEquals(
+            secondReview.availableAt.toInstant().toEpochMilli(),
+            homeStatusService.getOrCreateStatus(userAId).nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
     }
 
     @Test
@@ -631,6 +737,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             chatService.startFirstChat(match.id)
             chatService.recordChatDecision(match.id, userAId, ChatContinueDecision.APPROVED)
             chatService.recordChatDecision(match.id, userBId, ChatContinueDecision.APPROVED)
+            visualReviewService.makeAvailableNowForTest(match.id)
             visualReviewService.recordDecision(match.id, userAId, VisualDecision.APPROVED)
             visualReviewService.recordDecision(match.id, userBId, VisualDecision.APPROVED)
         }
