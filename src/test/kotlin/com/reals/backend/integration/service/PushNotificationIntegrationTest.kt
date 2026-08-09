@@ -363,11 +363,11 @@ class PushNotificationIntegrationTest : BaseIT() {
             ?: error("Expected visual review")
         val expiresAt = review.expiresAt ?: error("Expected visual review expiresAt")
         val reminderEligibleAt = review.reminderEligibleAt ?: error("Expected visual review reminderEligibleAt")
-        assertTrue(reminderEligibleAt.isAfter(review.createdAt))
+        assertTrue(reminderEligibleAt.isAfter(review.availableAt))
         assertTrue(reminderEligibleAt.isBefore(expiresAt))
         assertEquals(
-            Duration.between(review.createdAt, expiresAt).seconds * 60 / 100,
-            Duration.between(review.createdAt, reminderEligibleAt).seconds
+            Duration.between(review.availableAt, expiresAt).seconds * 60 / 100,
+            Duration.between(review.availableAt, reminderEligibleAt).seconds
         )
         assertEquals(2, pushSender.attempts.size)
         assertTrue(
@@ -1981,6 +1981,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         chatService.startFirstChat(match.id)
         chatService.recordChatDecision(match.id, userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(match.id, userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(match.id)
         visualReviewService.recordDecision(match.id, userAId, VisualDecision.APPROVED)
         visualReviewService.recordDecision(match.id, userBId, VisualDecision.APPROVED)
 
@@ -2030,6 +2031,7 @@ class PushNotificationIntegrationTest : BaseIT() {
         val setup = createMatchWithFirstChat(emailPrefix)
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
         val review = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Expected visual review")
         review.reminderEligibleAt = reminderEligibleAt

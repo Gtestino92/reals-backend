@@ -133,6 +133,7 @@ class EngagementConcurrencyIntegrationTest {
         chatService.startFirstChat(candidateMatch.id)
         chatService.recordChatDecision(candidateMatch.id, candidateMatch.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(candidateMatch.id, candidateMatch.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(candidateMatch.id)
 
         visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userAId, VisualDecision.APPROVED)
 

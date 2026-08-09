@@ -49,6 +49,9 @@ data class VisualReview(
     @Column(name = "expires_at")
     var expiresAt: OffsetDateTime? = null,
 
+    @Column(name = "available_at", nullable = false)
+    var availableAt: OffsetDateTime = OffsetDateTime.now(),
+
     @Column(name = "reminder_eligible_at")
     var reminderEligibleAt: OffsetDateTime? = null,
 

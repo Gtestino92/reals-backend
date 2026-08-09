@@ -21,6 +21,7 @@ data class HomeResponse(
 data class HomeStatusResponse(
     val version: Long,
     val dirty: Boolean,
+    val nextRefreshAt: OffsetDateTime?,
     val serverTime: OffsetDateTime
 )
 

@@ -21,6 +21,9 @@ data class UserHomeStatus(
     @Column(name = "dirty", nullable = false)
     var dirty: Boolean = false,
 
+    @Column(name = "next_refresh_at")
+    var nextRefreshAt: OffsetDateTime? = null,
+
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now()
 )

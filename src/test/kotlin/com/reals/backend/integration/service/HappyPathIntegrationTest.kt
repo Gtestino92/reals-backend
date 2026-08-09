@@ -54,6 +54,7 @@ class HappyPathIntegrationTest : BaseIT() {
 
         chatService.recordChatDecision(match.id, userA, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(match.id, userB, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(match.id)
 
         val decision = chatDecisionRepository.findByMatchId(match.id)
         assertNotNull(decision)

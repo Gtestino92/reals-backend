@@ -36,6 +36,7 @@ class VisualResourceAccessPolicy(
 
         return when (match.state) {
             MatchState.VISUAL_PHASE -> {
+                requireVisualReviewAvailable(review, now)
                 requireVisualReviewNotExpired(review, now)
                 VisualResourceAccess(match = match, review = review, connection = null)
             }
@@ -78,6 +79,12 @@ class VisualResourceAccessPolicy(
                 code = DomainErrorCode.VISUAL_REVIEW_EXPIRED,
                 message = "Visual content is no longer available"
             )
+        }
+    }
+
+    private fun requireVisualReviewAvailable(review: VisualReview, now: OffsetDateTime) {
+        if (now.isBefore(review.availableAt)) {
+            throw visualContentNotAvailable()
         }
     }
 

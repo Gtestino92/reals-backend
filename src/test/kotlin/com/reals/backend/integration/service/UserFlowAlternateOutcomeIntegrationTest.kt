@@ -46,6 +46,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
 
         visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
         visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.REJECTED)

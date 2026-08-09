@@ -27,7 +27,8 @@ import java.util.UUID
         "chat.second-chat.on-time-window-minutes=10",
         "chat.second-chat.entry-window-minutes=20",
         "chat.second-chat.no-show-claim-countdown-seconds=60",
-        "user-reliability.matchmaking.max-modifier=0.05"
+        "user-reliability.matchmaking.max-modifier=0.05",
+        "chat.visual-phase.availability.jitter-range-minutes=0"
     ]
 )
 class UserReliabilityScoreIntegrationTest : BaseIT() {
@@ -39,6 +40,26 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
 
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION, 2)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION, 2)
+    }
+
+    @Test
+    fun `visual review availability delay uses reliability scores before mutual positive reward`() {
+        val setup = createMatchWithFirstChat()
+        userReliabilityScoreService.recordEvent(
+            userId = setup.userAId,
+            eventType = UserReliabilityEventType.SECOND_CHAT_NO_SHOW,
+            relatedConnectionId = UUID.randomUUID()
+        )
+
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+
+        val review = visualReviewService.findByMatchIdOrThrow(setup.matchId)
+        val delaySeconds = java.time.Duration.between(review.createdAt, review.availableAt).seconds
+
+        assertEquals(660, delaySeconds)
         assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION, 2)
         assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION, 2)
     }

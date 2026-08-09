@@ -13,6 +13,12 @@ Allowed transitions:
 - `VISUAL_PHASE -> VISUAL_REJECTED`
 - `VISUAL_PHASE -> EXPIRED`
 
+`VISUAL_PHASE` starts immediately after mutual positive first-chat resolution.
+The associated `VisualReview` may be hidden until its persisted `availableAt`;
+this waiting period does not introduce another Match state. During
+`VISUAL_PHASE`, visual review actions are allowed only while
+`serverNow >= availableAt` and `serverNow < expiresAt`.
+
 Terminal states:
 
 - `CHAT_REJECTED`

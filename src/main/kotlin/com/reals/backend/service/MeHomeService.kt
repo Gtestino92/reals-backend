@@ -63,6 +63,11 @@ class MeHomeService(
     private val secondChatDurationMinutes: Long
 ) {
 
+    data class HomeProjection(
+        val home: HomeResponse,
+        val nextRefreshAt: OffsetDateTime?
+    )
+
     private data class HomeOperationalSnapshot(
         val now: OffsetDateTime,
         val blockedCounterpartIds: Set<UUID>,
@@ -78,11 +83,15 @@ class MeHomeService(
 
     @Transactional(readOnly = true)
     fun getHome(userId: UUID): HomeResponse =
+        getHomeProjection(userId).home
+
+    @Transactional(readOnly = true)
+    fun getHomeProjection(userId: UUID): HomeProjection =
         readMetrics.recordHomeLoad(ReadMetrics.HOME_VARIANT_FULL) {
-            getHomeMeasured(userId)
+            getHomeProjectionMeasured(userId)
         }
 
-    private fun getHomeMeasured(userId: UUID): HomeResponse {
+    private fun getHomeProjectionMeasured(userId: UUID): HomeProjection {
         val profileStatus = profileRepository.findByUserId(userId)?.status
         val inQueue = queueRepository.existsByUserId(userId)
         val snapshot = loadHomeOperationalSnapshot(userId)
@@ -142,23 +151,29 @@ class MeHomeService(
             inQueue = inQueue
         )
 
-        return HomeResponse(
-            profileStatus = profileStatus,
-            matchmaking = HomeMatchmakingResponse(
-                inQueue = inQueue,
-                canSearch = matchmakingAvailability.canSearch,
-                blockedReason = matchmakingAvailability.blockedReason?.let {
-                    HomeMatchmakingBlockedReasonResponse(
-                        code = it.code,
-                        message = it.message
-                    )
-                }
+        return HomeProjection(
+            home = HomeResponse(
+                profileStatus = profileStatus,
+                matchmaking = HomeMatchmakingResponse(
+                    inQueue = inQueue,
+                    canSearch = matchmakingAvailability.canSearch,
+                    blockedReason = matchmakingAvailability.blockedReason?.let {
+                        HomeMatchmakingBlockedReasonResponse(
+                            code = it.code,
+                            message = it.message
+                        )
+                    }
+                ),
+                activeInteractionsSummary = activeInteractionsSummary,
+                pendingActions = pendingActions,
+                nextSteps = nextSteps,
+                passiveNotices = passiveNoticesForPendingScheduling(
+                    hasPendingSchedulingConnection
+                )
             ),
-            activeInteractionsSummary = activeInteractionsSummary,
-            pendingActions = pendingActions,
-            nextSteps = nextSteps,
-            passiveNotices = passiveNoticesForPendingScheduling(
-                hasPendingSchedulingConnection
+            nextRefreshAt = nextHiddenHomeTransitionAt(
+                snapshot = snapshot,
+                currentUserId = userId
             )
         )
     }
@@ -561,14 +576,19 @@ class MeHomeService(
         currentUserId: UUID,
         visualReview: VisualReview?,
         now: OffsetDateTime
-    ): Boolean =
-        match.state == MatchState.VISUAL_PHASE &&
-            visualReview?.expiresAt?.isAfter(now) == true &&
+    ): Boolean {
+        if (match.state != MatchState.VISUAL_PHASE || visualReview == null) {
+            return false
+        }
+
+        return !visualReview.availableAt.isAfter(now) &&
+            visualReview.expiresAt?.isAfter(now) == true &&
             visualReview.hasPendingDecisionFor(
                 userId = currentUserId,
                 userAId = match.userAId,
                 userBId = match.userBId
             )
+    }
 
     private fun toPendingAction(
         match: Match,
@@ -610,7 +630,7 @@ class MeHomeService(
                 type = HomePendingActionType.VISUAL_REVIEW,
                 matchId = match.id,
                 chatId = null,
-                visualStartedAt = visualReview?.createdAt?.toInstant(),
+                visualStartedAt = visualReview?.availableAt?.toInstant(),
                 visualExpiresAt = visualReview?.expiresAt?.toInstant(),
                 partner = partnerSummary
             )
@@ -655,7 +675,7 @@ class MeHomeService(
                 type = HomePendingActionType.VISUAL_REVIEW,
                 matchId = match.id,
                 chatId = null,
-                visualStartedAt = visualReview?.createdAt?.toInstant(),
+                visualStartedAt = visualReview?.availableAt?.toInstant(),
                 visualExpiresAt = visualReview?.expiresAt?.toInstant()
             )
         }
@@ -809,6 +829,31 @@ class MeHomeService(
         } else {
             emptyList()
         }
+
+    private fun nextHiddenHomeTransitionAt(
+        snapshot: HomeOperationalSnapshot,
+        currentUserId: UUID
+    ): OffsetDateTime? =
+        snapshot.activeMatches
+            .asSequence()
+            .filter { it.state == MatchState.VISUAL_PHASE }
+            .mapNotNull { match ->
+                val review = snapshot.visualReviewByMatchId[match.id] ?: return@mapNotNull null
+                if (
+                    review.availableAt.isAfter(snapshot.now) &&
+                    review.expiresAt?.isAfter(snapshot.now) == true &&
+                    review.hasPendingDecisionFor(
+                        userId = currentUserId,
+                        userAId = match.userAId,
+                        userBId = match.userBId
+                    )
+                ) {
+                    review.availableAt
+                } else {
+                    null
+                }
+            }
+            .minOrNull()
 
     private data class HomeConnectionOrderKey(
         val category: Int,

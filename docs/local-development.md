@@ -430,6 +430,19 @@ The Bruno collection includes direct triggers under:
 bruno/reals-backend-happy-path/10 - Local Dev Jobs
 ```
 
+Delayed visual review availability can be bypassed for an already-created
+pending review during local manual testing:
+
+```http
+POST /api/local-dev/matches/{matchId}/visual-review/make-available-now
+```
+
+The helper keeps the match in `VISUAL_PHASE`, preserves `createdAt`, sets
+`availableAt` to server now, rebases `expiresAt` from server now using the
+configured visual-phase duration and invalidates both users' Home state. It does
+not create missing reviews, record reliability events or change visual
+decisions.
+
 Local-only user provisioning for Bruno/dev flows is available at:
 
 ```http
