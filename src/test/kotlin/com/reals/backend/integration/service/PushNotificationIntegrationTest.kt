@@ -363,11 +363,11 @@ class PushNotificationIntegrationTest : BaseIT() {
             ?: error("Expected visual review")
         val expiresAt = review.expiresAt ?: error("Expected visual review expiresAt")
         val reminderEligibleAt = review.reminderEligibleAt ?: error("Expected visual review reminderEligibleAt")
-        assertTrue(reminderEligibleAt.isAfter(review.createdAt))
+        assertTrue(reminderEligibleAt.isAfter(review.availableAt))
         assertTrue(reminderEligibleAt.isBefore(expiresAt))
         assertEquals(
-            Duration.between(review.createdAt, expiresAt).seconds * 60 / 100,
-            Duration.between(review.createdAt, reminderEligibleAt).seconds
+            Duration.between(review.availableAt, expiresAt).seconds * 60 / 100,
+            Duration.between(review.availableAt, reminderEligibleAt).seconds
         )
         assertEquals(2, pushSender.attempts.size)
         assertTrue(
