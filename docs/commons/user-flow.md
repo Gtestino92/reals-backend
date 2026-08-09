@@ -139,6 +139,10 @@ Eligibility checks include:
 - below active match limit
 - below active connection limit
 
+The backend does not infer queue exit from app backgrounding, minimizing or
+process death. Queue exit remains explicit through the existing dequeue and
+domain-lifecycle behavior.
+
 Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, and `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness and historical cooldowns, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
 
 Pair exclusion has three separate meanings:
@@ -156,6 +160,32 @@ A new match starts in `CHAT_ACTIVE`. The first chat is created separately:
 ```text
 ChatService.startFirstChat(matchId)
 ```
+
+After match and first-chat creation commit, the backend emits a best-effort
+`MATCH_FOUND` push notification. Durable match/chat state remains authoritative:
+notification failure, missing tokens or FCM provider failure does not roll back
+or invalidate the created match/chat. The Android FCM message is data-only and
+client-rendered with high Android priority. Its data payload is limited to
+`type = MATCH_FOUND`, `matchId` and `expiresAt`; `expiresAt` is the authoritative
+`Chat.timeoutAt` value for the first chat. The FCM TTL is calculated separately
+from the remaining chat lifetime using the same `Chat.timeoutAt`, so stale
+undelivered messages expire while already-delivered local notifications can be
+removed by Android at `expiresAt`.
+
+When a `FIRST_CHAT` actually becomes terminal before its original absolute
+timeout, the domain transition publishes an internal `FirstChatTerminatedEvent`
+with `matchId`, `chatId`, `finalStatus` and `endedReason`. It is emitted only
+for persisted terminal first-chat transitions, not for a pending mutual
+cancellation request or other still-actionable intermediate state. Notification
+infrastructure listens after commit and best-effort sends a data-only Android
+control push with high priority: `type = MATCH_FOUND_INVALIDATED`, `matchId`
+and `expiresAt`. That `expiresAt` is the authoritative original first-chat
+`Chat.timeoutAt`. Android may use it to keep a short-lived invalidation
+tombstone and reject a late out-of-order `MATCH_FOUND` if FCM delivers the
+control message first. The invalidation push removes stale client-rendered
+`MATCH_FOUND` presentation; its FCM TTL is bounded by the remaining
+authoritative `Chat.timeoutAt` window. The original `MATCH_FOUND expiresAt`
+remains the absolute client-side notification timeout.
 
 Messages can be sent only when the chat is active, not timed out, not abandoned
 by inactivity and the sender belongs to the match. Sending a message updates

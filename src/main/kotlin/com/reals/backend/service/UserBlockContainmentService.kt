@@ -5,6 +5,7 @@ import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import jakarta.transaction.Transactional
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -17,7 +18,8 @@ class UserBlockContainmentService(
     private val chatRepository: ChatRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
-    private val auditEventService: AuditEventService
+    private val auditEventService: AuditEventService,
+    private val eventPublisher: ApplicationEventPublisher
 ) {
     fun containPair(userAId: UUID, userBId: UUID) {
         matchRepository.findBetweenUsersAndStateIn(
@@ -64,5 +66,15 @@ class UserBlockContainmentService(
                 "status" to ChatStatus.CANCELLED.name
             )
         )
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            eventPublisher.publishEvent(
+                FirstChatTerminatedEvent(
+                    matchId = chat.matchId,
+                    chatId = chat.id,
+                    finalStatus = chat.status,
+                    endedReason = ChatEndReason.USER_BLOCK
+                )
+            )
+        }
     }
 }

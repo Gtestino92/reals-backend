@@ -7,8 +7,14 @@ data class PushNotification(
     val body: String,
     val data: Map<String, String>,
     val androidTtlMillis: Long? = null,
-    val androidNotificationTag: String? = null
+    val androidNotificationTag: String? = null,
+    val includeNotificationPayload: Boolean = true,
+    val androidPriority: PushNotificationAndroidPriority? = null
 )
+
+enum class PushNotificationAndroidPriority {
+    HIGH
+}
 
 data class PushNotificationToken(
     val id: UUID,

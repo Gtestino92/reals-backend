@@ -1,11 +1,14 @@
 ﻿package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.PushDeliveryStatus
+import com.reals.backend.domain.PushNotificationDelivery
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.domain.VisualDecision
@@ -14,8 +17,10 @@ import com.reals.backend.scheduler.SecondChatReminderNotificationJob
 import com.reals.backend.scheduler.SecondChatStartNotificationJob
 import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
+import com.reals.backend.service.MatchFoundEvent
 import com.reals.backend.service.SchedulingConfirmedEvent
 import com.reals.backend.service.SchedulingProposalsReceivedEvent
+import com.reals.backend.service.notification.MatchFoundNotificationService
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.SchedulingConfirmedNotificationService
 import com.reals.backend.service.notification.SchedulingProposalsReceivedNotificationService
@@ -28,6 +33,7 @@ import com.reals.backend.service.notification.secondChatReminderAggregateId
 import com.reals.backend.service.notification.secondChatNotificationTag
 import com.reals.backend.service.notification.secondChatStartedAggregateId
 import com.reals.backend.service.notification.sender.PushNotification
+import com.reals.backend.service.notification.sender.PushNotificationAndroidPriority
 import com.reals.backend.service.notification.sender.PushNotificationSender
 import com.reals.backend.service.notification.sender.PushNotificationToken
 import com.reals.backend.service.notification.sender.PushSendResult
@@ -66,6 +72,9 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var visualReviewReminderNotificationJob: VisualReviewReminderNotificationJob
+
+    @Autowired
+    private lateinit var matchFoundNotificationService: MatchFoundNotificationService
 
     @Autowired
     private lateinit var schedulingAvailableNotificationService: SchedulingAvailableNotificationService
@@ -141,6 +150,204 @@ class PushNotificationIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `match found notification sends data only expiry contract to both participants`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val timeoutAt = now.plusMinutes(5)
+        val setup = createMatchWithFirstChat("match-found-contract")
+        updateFirstChatTimeoutAt(setup.firstChatId, timeoutAt)
+        pushDeviceTokenService.registerToken(setup.userAId, "match-token-a-1", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userAId, "match-token-a-2", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "match-token-b-1", PushPlatform.ANDROID)
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        assertEquals(2, pushSender.attempts.size)
+        assertEquals(
+            listOf("match-token-a-1", "match-token-a-2", "match-token-b-1"),
+            pushSender.attempts.flatMap { it.tokens }.sorted()
+        )
+        assertProviderCallsOutsideTransactions()
+        pushSender.attempts.forEach { attempt ->
+            assertEquals("Encontramos un chat", attempt.notification.title)
+            assertEquals("Tu nuevo chat ya está disponible.", attempt.notification.body)
+            assertEquals(PushNotificationType.MATCH_FOUND, PushNotificationType.valueOf(attempt.notification.data.getValue("type")))
+            assertEquals(setOf("type", "matchId", "expiresAt"), attempt.notification.data.keys)
+            assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
+            assertEquals(timeoutAt.toString(), attempt.notification.data["expiresAt"])
+            assertEquals(Duration.between(now, timeoutAt).toMillis(), attempt.notification.androidTtlMillis)
+            assertFalse(attempt.notification.includeNotificationPayload)
+            assertEquals(PushNotificationAndroidPriority.HIGH, attempt.notification.androidPriority)
+            assertEquals(null, attempt.notification.androidNotificationTag)
+        }
+        val deliveries = matchFoundDeliveriesFor(setup.matchId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
+
+        pushSender.reset()
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, matchFoundDeliveriesFor(setup.matchId).size)
+    }
+
+    @Test
+    fun `match found notification skips ineligible match and chat states`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+
+        listOf(
+            "non chat active match" to {
+                val setup = eligibleMatchFoundSetup("match-found-non-chat-active", now)
+                val match = matchRepository.findById(setup.matchId).orElseThrow()
+                match.state = MatchState.VISUAL_PHASE
+                matchRepository.saveAndFlush(match)
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = setup.firstChatId)
+            },
+            "chat from different match" to {
+                val setup = eligibleMatchFoundSetup("match-found-wrong-chat-match", now)
+                val other = createMatchWithFirstChat("match-found-other-chat")
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = other.firstChatId)
+            },
+            "non first chat" to {
+                val setup = eligibleMatchFoundSetup("match-found-second-chat", now)
+                val chat = chatRepository.findById(setup.firstChatId).orElseThrow()
+                chat.chatType = ChatType.SECOND_CHAT
+                chatRepository.saveAndFlush(chat)
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = setup.firstChatId)
+            },
+            "non active chat" to {
+                val setup = eligibleMatchFoundSetup("match-found-non-active-chat", now)
+                val chat = chatRepository.findById(setup.firstChatId).orElseThrow()
+                chat.status = ChatStatus.CANCELLED
+                chatRepository.saveAndFlush(chat)
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = setup.firstChatId)
+            },
+            "timeout exactly now" to {
+                val setup = eligibleMatchFoundSetup("match-found-timeout-equal", now)
+                updateFirstChatTimeoutAt(setup.firstChatId, now)
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = setup.firstChatId)
+            },
+            "timeout before now" to {
+                val setup = eligibleMatchFoundSetup("match-found-timeout-before", now)
+                updateFirstChatTimeoutAt(setup.firstChatId, now.minusNanos(1))
+                setup to MatchFoundEvent(matchId = setup.matchId, chatId = setup.firstChatId)
+            }
+        ).forEach { (scenario, prepare) ->
+            pushSender.reset()
+            val (setup, event) = prepare()
+
+            matchFoundNotificationService.notifyMatchFound(event = event, now = now)
+
+            assertEquals(0, pushSender.attempts.size, scenario)
+            assertEquals(0, matchFoundDeliveriesFor(setup.matchId).size, scenario)
+        }
+    }
+
+    @Test
+    fun `match found notification records no token skip and skips existing delivery`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val setup = createMatchWithFirstChat("match-found-skips")
+        updateFirstChatTimeoutAt(setup.firstChatId, now.plusMinutes(5))
+        pushNotificationDeliveryRepository.saveAndFlush(
+            PushNotificationDelivery(
+                userId = setup.userAId,
+                notificationType = PushNotificationType.MATCH_FOUND,
+                aggregateId = setup.matchId,
+                sentAt = now.minusSeconds(1),
+                status = PushDeliveryStatus.SENT,
+                providerMessageId = "existing-provider-id",
+                createdAt = now.minusSeconds(1),
+                updatedAt = now.minusSeconds(1)
+            )
+        )
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        val deliveries = matchFoundDeliveriesFor(setup.matchId)
+        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, deliveries.size)
+        assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userAId }.status)
+        assertEquals(PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN, deliveries.first { it.userId == setup.userBId }.status)
+    }
+
+    @Test
+    fun `match found notification processes duplicate participant id once`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val setup = eligibleMatchFoundSetup("match-found-duplicate-participant", now)
+        val match = matchRepository.findById(setup.matchId).orElseThrow()
+        match.userBId = setup.userAId
+        matchRepository.saveAndFlush(match)
+        pushDeviceTokenService.registerToken(setup.userAId, "match-duplicate-token", PushPlatform.ANDROID)
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        assertEquals(1, pushSender.attempts.size)
+        assertEquals(
+            listOf("match-duplicate-token", "match-found-duplicate-participant-token-a"),
+            pushSender.attempts.single().tokens.sorted()
+        )
+        assertEquals(1, matchFoundDeliveriesFor(setup.matchId).size)
+    }
+
+    @Test
+    fun `matchmaking commits match and chat when match found push fails`() {
+        val userA = createActiveProfile(
+            email = "match-found-failure-a-${UUID.randomUUID()}@example.com",
+            displayName = "Match Push Failure A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val userB = createActiveProfile(
+            email = "match-found-failure-b-${UUID.randomUUID()}@example.com",
+            displayName = "Match Push Failure B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        pushDeviceTokenService.registerToken(userA, "match-failure-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(userB, "match-failure-token-b", PushPlatform.ANDROID)
+        enqueueForMatchmaking(userA)
+        enqueueForMatchmaking(userB)
+        pushSender.throwOnSend = RuntimeException("provider unavailable")
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(1, result.matchesCreated)
+        val matchId = result.matches.single().id
+        val chat = chatRepository.findByMatchIdAndChatType(matchId, ChatType.FIRST_CHAT)
+            ?: error("Expected first chat")
+        assertEquals(MatchState.CHAT_ACTIVE, matchRepository.findById(matchId).orElseThrow().state)
+        assertEquals(ChatStatus.ACTIVE, chat.status)
+        assertEquals(2, pushSender.attempts.size)
+        val deliveries = matchFoundDeliveriesFor(matchId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.FAILED })
+    }
+
+    @Test
     fun `mutual first chat approval creates visual review without immediate push`() {
         val setup = createMatchWithFirstChat("push-no-immediate")
         pushDeviceTokenService.registerToken(setup.userAId, "token-a", PushPlatform.ANDROID)
@@ -162,7 +369,13 @@ class PushNotificationIntegrationTest : BaseIT() {
             Duration.between(review.createdAt, expiresAt).seconds * 60 / 100,
             Duration.between(review.createdAt, reminderEligibleAt).seconds
         )
-        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, pushSender.attempts.size)
+        assertTrue(
+            pushSender.attempts.all {
+                PushNotificationType.valueOf(it.notification.data.getValue("type")) ==
+                    PushNotificationType.MATCH_FOUND_INVALIDATED
+            }
+        )
         assertEquals(0, visualReviewAvailableDeliveriesFor(setup.matchId).size)
         assertEquals(0, visualReviewReminderDeliveriesFor(setup.matchId).size)
     }
@@ -1639,6 +1852,12 @@ class PushNotificationIntegrationTest : BaseIT() {
             aggregateId = matchId
         )
 
+    private fun matchFoundDeliveriesFor(matchId: UUID) =
+        pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
+            notificationType = PushNotificationType.MATCH_FOUND,
+            aggregateId = matchId
+        )
+
     private fun visualReviewReminderDeliveriesFor(matchId: UUID) =
         pushNotificationDeliveryRepository.findByNotificationTypeAndAggregateId(
             notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
@@ -1782,6 +2001,26 @@ class PushNotificationIntegrationTest : BaseIT() {
             reminderEligibleAt = OffsetDateTime.now().minusSeconds(1),
             expiresAt = OffsetDateTime.now().plusHours(1)
         )
+
+    private fun eligibleMatchFoundSetup(
+        emailPrefix: String,
+        now: OffsetDateTime
+    ): MatchFixture {
+        val setup = createMatchWithFirstChat(emailPrefix)
+        updateFirstChatTimeoutAt(setup.firstChatId, now.plusMinutes(5))
+        pushDeviceTokenService.registerToken(setup.userAId, "$emailPrefix-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "$emailPrefix-token-b", PushPlatform.ANDROID)
+        return setup
+    }
+
+    private fun updateFirstChatTimeoutAt(
+        chatId: UUID,
+        timeoutAt: OffsetDateTime
+    ) {
+        val chat = chatRepository.findById(chatId).orElseThrow()
+        chat.timeoutAt = timeoutAt
+        chatRepository.saveAndFlush(chat)
+    }
 
     private fun createVisualReviewWithWindow(
         emailPrefix: String,

@@ -2,10 +2,9 @@ package com.reals.backend.service.notification
 
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
-import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.service.ChatService
-import com.reals.backend.service.MatchFoundEvent
+import com.reals.backend.service.FirstChatTerminatedEvent
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationAndroidPriority
@@ -17,7 +16,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @Service
-class MatchFoundNotificationService(
+class MatchFoundInvalidationNotificationService(
     private val matchService: MatchService,
     private val chatService: ChatService,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
@@ -27,18 +26,18 @@ class MatchFoundNotificationService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun notifyMatchFound(
-        event: MatchFoundEvent,
+    fun notifyMatchFoundInvalidated(
+        event: FirstChatTerminatedEvent,
         now: OffsetDateTime = OffsetDateTime.now()
     ) {
         try {
-            val prepared = prepareMatchFound(event, now)
+            val prepared = prepareMatchFoundInvalidation(event, now)
             prepared.commands.forEach { command ->
                 sendAndPersist(command, now)
             }
         } catch (ex: Exception) {
             log.warn(
-                "Failed to process match found notification for match={} chat={}",
+                "Failed to process match found invalidation notification for match={} chat={}",
                 event.matchId,
                 event.chatId,
                 ex
@@ -46,8 +45,8 @@ class MatchFoundNotificationService(
         }
     }
 
-    private fun prepareMatchFound(
-        event: MatchFoundEvent,
+    private fun prepareMatchFoundInvalidation(
+        event: FirstChatTerminatedEvent,
         now: OffsetDateTime
     ): PreparedPushBatch =
         transactionTemplate.execute {
@@ -55,10 +54,11 @@ class MatchFoundNotificationService(
             val chat = chatService.findByIdOrThrow(event.chatId)
 
             if (
-                match.state != MatchState.CHAT_ACTIVE ||
+                chat.id != event.chatId ||
+                chat.matchId != event.matchId ||
                 chat.matchId != match.id ||
                 chat.chatType != ChatType.FIRST_CHAT ||
-                chat.status != ChatStatus.ACTIVE
+                chat.status !in TERMINAL_FIRST_CHAT_STATUSES
             ) {
                 return@execute PreparedPushBatch(
                     skipped = 1,
@@ -86,7 +86,7 @@ class MatchFoundNotificationService(
                     if (
                         deliveryPersistenceService.deliveryExists(
                             userId = userId,
-                            notificationType = PushNotificationType.MATCH_FOUND,
+                            notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
                             aggregateId = match.id
                         )
                     ) {
@@ -101,7 +101,7 @@ class MatchFoundNotificationService(
                         deliveryPersistenceService
                             .saveSkippedNoActiveTokenInCurrentTransaction(
                                 userId = userId,
-                                notificationType = PushNotificationType.MATCH_FOUND,
+                                notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
                                 aggregateId = match.id,
                                 now = now
                             )
@@ -112,10 +112,10 @@ class MatchFoundNotificationService(
 
                     commands += PreparedPushCommand(
                         userId = userId,
-                        notificationType = PushNotificationType.MATCH_FOUND,
+                        notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
                         aggregateId = match.id,
                         tokens = activeTokens,
-                        notification = matchFoundNotification(
+                        notification = matchFoundInvalidatedNotification(
                             matchId = match.id,
                             expiresAt = chat.timeoutAt,
                             ttlMillis = ttlMillis
@@ -138,7 +138,7 @@ class MatchFoundNotificationService(
             preparedPushCommandProcessor.process(command, now)
         } catch (ex: Exception) {
             log.warn(
-                "Match found push command failed for user={} match={}",
+                "Match found invalidation push command failed for user={} match={}",
                 command.userId,
                 command.aggregateId,
                 ex
@@ -146,16 +146,16 @@ class MatchFoundNotificationService(
         }
     }
 
-    private fun matchFoundNotification(
+    private fun matchFoundInvalidatedNotification(
         matchId: UUID,
         expiresAt: OffsetDateTime,
         ttlMillis: Long
     ): PushNotification =
         PushNotification(
-            title = "Encontramos un chat",
-            body = "Tu nuevo chat ya está disponible.",
+            title = "Chat no disponible",
+            body = "Este chat ya no está disponible.",
             data = mapOf(
-                "type" to PushNotificationType.MATCH_FOUND.name,
+                "type" to PushNotificationType.MATCH_FOUND_INVALIDATED.name,
                 "matchId" to matchId.toString(),
                 "expiresAt" to expiresAt.toString()
             ),
@@ -163,4 +163,14 @@ class MatchFoundNotificationService(
             includeNotificationPayload = false,
             androidPriority = PushNotificationAndroidPriority.HIGH
         )
+
+    private companion object {
+        val TERMINAL_FIRST_CHAT_STATUSES =
+            setOf(
+                ChatStatus.CANCELLED,
+                ChatStatus.EXPIRED,
+                ChatStatus.ABANDONED,
+                ChatStatus.FINISHED
+            )
+    }
 }

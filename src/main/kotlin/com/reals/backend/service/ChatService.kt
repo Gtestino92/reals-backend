@@ -33,8 +33,9 @@ import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.affinity.AffinityDerivedSnapshotInitializationService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
-import org.springframework.data.domain.PageRequest
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.ApplicationEventPublisher
+import org.springframework.data.domain.PageRequest
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -64,6 +65,7 @@ class ChatService(
     private val chatAudioPolicyService: ChatAudioPolicyService,
     private val mediaCleanupTaskService: MediaCleanupTaskService,
     private val readMetrics: ReadMetrics,
+    private val eventPublisher: ApplicationEventPublisher,
 
     @param:Value("\${chat.first-chat.duration-minutes:15}")
     private val firstChatDurationMinutes: Long,
@@ -483,6 +485,7 @@ class ChatService(
             chat.endedReason = ChatEndReason.SYSTEM_CLOSED
             chatRepository.save(chat)
             recordChatEnded(chat)
+            publishFirstChatTerminated(chat)
 
             listOf(match.userAId, match.userBId).forEach { participantId ->
                 userReliabilityScoreService.recordEvent(
@@ -533,6 +536,7 @@ class ChatService(
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> {
                 recordFirstChatExpirationReliability(chat)
+                publishFirstChatTerminated(chat)
                 matchService.expireMatch(chat.matchId)
             }
 
@@ -550,6 +554,18 @@ class ChatService(
         }
 
         return true
+    }
+
+    private fun publishFirstChatTerminated(chat: Chat) {
+        val endedReason = chat.endedReason ?: return
+        eventPublisher.publishEvent(
+            FirstChatTerminatedEvent(
+                matchId = chat.matchId,
+                chatId = chat.id,
+                finalStatus = chat.status,
+                endedReason = endedReason
+            )
+        )
     }
 
     fun getMessages(

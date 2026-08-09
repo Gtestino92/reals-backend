@@ -34,13 +34,17 @@ class FirebasePushNotificationSender(
             try {
                 val messageBuilder = Message.builder()
                     .setToken(deviceToken.token)
-                    .setNotification(
+
+                if (notification.includeNotificationPayload) {
+                    messageBuilder.setNotification(
                         com.google.firebase.messaging.Notification.builder()
                             .setTitle(notification.title)
                             .setBody(notification.body)
                             .build()
                     )
-                    .putAllData(notification.data)
+                }
+
+                messageBuilder.putAllData(notification.data)
 
                 androidConfig(notification)?.let { messageBuilder.setAndroidConfig(it) }
 
@@ -87,13 +91,20 @@ class FirebasePushNotificationSender(
             messagingErrorCode == MessagingErrorCode.INVALID_ARGUMENT
 
     private fun androidConfig(notification: PushNotification): AndroidConfig? {
-        if (notification.androidTtlMillis == null && notification.androidNotificationTag == null) {
+        if (
+            notification.androidTtlMillis == null &&
+            notification.androidNotificationTag == null &&
+            notification.androidPriority == null
+        ) {
             return null
         }
 
         val builder = AndroidConfig.builder()
         notification.androidTtlMillis?.let { builder.setTtl(it) }
-        notification.androidNotificationTag?.let { tag ->
+        notification.androidPriority?.let { priority ->
+            builder.setPriority(priority.toFirebasePriority())
+        }
+        notification.androidNotificationTag?.takeIf { notification.includeNotificationPayload }?.let { tag ->
             builder.setNotification(
                 AndroidNotification.builder()
                     .setTitle(notification.title)
@@ -104,4 +115,9 @@ class FirebasePushNotificationSender(
         }
         return builder.build()
     }
+
+    private fun PushNotificationAndroidPriority.toFirebasePriority(): AndroidConfig.Priority =
+        when (this) {
+            PushNotificationAndroidPriority.HIGH -> AndroidConfig.Priority.HIGH
+        }
 }

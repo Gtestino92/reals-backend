@@ -4,6 +4,7 @@ import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
@@ -12,6 +13,7 @@ import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -26,7 +28,8 @@ class AccountDeletionService(
     private val scheduleNegotiationRepository: ScheduleNegotiationRepository,
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
     private val auditEventService: AuditEventService,
-    private val homeStateInvalidationService: HomeStateInvalidationService
+    private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val eventPublisher: ApplicationEventPublisher
 ) {
 
     fun closeActiveEngagementsForDeletedUser(
@@ -149,6 +152,16 @@ class AccountDeletionService(
                     "connectionId" to chat.connectionId
                 )
             )
+            if (chat.chatType == ChatType.FIRST_CHAT) {
+                eventPublisher.publishEvent(
+                    FirstChatTerminatedEvent(
+                        matchId = chat.matchId,
+                        chatId = chat.id,
+                        finalStatus = chat.status,
+                        endedReason = ChatEndReason.USER_DELETED
+                    )
+                )
+            }
         }
     }
 
