@@ -27,6 +27,7 @@ import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -45,6 +46,7 @@ class ChatExitService(
     private val connectionService: ConnectionService,
     private val auditEventService: AuditEventService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val eventPublisher: ApplicationEventPublisher,
 
     @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
     private val firstChatMinMessagesBeforeFreeCancel: Int,
@@ -548,12 +550,27 @@ class ChatExitService(
         )
 
         when (chat.chatType) {
-            ChatType.FIRST_CHAT -> matchService.rejectChatPhase(chat.matchId)
+            ChatType.FIRST_CHAT -> {
+                publishFirstChatTerminated(chat)
+                matchService.rejectChatPhase(chat.matchId)
+            }
             ChatType.SECOND_CHAT -> {
                 val connectionId = chat.connectionId ?: throw chatNotAvailable()
                 connectionService.closeConnection(connectionId)
             }
         }
+    }
+
+    private fun publishFirstChatTerminated(chat: Chat) {
+        val endedReason = chat.endedReason ?: return
+        eventPublisher.publishEvent(
+            FirstChatTerminatedEvent(
+                matchId = chat.matchId,
+                chatId = chat.id,
+                finalStatus = chat.status,
+                endedReason = endedReason
+            )
+        )
     }
 
     private fun validateActiveChatWindow(chat: Chat) {
