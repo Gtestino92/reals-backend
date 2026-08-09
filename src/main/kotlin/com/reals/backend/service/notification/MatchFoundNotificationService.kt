@@ -8,6 +8,7 @@ import com.reals.backend.service.ChatService
 import com.reals.backend.service.MatchFoundEvent
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.notification.sender.PushNotification
+import com.reals.backend.service.notification.sender.PushNotificationAndroidPriority
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
@@ -26,11 +27,14 @@ class MatchFoundNotificationService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun notifyMatchFound(event: MatchFoundEvent) {
+    fun notifyMatchFound(
+        event: MatchFoundEvent,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ) {
         try {
-            val prepared = prepareMatchFound(event)
+            val prepared = prepareMatchFound(event, now)
             prepared.commands.forEach { command ->
-                sendAndPersist(command)
+                sendAndPersist(command, now)
             }
         } catch (ex: Exception) {
             log.warn(
@@ -43,7 +47,8 @@ class MatchFoundNotificationService(
     }
 
     private fun prepareMatchFound(
-        event: MatchFoundEvent
+        event: MatchFoundEvent,
+        now: OffsetDateTime
     ): PreparedPushBatch =
         transactionTemplate.execute {
             val match = matchService.findByIdOrThrow(event.matchId)
@@ -60,8 +65,6 @@ class MatchFoundNotificationService(
                     eligible = false
                 )
             }
-
-            val now = OffsetDateTime.now()
 
             if (!now.isBefore(chat.timeoutAt)) {
                 return@execute PreparedPushBatch(
@@ -114,6 +117,7 @@ class MatchFoundNotificationService(
                         tokens = activeTokens,
                         notification = matchFoundNotification(
                             matchId = match.id,
+                            expiresAt = chat.timeoutAt,
                             ttlMillis = ttlMillis
                         ),
                         preparedAt = now
@@ -126,9 +130,12 @@ class MatchFoundNotificationService(
             )
         }
 
-    private fun sendAndPersist(command: PreparedPushCommand) {
+    private fun sendAndPersist(
+        command: PreparedPushCommand,
+        now: OffsetDateTime
+    ) {
         try {
-            preparedPushCommandProcessor.process(command)
+            preparedPushCommandProcessor.process(command, now)
         } catch (ex: Exception) {
             log.warn(
                 "Match found push command failed for user={} match={}",
@@ -141,6 +148,7 @@ class MatchFoundNotificationService(
 
     private fun matchFoundNotification(
         matchId: UUID,
+        expiresAt: OffsetDateTime,
         ttlMillis: Long
     ): PushNotification =
         PushNotification(
@@ -148,9 +156,11 @@ class MatchFoundNotificationService(
             body = "Tu nuevo chat ya está disponible.",
             data = mapOf(
                 "type" to PushNotificationType.MATCH_FOUND.name,
-                "matchId" to matchId.toString()
+                "matchId" to matchId.toString(),
+                "expiresAt" to expiresAt.toString()
             ),
             androidTtlMillis = ttlMillis,
-            androidNotificationTag = "match-found-$matchId"
+            includeNotificationPayload = false,
+            androidPriority = PushNotificationAndroidPriority.HIGH
         )
 }

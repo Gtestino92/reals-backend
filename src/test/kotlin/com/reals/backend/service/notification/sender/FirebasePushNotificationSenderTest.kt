@@ -4,7 +4,9 @@ import com.google.firebase.messaging.AndroidConfig
 import com.google.firebase.messaging.AndroidNotification
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.Message
+import com.google.firebase.messaging.Notification
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -31,6 +33,8 @@ class FirebasePushNotificationSenderTest {
         )
 
         assertEquals(1, capturedMessages.size)
+        val firebaseNotification = capturedMessages.single().fieldValue<Notification>("notification")
+        assertNotNull(firebaseNotification)
         assertNull(capturedMessages.single().fieldValue<AndroidConfig>("androidConfig"))
     }
 
@@ -62,6 +66,43 @@ class FirebasePushNotificationSenderTest {
         assertEquals("second-chat-connection-id", androidNotification.fieldValue<String>("tag"))
         assertEquals("Title", androidNotification.fieldValue<String>("title"))
         assertEquals("Body", androidNotification.fieldValue<String>("body"))
+    }
+
+    @Test
+    fun `client rendered messages keep data and Android metadata without notification payloads`() {
+        val firebaseMessaging = Mockito.mock(FirebaseMessaging::class.java)
+        val capturedMessages = mutableListOf<Message>()
+        Mockito.`when`(firebaseMessaging.send(anyMessage())).thenAnswer { invocation ->
+            capturedMessages += invocation.arguments[0] as Message
+            "message-id"
+        }
+
+        val data = mapOf(
+            "type" to "MATCH_FOUND",
+            "matchId" to UUID.randomUUID().toString(),
+            "expiresAt" to "2040-07-17T12:05:00Z"
+        )
+
+        FirebasePushNotificationSender(firebaseMessaging).sendToTokens(
+            tokens = listOf(PushNotificationToken(id = UUID.randomUUID(), token = "token-1")),
+            notification = PushNotification(
+                title = "Encontramos un chat",
+                body = "Tu nuevo chat ya está disponible.",
+                data = data,
+                androidTtlMillis = 12_345,
+                includeNotificationPayload = false,
+                androidPriority = PushNotificationAndroidPriority.HIGH
+            )
+        )
+
+        val message = capturedMessages.single()
+        assertNull(message.fieldValue<Notification>("notification"))
+        assertEquals(data, message.fieldValue<Map<String, String>>("data"))
+        val androidConfig = message.fieldValue<AndroidConfig>("androidConfig")
+            ?: error("Expected AndroidConfig")
+        assertEquals("12.345000000s", androidConfig.fieldValue<String>("ttl"))
+        assertEquals("high", androidConfig.fieldValue<String>("priority"))
+        assertNull(androidConfig.fieldValue<AndroidNotification>("notification"))
     }
 
     private fun anyMessage(): Message {

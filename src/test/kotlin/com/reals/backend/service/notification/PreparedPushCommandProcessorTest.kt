@@ -78,6 +78,26 @@ class PreparedPushCommandProcessorTest {
     }
 
     @Test
+    fun `partial provider success persists invalid tokens without changing successful outcome`() {
+        val command = command()
+        val sendResult =
+            PushSendResult(
+                sent = true,
+                providerMessageIds = listOf("provider-valid-token"),
+                invalidTokens = listOf("invalid-token"),
+                errorMessage = "one token was invalid"
+            )
+        dispatcher.results += { sendResult }
+
+        val outcome = processor.process(command, NOW)
+
+        assertEquals(PreparedPushCommandOutcome.SENT, outcome)
+        assertEquals(listOf(command), dispatcher.commands)
+        assertEquals(sendResult, persistence.persistSendResultCalls.single().sendResult)
+        assertEquals(0, persistence.persistFailureCalls.size)
+    }
+
+    @Test
     fun `provider exception plus failure persistence exception does not escape or retry`() {
         val command = command()
         persistence.persistFailureException = RuntimeException("database unavailable")
