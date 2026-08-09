@@ -178,11 +178,14 @@ with `matchId`, `chatId`, `finalStatus` and `endedReason`. It is emitted only
 for persisted terminal first-chat transitions, not for a pending mutual
 cancellation request or other still-actionable intermediate state. Notification
 infrastructure listens after commit and best-effort sends a data-only Android
-control push with high priority: `type = MATCH_FOUND_INVALIDATED` and `matchId`.
-The invalidation push removes stale client-rendered `MATCH_FOUND` presentation;
-its FCM TTL is bounded by the remaining authoritative `Chat.timeoutAt` window.
-The original `MATCH_FOUND expiresAt` remains the absolute client-side fallback
-if the invalidation is not useful or is not delivered.
+control push with high priority: `type = MATCH_FOUND_INVALIDATED`, `matchId`
+and `expiresAt`. That `expiresAt` is the authoritative original first-chat
+`Chat.timeoutAt`. Android may use it to keep a short-lived invalidation
+tombstone and reject a late out-of-order `MATCH_FOUND` if FCM delivers the
+control message first. The invalidation push removes stale client-rendered
+`MATCH_FOUND` presentation; its FCM TTL is bounded by the remaining
+authoritative `Chat.timeoutAt` window. The original `MATCH_FOUND expiresAt`
+remains the absolute client-side notification timeout.
 
 Messages can be sent only when the chat is active, not timed out, not abandoned
 by inactivity and the sender belongs to the match. Sending a message updates

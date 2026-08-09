@@ -65,9 +65,10 @@ class MatchFoundInvalidationNotificationIntegrationTest : BaseIT() {
         )
         assertTrue(pushSender.attempts.none { it.transactionActive })
         pushSender.attempts.forEach { attempt ->
-            assertEquals(setOf("type", "matchId"), attempt.notification.data.keys)
+            assertEquals(setOf("type", "matchId", "expiresAt"), attempt.notification.data.keys)
             assertEquals(PushNotificationType.MATCH_FOUND_INVALIDATED.name, attempt.notification.data["type"])
             assertEquals(setup.matchId.toString(), attempt.notification.data["matchId"])
+            assertEquals(timeoutAt.toString(), attempt.notification.data["expiresAt"])
             assertEquals(Duration.between(now, timeoutAt).toMillis(), attempt.notification.androidTtlMillis)
             assertFalse(attempt.notification.includeNotificationPayload)
             assertEquals(PushNotificationAndroidPriority.HIGH, attempt.notification.androidPriority)

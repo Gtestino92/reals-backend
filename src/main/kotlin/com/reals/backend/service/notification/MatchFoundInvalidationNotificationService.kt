@@ -117,6 +117,7 @@ class MatchFoundInvalidationNotificationService(
                         tokens = activeTokens,
                         notification = matchFoundInvalidatedNotification(
                             matchId = match.id,
+                            expiresAt = chat.timeoutAt,
                             ttlMillis = ttlMillis
                         ),
                         preparedAt = now
@@ -147,6 +148,7 @@ class MatchFoundInvalidationNotificationService(
 
     private fun matchFoundInvalidatedNotification(
         matchId: UUID,
+        expiresAt: OffsetDateTime,
         ttlMillis: Long
     ): PushNotification =
         PushNotification(
@@ -154,7 +156,8 @@ class MatchFoundInvalidationNotificationService(
             body = "Este chat ya no está disponible.",
             data = mapOf(
                 "type" to PushNotificationType.MATCH_FOUND_INVALIDATED.name,
-                "matchId" to matchId.toString()
+                "matchId" to matchId.toString(),
+                "expiresAt" to expiresAt.toString()
             ),
             androidTtlMillis = ttlMillis,
             includeNotificationPayload = false,
