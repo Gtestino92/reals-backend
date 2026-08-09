@@ -369,7 +369,13 @@ class PushNotificationIntegrationTest : BaseIT() {
             Duration.between(review.createdAt, expiresAt).seconds * 60 / 100,
             Duration.between(review.createdAt, reminderEligibleAt).seconds
         )
-        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, pushSender.attempts.size)
+        assertTrue(
+            pushSender.attempts.all {
+                PushNotificationType.valueOf(it.notification.data.getValue("type")) ==
+                    PushNotificationType.MATCH_FOUND_INVALIDATED
+            }
+        )
         assertEquals(0, visualReviewAvailableDeliveriesFor(setup.matchId).size)
         assertEquals(0, visualReviewReminderDeliveriesFor(setup.matchId).size)
     }
