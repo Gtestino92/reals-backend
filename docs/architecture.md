@@ -178,7 +178,9 @@ processing failure. See `docs/matchmaking-ranking.md`.
 Defensive direct match creation still locks both users through
 `UserRepository.findAllByIdForUpdate` before persisting a match. After those
 locks, a focused JDBC pair-eligibility query returns either active-interaction,
-previous-pairing-cooldown or no blocker in one database round trip. User blocks
+previous-pairing-cooldown or no blocker in one database round trip. Historical
+cooldown classification uses the persisted terminal evidence and its applicable
+cutoff, including the separate first-chat decision-mismatch cutoff. User blocks
 remain a separate permanent exclusion checked before this pair policy.
 `matchmaking.allow-active-pair-duplicates=true` omits active-interaction
 blocking from candidate claim, partner discovery, partner claim and defensive

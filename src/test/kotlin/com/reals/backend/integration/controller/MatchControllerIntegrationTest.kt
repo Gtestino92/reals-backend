@@ -55,7 +55,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id", equalTo(setup.firstChatId.toString())))
             .andExpect(jsonPath("$.expiresAt").exists())
-            .andExpect(jsonPath("$.inactivityExpiresAt").exists())
+            .andExpect(jsonPath("$.inactivityExpiresAt").doesNotExist())
             .andExpect(jsonPath("$.partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))

@@ -110,7 +110,8 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
                 today = now.toLocalDate(),
                 exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                 previousPairingCutoff = null,
-                firstChatExpirationCutoff = null
+                firstChatExpirationCutoff = null,
+                firstChatDecisionMismatchCutoff = null
             ).any {
                 (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
                     (it.pair.userAId == userBId && it.pair.userBId == userAId)
@@ -127,7 +128,8 @@ class MatchmakingPreviousPairingDisabledIntegrationTest : BaseIT() {
             userBId = userBId,
             exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
             previousPairingCutoff = null,
-            firstChatExpirationCutoff = null
+            firstChatExpirationCutoff = null,
+            firstChatDecisionMismatchCutoff = null
         )
 
     private fun saveHistoricalMatch(

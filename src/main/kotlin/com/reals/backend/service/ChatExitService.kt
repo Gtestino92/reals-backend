@@ -39,6 +39,7 @@ class ChatExitService(
     private val chatRepository: ChatRepository,
     private val chatMessageRepository: ChatMessageRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
+    private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val matchService: MatchService,
     private val penaltyService: PenaltyService,
     private val safetyReportService: SafetyReportService,
@@ -88,6 +89,7 @@ class ChatExitService(
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, requesterUserId)
         rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, requesterUserId)
         val responderUserId = resolvePartnerUserId(chat, requesterUserId)
         val normalizedDetails = normalizeDetails(details)
 
@@ -137,10 +139,11 @@ class ChatExitService(
         requestId: UUID,
         responderUserId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
         rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -174,10 +177,11 @@ class ChatExitService(
         requestId: UUID,
         responderUserId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
         rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -209,10 +213,11 @@ class ChatExitService(
         requestId: UUID,
         userId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
         rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         if (
@@ -266,10 +271,25 @@ class ChatExitService(
         reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
         details: String? = null
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
+        return cancelChatUnilaterallyWithLockedChat(
+            chat = chat,
+            userId = userId,
+            reason = reason,
+            details = details
+        )
+    }
+
+    fun cancelChatUnilaterallyWithLockedChat(
+        chat: Chat,
+        userId: UUID,
+        reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+        details: String? = null
+    ): ChatExitOutcome {
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
         rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
         val responderUserId = resolvePartnerUserId(chat, userId)
         val normalizedDetails = normalizeDetails(details)
 
@@ -280,7 +300,7 @@ class ChatExitService(
 
         val exitRequest = chatExitRequestRepository.save(
             ChatExitRequest(
-                chatId = chatId,
+                chatId = chat.id,
                 requesterUserId = userId,
                 responderUserId = responderUserId,
                 type = ChatExitRequestType.UNILATERAL_CANCEL,
@@ -317,7 +337,7 @@ class ChatExitService(
         reason: ChatExitReason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
         details: String? = null
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, reporterUserId)
         val reportedUserId = resolvePartnerUserId(chat, reporterUserId)

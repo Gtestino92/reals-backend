@@ -288,7 +288,38 @@ internal object MatchmakingSqlFragments {
                         )
                     )
                     OR (
-                        m.state IN ('CHAT_REJECTED', 'VISUAL_REJECTED')
+                        m.state = 'CHAT_REJECTED'
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM chats fc_mismatch
+                            WHERE fc_mismatch.match_id = m.id
+                                AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                        )
+                        AND m.updated_at > :previousPairingCutoff
+                    )
+                    OR (
+                        m.state = 'CHAT_REJECTED'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM chats fc_mismatch
+                            WHERE fc_mismatch.match_id = m.id
+                                AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                        )
+                        AND COALESCE(
+                            (
+                                SELECT fc_mismatch.ended_at
+                                FROM chats fc_mismatch
+                                WHERE fc_mismatch.match_id = m.id
+                                    AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                    AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                            ),
+                            m.updated_at
+                        ) > :firstChatDecisionMismatchCutoff
+                    )
+                    OR (
+                        m.state = 'VISUAL_REJECTED'
                         AND m.updated_at > :previousPairingCutoff
                     )
                     OR (
@@ -340,7 +371,38 @@ internal object MatchmakingSqlFragments {
                 WHERE ${UNORDERED_QUEUE_PAIR_MATCH}
                 AND (
                     (
-                        m.state IN ('CHAT_REJECTED', 'VISUAL_REJECTED')
+                        m.state = 'CHAT_REJECTED'
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM chats fc_mismatch
+                            WHERE fc_mismatch.match_id = m.id
+                                AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                        )
+                        AND m.updated_at > :previousPairingCutoff
+                    )
+                    OR (
+                        m.state = 'CHAT_REJECTED'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM chats fc_mismatch
+                            WHERE fc_mismatch.match_id = m.id
+                                AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                        )
+                        AND COALESCE(
+                            (
+                                SELECT fc_mismatch.ended_at
+                                FROM chats fc_mismatch
+                                WHERE fc_mismatch.match_id = m.id
+                                    AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                    AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                            ),
+                            m.updated_at
+                        ) > :firstChatDecisionMismatchCutoff
+                    )
+                    OR (
+                        m.state = 'VISUAL_REJECTED'
                         AND m.updated_at > :previousPairingCutoff
                     )
                     OR (
@@ -510,7 +572,38 @@ internal object MatchmakingSqlFragments {
             WHERE ${UNORDERED_PARAM_PAIR_MATCH}
             AND (
                 (
-                    m.state IN ('CHAT_REJECTED', 'VISUAL_REJECTED')
+                    m.state = 'CHAT_REJECTED'
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM chats fc_mismatch
+                        WHERE fc_mismatch.match_id = m.id
+                            AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                            AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                    )
+                    AND m.updated_at > :previousPairingCutoff
+                )
+                OR (
+                    m.state = 'CHAT_REJECTED'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM chats fc_mismatch
+                        WHERE fc_mismatch.match_id = m.id
+                            AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                            AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                    )
+                    AND COALESCE(
+                        (
+                            SELECT fc_mismatch.ended_at
+                            FROM chats fc_mismatch
+                            WHERE fc_mismatch.match_id = m.id
+                                AND fc_mismatch.chat_type = 'FIRST_CHAT'
+                                AND fc_mismatch.ended_reason = 'FIRST_CHAT_DECISION_MISMATCH'
+                        ),
+                        m.updated_at
+                    ) > :firstChatDecisionMismatchCutoff
+                )
+                OR (
+                    m.state = 'VISUAL_REJECTED'
                     AND m.updated_at > :previousPairingCutoff
                 )
                 OR (

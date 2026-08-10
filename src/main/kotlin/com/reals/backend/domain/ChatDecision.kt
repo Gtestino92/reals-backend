@@ -9,7 +9,7 @@ import java.util.UUID
  *
  * When both decisions are registered, the match transitions automatically:
  * - BOTH APPROVED -> CHAT_APPROVED -> VISUAL_PHASE
- * - ANY REJECTED -> CHAT_REJECTED, locks released
+ * - APPROVED plus REJECTED -> CHAT_REJECTED as a completed decision mismatch, locks released
  */
 @Entity
 @Table(name = "chat_decisions")

@@ -168,7 +168,8 @@ class MatchmakingService(
                 today = today,
                 exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
-                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
+                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = cutoffs.firstChatDecisionMismatchCutoff
             )
                 ?: return null
 
@@ -179,7 +180,8 @@ class MatchmakingService(
                 today = today,
                 exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
-                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
+                firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = cutoffs.firstChatDecisionMismatchCutoff
             )
 
         val claimAttempts =
@@ -196,7 +198,8 @@ class MatchmakingService(
                     today = today,
                     exclusionPolicy = exclusionPolicy,
                     previousPairingCutoff = cutoffs.previousPairingCutoff,
-                    firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff
+                    firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,
+                    firstChatDecisionMismatchCutoff = cutoffs.firstChatDecisionMismatchCutoff
                 )
 
             if (claimed != null) {
@@ -623,13 +626,20 @@ class MatchmakingService(
                     matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
                 } else {
                     null
+                },
+            firstChatDecisionMismatchCutoff =
+                if (includeHistoricalExclusion) {
+                    matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
+                } else {
+                    null
                 }
         )
     }
 
     private data class MatchmakingHistoricalCutoffs(
         val previousPairingCutoff: OffsetDateTime?,
-        val firstChatExpirationCutoff: OffsetDateTime?
+        val firstChatExpirationCutoff: OffsetDateTime?,
+        val firstChatDecisionMismatchCutoff: OffsetDateTime?
     )
 
     private data class AffinityWeightedCandidate(

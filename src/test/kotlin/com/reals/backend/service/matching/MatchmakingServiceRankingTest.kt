@@ -777,7 +777,8 @@ class MatchmakingServiceRankingTest {
             today: LocalDate,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
-            firstChatExpirationCutoff: OffsetDateTime?
+            firstChatExpirationCutoff: OffsetDateTime?,
+            firstChatDecisionMismatchCutoff: OffsetDateTime?
         ): MatchmakingAnchor =
             MatchmakingAnchor(
                 queueEntryId = UUID.nameUUIDFromBytes("anchor-queue".toByteArray()),
@@ -790,7 +791,8 @@ class MatchmakingServiceRankingTest {
             today: LocalDate,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
-            firstChatExpirationCutoff: OffsetDateTime?
+            firstChatExpirationCutoff: OffsetDateTime?,
+            firstChatDecisionMismatchCutoff: OffsetDateTime?
         ): List<MatchmakingPartnerCandidate> =
             candidates.take(limit)
 
@@ -800,7 +802,8 @@ class MatchmakingServiceRankingTest {
             today: LocalDate,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
-            firstChatExpirationCutoff: OffsetDateTime?
+            firstChatExpirationCutoff: OffsetDateTime?,
+            firstChatDecisionMismatchCutoff: OffsetDateTime?
         ): MatchmakingPartnerCandidate? {
             claimAttempts.add(partnerQueueEntryId)
             return claimResults[partnerQueueEntryId]

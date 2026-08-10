@@ -86,6 +86,7 @@ matchmaking:
   exclude-previous-pairing: ${MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING:false}
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
   ranking:
     mode: ${MATCHMAKING_RANKING_MODE:PROBABILISTIC_WEIGHTED}
     compatibility-temperature: ${MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE:0.20}

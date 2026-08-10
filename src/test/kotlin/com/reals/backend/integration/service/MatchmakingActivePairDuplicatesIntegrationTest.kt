@@ -120,7 +120,8 @@ class MatchmakingActivePairDuplicatesIntegrationTest : BaseIT() {
                 today = now.toLocalDate(),
                 exclusionPolicy = policy,
                 previousPairingCutoff = null,
-                firstChatExpirationCutoff = null
+                firstChatExpirationCutoff = null,
+                firstChatDecisionMismatchCutoff = null
             ).any {
                 (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
                     (it.pair.userAId == userBId && it.pair.userBId == userAId)
@@ -141,7 +142,8 @@ class MatchmakingActivePairDuplicatesIntegrationTest : BaseIT() {
             today = now.toLocalDate(),
             exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
             previousPairingCutoff = null,
-            firstChatExpirationCutoff = null
+            firstChatExpirationCutoff = null,
+            firstChatDecisionMismatchCutoff = null
         )
 
     private fun saveMatch(

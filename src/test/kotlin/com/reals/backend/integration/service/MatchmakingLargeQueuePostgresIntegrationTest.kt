@@ -154,7 +154,8 @@ class MatchmakingLargeQueuePostgresIntegrationTest {
                         today = LocalDate.of(2026, 7, 14),
                         exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                         previousPairingCutoff = null,
-                        firstChatExpirationCutoff = null
+                        firstChatExpirationCutoff = null,
+                        firstChatDecisionMismatchCutoff = null
                     ) ?: error("Expected anchor")
                 assertEquals(anchor.userId, claimedAnchor.userId)
 
@@ -164,7 +165,8 @@ class MatchmakingLargeQueuePostgresIntegrationTest {
                     today = LocalDate.of(2026, 7, 14),
                     exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
-                    firstChatExpirationCutoff = null
+                    firstChatExpirationCutoff = null,
+                    firstChatDecisionMismatchCutoff = null
                 )
             }
 

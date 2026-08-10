@@ -835,7 +835,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
-      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
+      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; while exactly one first-chat participant has approved and the other remains pending, ordinary message sends from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -899,7 +899,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat audio message
-      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted durationMillis is rounded up from the MP4 timescale rational value.
+      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted durationMillis is rounded up from the MP4 timescale rational value. First-chat decision-only state rejects new audio with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -955,7 +955,7 @@ paths:
     post:
       tags: [Chats]
       summary: Request next first-chat guidance question
-      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed.
+      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed. First-chat decision-only state rejects next requests with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       responses:
@@ -973,7 +973,7 @@ paths:
     post:
       tags: [Chats]
       summary: Request mutual chat cancellation
-      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict. A pending mutual cancellation pauses new message sends and first-chat guidance advancement, while message reads, exit-request polling, acceptance, rejection, timeout, unilateral cancellation and safety cancellation remain available.
+      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict. A pending mutual cancellation pauses new message sends and first-chat guidance advancement, while message reads, exit-request polling, acceptance, rejection, timeout, unilateral cancellation and safety cancellation remain available. First-chat decision-only state rejects new mutual-cancellation requests with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1062,6 +1062,7 @@ paths:
     post:
       tags: [Chats]
       summary: Unilateral chat cancellation
+      description: Direct ordinary chat cancellation. In first-chat decision-only state this is rejected with `FIRST_CHAT_DECISION_ONLY`; final `REJECTED`, safety report and manual block remain available.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1906,7 +1907,7 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable. Message sends may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
+      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1932,8 +1933,13 @@ components:
                 code: CHAT_MUTUAL_CANCELLATION_PENDING
                 error: Conflict
                 message: A mutual cancellation request is pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     FirstChatGuidanceConflict:
-      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING` or `LEGAL_ACTION_REQUIRED`.
+      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING`, `FIRST_CHAT_DECISION_ONLY` or `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1969,6 +1975,11 @@ components:
                 code: CHAT_MUTUAL_CANCELLATION_PENDING
                 error: Conflict
                 message: A mutual cancellation request is pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     ChatDecisionConflict:
       description: First-chat continuation decision is not currently available. APPROVED may also return `LEGAL_ACTION_REQUIRED`; REJECTED remains available without legal compliance.
       content:
@@ -2019,7 +2030,7 @@ components:
                 error: Not Found
                 message: Chat exit request was not found
     ChatExitRequestCreateConflict:
-      description: Mutual chat cancellation request cannot be created in the current chat state.
+      description: Mutual chat cancellation request cannot be created in the current chat state. First-chat decision-only state returns `FIRST_CHAT_DECISION_ONLY`.
       content:
         application/json:
           schema:
@@ -2040,8 +2051,13 @@ components:
                 code: CHAT_EXIT_REQUEST_ALREADY_PENDING
                 error: Conflict
                 message: A chat exit request is already pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     ChatExitRequestActionConflict:
-      description: Chat exit request cannot be accepted, rejected, or timed out in the current state.
+      description: Chat exit request cannot be accepted, rejected, or timed out in the current state. First-chat decision-only state returns `FIRST_CHAT_DECISION_ONLY` for ordinary exit mutations.
       content:
         application/json:
           schema:
@@ -2062,6 +2078,11 @@ components:
                 code: CHAT_EXIT_REQUEST_NOT_AVAILABLE
                 error: Conflict
                 message: Chat exit request is not available
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     SchedulingInvalidProposals:
       description: "Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`."
       content:
@@ -3014,7 +3035,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply.
+          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
