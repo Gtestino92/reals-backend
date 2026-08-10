@@ -456,6 +456,7 @@ for Firebase/Android manual flows:
 
 ```http
 POST /api/local-dev/matchmaking/process?maxPairsPerRun=10
+POST /api/local-dev/pair-history/reset
 ```
 
 Supported local job triggers:

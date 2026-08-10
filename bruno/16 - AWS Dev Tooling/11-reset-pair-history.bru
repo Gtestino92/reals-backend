@@ -1,0 +1,49 @@
+meta {
+  name: 11 Reset Pair History
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/pair-history/reset
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+body:json {
+  {
+    "userIdA": "{{matchUserAId}}",
+    "userIdB": "{{matchUserBId}}"
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 401) {
+    throw new Error("Expected admin Firebase bearer token. Run 00 Admin Firebase Sign In first.");
+  }
+  if (status === 403) {
+    throw new Error("Expected allowlisted active admin user. Run 01 Provision Admin User and verify BACKOFFICE_ADMIN_EMAILS.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (
+    !body ||
+    typeof body.matchesDeleted !== "number" ||
+    typeof body.connectionsDeleted !== "number" ||
+    typeof body.chatsDeleted !== "number"
+  ) {
+    throw new Error("Expected pair-history reset response with deleted counts.");
+  }
+}
+
+docs {
+  DEV-only cleanup for the mutual pair history between exactly two users. Set matchUserAId and matchUserBId in the selected local environment before running.
+}

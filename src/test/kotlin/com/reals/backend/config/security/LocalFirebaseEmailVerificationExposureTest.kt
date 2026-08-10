@@ -2,6 +2,7 @@ package com.reals.backend.config.security
 
 import com.google.firebase.auth.FirebaseAuth
 import com.reals.backend.controller.localdev.LocalFirebaseEmailVerificationController
+import com.reals.backend.service.localdev.LocalDevPairHistoryResetService
 import com.reals.backend.service.localdev.LocalFirebaseEmailVerificationService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -9,6 +10,7 @@ import org.mockito.Mockito
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.FilterType
 import java.util.function.Supplier
 
 class LocalFirebaseEmailVerificationExposureTest {
@@ -94,6 +96,12 @@ class LocalFirebaseEmailVerificationExposureTest {
         basePackageClasses = [
             LocalFirebaseEmailVerificationController::class,
             LocalFirebaseEmailVerificationService::class
+        ],
+        excludeFilters = [
+            ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = [LocalDevPairHistoryResetService::class]
+            )
         ]
     )
     class LocalFirebaseEmailVerificationScanConfig
