@@ -88,8 +88,14 @@ class LocalDevPairHistoryResetService(
 
         if (affectedAggregateIds.isNotEmpty()) {
             update(
-                "DELETE FROM push_notification_deliveries WHERE aggregate_id IN (:aggregateIds)",
-                params("aggregateIds", affectedAggregateIds)
+                """
+                DELETE FROM push_notification_deliveries
+                WHERE user_id IN (:userIds)
+                  AND aggregate_id IN (:aggregateIds)
+                """,
+                MapSqlParameterSource()
+                    .addValue("userIds", orderedUserIds)
+                    .addValue("aggregateIds", affectedAggregateIds)
             )
         }
 
@@ -97,11 +103,15 @@ class LocalDevPairHistoryResetService(
         val reliabilityEventsDeleted = updateWhenAny(
             """
             DELETE FROM user_reliability_events
-            WHERE ${inOrFalse("related_match_id", matchIds, "matchIds")}
-               OR ${inOrFalse("related_connection_id", connectionIds, "connectionIds")}
-               OR ${inOrFalse("related_chat_id", chatIds, "chatIds")}
+            WHERE user_id IN (:userIds)
+              AND (
+                   ${inOrFalse("related_match_id", matchIds, "matchIds")}
+                OR ${inOrFalse("related_connection_id", connectionIds, "connectionIds")}
+                OR ${inOrFalse("related_chat_id", chatIds, "chatIds")}
+              )
             """,
             MapSqlParameterSource()
+                .addValue("userIds", orderedUserIds)
                 .addOptionalUuids("matchIds", matchIds)
                 .addOptionalUuids("connectionIds", connectionIds)
                 .addOptionalUuids("chatIds", chatIds),
@@ -207,7 +217,7 @@ class LocalDevPairHistoryResetService(
             matchIds
         )
 
-        update("DELETE FROM user_home_status WHERE user_id IN (:userIds)", userParams)
+        invalidateHomeStatus(orderedUserIds)
 
         return LocalDevPairHistoryResetResult(
             matchesDeleted = matchesDeleted,
@@ -235,6 +245,35 @@ class LocalDevPairHistoryResetService(
         params: MapSqlParameterSource
     ): Int =
         jdbcTemplate.update(sql.trimIndent(), params)
+
+    private fun invalidateHomeStatus(
+        orderedUserIds: List<UUID>
+    ) {
+        val userParams = params("userIds", orderedUserIds)
+        update(
+            """
+            UPDATE user_home_status
+            SET version = version + 1,
+                dirty = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id IN (:userIds)
+            """,
+            userParams
+        )
+
+        orderedUserIds.forEach { userId ->
+            update(
+                """
+                INSERT INTO user_home_status (user_id, version, dirty, updated_at)
+                SELECT :userId, 0, TRUE, CURRENT_TIMESTAMP
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM user_home_status WHERE user_id = :userId
+                )
+                """,
+                MapSqlParameterSource().addValue("userId", userId)
+            )
+        }
+    }
 
     private fun inOrFalse(
         column: String,

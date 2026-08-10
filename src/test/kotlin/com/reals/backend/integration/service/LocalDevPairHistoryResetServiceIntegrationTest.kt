@@ -143,6 +143,13 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
                 eventType = UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION
             )
         )
+        val unrelatedUserReliabilityEventOnAffectedAggregate = userReliabilityEventRepository.saveAndFlush(
+            reliabilityEvent(
+                userId = unrelatedUserId,
+                relatedMatchId = affected.matchId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_EXPIRED_NO_DECISION
+            )
+        )
         val unrelatedReliabilityEvent = userReliabilityEventRepository.saveAndFlush(
             reliabilityEvent(
                 userId = affected.userAId,
@@ -153,6 +160,14 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
         pushNotificationDeliveryRepository.saveAndFlush(
             PushNotificationDelivery(
                 userId = affected.userAId,
+                notificationType = PushNotificationType.SECOND_CHAT_STARTED,
+                aggregateId = affected.secondChatId,
+                status = PushDeliveryStatus.SENT
+            )
+        )
+        val unrelatedUserPushOnAffectedAggregate = pushNotificationDeliveryRepository.saveAndFlush(
+            PushNotificationDelivery(
+                userId = unrelatedUserId,
                 notificationType = PushNotificationType.SECOND_CHAT_STARTED,
                 aggregateId = affected.secondChatId,
                 status = PushDeliveryStatus.SENT
@@ -187,6 +202,7 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
             )
         )
         assertFalse(userReliabilityEventRepository.existsById(affectedReliabilityEvent.id))
+        assertTrue(userReliabilityEventRepository.existsById(unrelatedUserReliabilityEventOnAffectedAggregate.id))
         assertTrue(userReliabilityEventRepository.existsById(unrelatedReliabilityEvent.id))
         assertFalse(
             lockRepository.existsByUserIdAndEngagementIdAndEngagementType(
@@ -209,10 +225,11 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
                 EngagementType.MATCH
             )
         )
-        assertFalse(homeStatusRepository.existsById(affected.userAId))
-        assertFalse(homeStatusRepository.existsById(affected.userBId))
+        assertHomeStatus(affected.userAId, expectedDirty = true, expectedVersion = 1)
+        assertHomeStatus(affected.userBId, expectedDirty = true, expectedVersion = 1)
         assertTrue(matchRepository.existsById(unrelatedMatch.id))
         assertTrue(chatRepository.existsById(unrelatedChat.id))
+        assertTrue(pushNotificationDeliveryRepository.existsById(unrelatedUserPushOnAffectedAggregate.id))
         assertTrue(pushNotificationDeliveryRepository.existsById(unrelatedPush.id))
         assertEquals(0, countRowsById("first_chat_guidance", "chat_id", firstChat.id))
         assertEquals(0, countRowsById("conversation_prompt_snapshots", "chat_id", firstChat.id))
@@ -224,6 +241,33 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
         assertEquals(0, replay.connectionsDeleted)
         assertEquals(0, replay.chatsDeleted)
         assertTrue(matchRepository.existsById(unrelatedMatch.id))
+        assertHomeStatus(affected.userAId, expectedDirty = true, expectedVersion = 2)
+        assertHomeStatus(affected.userBId, expectedDirty = true, expectedVersion = 2)
+    }
+
+    @Test
+    fun `reset creates dirty home rows when pair has no history and no home status`() {
+        val userIdA = createActiveProfile(
+            email = "pair-reset-no-home-a-${UUID.randomUUID()}@example.com",
+            displayName = "No Home A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val userIdB = createActiveProfile(
+            email = "pair-reset-no-home-b-${UUID.randomUUID()}@example.com",
+            displayName = "No Home B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        jdbcTemplate.update("DELETE FROM user_home_status WHERE user_id IN (?, ?)", userIdA, userIdB)
+
+        val result = pairHistoryResetService.resetPairHistory(userIdA, userIdB)
+
+        assertEquals(0, result.matchesDeleted)
+        assertEquals(0, result.connectionsDeleted)
+        assertEquals(0, result.chatsDeleted)
+        assertHomeStatus(userIdA, expectedDirty = true, expectedVersion = 0)
+        assertHomeStatus(userIdB, expectedDirty = true, expectedVersion = 0)
     }
 
     @Test
@@ -278,4 +322,17 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
         id: UUID
     ): Int =
         jdbcTemplate.queryForObject("SELECT COUNT(*) FROM $table WHERE $column = ?", Int::class.java, id) ?: 0
+
+    private fun assertHomeStatus(
+        userId: UUID,
+        expectedDirty: Boolean,
+        expectedVersion: Long
+    ) {
+        val homeStatus = jdbcTemplate.queryForMap(
+            "SELECT dirty, version FROM user_home_status WHERE user_id = ?",
+            userId
+        )
+        assertEquals(expectedDirty, homeStatus["DIRTY"])
+        assertEquals(expectedVersion, (homeStatus["VERSION"] as Number).toLong())
+    }
 }
