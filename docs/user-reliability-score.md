@@ -83,6 +83,8 @@ Mutual approval records `FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION` for both users a
 
 Accepted mutual no-spark closure records `FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE` for both users. Explicit mutual close rejection remains score-neutral in v0.
 
+First-chat decision mismatch (`APPROVED` plus `REJECTED` after one participant already approved) is treated as a healthy resolved interaction. It records `FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE` once for each participant and does not record unilateral-close events or cancellation penalties.
+
 Mutual close request timeout records `FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED` for the responder who did not answer. The requester receives no negative event.
 
 Unilateral first-chat closure uses v0 minimum participation:
@@ -96,7 +98,7 @@ Minimum participation is met when both users sent at least the configured number
 
 If the closer sent at least one message, the counterpart sent no messages, and the configured time threshold has passed, the closer receives no negative event and the inactive counterpart receives `FIRST_CHAT_CLOSED_AFTER_COUNTERPARTY_INACTIVE`.
 
-First-chat absolute timeout and inactivity closure record `FIRST_CHAT_EXPIRED_NO_DECISION` for users without a first-chat decision.
+First-chat absolute timeout and inactivity closure record `FIRST_CHAT_EXPIRED_NO_DECISION` for users without a first-chat decision. If one participant already approved and the counterpart times out or abandons without deciding, only the unresolved counterpart receives this event.
 
 Future work: the UI may hide non-safety close options during the first configured minutes. Safety reporting must always remain available.
 

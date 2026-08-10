@@ -85,6 +85,7 @@ class MatchmakingActiveDuplicatesWithHistoryIntegrationTest : BaseIT() {
         val policy = matchmakingPairEligibilityService.effectiveExclusionPolicy()
         val previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now)
         val firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        val firstChatDecisionMismatchCutoff = matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
         val userAQueueEntry = matchmakingQueueRepository.findByUserId(userAId)
         val userBQueueEntry = matchmakingQueueRepository.findByUserId(userBId)
 
@@ -95,7 +96,8 @@ class MatchmakingActiveDuplicatesWithHistoryIntegrationTest : BaseIT() {
                 today = now.toLocalDate(),
                 exclusionPolicy = policy,
                 previousPairingCutoff = previousPairingCutoff,
-                firstChatExpirationCutoff = firstChatExpirationCutoff
+                firstChatExpirationCutoff = firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
             ).any {
                 (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
                     (it.pair.userAId == userBId && it.pair.userBId == userAId)
@@ -113,7 +115,8 @@ class MatchmakingActiveDuplicatesWithHistoryIntegrationTest : BaseIT() {
             userBId = userBId,
             exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
             previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
-            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now),
+            firstChatDecisionMismatchCutoff = matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
         )
 
     private fun saveMatch(

@@ -255,7 +255,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                 today = LocalDate.now(),
                 exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                 previousPairingCutoff = null,
-                firstChatExpirationCutoff = null
+                firstChatExpirationCutoff = null,
+                firstChatDecisionMismatchCutoff = null
             ) ?: error("Expected anchor")
             val partner = matchmakingCandidateRepository.findEligiblePartnerCandidates(
                 anchorQueueEntryId = anchor.queueEntryId,
@@ -263,7 +264,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                 today = LocalDate.now(),
                 exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                 previousPairingCutoff = null,
-                firstChatExpirationCutoff = null
+                firstChatExpirationCutoff = null,
+                firstChatDecisionMismatchCutoff = null
             ).single()
             oldPartnerQueueEntryId = partner.partnerQueueEntryId
 
@@ -274,7 +276,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     today = LocalDate.now(),
                     exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
-                    firstChatExpirationCutoff = null
+                    firstChatExpirationCutoff = null,
+                    firstChatDecisionMismatchCutoff = null
                 )
             )
         }
@@ -293,7 +296,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     today = LocalDate.now(),
                     exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
-                    firstChatExpirationCutoff = null
+                    firstChatExpirationCutoff = null,
+                    firstChatDecisionMismatchCutoff = null
                 )
             )
             assertNotNull(
@@ -303,7 +307,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     today = LocalDate.now(),
                     exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
-                    firstChatExpirationCutoff = null
+                    firstChatExpirationCutoff = null,
+                    firstChatDecisionMismatchCutoff = null
                 )
             )
         }
@@ -340,7 +345,8 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
                     today = LocalDate.now(),
                     exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
                     previousPairingCutoff = null,
-                    firstChatExpirationCutoff = null
+                    firstChatExpirationCutoff = null,
+                    firstChatDecisionMismatchCutoff = null
                 )
             )
         }

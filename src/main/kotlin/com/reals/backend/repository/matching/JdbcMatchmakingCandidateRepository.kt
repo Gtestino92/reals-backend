@@ -28,18 +28,21 @@ class JdbcMatchmakingCandidateRepository(
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingAnchor? {
         requirePolicyMatchesCutoffs(
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
         val parameters = baseParameters(
             today = today,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
 
         return jdbcTemplate.query(
@@ -59,18 +62,21 @@ class JdbcMatchmakingCandidateRepository(
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): List<MatchmakingPartnerCandidate> {
         requirePolicyMatchesCutoffs(
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
         val parameters = baseParameters(
             today = today,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
             .addValue("anchorQueueEntryId", anchorQueueEntryId)
             .addValue("limit", limit)
@@ -87,18 +93,21 @@ class JdbcMatchmakingCandidateRepository(
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingPartnerCandidate? {
         requirePolicyMatchesCutoffs(
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
         val parameters = baseParameters(
             today = today,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
             .addValue("anchorQueueEntryId", anchorQueueEntryId)
             .addValue("partnerQueueEntryId", partnerQueueEntryId)
@@ -113,7 +122,8 @@ class JdbcMatchmakingCandidateRepository(
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MapSqlParameterSource {
         val parameters =
             MapSqlParameterSource()
@@ -123,6 +133,7 @@ class JdbcMatchmakingCandidateRepository(
             parameters
                 .addValue("previousPairingCutoff", previousPairingCutoff)
                 .addValue("firstChatExpirationCutoff", firstChatExpirationCutoff)
+                .addValue("firstChatDecisionMismatchCutoff", firstChatDecisionMismatchCutoff)
         }
 
         return parameters
@@ -131,10 +142,14 @@ class JdbcMatchmakingCandidateRepository(
     private fun requirePolicyMatchesCutoffs(
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ) {
-        require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
-            "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
+        require(
+            (previousPairingCutoff == null) == (firstChatExpirationCutoff == null) &&
+                (previousPairingCutoff == null) == (firstChatDecisionMismatchCutoff == null)
+        ) {
+            "Previous-pairing, first-chat expiration, and first-chat decision mismatch cutoffs must all be present or all be absent"
         }
         require(exclusionPolicy.excludeHistoricalPairings == (previousPairingCutoff != null)) {
             "Historical exclusion policy and cutoff parameters must match"

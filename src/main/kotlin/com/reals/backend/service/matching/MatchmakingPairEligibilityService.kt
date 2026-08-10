@@ -22,6 +22,9 @@ class MatchmakingPairEligibilityService(
     fun firstChatExpirationCutoff(now: OffsetDateTime): OffsetDateTime =
         now.minusDays(properties.firstChatExpirationCooldownDays)
 
+    fun firstChatDecisionMismatchCutoff(now: OffsetDateTime): OffsetDateTime =
+        now.minusDays(properties.firstChatDecisionMismatchCooldownDays)
+
     fun isHistoricalExclusionEnabled(): Boolean =
         properties.excludePreviousPairing
 
@@ -64,7 +67,8 @@ class MatchmakingPairEligibilityService(
             userBId = userBId,
             exclusionPolicy = MatchmakingPairExclusionPolicy.ACTIVE_ONLY,
             previousPairingCutoff = null,
-            firstChatExpirationCutoff = null
+            firstChatExpirationCutoff = null,
+            firstChatDecisionMismatchCutoff = null
         ) == MatchmakingPairBlockingReason.ACTIVE_INTERACTION
 
     fun hasActiveHistoricalCooldown(
@@ -84,7 +88,8 @@ class MatchmakingPairEligibilityService(
                 excludeHistoricalPairings = true
             ),
             previousPairingCutoff = previousPairingCutoff(now),
-            firstChatExpirationCutoff = firstChatExpirationCutoff(now)
+            firstChatExpirationCutoff = firstChatExpirationCutoff(now),
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff(now)
         ) == MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN
     }
 
@@ -101,7 +106,9 @@ class MatchmakingPairEligibilityService(
             previousPairingCutoff =
                 if (exclusionPolicy.excludeHistoricalPairings) previousPairingCutoff(now) else null,
             firstChatExpirationCutoff =
-                if (exclusionPolicy.excludeHistoricalPairings) firstChatExpirationCutoff(now) else null
+                if (exclusionPolicy.excludeHistoricalPairings) firstChatExpirationCutoff(now) else null,
+            firstChatDecisionMismatchCutoff =
+                if (exclusionPolicy.excludeHistoricalPairings) firstChatDecisionMismatchCutoff(now) else null
         )
     }
 }

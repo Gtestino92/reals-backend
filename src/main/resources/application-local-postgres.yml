@@ -85,6 +85,7 @@ matchmaking:
   exclude-previous-pairing: false
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
 
 profile:
   photos:

@@ -352,12 +352,19 @@ abstract class BaseIT {
             } else {
                 null
             }
+        val firstChatDecisionMismatchCutoff =
+            if (exclusionPolicy.excludeHistoricalPairings) {
+                matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
+            } else {
+                null
+            }
         val anchor =
             matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
                 today = today,
                 exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = previousPairingCutoff,
-                firstChatExpirationCutoff = firstChatExpirationCutoff
+                firstChatExpirationCutoff = firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
             )
                 ?: return emptyList()
 
@@ -367,7 +374,8 @@ abstract class BaseIT {
             today = today,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         ).map { it.pair }
     }
 

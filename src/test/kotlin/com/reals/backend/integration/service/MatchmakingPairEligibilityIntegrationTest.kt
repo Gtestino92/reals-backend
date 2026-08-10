@@ -47,7 +47,8 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
                 today = now.toLocalDate(),
                 exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
                 previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
-                firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+                firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now),
+                firstChatDecisionMismatchCutoff = matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
             ).single()
 
         assertEquals(partner.enteredAt, candidate.partnerEnteredAt)
@@ -178,6 +179,22 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
             status = ChatStatus.ABANDONED,
             endedReason = ChatEndReason.INACTIVITY_TIMEOUT
         )
+    }
+
+    @Test
+    fun `first chat decision mismatch uses dedicated seven day strict boundary`() {
+        val now = fixedNow()
+        val recent = createQueuedCompatiblePair("decision-mismatch-recent")
+        saveDecisionMismatchMatch(recent.first, recent.second, updatedAt = now.minusDays(20), endedAt = now.minusDays(6))
+        val boundary = createQueuedCompatiblePair("decision-mismatch-boundary")
+        saveDecisionMismatchMatch(boundary.first, boundary.second, updatedAt = now.minusDays(20), endedAt = now.minusDays(7))
+
+        assertFalse(matchmakingPairEligibilityService.isPairEligible(recent.first, recent.second, now))
+        assertFalse(queryContainsPair(recent.first, recent.second, now))
+        assertEquals(MatchmakingPairBlockingReason.PREVIOUS_PAIRING_COOLDOWN, blockingReason(recent.first, recent.second, now))
+        assertTrue(matchmakingPairEligibilityService.isPairEligible(boundary.first, boundary.second, now))
+        assertTrue(queryContainsPair(boundary.first, boundary.second, now))
+        assertEquals(null, blockingReason(boundary.first, boundary.second, now))
     }
 
     @Test
@@ -353,6 +370,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
     ): Boolean {
         val previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now)
         val firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+        val firstChatDecisionMismatchCutoff = matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
         val userAQueueEntry = matchmakingQueueRepository.findByUserId(userAId)
         val userBQueueEntry = matchmakingQueueRepository.findByUserId(userBId)
 
@@ -363,7 +381,8 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
                 today = now.toLocalDate(),
                 exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
                 previousPairingCutoff = previousPairingCutoff,
-                firstChatExpirationCutoff = firstChatExpirationCutoff
+                firstChatExpirationCutoff = firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
             ).any {
                 (it.pair.userAId == userAId && it.pair.userBId == userBId) ||
                     (it.pair.userAId == userBId && it.pair.userBId == userAId)
@@ -381,7 +400,8 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
             userBId = userBId,
             exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy(),
             previousPairingCutoff = matchmakingPairEligibilityService.previousPairingCutoff(now),
-            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            firstChatExpirationCutoff = matchmakingPairEligibilityService.firstChatExpirationCutoff(now),
+            firstChatDecisionMismatchCutoff = matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
         )
 
     private fun saveHistoricalMatch(
@@ -435,6 +455,27 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
                 expiresAt = updatedAt.minusSeconds(1),
                 createdAt = updatedAt.minusDays(1),
                 updatedAt = updatedAt
+            )
+        )
+        return match
+    }
+
+    private fun saveDecisionMismatchMatch(
+        userAId: UUID,
+        userBId: UUID,
+        updatedAt: OffsetDateTime,
+        endedAt: OffsetDateTime?
+    ): Match {
+        val match = saveHistoricalMatch(userAId, userBId, MatchState.CHAT_REJECTED, updatedAt)
+        chatRepository.saveAndFlush(
+            Chat(
+                matchId = match.id,
+                chatType = ChatType.FIRST_CHAT,
+                status = ChatStatus.FINISHED,
+                startedAt = updatedAt.minusMinutes(16),
+                timeoutAt = updatedAt.minusMinutes(1),
+                endedAt = endedAt,
+                endedReason = ChatEndReason.FIRST_CHAT_DECISION_MISMATCH
             )
         )
         return match

@@ -55,6 +55,7 @@ class ChatService(
     private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val chatExitService: ChatExitService,
+    private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val firstChatGuidanceService: FirstChatGuidanceService,
     private val affinityDerivedSnapshotInitializationService: AffinityDerivedSnapshotInitializationService,
     private val auditEventService: AuditEventService,
@@ -231,6 +232,7 @@ class ChatService(
         validateChatParticipant(chat, senderId)
         requireSecondChatJoinedForMessage(chat, senderId)
         if (chat.chatType == ChatType.FIRST_CHAT) {
+            firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, senderId)
             requireNoPendingMutualCancellation(chat.id)
         }
 
@@ -306,6 +308,7 @@ class ChatService(
         validateActiveChatWindowSideEffectFree(chat, now)
         requireSecondChatJoinedForMessage(chat, senderId)
         if (chat.chatType == ChatType.FIRST_CHAT) {
+            firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, senderId)
             requireNoPendingMutualCancellation(chat.id)
         }
         chatAudioPolicyService.requireAudioEnabled(
@@ -350,6 +353,7 @@ class ChatService(
         validateActiveChatWindow(chat)
         requireSecondChatJoinedForMessage(chat, senderId)
         if (chat.chatType == ChatType.FIRST_CHAT) {
+            firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, senderId)
             requireNoPendingMutualCancellation(chat.id)
         }
 
@@ -420,17 +424,6 @@ class ChatService(
 
         val chat = findActiveFirstChatForUpdateOrThrow(matchId)
 
-        requireNoPendingMutualCancellation(chat.id)
-
-        if (decision == ChatContinueDecision.REJECTED) {
-            chatExitService.cancelChatUnilaterally(
-                chatId = chat.id,
-                userId = userId,
-                reason = ChatExitReason.NO_LONGER_INTERESTED
-            )
-            return
-        }
-
         val chatDecision =
             chatDecisionRepository.findByChatId(chat.id)
                 ?: chatDecisionRepository.save(
@@ -440,7 +433,22 @@ class ChatService(
                     )
                 )
 
-        if (minMessagesPerUser > 0) {
+        requireNoPendingMutualCancellation(chat.id)
+
+        val mismatchRejection =
+            decision == ChatContinueDecision.REJECTED &&
+                firstChatDecisionPolicyService.isDecisionOnlyForUser(chat, userId)
+
+        if (decision == ChatContinueDecision.REJECTED && !mismatchRejection) {
+            chatExitService.cancelChatUnilaterallyWithLockedChat(
+                chat = chat,
+                userId = userId,
+                reason = ChatExitReason.NO_LONGER_INTERESTED
+            )
+            return
+        }
+
+        if (decision == ChatContinueDecision.APPROVED && minMessagesPerUser > 0) {
             val sent =
                 chatMessageRepository.countByChatSessionIdAndSenderId(
                     chatSessionId = chat.id,
@@ -480,32 +488,36 @@ class ChatService(
         val bDecision = chatDecision.userBDecision
 
         if (aDecision != null && bDecision != null) {
-            val preResolutionPairReliabilityScore =
-                preResolutionPairReliabilityScore(
-                    userAId = match.userAId,
-                    userBId = match.userBId
-                )
-            chat.status = ChatStatus.FINISHED
-            chat.endedAt = OffsetDateTime.now()
-            chat.endedReason = ChatEndReason.SYSTEM_CLOSED
-            chatRepository.save(chat)
-            recordChatEnded(chat)
-            publishFirstChatTerminated(chat)
+            if (aDecision == ChatContinueDecision.APPROVED && bDecision == ChatContinueDecision.APPROVED) {
+                val preResolutionPairReliabilityScore =
+                    preResolutionPairReliabilityScore(
+                        userAId = match.userAId,
+                        userBId = match.userBId
+                    )
+                chat.status = ChatStatus.FINISHED
+                chat.endedAt = OffsetDateTime.now()
+                chat.endedReason = ChatEndReason.SYSTEM_CLOSED
+                chatRepository.save(chat)
+                recordChatEnded(chat)
+                publishFirstChatTerminated(chat)
 
-            listOf(match.userAId, match.userBId).forEach { participantId ->
-                userReliabilityScoreService.recordEvent(
-                    userId = participantId,
-                    eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION,
-                    relatedMatchId = match.id,
-                    relatedChatId = chat.id
+                listOf(match.userAId, match.userBId).forEach { participantId ->
+                    userReliabilityScoreService.recordEvent(
+                        userId = participantId,
+                        eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_POSITIVE_RESOLUTION,
+                        relatedMatchId = match.id,
+                        relatedChatId = chat.id
+                    )
+                }
+
+                matchService.transitionToVisualPhase(matchId)
+                visualReviewService.initializeForMatch(
+                    matchId = matchId,
+                    preResolutionPairReliabilityScore = preResolutionPairReliabilityScore
                 )
+            } else {
+                finishFirstChatDecisionMismatch(chat)
             }
-
-            matchService.transitionToVisualPhase(matchId)
-            visualReviewService.initializeForMatch(
-                matchId = matchId,
-                preResolutionPairReliabilityScore = preResolutionPairReliabilityScore
-            )
         }
 
         homeStateInvalidationService.bumpBoth(
@@ -632,6 +644,7 @@ class ChatService(
         }
 
         validateActiveChatWindow(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
         requireNoPendingMutualCancellation(chat.id)
 
         return firstChatGuidanceService.requestNext(
@@ -967,6 +980,27 @@ class ChatService(
                 relatedChatId = chat.id
             )
         }
+    }
+
+    private fun finishFirstChatDecisionMismatch(chat: Chat) {
+        val match = matchService.findByIdOrThrow(chat.matchId)
+        chat.status = ChatStatus.FINISHED
+        chat.endedAt = OffsetDateTime.now()
+        chat.endedReason = ChatEndReason.FIRST_CHAT_DECISION_MISMATCH
+        chatRepository.save(chat)
+        recordChatEnded(chat)
+        publishFirstChatTerminated(chat)
+
+        listOf(match.userAId, match.userBId).forEach { participantId ->
+            userReliabilityScoreService.recordEvent(
+                userId = participantId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE,
+                relatedMatchId = match.id,
+                relatedChatId = chat.id
+            )
+        }
+
+        matchService.rejectChatPhase(chat.matchId)
     }
 
     fun findActiveFirstChatOrThrow(matchId: UUID): Chat {

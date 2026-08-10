@@ -140,6 +140,7 @@ Non-sensitive runtime configuration:
 | `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
 | `MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat absolute timeout or inactivity abandonment. Defaults to `7`; must be non-negative. |
+| `MATCHMAKING_FIRST_CHAT_DECISION_MISMATCH_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat `FIRST_CHAT_DECISION_MISMATCH`. Defaults to `7`; must be non-negative. |
 | `MATCHMAKING_RANKING_MODE` | no | Matchmaking partner ranking mode. Defaults to `LEGACY_EARLY_ACCEPT` globally/dev/prod and `PROBABILISTIC_WEIGHTED` in `local-firebase`. |
 | `MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE` | no | Probabilistic compatibility temperature. Defaults to `0.20`; must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Defaults to `10.0`; must be finite and greater than `0`. |
@@ -195,7 +196,7 @@ Non-sensitive runtime configuration:
 Matchmaking pair eligibility has four separate controls:
 
 - Active-pair duplicate exclusion is controlled by `matchmaking.allow-active-pair-duplicates`. The global default is `false`, so a pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection. `local-firebase` defaults it to `true` for repeated manual testing.
-- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and is independent from active-pair duplicate handling.
+- Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and is independent from active-pair duplicate handling. General terminal outcomes use `matchmaking.previous-pairing-cooldown-days` (30 by default), first-chat automatic timeout/inactivity uses `matchmaking.first-chat-expiration-cooldown-days` (7 by default), and first-chat `FIRST_CHAT_DECISION_MISMATCH` uses the separate `matchmaking.first-chat-decision-mismatch-cooldown-days` (7 by default).
 - Per-user engagement capacity remains controlled by `engagement.max-active-matches` and `engagement.max-active-connections`. Allowing active duplicate pairs does not bypass these limits.
 - User blocks are permanent pair exclusions in either direction until an explicit unblock feature exists. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create `UserBlock` rows.
 

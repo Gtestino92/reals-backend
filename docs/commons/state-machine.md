@@ -45,8 +45,9 @@ Allowed transitions:
 the inactivity job or by endpoint validation before a stale mutation is accepted.
 
 `ChatStatus` remains the operational state. Persisted `ChatEndReason` records
-why a chat ended, such as safety report, unilateral cancellation, absolute
-timeout, inactivity timeout, account deletion or second-chat read-only cleanup.
+why a chat ended, such as safety report, unilateral cancellation, first-chat
+decision mismatch, absolute timeout, inactivity timeout, account deletion or
+second-chat read-only cleanup.
 
 Terminal states:
 
@@ -117,6 +118,24 @@ All terminal mutual-cancellation resolutions close the chat as `CANCELLED`.
 `TIMED_OUT` is client-triggered after the configured mutual cancellation
 timeout; it is not a unilateral cancellation and must not penalize the
 requester under future scoring semantics.
+
+## First-Chat Decision Boundary
+
+While both first-chat decisions are `PENDING`, ordinary conversation, mutual
+cancellation, unilateral cancellation, safety report and manual block follow the
+normal first-chat rules. Once one participant persists `APPROVED` and the other
+participant remains `PENDING`, the unresolved participant is in decision-only
+mode: reads and polling remain available, but ordinary text/audio send,
+guidance advancement, new mutual cancellation and direct unilateral
+cancellation are rejected with `FIRST_CHAT_DECISION_ONLY`. Final `APPROVED`,
+final `REJECTED`, safety/report and manual block remain available.
+
+If the unresolved participant submits `REJECTED`, the backend persists that
+decision and closes the completed decision process as
+`FINISHED / FIRST_CHAT_DECISION_MISMATCH`; the match moves to `CHAT_REJECTED`
+and match locks are released. This is not `MUTUAL_CANCEL` or
+`UNILATERAL_CANCEL`, creates no cancellation request and creates no ordinary
+cancellation penalty.
 
 ## Lock Behavior
 

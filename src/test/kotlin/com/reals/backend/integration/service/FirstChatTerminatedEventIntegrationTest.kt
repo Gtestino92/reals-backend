@@ -131,6 +131,16 @@ class FirstChatTerminatedEventIntegrationTest : BaseIT() {
         ) {
             chatService.recordChatDecision(positive.matchId, positive.userBId, ChatContinueDecision.APPROVED)
         }
+
+        val mismatch = createMatchWithFirstChat("first-chat-event-mismatch")
+        chatService.recordChatDecision(mismatch.matchId, mismatch.userAId, ChatContinueDecision.APPROVED)
+        assertFirstChatTerminatedEvents(
+            expectedCount = 1,
+            expectedStatus = ChatStatus.FINISHED,
+            expectedReason = ChatEndReason.FIRST_CHAT_DECISION_MISMATCH
+        ) {
+            chatService.recordChatDecision(mismatch.matchId, mismatch.userBId, ChatContinueDecision.REJECTED)
+        }
     }
 
     @Test

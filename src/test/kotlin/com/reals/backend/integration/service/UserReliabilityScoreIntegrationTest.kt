@@ -76,6 +76,21 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `first chat decision mismatch uses mutual no spark reliability for both users`() {
+        val setup = createMatchWithFirstChat()
+
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.REJECTED)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION)
+    }
+
+    @Test
     fun `early unilateral first chat close creates event for closer`() {
         val setup = createMatchWithFirstChat()
 

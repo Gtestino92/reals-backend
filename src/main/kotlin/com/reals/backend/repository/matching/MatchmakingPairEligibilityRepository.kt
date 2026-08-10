@@ -27,6 +27,7 @@ interface MatchmakingPairEligibilityRepository {
         userBId: UUID,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingPairBlockingReason?
 }

@@ -11,7 +11,8 @@ interface MatchmakingCandidateRepository {
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingAnchor?
 
     fun findEligiblePartnerCandidates(
@@ -20,7 +21,8 @@ interface MatchmakingCandidateRepository {
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): List<MatchmakingPartnerCandidate>
 
     fun tryClaimEligiblePartnerForUpdate(
@@ -29,6 +31,7 @@ interface MatchmakingCandidateRepository {
         today: LocalDate,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingPartnerCandidate?
 }

@@ -67,7 +67,7 @@ Matching and chat:
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
 - `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `CANCELLED`, `EXPIRED`, `ABANDONED`, `CLOSED`
-- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `SYSTEM_CLOSED`
+- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `USER_BLOCK`, `FIRST_CHAT_DECISION_MISMATCH`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `SYSTEM_CLOSED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatExitRequestType`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`
@@ -157,8 +157,9 @@ Matchmaking pair eligibility distinguishes active interactions, temporary histor
 
 - Active-pair uniqueness is invariant. Users are not eligible as a pair while they have an active `CHAT_ACTIVE` or `VISUAL_PHASE` match, a `VISUAL_APPROVED` match whose connection was not created yet, or any non-`CLOSED` connection.
 - `active_engagement_locks` continue to model per-user active match/connection capacity. They are not an unordered pair-exclusion table and are not duplicated for cooldowns.
-- When `matchmaking.exclude-previous-pairing` is enabled, previous terminal outcomes create temporary exclusions calculated from existing history: 30 days for explicit first-chat rejection, visual rejection, visual-review expiration and closed connections; 7 days for first-chat absolute timeout or inactivity abandonment.
+- When `matchmaking.exclude-previous-pairing` is enabled, previous terminal outcomes create temporary exclusions calculated from existing history: 30 days for ordinary explicit first-chat rejection, visual rejection, visual-review expiration and closed connections; 7 days for first-chat absolute timeout or inactivity abandonment; 7 independently configurable days for `FIRST_CHAT_DECISION_MISMATCH`.
 - `MatchState.EXPIRED` is classified from persisted phase evidence. An expired match with no `VisualReview` is treated as first-chat expiration; an expired match with a `VisualReview` is treated as visual-review expiration. First-chat `Chat.endedAt` is preferred for timeout/abandonment timestamps, with `Match.updatedAt` as legacy fallback.
+- `MatchState.CHAT_REJECTED` is classified from persisted first-chat `ChatEndReason` when present. Rows with `FIRST_CHAT_DECISION_MISMATCH` use the decision-mismatch cutoff; legacy rows without that end reason keep the ordinary previous-pairing cutoff.
 - A cooldown expires naturally when its cutoff elapses. No cleanup job, derived cooldown table, new match state or automatic `UserBlock` is created for normal product outcomes.
 
 ## Affinity Questions

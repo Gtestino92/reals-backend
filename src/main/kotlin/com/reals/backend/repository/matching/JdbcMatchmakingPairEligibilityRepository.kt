@@ -16,11 +16,13 @@ class JdbcMatchmakingPairEligibilityRepository(
         userBId: UUID,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ): MatchmakingPairBlockingReason? {
         requireConsistentCutoffs(
             previousPairingCutoff = previousPairingCutoff,
-            firstChatExpirationCutoff = firstChatExpirationCutoff
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
         )
         require(exclusionPolicy.excludeHistoricalPairings == (previousPairingCutoff != null)) {
             "Historical exclusion policy and cutoff parameters must match"
@@ -38,6 +40,7 @@ class JdbcMatchmakingPairEligibilityRepository(
             parameters
                 .addValue("previousPairingCutoff", previousPairingCutoff)
                 .addValue("firstChatExpirationCutoff", firstChatExpirationCutoff)
+                .addValue("firstChatDecisionMismatchCutoff", firstChatDecisionMismatchCutoff)
         }
 
         return jdbcTemplate.query(
@@ -50,10 +53,14 @@ class JdbcMatchmakingPairEligibilityRepository(
 
     private fun requireConsistentCutoffs(
         previousPairingCutoff: OffsetDateTime?,
-        firstChatExpirationCutoff: OffsetDateTime?
+        firstChatExpirationCutoff: OffsetDateTime?,
+        firstChatDecisionMismatchCutoff: OffsetDateTime?
     ) {
-        require((previousPairingCutoff == null) == (firstChatExpirationCutoff == null)) {
-            "Previous-pairing and first-chat expiration cutoffs must both be present or both be absent"
+        require(
+            (previousPairingCutoff == null) == (firstChatExpirationCutoff == null) &&
+                (previousPairingCutoff == null) == (firstChatDecisionMismatchCutoff == null)
+        ) {
+            "Previous-pairing, first-chat expiration, and first-chat decision mismatch cutoffs must all be present or all be absent"
         }
     }
 
