@@ -29,7 +29,6 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
     fun `chat rejection moves match to rejected and releases match locks`() {
         val setup = createMatchWithFirstChat()
 
-        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.REJECTED)
 
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)

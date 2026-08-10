@@ -625,7 +625,6 @@ class ChatControllerIntegrationTest : ControllerIT() {
     @Test
     fun `mutual cancellation request and acceptance close chat over http`() {
         val setup = createMatchWithFirstChat()
-        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
 
         val exitRequestBody =
             mockMvc.perform(

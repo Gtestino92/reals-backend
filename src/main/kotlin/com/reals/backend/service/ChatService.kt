@@ -428,26 +428,19 @@ class ChatService(
 
         val chat = findActiveFirstChatForUpdateOrThrow(matchId)
 
-        val chatDecision =
-            chatDecisionRepository.findByChatId(chat.id)
-                ?: chatDecisionRepository.save(
-                    ChatDecision(
-                        chatId = chat.id,
-                        matchId = match.id
-                    )
-                )
+        val existingChatDecision = chatDecisionRepository.findByChatId(chat.id)
 
         requireNoPendingMutualCancellation(chat.id)
 
         when (userId) {
             match.userAId -> {
-                if (chatDecision.userADecision != null) {
+                if (existingChatDecision?.userADecision != null) {
                     throw chatDecisionAlreadySubmitted()
                 }
             }
 
             match.userBId -> {
-                if (chatDecision.userBDecision != null) {
+                if (existingChatDecision?.userBDecision != null) {
                     throw chatDecisionAlreadySubmitted()
                 }
             }
@@ -467,6 +460,15 @@ class ChatService(
             )
             return
         }
+
+        val chatDecision =
+            existingChatDecision
+                ?: chatDecisionRepository.save(
+                    ChatDecision(
+                        chatId = chat.id,
+                        matchId = match.id
+                    )
+                )
 
         if (decision == ChatContinueDecision.APPROVED && minMessagesPerUser > 0) {
             val sent =
