@@ -835,7 +835,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
-      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; if the counterpart has already approved while the caller is still pending, ordinary message sends are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
+      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; while exactly one first-chat participant has approved and the other remains pending, ordinary message sends from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -3035,7 +3035,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply.
+          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'

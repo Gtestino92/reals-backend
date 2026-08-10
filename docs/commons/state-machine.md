@@ -124,11 +124,15 @@ requester under future scoring semantics.
 While both first-chat decisions are `PENDING`, ordinary conversation, mutual
 cancellation, unilateral cancellation, safety report and manual block follow the
 normal first-chat rules. Once one participant persists `APPROVED` and the other
-participant remains `PENDING`, the unresolved participant is in decision-only
-mode: reads and polling remain available, but ordinary text/audio send,
-guidance advancement, new mutual cancellation and direct unilateral
-cancellation are rejected with `FIRST_CHAT_DECISION_ONLY`. Final `APPROVED`,
-final `REJECTED`, safety/report and manual block remain available.
+participant remains `PENDING`, the active first chat is in decision-only mode:
+reads, polling, safety/report and manual block remain available for both
+participants, but ordinary text/audio send, guidance advancement, new mutual
+cancellation and direct unilateral cancellation are rejected for both
+participants with `FIRST_CHAT_DECISION_ONLY`. Only the unresolved participant
+can submit the remaining final `APPROVED` or `REJECTED`; the already-decided
+participant cannot replace their persisted decision. Decision-only mode disables
+first-chat inactivity timeout and exposes no `inactivityExpiresAt`; the original
+absolute `timeoutAt` continues to apply.
 
 If the unresolved participant submits `REJECTED`, the backend persists that
 decision and closes the completed decision process as

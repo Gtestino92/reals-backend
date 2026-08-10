@@ -170,6 +170,10 @@ class ChatService(
             return null
         }
 
+        if (firstChatDecisionPolicyService.isDecisionOnly(chat)) {
+            return null
+        }
+
         return (chat.lastMessageAt ?: chat.startedAt)
             .plusMinutes(firstChatInactivityThresholdMinutes)
     }
@@ -435,6 +439,22 @@ class ChatService(
 
         requireNoPendingMutualCancellation(chat.id)
 
+        when (userId) {
+            match.userAId -> {
+                if (chatDecision.userADecision != null) {
+                    throw chatDecisionAlreadySubmitted()
+                }
+            }
+
+            match.userBId -> {
+                if (chatDecision.userBDecision != null) {
+                    throw chatDecisionAlreadySubmitted()
+                }
+            }
+
+            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
+        }
+
         val mismatchRejection =
             decision == ChatContinueDecision.REJECTED &&
                 firstChatDecisionPolicyService.isDecisionOnlyForUser(chat, userId)
@@ -465,16 +485,10 @@ class ChatService(
 
         when (userId) {
             match.userAId -> {
-                if (chatDecision.userADecision != null) {
-                    throw chatDecisionAlreadySubmitted()
-                }
                 chatDecision.userADecision = decision
             }
 
             match.userBId -> {
-                if (chatDecision.userBDecision != null) {
-                    throw chatDecisionAlreadySubmitted()
-                }
                 chatDecision.userBDecision = decision
             }
 
@@ -543,9 +557,17 @@ class ChatService(
             "Invalid endedReason $endedReason for finalStatus $finalStatus"
         }
 
-        val chat = findByIdOrThrow(chatId)
+        val chat = findByIdForUpdateOrThrow(chatId)
 
         if (chat.status != ChatStatus.ACTIVE) return false
+
+        if (
+            finalStatus == ChatStatus.ABANDONED &&
+            endedReason == ChatEndReason.INACTIVITY_TIMEOUT &&
+            firstChatDecisionPolicyService.isDecisionOnly(chat)
+        ) {
+            return false
+        }
 
         chat.status = finalStatus
         chat.endedAt = OffsetDateTime.now()

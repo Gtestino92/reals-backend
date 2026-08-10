@@ -249,7 +249,8 @@ next-request timestamps when that row is read or mutated.
 
 Client countdowns are advisory. The backend remains the source of truth and
 rejects first-chat mutations with `CHAT_EXPIRED` after the absolute deadline or
-`CHAT_ABANDONED` after the inactivity deadline.
+`CHAT_ABANDONED` after the inactivity deadline. During first-chat decision-only
+state, inactivity timeout is disabled and only the absolute deadline applies.
 
 Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
 
@@ -261,7 +262,7 @@ Each user starts with a `PENDING` first-chat decision. While both users are `PEN
 
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
 - `REJECTED` while the counterpart is still `PENDING` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
-- `APPROVED` by one participant while the counterpart remains `PENDING` keeps the match in `CHAT_ACTIVE` and the first chat in `ACTIVE`, but puts the unresolved participant in decision-only mode. That participant can read and poll, submit `APPROVED`, submit `REJECTED`, use safety report/cancellation, or use manual block. Ordinary first-chat conversation and exit mutations are rejected with `FIRST_CHAT_DECISION_ONLY`: text send, new audio send, next-guidance request, new mutual-cancellation request and direct unilateral cancellation.
+- `APPROVED` by one participant while the counterpart remains `PENDING` keeps the match in `CHAT_ACTIVE` and the first chat in `ACTIVE`, but puts the chat in decision-only mode. Both participants can read and poll, use safety report/cancellation, or use manual block. The unresolved participant can submit the remaining `APPROVED` or `REJECTED` decision; the already-decided participant cannot replace their persisted decision. Ordinary first-chat conversation and exit mutations from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`: text send, new audio send, next-guidance request, new mutual-cancellation request and direct unilateral cancellation. In this state `inactivityExpiresAt` is absent and inactivity timeout is disabled; the original absolute `expiresAt`/`timeoutAt` remains authoritative.
 - `REJECTED` by the still-pending participant after the counterpart already persisted `APPROVED` is a completed decision mismatch, not unilateral cancellation. The backend persists both `ChatDecision` values (`APPROVED`/`REJECTED` or `REJECTED`/`APPROVED`), finishes the first chat as `FINISHED / FIRST_CHAT_DECISION_MISMATCH`, moves the match to `CHAT_REJECTED`, releases locks, emits the normal chat-ended audit and `FirstChatTerminatedEvent`, and records `FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE` for both participants. No mutual-cancellation request, unilateral-cancellation exit request or ordinary cancellation penalty is created.
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
 - Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
@@ -269,7 +270,7 @@ Each user starts with a `PENDING` first-chat decision. While both users are `PEN
 - Safety cancellation cancels the chat, records `ChatEndReason.SAFETY_REPORT`, exempts the reporter, creates a pending `SafetyReport` and creates a directional block from reporter to reported. `CHILD_SAFETY_CONCERN` is preserved explicitly from the accepted exit request to the report reason. It is a reported concern, not a confirmed violation, and does not penalize the reported participant until admin/backoffice review confirms the report.
 
 Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
-First-chat absolute timeout or inactivity closure records `FIRST_CHAT_EXPIRED_NO_DECISION` only for participants whose persisted first-chat decision is still unresolved, including the pending side of an `APPROVED`/`PENDING` pair.
+First-chat absolute timeout or inactivity closure records `FIRST_CHAT_EXPIRED_NO_DECISION` only for participants whose persisted first-chat decision is still unresolved. For an `APPROVED`/`PENDING` pair, inactivity closure is disabled and absolute timeout records the event only for the pending side.
 
 ## 5. Visual Review
 

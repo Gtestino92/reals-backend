@@ -109,6 +109,14 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
               (c.lastMessageAt is null and c.startedAt <= :threshold)
               or c.lastMessageAt <= :threshold
           )
+          and not exists (
+              select d.id from ChatDecision d
+              where d.chatId = c.id
+                and (
+                    (d.userADecision = 'APPROVED' and d.userBDecision is null)
+                    or (d.userADecision is null and d.userBDecision = 'APPROVED')
+                )
+          )
         """
     )
     fun findInactiveActiveChats(
@@ -122,6 +130,14 @@ interface ChatRepository : JpaRepository<Chat, UUID> {
           and (
               (c.lastMessageAt is null and c.startedAt <= :threshold)
               or c.lastMessageAt <= :threshold
+          )
+          and not exists (
+              select d.id from ChatDecision d
+              where d.chatId = c.id
+                and (
+                    (d.userADecision = 'APPROVED' and d.userBDecision is null)
+                    or (d.userADecision is null and d.userBDecision = 'APPROVED')
+                )
           )
         order by coalesce(c.lastMessageAt, c.startedAt) asc, c.id asc
         """

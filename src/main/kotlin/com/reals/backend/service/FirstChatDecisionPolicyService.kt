@@ -16,6 +16,15 @@ class FirstChatDecisionPolicyService(
     private val matchService: MatchService
 ) {
 
+    fun isDecisionOnly(chat: Chat): Boolean {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return false
+        }
+
+        val decision = chatDecisionRepository.findByChatId(chat.id) ?: return false
+        return isDecisionOnly(decision.userADecision, decision.userBDecision)
+    }
+
     fun isDecisionOnlyForUser(
         chat: Chat,
         userId: UUID
@@ -48,11 +57,24 @@ class FirstChatDecisionPolicyService(
         chat: Chat,
         userId: UUID
     ) {
-        if (isDecisionOnlyForUser(chat, userId)) {
+        if (isDecisionOnly(chat)) {
             throw DomainConflictException(
                 code = DomainErrorCode.FIRST_CHAT_DECISION_ONLY,
                 message = "Only a final first-chat decision is available now"
             )
         }
     }
+
+    private fun isDecisionOnly(
+        userADecision: ChatContinueDecision?,
+        userBDecision: ChatContinueDecision?
+    ): Boolean =
+        (
+            userADecision == ChatContinueDecision.APPROVED &&
+                userBDecision == null
+        ) ||
+            (
+                userADecision == null &&
+                    userBDecision == ChatContinueDecision.APPROVED
+            )
 }
