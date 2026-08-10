@@ -6,6 +6,7 @@ import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFi
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import com.reals.backend.controller.dev.DevJobController
 import com.reals.backend.controller.dev.DevMatchmakingController
+import com.reals.backend.controller.dev.DevPairHistoryResetController
 import com.reals.backend.controller.dev.DevTimeoutController
 import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.repository.ChatMessageRepository
@@ -16,6 +17,8 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.scheduler.SchedulingActivationJob
+import com.reals.backend.service.localdev.LocalDevPairHistoryResetResult
+import com.reals.backend.service.localdev.LocalDevPairHistoryResetService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -39,6 +42,7 @@ import java.util.UUID
 @WebMvcTest(
     controllers = [
         DevMatchmakingController::class,
+        DevPairHistoryResetController::class,
         DevTimeoutController::class,
         DevJobController::class
     ],
@@ -58,6 +62,9 @@ class DevAdminToolingControllerExposureDevTest {
 
     @MockitoBean
     private lateinit var matchmakingProcessorService: MatchmakingProcessorService
+
+    @MockitoBean
+    private lateinit var pairHistoryResetService: LocalDevPairHistoryResetService
 
     @MockitoBean
     private lateinit var chatRepository: ChatRepository
@@ -108,6 +115,56 @@ class DevAdminToolingControllerExposureDevTest {
         mockMvc.perform(
             post("/api/local-dev/matchmaking/process")
                 .param("maxPairsPerRun", "7")
+                .with(user("normal").roles("USER"))
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `dev admin can execute pair history reset tooling and normal user cannot`() {
+        val userIdA = UUID.randomUUID()
+        val userIdB = UUID.randomUUID()
+        `when`(pairHistoryResetService.resetPairHistory(userIdA, userIdB))
+            .thenReturn(
+                LocalDevPairHistoryResetResult(
+                    matchesDeleted = 1,
+                    connectionsDeleted = 1,
+                    chatsDeleted = 2,
+                    reliabilityEventsDeleted = 3
+                )
+            )
+
+        mockMvc.perform(
+            post("/api/local-dev/pair-history/reset")
+                .contentType("application/json")
+                .content(
+                    """
+                    {
+                      "userIdA": "$userIdA",
+                      "userIdB": "$userIdB"
+                    }
+                    """.trimIndent()
+                )
+                .with(user("admin").roles("ADMIN"))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.matchesDeleted").value(1))
+            .andExpect(jsonPath("$.connectionsDeleted").value(1))
+            .andExpect(jsonPath("$.chatsDeleted").value(2))
+
+        verify(pairHistoryResetService).resetPairHistory(userIdA, userIdB)
+
+        mockMvc.perform(
+            post("/api/local-dev/pair-history/reset")
+                .contentType("application/json")
+                .content(
+                    """
+                    {
+                      "userIdA": "$userIdA",
+                      "userIdB": "$userIdB"
+                    }
+                    """.trimIndent()
+                )
                 .with(user("normal").roles("USER"))
         )
             .andExpect(status().isForbidden)
