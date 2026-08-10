@@ -34,6 +34,13 @@ any more-specific nested `AGENTS.md` files first.
 - A feature branch must track its same-named remote branch, for example
   `feature/example` -> `origin/feature/example`. Do not leave a feature branch
   with upstream `origin/development`; use `development` only as the base.
+- After creating a feature branch from `development`, verify the upstream before
+  making code changes. If the same-named remote branch already exists, set
+  upstream to that branch immediately. If it does not exist, either create it
+  with an explicit user-approved `git push -u origin HEAD` or stop and report
+  that same-named upstream cannot be configured without pushing. Never continue
+  substantial implementation work on a feature branch with no upstream or with
+  upstream set to `origin/development`.
 
 ## 3. Scope And Architecture
 
