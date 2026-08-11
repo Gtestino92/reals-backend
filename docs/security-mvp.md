@@ -23,7 +23,9 @@ Tracked Bruno templates must use placeholders only, for example:
 - `firebase_email: paste-firebase-email-here`
 - `firebase_password: paste-firebase-password-here`
 - `firebase_id_token: paste-token-here`
+- `google_oauth_id_token: paste-google-oauth-id-token-here`
 - `firebase_google_id_token: paste-google-firebase-id-token-here`
+- `firebase_google_uid: paste-google-firebase-uid-here`
 - `firebase_google_email: paste-google-firebase-email-here`
 - `firebase_counterpart_email: paste-counterpart-email-here`
 - `firebase_counterpart_password: paste-counterpart-password-here`

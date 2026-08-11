@@ -180,14 +180,15 @@ class UserServiceIntegrationTest : BaseIT() {
             email = "firebase-existing-${UUID.randomUUID()}@example.com"
         )
 
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<DomainConflictException> {
             userService.provisionFromFirebase(
                 firebaseUid = "firebase-incompatible-${UUID.randomUUID()}",
                 email = existing.email
             )
         }
 
-        assertEquals("Email already belongs to another Firebase user: ${existing.email}", exception.message)
+        assertEquals(DomainErrorCode.EMAIL_ALREADY_LINKED_TO_DIFFERENT_FIREBASE_USER, exception.code)
+        assertEquals("Email is already linked to a different Firebase user", exception.message)
         assertEquals(existing.firebaseUid, userRepository.findById(existing.id).orElseThrow().firebaseUid)
     }
 
