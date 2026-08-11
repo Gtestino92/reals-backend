@@ -22,6 +22,7 @@ class FirebaseExternalAccountService(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    @Throws(FirebaseAuthException::class)
     fun revokeRefreshTokens(firebaseUid: String) {
         if (FirebaseApp.getApps().isEmpty()) {
             log.debug("Skipping Firebase token revocation because FirebaseApp is not initialized")

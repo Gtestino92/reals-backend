@@ -1,0 +1,40 @@
+meta {
+  name: 01 Provision Google Firebase User
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/me/provision
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_google_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200 && status !== 201) {
+    throw new Error(`Expected 200 OK or 201 Created, got ${status}`);
+  }
+
+  const body = res.getBody();
+  if (!body || !body.id) {
+    throw new Error("Expected provisioned backend user response with id.");
+  }
+
+  const expectedEmail = bru.getEnvVar("firebase_google_email");
+  if (expectedEmail && !expectedEmail.startsWith("paste-") && body.email !== expectedEmail) {
+    throw new Error(`Expected Google Firebase user email ${expectedEmail}, got ${body.email}`);
+  }
+  if (body.passwordManagementAllowed !== false) {
+    throw new Error(`Expected passwordManagementAllowed false for Google-origin flow, got ${body.passwordManagementAllowed}.`);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "authOrigin") && body.authOrigin !== "GOOGLE") {
+    throw new Error(`Expected authOrigin GOOGLE when exposed, got ${body.authOrigin}.`);
+  }
+
+  bru.setEnvVar("firebase_google_backend_user_id", body.id);
+}

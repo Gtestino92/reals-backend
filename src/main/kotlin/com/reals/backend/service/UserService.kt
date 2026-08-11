@@ -457,12 +457,7 @@ class UserService(
 
     private fun revokeExternalTokensAfterCommit(firebaseUid: String) {
         val action = {
-            runCatching {
-                firebaseExternalAccountService.revokeRefreshTokens(firebaseUid)
-            }.onFailure {
-                log.warn("Failed to revoke external tokens for Firebase UID {}", firebaseUid, it)
-            }
-            Unit
+            firebaseExternalAccountService.revokeRefreshTokens(firebaseUid)
         }
 
         runAfterCommit(action)

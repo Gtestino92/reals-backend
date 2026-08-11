@@ -29,6 +29,12 @@ script:post-response {
   if (body.email !== expectedEmail) {
     throw new Error(`Expected backend user email ${expectedEmail}, got ${body.email}`);
   }
+  if (body.passwordManagementAllowed !== true) {
+    throw new Error(`Expected passwordManagementAllowed true for email/password Firebase flow, got ${body.passwordManagementAllowed}.`);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "authOrigin") && body.authOrigin !== "EMAIL_PASSWORD") {
+    throw new Error(`Expected authOrigin EMAIL_PASSWORD when exposed, got ${body.authOrigin}.`);
+  }
   
   bru.setEnvVar("firebase_new_backend_user_id", body.id);
 }

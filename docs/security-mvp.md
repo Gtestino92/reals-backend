@@ -23,6 +23,8 @@ Tracked Bruno templates must use placeholders only, for example:
 - `firebase_email: paste-firebase-email-here`
 - `firebase_password: paste-firebase-password-here`
 - `firebase_id_token: paste-token-here`
+- `firebase_google_id_token: paste-google-firebase-id-token-here`
+- `firebase_google_email: paste-google-firebase-email-here`
 - `firebase_counterpart_email: paste-counterpart-email-here`
 - `firebase_counterpart_password: paste-counterpart-password-here`
 - `firebase_counterpart_id_token: paste-token-here`
@@ -137,18 +139,23 @@ Google OAuth tokens, store Google access tokens, use Google client secrets,
 create a separate Google-user table, or use Firebase custom claims for auth
 origin.
 
-Each Firebase-linked account has an immutable `authOrigin` once set:
+Each Firebase-linked account has an immutable backend-owned `authOrigin` once
+set by the first successful Reals provisioning flow:
 
-- `EMAIL_PASSWORD`: the Reals account originated from a Firebase password
-  identity.
-- `GOOGLE`: the Reals account originated from a Firebase Google identity.
+- `EMAIL_PASSWORD`: the account was first successfully provisioned into Reals
+  through the email/password flow backed by Firebase password authentication.
+- `GOOGLE`: the account was first successfully provisioned into Reals through
+  the Google flow backed by Firebase Google authentication.
 
-`authOrigin` records how the Reals account originated; it is not Firebase's
-current provider list. Reauthentication, reactivation and later external
-Firebase provider changes must not change a non-null origin. Existing
-Firebase-linked users from before Google support are migrated to
-`EMAIL_PASSWORD`; backend-only legacy rows with no Firebase UID may remain
-null until first linked.
+`authOrigin` is not recomputed from Firebase provider ordering and is not
+Firebase's current provider list. Firebase may authenticate or provide an
+identity, but provisioning in this backend means the successful creation or
+linking of that identity into the Reals account model through
+`POST /api/me/provision`. Reauthentication, reactivation, subsequent Firebase
+provider linking, provider unlinking, or Firebase provider metadata changes
+must not change a non-null origin. Existing Firebase-linked users from before
+Google support are migrated to `EMAIL_PASSWORD`; backend-only legacy rows with
+no Firebase UID may remain null until first linked.
 
 The backend reads `firebase.sign_in_provider` only from the verified Firebase ID
 token. Supported values are `password` and `google.com`; missing or unsupported
@@ -194,6 +201,8 @@ password reset only for `EMAIL_PASSWORD` accounts with a Firebase UID that are
 `ACTIVE`, or `DELETED` while `now < deletionFinalizesAt`. At exact equality
 (`now >= deletionFinalizesAt`) reset delivery stops. `GOOGLE` origin accounts
 are passwordless in Reals and never receive Reals password reset delivery.
+`passwordManagementAllowed` is derived from this immutable Reals origin, not
+from later Firebase provider-link metadata.
 
 `POST /api/me/local-dev/email-verification` is a local-only Firebase Admin
 helper for the `local-firebase` profile and must remain absent from hosted
