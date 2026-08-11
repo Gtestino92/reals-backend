@@ -1,6 +1,7 @@
 package com.reals.backend.integration.controller
 
 import com.jayway.jsonpath.JsonPath
+import com.reals.backend.config.security.authentication.FirebaseSignInProvider
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
@@ -8,6 +9,8 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.UserAuthOrigin
+import com.reals.backend.domain.UserStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
@@ -15,6 +18,7 @@ import org.hamcrest.Matchers.notNullValue
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -41,8 +45,29 @@ class MeControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.email", equalTo(email)))
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(true)))
 
-        assertNotNull(userService.findByFirebaseUid(firebaseUid))
+        val user = userService.findByFirebaseUid(firebaseUid)
+        assertNotNull(user)
+        assertEquals(UserAuthOrigin.EMAIL_PASSWORD, user!!.authOrigin)
+    }
+
+    @Test
+    fun `provision me creates google origin backend user from firebase principal`() {
+        val firebaseUid = "firebase-google-${UUID.randomUUID()}"
+        val email = "firebase-google-${UUID.randomUUID()}@example.com"
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(authenticatedWithFirebase(firebaseUid, email, signInProvider = FirebaseSignInProvider.GOOGLE))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.email", equalTo(email)))
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(false)))
+
+        val user = userService.findByFirebaseUid(firebaseUid)
+        assertNotNull(user)
+        assertEquals(UserAuthOrigin.GOOGLE, user!!.authOrigin)
     }
 
     @Test
@@ -59,7 +84,36 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.id", equalTo(existing.id.toString())))
 
-        assertEquals(firebaseUid, userRepository.findById(existing.id).orElseThrow().firebaseUid)
+        val linked = userRepository.findById(existing.id).orElseThrow()
+        assertEquals(firebaseUid, linked.firebaseUid)
+        assertEquals(UserAuthOrigin.EMAIL_PASSWORD, linked.authOrigin)
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `provision me links verified legacy email and establishes google origin`() {
+        val existing = userService.createUser("provision-google-link-${UUID.randomUUID()}@example.com")
+        userRepository.flush()
+        val firebaseUid = "firebase-google-link-${UUID.randomUUID()}"
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(
+                    authenticatedWithFirebase(
+                        firebaseUid,
+                        existing.email,
+                        emailVerified = true,
+                        signInProvider = FirebaseSignInProvider.GOOGLE
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id", equalTo(existing.id.toString())))
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(false)))
+
+        val linked = userRepository.findById(existing.id).orElseThrow()
+        assertEquals(firebaseUid, linked.firebaseUid)
+        assertEquals(UserAuthOrigin.GOOGLE, linked.authOrigin)
     }
 
     @Test
@@ -80,6 +134,34 @@ class MeControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `provision me rejects same email already bound to different firebase uid`() {
+        val email = "provision-different-uid-${UUID.randomUUID()}@example.com"
+        val existing = userService.provisionFromFirebase(
+            firebaseUid = "firebase-original-${UUID.randomUUID()}",
+            email = email
+        )
+        val otherFirebaseUid = "firebase-other-${UUID.randomUUID()}"
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(
+                    authenticatedWithFirebase(
+                        firebaseUid = otherFirebaseUid,
+                        email = email,
+                        emailVerified = true
+                    )
+                )
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("EMAIL_ALREADY_LINKED_TO_DIFFERENT_FIREBASE_USER")))
+
+        val unchanged = userRepository.findById(existing.id).orElseThrow()
+        assertEquals(existing.firebaseUid, unchanged.firebaseUid)
+        assertEquals(UserAuthOrigin.EMAIL_PASSWORD, unchanged.authOrigin)
+        assertNull(userService.findByFirebaseUid(otherFirebaseUid))
+    }
+
+    @Test
     fun `provision me returns existing backend user`() {
         val user = userService.provisionFromFirebase(
             firebaseUid = "firebase-${UUID.randomUUID()}",
@@ -93,6 +175,32 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
             .andExpect(jsonPath("$.email", equalTo(user.email)))
+    }
+
+    @Test
+    fun `existing firebase uid keeps original auth origin when later provider differs`() {
+        val firebaseUid = "firebase-origin-stable-${UUID.randomUUID()}"
+        val user = userService.provisionFromFirebase(
+            firebaseUid = firebaseUid,
+            email = "origin-stable-${UUID.randomUUID()}@example.com",
+            signInProvider = FirebaseSignInProvider.PASSWORD
+        )
+
+        mockMvc.perform(
+            post("/api/me/provision")
+                .with(
+                    authenticatedWithFirebase(
+                        firebaseUid = firebaseUid,
+                        email = user.email,
+                        signInProvider = FirebaseSignInProvider.GOOGLE
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id", equalTo(user.id.toString())))
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(true)))
+
+        assertEquals(UserAuthOrigin.EMAIL_PASSWORD, userRepository.findById(user.id).orElseThrow().authOrigin)
     }
 
     @Test
@@ -170,7 +278,8 @@ class MeControllerIntegrationTest : ControllerIT() {
     fun `reactivate me restores deleted authenticated user`() {
         val user = userService.provisionFromFirebase(
             firebaseUid = "firebase-${UUID.randomUUID()}",
-            email = "reactivate-me-${UUID.randomUUID()}@example.com"
+            email = "reactivate-me-${UUID.randomUUID()}@example.com",
+            signInProvider = FirebaseSignInProvider.GOOGLE
         )
         userService.deleteUser(user.id)
 
@@ -184,6 +293,51 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.status", equalTo("ACTIVE")))
             .andExpect(jsonPath("$.deletedAt").doesNotExist())
             .andExpect(jsonPath("$.deletionFinalizesAt").doesNotExist())
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(false)))
+
+        assertEquals(UserAuthOrigin.GOOGLE, userRepository.findById(user.id).orElseThrow().authOrigin)
+    }
+
+    @Test
+    fun `active account cannot finalize deletion immediately`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-finalize-active-${UUID.randomUUID()}",
+            email = "finalize-active-${UUID.randomUUID()}@example.com"
+        )
+
+        mockMvc.perform(
+            post("/api/me/deletion/finalization")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("ACCOUNT_DELETION_NOT_PENDING")))
+    }
+
+    @Test
+    fun `deleted account can finalize immediately and preserves auth origin`() {
+        val user = userService.provisionFromFirebase(
+            firebaseUid = "firebase-finalize-now-${UUID.randomUUID()}",
+            email = "finalize-now-${UUID.randomUUID()}@example.com",
+            signInProvider = FirebaseSignInProvider.GOOGLE
+        )
+        userService.deleteUser(user.id)
+
+        mockMvc.perform(
+            post("/api/me/deletion/finalization")
+                .with(authenticatedAs(user.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status", equalTo("DELETED")))
+            .andExpect(jsonPath("$.email", equalTo("deleted.${user.id}@deleted.reals.local")))
+            .andExpect(jsonPath("$.deletionFinalizesAt").doesNotExist())
+            .andExpect(jsonPath("$.passwordManagementAllowed", equalTo(false)))
+
+        val finalized = userRepository.findById(user.id).orElseThrow()
+        assertEquals(UserStatus.DELETED, finalized.status)
+        assertEquals("deleted.${user.id}@deleted.reals.local", finalized.email)
+        assertNull(finalized.firebaseUid)
+        assertNull(finalized.deletionFinalizesAt)
+        assertEquals(UserAuthOrigin.GOOGLE, finalized.authOrigin)
     }
 
     @Test

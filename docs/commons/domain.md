@@ -120,6 +120,12 @@ Engagement:
 User:
 
 - `UserStatus`: `ACTIVE`, `DELETED`
+- `UserAuthOrigin`: `EMAIL_PASSWORD`, `GOOGLE`. Once non-null, this records how
+  the Reals account originated and is immutable for that backend user row.
+  `EMAIL_PASSWORD` accounts may authenticate with Firebase `password` or
+  `google.com` tokens for the same UID. `GOOGLE` accounts may authenticate only
+  with Firebase `google.com` tokens. A finalized deleted backend row preserves
+  the historical origin; a later start-over flow creates a new backend user.
 
 Push notifications:
 

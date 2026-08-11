@@ -2,6 +2,7 @@ package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.service.AuthOriginPolicy
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -21,7 +22,8 @@ data class UserResponse(
     val status: UserStatus,
     val deletedAt: OffsetDateTime?,
     val deletionFinalizesAt: OffsetDateTime?,
-    val createdAt: OffsetDateTime
+    val createdAt: OffsetDateTime,
+    val passwordManagementAllowed: Boolean
 ) {
     companion object {
         fun from(user: User) = UserResponse(
@@ -30,7 +32,8 @@ data class UserResponse(
             status = user.status,
             deletedAt = user.deletedAt,
             deletionFinalizesAt = user.deletionFinalizesAt,
-            createdAt = user.createdAt
+            createdAt = user.createdAt,
+            passwordManagementAllowed = AuthOriginPolicy.passwordManagementAllowed(user.authOrigin)
         )
     }
 }

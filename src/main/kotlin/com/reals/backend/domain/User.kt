@@ -27,6 +27,10 @@ data class User(
     @Column(name = "firebase_uid", unique = true)
     var firebaseUid: String? = null,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_origin")
+    var authOrigin: UserAuthOrigin? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now(),
 
@@ -47,4 +51,9 @@ data class User(
 enum class UserStatus {
     ACTIVE,
     DELETED
+}
+
+enum class UserAuthOrigin {
+    EMAIL_PASSWORD,
+    GOOGLE
 }

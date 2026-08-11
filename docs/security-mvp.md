@@ -131,6 +131,35 @@ validation, TLS, moderation or operational monitoring.
 Firebase UID. Firebase email verification is not required for ordinary linked
 user sign-in.
 
+Reals keeps exactly one canonical Firebase user per backend account. The
+Firebase UID remains the external identity key; the backend does not exchange
+Google OAuth tokens, store Google access tokens, use Google client secrets,
+create a separate Google-user table, or use Firebase custom claims for auth
+origin.
+
+Each Firebase-linked account has an immutable `authOrigin` once set:
+
+- `EMAIL_PASSWORD`: the Reals account originated from a Firebase password
+  identity.
+- `GOOGLE`: the Reals account originated from a Firebase Google identity.
+
+`authOrigin` records how the Reals account originated; it is not Firebase's
+current provider list. Reauthentication, reactivation and later external
+Firebase provider changes must not change a non-null origin. Existing
+Firebase-linked users from before Google support are migrated to
+`EMAIL_PASSWORD`; backend-only legacy rows with no Firebase UID may remain
+null until first linked.
+
+The backend reads `firebase.sign_in_provider` only from the verified Firebase ID
+token. Supported values are `password` and `google.com`; missing or unsupported
+providers fail closed on real Firebase-token paths. The filter enforces:
+
+- `EMAIL_PASSWORD` origin accepts `password` and `google.com` tokens for the
+  same Firebase UID.
+- `GOOGLE` origin accepts only `google.com` tokens.
+- `GOOGLE` origin with a `password` token returns `401 AUTH_METHOD_NOT_ALLOWED`,
+  including for recoverably deleted accounts.
+
 `ROLE_ADMIN` is granted only when all conditions are true:
 
 - the verified Firebase UID resolves to a backend user;
@@ -148,6 +177,23 @@ Firebase token reports `emailVerified=true`. An unverified Firebase email can
 still create a brand-new backend user and can still load an already-linked
 backend user by Firebase UID. Existing linked users do not have their persisted
 email overwritten from an unverified Firebase token email.
+
+If the same normalized email is already bound to a different non-null Firebase
+UID, Reals refuses the provisioning attempt with
+`EMAIL_ALREADY_LINKED_TO_DIFFERENT_FIREBASE_USER`. It never silently rebinds or
+merges distinct Firebase users. Firebase environments used by Reals must be
+configured for the single-account-per-email model, but the backend still
+defends against unexpected same-email/different-UID collisions.
+
+`POST /api/auth/password-reset` is public with respect to Firebase bearer
+authentication and returns `202 Accepted` for every syntactically valid request.
+It remains under App Check when App Check is enforced and under the pre-auth
+rate limiter. The response never reveals account existence, auth origin,
+deletion state or Firebase delivery outcome. The backend sends a Firebase
+password reset only for `EMAIL_PASSWORD` accounts with a Firebase UID that are
+`ACTIVE`, or `DELETED` while `now < deletionFinalizesAt`. At exact equality
+(`now >= deletionFinalizesAt`) reset delivery stops. `GOOGLE` origin accounts
+are passwordless in Reals and never receive Reals password reset delivery.
 
 `POST /api/me/local-dev/email-verification` is a local-only Firebase Admin
 helper for the `local-firebase` profile and must remain absent from hosted

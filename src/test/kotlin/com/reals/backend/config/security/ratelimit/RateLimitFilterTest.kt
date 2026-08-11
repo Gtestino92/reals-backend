@@ -74,6 +74,15 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `password reset uses its own pre auth bucket group`() {
+        val filter = preAuthFilter()
+        val request = passwordResetRequest("10.0.0.1")
+
+        assertEquals(RateLimitGroup.PASSWORD_RESET, resolver.resolveGroup(request))
+        assertEquals("pre-auth:password-reset:ip:10.0.0.1", filter.rateLimitKey(request))
+    }
+
+    @Test
     fun `pre auth uses broad capacity instead of safety report capacity`() {
         val broadPreAuthProperties = RateLimitProperties(
             preAuthCapacity = 2,
@@ -287,6 +296,11 @@ class RateLimitFilterTest {
     private fun safetyReportRequest(remoteAddr: String, bearerToken: String): MockHttpServletRequest =
         apiRequest(remoteAddr, bearerToken, "/api/safety/reports").apply {
             method = "POST"
+        }
+
+    private fun passwordResetRequest(remoteAddr: String): MockHttpServletRequest =
+        MockHttpServletRequest("POST", "/api/auth/password-reset").apply {
+            setRemoteAddr(remoteAddr)
         }
 
     private fun profilePhotoUploadRequest(

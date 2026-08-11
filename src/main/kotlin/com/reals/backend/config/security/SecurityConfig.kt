@@ -105,6 +105,7 @@ class SecurityConfig(
                 }
 
                 auth
+                    .requestMatchers(HttpMethod.POST, "/api/auth/password-reset").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
                     .requestMatchers("/api/admin/**").hasRole(SecurityRoles.ADMIN)

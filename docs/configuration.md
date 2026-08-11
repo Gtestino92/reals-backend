@@ -80,6 +80,10 @@ Non-sensitive runtime configuration:
 | `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | prod and enabled App Check | Comma-separated Firebase App IDs accepted from the App Check token subject. These are not Android package names. |
 | `FIREBASE_APP_CHECK_JWKS_URI` | no | App Check JWKS URI. Defaults to `https://firebaseappcheck.googleapis.com/v1/jwks`; override only for controlled testing. |
 | `FIREBASE_AUTH_REVOCATION_CACHE_TTL` | no | Successful Firebase ID-token revocation/disabled-user checks are cached for this duration. Defaults to `PT60S`; token signature and expiry are still validated on every request. |
+| `FIREBASE_WEB_API_KEY` | password reset delivery | Firebase Web API key used only for Identity Toolkit `accounts:sendOobCode` password-reset delivery. Do not commit real keys. If blank, public reset responses remain generic and no reset email is sent. |
+| `FIREBASE_AUTH_REST_BASE_URL` | no | Identity Toolkit base URL. Defaults to `https://identitytoolkit.googleapis.com/v1`; override only for controlled tests or local stubs. |
+| `FIREBASE_AUTH_REST_CONNECT_TIMEOUT_MS` | no | Connect timeout for Firebase Auth REST calls. Defaults to `3000`. |
+| `FIREBASE_AUTH_REST_READ_TIMEOUT_MS` | no | Read timeout for Firebase Auth REST calls. Defaults to `10000`. |
 | `ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS` | no | Defaults to `30`; controls how long a deleted account can be reactivated before finalization. |
 | `STORAGE_S3_CREDENTIALS_MODE` | no | S3 credential mode. Defaults to `STATIC` for backward compatibility. Use `DEFAULT_CHAIN` for AWS-hosted EC2/ECS runtimes that should consume the AWS SDK default credential provider chain. Legacy fallback: `S3_CREDENTIALS_MODE`. |
 | `STORAGE_S3_ENDPOINT` | S3-compatible providers only | Optional S3-compatible API endpoint used by the backend for object operations. Set it for MinIO/R2. Leave it absent/blank for native Amazon S3 so the AWS SDK resolves the normal regional endpoint. For R2 use `https://<cloudflare-account-id>.r2.cloudflarestorage.com`. Legacy fallback: `S3_ENDPOINT`. |

@@ -6,6 +6,7 @@ import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.service.AuthOriginPolicy
 import com.reals.backend.service.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -44,6 +45,10 @@ class FirebaseTokenFilter(
         }
         return request.method.equals("OPTIONS", ignoreCase = true) ||
             path == "/api/ping" ||
+            (
+                request.method.equals("POST", ignoreCase = true) &&
+                    path == "/api/auth/password-reset"
+            ) ||
             (
                 request.method.equals("GET", ignoreCase = true) &&
                     path == "/api/legal/documents/current"
@@ -85,8 +90,31 @@ class FirebaseTokenFilter(
 
         try {
             val decoded = firebaseTokenAuthenticationVerifier.verify(token)
+            val signInProvider = FirebaseSignInProvider.fromToken(decoded)
+            if (signInProvider == null) {
+                SecurityContextHolder.clearContext()
+                writeUnauthorized(
+                    response = response,
+                    code = "UNSUPPORTED_AUTH_PROVIDER",
+                    message = "Firebase sign-in provider is unsupported"
+                )
+                return
+            }
 
             val user = userService.findByFirebaseUid(decoded.uid)
+
+            if (
+                user != null &&
+                !AuthOriginPolicy.authenticationAllowed(user.authOrigin, signInProvider)
+            ) {
+                SecurityContextHolder.clearContext()
+                writeUnauthorized(
+                    response = response,
+                    code = "AUTH_METHOD_NOT_ALLOWED",
+                    message = "Authentication method is not allowed for this account"
+                )
+                return
+            }
 
             if (user?.status == UserStatus.DELETED) {
                 if (!isDeletedAccountAllowedPath(request)) {
@@ -105,7 +133,8 @@ class FirebaseTokenFilter(
                             userId = user.id,
                             firebaseUid = decoded.uid,
                             email = decoded.email,
-                            emailVerified = decoded.isEmailVerified
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
@@ -121,7 +150,8 @@ class FirebaseTokenFilter(
                         FirebasePrincipal(
                             uid = decoded.uid,
                             email = decoded.email,
-                            emailVerified = decoded.isEmailVerified
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
@@ -132,7 +162,8 @@ class FirebaseTokenFilter(
                             userId = user.id,
                             firebaseUid = decoded.uid,
                             email = decoded.email,
-                            emailVerified = decoded.isEmailVerified
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         authoritiesForActiveUser(
@@ -171,6 +202,9 @@ class FirebaseTokenFilter(
         ) || (
             request.method.equals("POST", ignoreCase = true) &&
             path == "/api/me/reactivation"
+        ) || (
+            request.method.equals("POST", ignoreCase = true) &&
+            path == "/api/me/deletion/finalization"
         )
     }
 

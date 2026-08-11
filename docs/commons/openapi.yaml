@@ -13,6 +13,7 @@ security:
     bearerAuth: []
 tags:
   - name: Health
+  - name: Auth
   - name: Me
   - name: Reference
   - name: Profiles
@@ -60,6 +61,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InfoResponse'
+  /api/auth/password-reset:
+    post:
+      tags: [Auth]
+      summary: Request a Firebase password reset email when backend policy allows it
+      description: Public with respect to Firebase bearer authentication. When App Check is enabled this endpoint still requires X-Firebase-AppCheck. Every syntactically valid request returns 202 without revealing whether the email exists, auth origin, deletion state or Firebase delivery outcome.
+      security:
+        - firebaseAppCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: Password reset request accepted generically
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /api/me/provision:
     post:
       tags: [Me]
@@ -185,6 +204,22 @@ paths:
       responses:
         '200':
           description: Reactivated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/deletion/finalization:
+    post:
+      tags: [Me]
+      summary: Permanently finalize a pending account deletion immediately
+      description: Only meaningful for an already deleted account. Uses the same locked finalization behavior as the scheduled finalizer, abandons recovery immediately, anonymizes local email, clears Firebase UID and preserves retained history.
+      responses:
+        '200':
+          description: Finalized deleted user, or already finalized deleted user
           content:
             application/json:
               schema:
@@ -2250,7 +2285,7 @@ components:
         message: { type: string, nullable: true }
     UserResponse:
       type: object
-      required: [id, status, createdAt]
+      required: [id, status, createdAt, passwordManagementAllowed]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email, nullable: true }
@@ -2258,6 +2293,17 @@ components:
         deletedAt: { type: string, format: date-time, nullable: true }
         deletionFinalizesAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+        passwordManagementAllowed:
+          type: boolean
+          description: True only for accounts whose immutable Reals auth origin is EMAIL_PASSWORD.
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
     RegisterPushTokenRequest:
       type: object
       required: [token, platform]
