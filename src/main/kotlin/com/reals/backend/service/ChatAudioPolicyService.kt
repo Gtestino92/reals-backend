@@ -2,13 +2,14 @@ package com.reals.backend.service
 
 import com.reals.backend.config.ChatAudioProperties
 import com.reals.backend.config.FirstChatAudioProperties
-import com.reals.backend.config.SecondChatAudioProperties
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.FirstChatGuidanceRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -38,9 +39,9 @@ data class ChatAudioPolicy(
 class ChatAudioPolicyService(
     private val audioProperties: ChatAudioProperties,
     private val firstChatAudioProperties: FirstChatAudioProperties,
-    private val secondChatAudioProperties: SecondChatAudioProperties,
     private val guidanceRepository: FirstChatGuidanceRepository,
     private val chatMessageRepository: ChatMessageRepository,
+    private val secondChatParticipationRepository: SecondChatParticipationRepository,
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val firstChatInactivityThresholdMinutes: Long
 ) {
@@ -51,7 +52,7 @@ class ChatAudioPolicyService(
     ): ChatAudioPolicy =
         when (chat.chatType) {
             ChatType.FIRST_CHAT -> firstChatPolicy(chat, userId, now)
-            ChatType.SECOND_CHAT -> secondChatPolicy(chat, now)
+            ChatType.SECOND_CHAT -> secondChatPolicy(chat, userId, now)
         }
 
     fun requireAudioEnabled(
@@ -136,6 +137,7 @@ class ChatAudioPolicyService(
 
     private fun secondChatPolicy(
         chat: Chat,
+        userId: UUID,
         now: OffsetDateTime
     ): ChatAudioPolicy {
         if (!audioProperties.enabled) {
@@ -144,15 +146,17 @@ class ChatAudioPolicyService(
         if (chat.status != ChatStatus.ACTIVE || !now.isBefore(chat.timeoutAt)) {
             return unavailable(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, remainingMessages = null)
         }
-        val conversationStartedAt = chat.conversationStartedAt
-            ?: return unavailable(ChatAudioUnavailableReason.WAITING_FOR_BOTH, remainingMessages = null)
-        val enabledAt = conversationStartedAt.plusMinutes(secondChatAudioProperties.enabledAfterConversationMinutes)
-        if (now.isBefore(enabledAt)) {
-            return unavailable(
-                reason = ChatAudioUnavailableReason.WAITING_DELAY,
-                enabledAt = enabledAt,
-                remainingMessages = null
-            )
+        val connectionId = chat.connectionId
+            ?: return unavailable(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, remainingMessages = null)
+        val participation = secondChatParticipationRepository.findByConnectionIdAndUserId(
+            connectionId = connectionId,
+            userId = userId
+        )
+        if (
+            participation?.attendanceStatus != SecondChatAttendanceStatus.ON_TIME &&
+            participation?.attendanceStatus != SecondChatAttendanceStatus.LATE
+        ) {
+            return unavailable(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, remainingMessages = null)
         }
         return available(remainingMessages = null)
     }

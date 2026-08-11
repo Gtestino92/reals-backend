@@ -2,14 +2,16 @@ package com.reals.backend.service
 
 import com.reals.backend.config.ChatAudioProperties
 import com.reals.backend.config.FirstChatAudioProperties
-import com.reals.backend.config.SecondChatAudioProperties
 import com.reals.backend.domain.Chat
+import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.FirstChatGuidance
-import com.reals.backend.domain.ChatMessageType
+import com.reals.backend.domain.SecondChatAttendanceStatus
+import com.reals.backend.domain.SecondChatParticipation
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.FirstChatGuidanceRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -84,52 +86,122 @@ class ChatAudioPolicyServiceTest {
     }
 
     @Test
-    fun `second chat waits for both participants before conversation starts`() {
-        val policy = service().policyFor(secondChat(conversationStartedAt = null), USER_ID, NOW)
-
-        assertFalse(policy.enabled)
-        assertEquals(ChatAudioUnavailableReason.WAITING_FOR_BOTH, policy.unavailableReason)
-        assertNull(policy.remainingMessages)
-    }
-
-    @Test
-    fun `second chat unlocks at exact configured boundary and remains unlimited`() {
-        val conversationStartedAt = NOW.minusMinutes(10)
-
-        val policy = service().policyFor(
-            secondChat(conversationStartedAt = conversationStartedAt),
-            USER_ID,
-            NOW
-        )
+    fun `second chat enables audio immediately after current user joins on time`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.ON_TIME)
+            .policyFor(secondChat(conversationStartedAt = null), USER_ID, NOW)
 
         assertTrue(policy.enabled)
         assertNull(policy.unavailableReason)
+        assertNull(policy.enabledAt)
         assertNull(policy.remainingMessages)
     }
 
     @Test
-    fun `second chat reports delay reason immediately before boundary`() {
-        val conversationStartedAt = NOW.minusMinutes(10).plusNanos(1)
+    fun `second chat enables audio immediately after current user joins late`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.LATE)
+            .policyFor(secondChat(conversationStartedAt = null), USER_ID, NOW)
 
-        val policy = service().policyFor(
-            secondChat(conversationStartedAt = conversationStartedAt),
-            USER_ID,
-            NOW
-        )
+        assertTrue(policy.enabled)
+        assertNull(policy.unavailableReason)
+        assertNull(policy.enabledAt)
+        assertNull(policy.remainingMessages)
+    }
+
+    @Test
+    fun `second chat disables audio when current user has not joined`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.PENDING)
+            .policyFor(secondChat(conversationStartedAt = NOW.minusMinutes(30)), USER_ID, NOW)
 
         assertFalse(policy.enabled)
-        assertEquals(ChatAudioUnavailableReason.WAITING_DELAY, policy.unavailableReason)
-        assertEquals(conversationStartedAt.plusMinutes(10), policy.enabledAt)
+        assertEquals(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, policy.unavailableReason)
+        assertNull(policy.enabledAt)
+        assertNull(policy.remainingMessages)
+    }
+
+    @Test
+    fun `second chat disables audio when current user participation is missing`() {
+        val policy = service(secondChatAttendanceStatus = null)
+            .policyFor(secondChat(conversationStartedAt = NOW.minusMinutes(30)), USER_ID, NOW)
+
+        assertFalse(policy.enabled)
+        assertEquals(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, policy.unavailableReason)
+        assertNull(policy.enabledAt)
+        assertNull(policy.remainingMessages)
+    }
+
+    @Test
+    fun `second chat disables audio when connection id is missing`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.ON_TIME)
+            .policyFor(
+                secondChat(
+                    conversationStartedAt = null,
+                    connectionId = null
+                ),
+                USER_ID,
+                NOW
+            )
+
+        assertFalse(policy.enabled)
+        assertEquals(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, policy.unavailableReason)
+        assertNull(policy.enabledAt)
+        assertNull(policy.remainingMessages)
+    }
+
+    @Test
+    fun `second chat disables audio for joined user when chat is terminal`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.ON_TIME)
+            .policyFor(
+                secondChat(
+                    conversationStartedAt = null,
+                    status = ChatStatus.FINISHED
+                ),
+                USER_ID,
+                NOW
+            )
+
+        assertFalse(policy.enabled)
+        assertEquals(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, policy.unavailableReason)
+    }
+
+    @Test
+    fun `second chat disables audio for joined user at exact timeout boundary`() {
+        val policy = service(secondChatAttendanceStatus = SecondChatAttendanceStatus.ON_TIME)
+            .policyFor(
+                secondChat(
+                    conversationStartedAt = null,
+                    timeoutAt = NOW
+                ),
+                USER_ID,
+                NOW
+            )
+
+        assertFalse(policy.enabled)
+        assertEquals(ChatAudioUnavailableReason.CHAT_NOT_WRITABLE, policy.unavailableReason)
+    }
+
+    @Test
+    fun `second chat global feature flag wins for joined user`() {
+        val policy = service(
+            enabled = false,
+            secondChatAttendanceStatus = SecondChatAttendanceStatus.ON_TIME
+        ).policyFor(secondChat(conversationStartedAt = null), USER_ID, NOW)
+
+        assertFalse(policy.enabled)
+        assertEquals(ChatAudioUnavailableReason.FEATURE_DISABLED, policy.unavailableReason)
+        assertNull(policy.enabledAt)
+        assertNull(policy.remainingMessages)
     }
 
     private fun service(
         enabled: Boolean = true,
         requiredAnsweredQuestions: Int = 1,
         currentQuestionOrdinal: Int? = 2,
-        usedAudioMessages: Long = 0
+        usedAudioMessages: Long = 0,
+        secondChatAttendanceStatus: SecondChatAttendanceStatus? = SecondChatAttendanceStatus.ON_TIME
     ): ChatAudioPolicyService {
         val guidanceRepository = Mockito.mock(FirstChatGuidanceRepository::class.java)
         val chatMessageRepository = Mockito.mock(ChatMessageRepository::class.java)
+        val secondChatParticipationRepository = Mockito.mock(SecondChatParticipationRepository::class.java)
         if (currentQuestionOrdinal != null) {
             Mockito.`when`(guidanceRepository.findByChatId(CHAT_ID))
                 .thenReturn(
@@ -145,6 +217,22 @@ class ChatAudioPolicyServiceTest {
         Mockito.`when`(
             chatMessageRepository.countByChatSessionIdAndSenderIdAndMessageType(CHAT_ID, USER_ID, ChatMessageType.AUDIO)
         ).thenReturn(usedAudioMessages)
+        Mockito.`when`(
+            secondChatParticipationRepository.findByConnectionIdAndUserId(CONNECTION_ID, USER_ID)
+        ).thenReturn(
+            secondChatAttendanceStatus?.let {
+                SecondChatParticipation(
+                    connectionId = CONNECTION_ID,
+                    userId = USER_ID,
+                    attendanceStatus = it,
+                    joinedAt = if (it == SecondChatAttendanceStatus.ON_TIME || it == SecondChatAttendanceStatus.LATE) {
+                        NOW.minusMinutes(1)
+                    } else {
+                        null
+                    }
+                )
+            }
+        )
 
         return ChatAudioPolicyService(
             audioProperties = ChatAudioProperties(enabled = enabled),
@@ -152,9 +240,9 @@ class ChatAudioPolicyServiceTest {
                 maxPerUser = 1,
                 requiredAnsweredGuidanceQuestions = requiredAnsweredQuestions
             ),
-            secondChatAudioProperties = SecondChatAudioProperties(enabledAfterConversationMinutes = 10),
             guidanceRepository = guidanceRepository,
             chatMessageRepository = chatMessageRepository,
+            secondChatParticipationRepository = secondChatParticipationRepository,
             firstChatInactivityThresholdMinutes = 5
         )
     }
@@ -169,22 +257,28 @@ class ChatAudioPolicyServiceTest {
             timeoutAt = NOW.plusMinutes(14)
         )
 
-    private fun secondChat(conversationStartedAt: OffsetDateTime?): Chat =
+    private fun secondChat(
+        conversationStartedAt: OffsetDateTime?,
+        connectionId: UUID? = CONNECTION_ID,
+        status: ChatStatus = ChatStatus.ACTIVE,
+        timeoutAt: OffsetDateTime = NOW.plusHours(1)
+    ): Chat =
         Chat(
             id = CHAT_ID,
             matchId = MATCH_ID,
-            connectionId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+            connectionId = connectionId,
             chatType = ChatType.SECOND_CHAT,
-            status = ChatStatus.ACTIVE,
+            status = status,
             startedAt = NOW.minusMinutes(30),
             conversationStartedAt = conversationStartedAt,
-            timeoutAt = NOW.plusHours(1)
+            timeoutAt = timeoutAt
         )
 
     private companion object {
         val NOW: OffsetDateTime = OffsetDateTime.parse("2026-01-01T12:00:00Z")
         val CHAT_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val USER_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val CONNECTION_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000003")
         val MATCH_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000004")
     }
 }

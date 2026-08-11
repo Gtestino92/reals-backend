@@ -433,13 +433,15 @@ have joined, `conversationStartedAt` is set once to the later joined time.
 `timeoutAt` remains `confirmedDateTime + chat.second-chat.duration-minutes`
 (currently 120 minutes).
 
-Second-chat audio remains unavailable until both participants have joined and
-`conversationStartedAt` exists. The unlock instant is
-`conversationStartedAt + chat.second-chat.mutual-completion.minimum-conversation-minutes`.
-Boundary semantics are exact: `now < audioEnabledAt` is unavailable with
-`WAITING_DELAY`; `now >= audioEnabledAt` is available, subject to the global
-feature flag, file validation, rate limits and normal writable lifecycle. Once
-unlocked, second-chat audio messages are unlimited in quantity.
+Second-chat audio is user-relative: once the current user has explicitly joined
+with attendance `ON_TIME` or `LATE`, that user can send audio immediately,
+independently of whether the partner has joined and independently of
+`conversationStartedAt`. A participant whose attendance remains `PENDING` or
+whose participation row is missing receives `CHAT_NOT_WRITABLE`. Exact absolute
+timeout semantics still apply: audio is writable only while `now < timeoutAt`,
+subject to the global feature flag, file validation, rate limits and normal
+writable lifecycle. Once unlocked, second-chat audio messages are unlimited in
+quantity.
 
 After `confirmedDateTime + 10 minutes` and before `confirmedDateTime + 20
 minutes`, a joined participant may create one pending partner no-show claim per

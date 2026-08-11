@@ -48,22 +48,10 @@ data class FirstChatAudioProperties(
     }
 }
 
-@ConfigurationProperties(prefix = "chat.second-chat.audio")
-data class SecondChatAudioProperties(
-    val enabledAfterConversationMinutes: Long = 10
-) {
-    init {
-        require(enabledAfterConversationMinutes >= 0) {
-            "chat.second-chat.audio.enabled-after-conversation-minutes must be non-negative"
-        }
-    }
-}
-
 @Configuration
 @EnableConfigurationProperties(
     ChatAudioProperties::class,
-    FirstChatAudioProperties::class,
-    SecondChatAudioProperties::class
+    FirstChatAudioProperties::class
 )
 class ChatAudioConfiguration
 
