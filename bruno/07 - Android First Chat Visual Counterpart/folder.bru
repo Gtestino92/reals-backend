@@ -16,7 +16,7 @@ docs {
   1. Android app enters matchmaking room and calls POST /api/matchmaking/queue.
   2. Run 00-12 in this folder to create/provision/enqueue a Firebase counterpart and process matchmaking. Use 03 only if you also want Bruno to refresh the Android/current-user Firebase token. Requests 09a-09c cover Firebase email verification: 09b must fail with EMAIL_NOT_VERIFIED, then open the verification email, rerun 09c to refresh the token, and continue with 10.
   3. Android app polls GET /api/me/home and should see a FIRST_CHAT item in pendingActions[].
-  4. Run 13-19 to make the counterpart enter first chat, send a message, advance first-chat guidance with Android, optionally send one counterpart audio message, approve first chat and approve visual review.
+  4. Run 13-19 to make the counterpart enter first chat, send a message, advance first-chat guidance with Android, optionally send one counterpart audio message, approve first chat, optionally run 17a to make delayed visual review appear in Home immediately, and approve visual review.
   5. Scheduling scenario A: after Android and counterpart approve visual, run 22a then 22 to make scheduling available, then run 23-25 to inspect the connection, negotiation and proposals.
   6. Scheduling scenario B: Android sends slots from the app, then run 26b to submit counterpart slots with an overlap and auto-confirm the negotiation.
   7. Scheduling scenario C: Android sends slots from the app, then run 26c to submit counterpart slots without overlap, run 29 to reject only Android's pending partner proposals, then refresh with 24 and 25. A single rejection may keep the same round open.

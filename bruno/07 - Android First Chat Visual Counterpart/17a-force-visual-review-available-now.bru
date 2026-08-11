@@ -1,0 +1,18 @@
+meta {
+  name: 17a Force Visual Review Available Now
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matches/{{counterpartMatchId}}/visual-review/make-available-now
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.target !== "visual-review-availability") {
+    throw new Error("Expected dev mutation for visual-review availability.");
+  }
+}

@@ -1,0 +1,22 @@
+meta {
+  name: 39 Force Visual Review Available Now
+  type: http
+  seq: 39
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matches/{{devMatchId}}/visual-review/make-available-now
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.target !== "visual-review-availability") {
+    throw new Error("Expected dev mutation for visual-review availability.");
+  }
+}
