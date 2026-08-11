@@ -32,7 +32,8 @@ are intentionally deferred.
 ## Users
 
 
-- `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user.
+- `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user. The first successful Reals provisioning flow sets the immutable backend-owned `authOrigin`; later Firebase provider metadata or provider ordering does not rewrite it.
+- `POST /api/auth/password-reset`: public Firebase-bearer-optional password reset request. Body: `{ "email": "user@example.com" }`. Syntactically valid requests return `202 Accepted` with no account-existence, auth-origin, deletion-state or Firebase-delivery disclosure. App Check still applies when enforced.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
 - `GET /api/me/home/status`: fetch the authenticated user's persisted Home `version`, `dirty` flag, nullable `nextRefreshAt` wake-up marker and `serverTime`. This is cheap and does not aggregate full Home state.
@@ -40,6 +41,7 @@ are intentionally deferred.
 - `PUT /api/me/push-tokens`: register or refresh the authenticated user's Android FCM device token. Body: `{ "token": "...", "platform": "ANDROID" }`. Returns `{ "registered": true }`.
 - `DELETE /api/me`: schedule soft deletion for the authenticated user account. The account remains recoverable during `account.deletion.recovery-window-days`.
 - `POST /api/me/reactivation`: reactivate an account that is still inside the deletion recovery window.
+- `POST /api/me/deletion/finalization`: for an already deleted account, irreversibly abandon recovery immediately by using the same permanent-finalization behavior as the scheduled finalizer.
 - `POST /api/me/local-dev/email-verification`: local-only `local-firebase` helper gated by `local-dev.firebase.email-auto-verification-enabled=true`. Requires an authenticated provisioned Firebase-backed `ROLE_USER`, marks only the caller's Firebase Auth account `emailVerified=true` through Firebase Admin, returns `204`, and does not mutate PostgreSQL or profile state. The client must reload Firebase user state and force-refresh the ID token before using normal photo upload/replacement and profile activation.
 - `GET /api/legal/documents/current`: unauthenticated endpoint that returns the current configured legal document catalog. When App Check is enabled, it still requires `X-Firebase-AppCheck`. It may return an empty `documents` array.
 - `GET /api/me/legal-status`: authenticated authoritative status for current configured legal document versions only.

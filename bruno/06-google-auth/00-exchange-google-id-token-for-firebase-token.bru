@@ -1,0 +1,40 @@
+meta {
+  name: 00 Exchange Google ID Token For Firebase Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "postBody": "id_token={{google_oauth_id_token}}&providerId=google.com",
+    "requestUri": "http://localhost",
+    "returnIdpCredential": true,
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId) {
+    throw new Error("Expected Firebase signInWithIdp response with idToken and localId.");
+  }
+  if (body.providerId && body.providerId !== "google.com") {
+    throw new Error(`Expected providerId google.com, got ${body.providerId}.`);
+  }
+
+  bru.setEnvVar("firebase_google_id_token", body.idToken);
+  bru.setEnvVar("firebase_google_uid", body.localId);
+  if (body.email) {
+    bru.setEnvVar("firebase_google_email", body.email);
+  }
+}

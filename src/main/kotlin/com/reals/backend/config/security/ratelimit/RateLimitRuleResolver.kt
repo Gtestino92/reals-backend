@@ -20,6 +20,14 @@ class RateLimitRuleResolver(
                     refillPeriodSeconds = properties.provisionRefillPeriodSeconds
                 )
 
+            RateLimitGroup.PASSWORD_RESET ->
+                RateLimitRule(
+                    id = group.id,
+                    capacity = properties.defaultCapacity,
+                    refillTokens = properties.defaultRefillTokens,
+                    refillPeriodSeconds = properties.defaultRefillPeriodSeconds
+                )
+
             RateLimitGroup.MESSAGES ->
                 RateLimitRule(
                     id = group.id,
@@ -62,6 +70,9 @@ class RateLimitRuleResolver(
             method == "POST" && path == "/api/me/provision" ->
                 RateLimitGroup.PROVISION
 
+            method == "POST" && path == "/api/auth/password-reset" ->
+                RateLimitGroup.PASSWORD_RESET
+
             method == "POST" &&
                 path.startsWith("/api/chats/") &&
                 (path.endsWith("/messages") || path.endsWith("/audio-messages")) ->
@@ -93,6 +104,7 @@ enum class RateLimitGroup(
 ) {
     DEFAULT("default"),
     PROVISION("provision"),
+    PASSWORD_RESET("password-reset"),
     MESSAGES("messages"),
     PROFILE_PHOTO_UPLOADS("profile-photo-uploads"),
     SAFETY_REPORTS("safety-reports")

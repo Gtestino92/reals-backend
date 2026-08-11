@@ -5,6 +5,7 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.config.security.authentication.FirebaseSignInProvider
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
@@ -43,11 +44,6 @@ class UserService(
     private val log = LoggerFactory.getLogger(javaClass)
     private val transactionTemplate = TransactionTemplate(transactionManager)
 
-    private companion object {
-        private val EMAIL_PATTERN =
-            Regex("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", RegexOption.IGNORE_CASE)
-    }
-
     fun findByIdOrThrow(userId: UUID): User {
 
         return userRepository.findById(userId)
@@ -69,7 +65,7 @@ class UserService(
      * Throws IllegalArgumentException if the email is already registered.
      */
     fun createUser(email: String): User {
-        val normalizedEmail = normalizeRequiredEmail(email)
+        val normalizedEmail = UserEmailNormalizer.normalizeRequired(email)
         val existingByEmail = userRepository.findByEmail(normalizedEmail)
 
         if (existingByEmail != null) {
@@ -95,40 +91,44 @@ class UserService(
     fun provisionFromFirebase(
         firebaseUid: String,
         email: String? = null,
-        emailVerified: Boolean = false
+        emailVerified: Boolean = false,
+        signInProvider: FirebaseSignInProvider = FirebaseSignInProvider.PASSWORD
     ): User {
         require(firebaseUid.isNotBlank()) {
             "Firebase UID is required"
         }
 
-        val normalizedEmail = normalizeOptionalEmail(email)
+        val normalizedEmail = UserEmailNormalizer.normalizeOptional(email)
 
         return try {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
         } catch (ex: DataIntegrityViolationException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
         } catch (ex: OptimisticLockingFailureException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
         }
     }
 
     private fun provisionFromFirebaseInNewTransaction(
         firebaseUid: String,
         normalizedEmail: String?,
-        emailVerified: Boolean
+        emailVerified: Boolean,
+        signInProvider: FirebaseSignInProvider
     ): User =
         transactionTemplate.execute {
             provisionFromFirebaseAttempt(
                 firebaseUid = firebaseUid,
                 normalizedEmail = normalizedEmail,
-                emailVerified = emailVerified
+                emailVerified = emailVerified,
+                signInProvider = signInProvider
             )
         }
 
     private fun provisionFromFirebaseAttempt(
         firebaseUid: String,
         normalizedEmail: String?,
-        emailVerified: Boolean
+        emailVerified: Boolean,
+        signInProvider: FirebaseSignInProvider
     ): User {
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
@@ -159,6 +159,9 @@ class UserService(
                         )
                     }
                     existingByEmail.firebaseUid = firebaseUid
+                    if (existingByEmail.authOrigin == null) {
+                        existingByEmail.authOrigin = AuthOriginPolicy.originFor(signInProvider)
+                    }
                     existingByEmail.updatedAt = OffsetDateTime.now()
                     return userRepository.saveAndFlush(existingByEmail)
                 }
@@ -171,9 +174,10 @@ class UserService(
                     )
                 }
 
-                check(false) {
-                    "Email already belongs to another Firebase user: $normalizedEmail"
-                }
+                throw DomainConflictException(
+                    code = DomainErrorCode.EMAIL_ALREADY_LINKED_TO_DIFFERENT_FIREBASE_USER,
+                    message = "Email is already linked to a different Firebase user"
+                )
             }
         }
 
@@ -181,6 +185,7 @@ class UserService(
             User(
                 firebaseUid = firebaseUid,
                 email = normalizedEmail,
+                authOrigin = AuthOriginPolicy.originFor(signInProvider),
                 status = UserStatus.ACTIVE,
             )
         )
@@ -292,6 +297,47 @@ class UserService(
             return false
         }
 
+        finalizeAccountDeletionUnderLock(
+            user = user,
+            now = now
+        )
+        return true
+    }
+
+    fun finalizeAccountDeletionNow(
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): User {
+        val user = userRepository.findAllByIdForUpdate(listOf(userId)).singleOrNull()
+            ?: throw DomainConflictException(
+                code = DomainErrorCode.USER_NOT_FOUND,
+                message = "User was not found"
+            )
+
+        if (user.status != UserStatus.DELETED) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACCOUNT_DELETION_NOT_PENDING,
+                message = "Account deletion is not pending"
+            )
+        }
+
+        if (user.deletionFinalizesAt == null) {
+            return user
+        }
+
+        finalizeAccountDeletionUnderLock(
+            user = user,
+            now = now
+        )
+        return user
+    }
+
+    private fun finalizeAccountDeletionUnderLock(
+        user: User,
+        now: OffsetDateTime
+    ) {
+        val userId = user.id
+
         user.firebaseUid?.let { firebaseUid ->
             when (firebaseExternalAccountService.deleteAccountIfPresent(firebaseUid)) {
                 ExternalAccountDeletionResult.DELETED,
@@ -311,7 +357,6 @@ class UserService(
             aggregateId = userId,
             actorUserId = null
         )
-        return true
     }
 
     fun finalizeRecoverableAccountDeletions(now: OffsetDateTime = OffsetDateTime.now()): Int =
@@ -378,37 +423,6 @@ class UserService(
         return userRepository.saveAndFlush(user)
     }
 
-    private fun normalizeRequiredEmail(email: String): String {
-        val normalizedEmail = email.trim().lowercase()
-
-        require(normalizedEmail.isNotBlank()) {
-            "Email is required"
-        }
-
-        validateEmail(normalizedEmail)
-
-        return normalizedEmail
-    }
-
-    private fun normalizeOptionalEmail(email: String?): String? {
-        val normalizedEmail = email?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-            ?: return null
-
-        validateEmail(normalizedEmail)
-
-        return normalizedEmail
-    }
-
-    private fun validateEmail(normalizedEmail: String) {
-        require(normalizedEmail.length <= 255) {
-            "Email must be at most 255 characters"
-        }
-
-        require(EMAIL_PATTERN.matches(normalizedEmail)) {
-            "Email format is invalid"
-        }
-    }
-
     private fun pendingOrFinalizedDeletionConflict(
         user: User,
         now: OffsetDateTime
@@ -443,12 +457,7 @@ class UserService(
 
     private fun revokeExternalTokensAfterCommit(firebaseUid: String) {
         val action = {
-            runCatching {
-                firebaseExternalAccountService.revokeRefreshTokens(firebaseUid)
-            }.onFailure {
-                log.warn("Failed to revoke external tokens for Firebase UID {}", firebaseUid, it)
-            }
-            Unit
+            firebaseExternalAccountService.revokeRefreshTokens(firebaseUid)
         }
 
         runAfterCommit(action)

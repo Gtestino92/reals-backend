@@ -8,9 +8,12 @@ import com.google.firebase.auth.AuthErrorCode
 import com.google.firebase.auth.FirebaseToken
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.SecurityRoles
+import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.User
+import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.UserService
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.mockito.Mockito.mock
@@ -18,6 +21,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -43,6 +47,11 @@ class FirebaseTokenFilterTest {
         firebaseTokenAuthenticationVerifier,
         "admin@example.com"
     )
+
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
+    }
 
     @Test
     fun `actuator health endpoints pass without authorization header`() {
@@ -86,6 +95,219 @@ class FirebaseTokenFilterTest {
             firebaseEmailVerified = true
         ).map { it.authority }.toSet()
 
+        assertTrue(SecurityRoles.ROLE_USER in authorities)
+        assertTrue(SecurityRoles.ROLE_ADMIN in authorities)
+    }
+
+    @Test
+    fun `email password origin accepts password token`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-password-origin-password",
+            email = "password@example.com",
+            providerValue = "password"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-password-origin-password"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-password-origin-password",
+                    email = "password@example.com",
+                    authOrigin = UserAuthOrigin.EMAIL_PASSWORD
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+        assertTrue(SecurityContextHolder.getContext().authentication!!.principal is CurrentUserAuthContext)
+    }
+
+    @Test
+    fun `email password origin accepts google token`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-password-origin-google",
+            email = "password-google@example.com",
+            providerValue = "google.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-password-origin-google"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-password-origin-google",
+                    email = "password-google@example.com",
+                    authOrigin = UserAuthOrigin.EMAIL_PASSWORD
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+    }
+
+    @Test
+    fun `google origin accepts google token`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-google-origin-google",
+            email = "google@example.com",
+            providerValue = "google.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-google-origin-google"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-google-origin-google",
+                    email = "google@example.com",
+                    authOrigin = UserAuthOrigin.GOOGLE
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+    }
+
+    @Test
+    fun `google origin rejects password token`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-google-origin-password",
+            email = "google-password@example.com",
+            providerValue = "password"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-google-origin-password"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-google-origin-password",
+                    email = "google-password@example.com",
+                    authOrigin = UserAuthOrigin.GOOGLE
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(401, response.status)
+        assertTrue(response.contentAsString.contains("AUTH_METHOD_NOT_ALLOWED"))
+    }
+
+    @Test
+    fun `deleted google origin rejects password token before recovery routes`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-deleted-google-origin-password",
+            email = "deleted-google@example.com",
+            providerValue = "password"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-deleted-google-origin-password"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-deleted-google-origin-password",
+                    email = "deleted-google@example.com",
+                    status = UserStatus.DELETED,
+                    authOrigin = UserAuthOrigin.GOOGLE
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("POST", "/api/me/reactivation", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(401, response.status)
+        assertTrue(response.contentAsString.contains("AUTH_METHOD_NOT_ALLOWED"))
+    }
+
+    @Test
+    fun `missing or unsupported firebase provider fails closed`() {
+        listOf(null, "anonymous").forEach { providerValue ->
+            val decodedToken = decodedToken(
+                uid = "firebase-unsupported-${providerValue ?: "missing"}",
+                email = "unsupported@example.com",
+                providerValue = providerValue
+            )
+            `when`(firebaseTokenAuthenticationVerifier.verify("valid-token-${providerValue ?: "missing"}"))
+                .thenReturn(decodedToken)
+
+            val response = MockHttpServletResponse()
+
+            localFilter.doFilter(
+                authorizedRequest("POST", "/api/me/provision", "valid-token-${providerValue ?: "missing"}"),
+                response,
+                MockFilterChain()
+            )
+
+            assertEquals(401, response.status)
+            assertTrue(response.contentAsString.contains("UNSUPPORTED_AUTH_PROVIDER"))
+        }
+    }
+
+    @Test
+    fun `password reset public endpoint skips bearer token authentication`() {
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            MockHttpServletRequest("POST", "/api/auth/password-reset"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+        Mockito.verifyNoInteractions(firebaseTokenAuthenticationVerifier)
+    }
+
+    @Test
+    fun `allowed google token preserves admin role behavior`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-admin-google",
+            email = "admin@example.com",
+            providerValue = "google.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-admin-google"))
+            .thenReturn(
+                user(
+                    firebaseUid = "firebase-admin-google",
+                    email = "admin@example.com",
+                    authOrigin = UserAuthOrigin.EMAIL_PASSWORD
+                )
+            )
+
+        val response = MockHttpServletResponse()
+
+        adminFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        val authorities = SecurityContextHolder.getContext().authentication!!.authorities.map { it.authority }.toSet()
+        assertEquals(200, response.status)
         assertTrue(SecurityRoles.ROLE_USER in authorities)
         assertTrue(SecurityRoles.ROLE_ADMIN in authorities)
     }
@@ -237,6 +459,7 @@ class FirebaseTokenFilterTest {
         `when`(decodedToken.uid).thenReturn("firebase-deleted")
         `when`(decodedToken.email).thenReturn("deleted@example.com")
         `when`(decodedToken.isEmailVerified).thenReturn(true)
+        `when`(decodedToken.claims).thenReturn(firebaseClaims("password"))
         `when`(userService.findByFirebaseUid("firebase-deleted"))
             .thenReturn(
                 user(
@@ -287,6 +510,7 @@ class FirebaseTokenFilterTest {
         `when`(decodedToken.uid).thenReturn("firebase-cached")
         `when`(decodedToken.email).thenReturn("cached@example.com")
         `when`(decodedToken.isEmailVerified).thenReturn(true)
+        `when`(decodedToken.claims).thenReturn(firebaseClaims("password"))
         `when`(userService.findByFirebaseUid("firebase-cached"))
             .thenReturn(activeUser, deletedUser)
 
@@ -314,14 +538,37 @@ class FirebaseTokenFilterTest {
     private fun user(
         firebaseUid: String,
         email: String?,
-        status: UserStatus = UserStatus.ACTIVE
+        status: UserStatus = UserStatus.ACTIVE,
+        authOrigin: UserAuthOrigin? = UserAuthOrigin.EMAIL_PASSWORD
     ): User =
         User(
             id = UUID.randomUUID(),
             firebaseUid = firebaseUid,
             email = email,
-            status = status
+            status = status,
+            authOrigin = authOrigin
         )
+
+    private fun decodedToken(
+        uid: String,
+        email: String?,
+        emailVerified: Boolean = true,
+        providerValue: String?
+    ): FirebaseToken {
+        val decodedToken = mock(FirebaseToken::class.java)
+        `when`(decodedToken.uid).thenReturn(uid)
+        `when`(decodedToken.email).thenReturn(email)
+        `when`(decodedToken.isEmailVerified).thenReturn(emailVerified)
+        `when`(decodedToken.claims).thenReturn(firebaseClaims(providerValue))
+        return decodedToken
+    }
+
+    private fun firebaseClaims(providerValue: String?): Map<String, Any> =
+        if (providerValue == null) {
+            mapOf("firebase" to emptyMap<String, Any>())
+        } else {
+            mapOf("firebase" to mapOf("sign_in_provider" to providerValue))
+        }
 
     private fun authorizedRequest(
         method: String,

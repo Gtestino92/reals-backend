@@ -2,6 +2,7 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.User
+import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.identity.ExternalAccountDeletionResult
@@ -48,6 +49,42 @@ class UserDeletionFinalizationIntegrationTest : BaseIT() {
         Mockito.verify(firebaseExternalAccountService).deleteAccountIfPresent(firebaseUid)
         assertFinalizedLocally(user)
         assertFinalizationAuditExists(user.id)
+    }
+
+    @Test
+    fun `manual finalization completes before deadline and tolerates absent external account`() {
+        val user = createDeletedUser(deadline = OffsetDateTime.now().plusDays(10))
+        val firebaseUid = user.firebaseUid!!
+        Mockito.`when`(firebaseExternalAccountService.deleteAccountIfPresent(firebaseUid))
+            .thenReturn(ExternalAccountDeletionResult.ALREADY_ABSENT)
+
+        val finalized = userService.finalizeAccountDeletionNow(user.id)
+
+        assertEquals(user.id, finalized.id)
+        Mockito.verify(firebaseExternalAccountService).deleteAccountIfPresent(firebaseUid)
+        assertFinalizedLocally(user)
+        assertFinalizationAuditExists(user.id)
+    }
+
+    @Test
+    fun `duplicate manual finalization is idempotent and records audit once`() {
+        val user = createDeletedUser(deadline = OffsetDateTime.now().plusDays(10))
+        val firebaseUid = user.firebaseUid!!
+        Mockito.`when`(firebaseExternalAccountService.deleteAccountIfPresent(firebaseUid))
+            .thenReturn(ExternalAccountDeletionResult.DELETED)
+
+        userService.finalizeAccountDeletionNow(user.id)
+        userService.finalizeAccountDeletionNow(user.id)
+
+        Mockito.verify(firebaseExternalAccountService).deleteAccountIfPresent(firebaseUid)
+        assertFinalizedLocally(user)
+        assertEquals(
+            1,
+            auditEventRepository.findAll().count {
+                it.eventType == AuditEventType.ACCOUNT_DELETION_FINALIZED &&
+                    it.aggregateId == user.id
+            }
+        )
     }
 
     @Test
@@ -114,6 +151,7 @@ class UserDeletionFinalizationIntegrationTest : BaseIT() {
         assertEquals("deleted.${original.id}@deleted.reals.local", finalized.email)
         assertNull(finalized.firebaseUid)
         assertNull(finalized.deletionFinalizesAt)
+        assertEquals(UserAuthOrigin.EMAIL_PASSWORD, finalized.authOrigin)
     }
 
     private fun assertFinalizationAuditExists(userId: UUID) {

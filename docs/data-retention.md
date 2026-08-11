@@ -10,6 +10,16 @@ The lifecycle has three distinct stages:
 2. **Recovery window:** the local account remains recoverable until `deletionFinalizesAt`. Data needed for recovery and historical product, safety, anti-abuse, legal-evidence, or audit purposes remains. Reactivation does not restore deleted runtime state.
 3. **Final deletion / post-recovery retention:** the current implementation only releases or replaces local account identifiers. It is not complete account erasure. Purge or anonymization decisions for retained data remain pending.
 
+The scheduled finalizer runs after the recovery deadline, while
+`POST /api/me/deletion/finalization` lets an already deleted user abandon
+recovery immediately. Both paths use the same locked finalization mutation:
+delete or tolerate absence of the Firebase user, anonymize the local email,
+clear `firebaseUid`, clear `deletionFinalizesAt`, keep `status=DELETED`, retain
+the historical `authOrigin`, and record `ACCOUNT_DELETION_FINALIZED` once. Soft
+deletion alone does not free the email or Firebase UID; permanent finalization
+does, so a future signup creates a different backend user that may choose a
+different auth origin.
+
 The classifications used below are: `IMMEDIATE_DELETE`, `IMMEDIATE_TERMINATE_RETAIN_HISTORY`, `RETAIN_DURING_RECOVERY`, `RETAIN_ANTI_ABUSE_OR_SAFETY`, `RETAIN_LEGAL_EVIDENCE`, `RETAIN_AUDIT`, `FINAL_PURGE_POLICY_PENDING`, and `EXTERNAL_RETENTION_POLICY_PENDING`.
 
 ## Local relational data

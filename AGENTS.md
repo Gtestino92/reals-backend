@@ -34,6 +34,10 @@ any more-specific nested `AGENTS.md` files first.
 - A feature branch must track its same-named remote branch, for example
   `feature/example` -> `origin/feature/example`. Do not leave a feature branch
   with upstream `origin/development`; use `development` only as the base.
+- Standing authorization: when the only missing step for a new development task
+  is creating the same-named remote feature branch and setting it as upstream,
+  agents may run the branch-bootstrap push needed for that exact purpose, with
+  no implementation changes included in that push.
 - After creating a feature branch from `development`, verify the upstream before
   making code changes. If the same-named remote branch already exists, set
   upstream to that branch immediately. If it does not exist, either create it

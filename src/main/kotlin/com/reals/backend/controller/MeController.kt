@@ -98,6 +98,18 @@ class MeController(
         )
     }
 
+    @PostMapping("/api/me/deletion/finalization")
+    fun finalizeDeletionNow(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<UserResponse> {
+        val user = userService.finalizeAccountDeletionNow(
+            userId = userId
+        )
+        return ResponseEntity.ok(
+            UserResponse.from(user)
+        )
+    }
+
     @PostMapping("/api/me/provision")
     fun provisionMe(
         authentication: Authentication
@@ -128,7 +140,8 @@ class MeController(
         val user = userService.provisionFromFirebase(
             firebaseUid = firebasePrincipal.uid,
             email = firebasePrincipal.email,
-            emailVerified = firebasePrincipal.emailVerified
+            emailVerified = firebasePrincipal.emailVerified,
+            signInProvider = firebasePrincipal.signInProvider
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
