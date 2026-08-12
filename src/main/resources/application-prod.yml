@@ -135,7 +135,7 @@ chat:
     entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
     no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
     mutual-completion:
-      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:30}
       request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
       requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
     inactivity:
