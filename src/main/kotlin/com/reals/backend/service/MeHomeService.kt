@@ -26,6 +26,7 @@ import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ScheduleNegotiation
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatRepository
@@ -35,6 +36,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.matching.MatchmakingAvailabilityService
 import org.springframework.beans.factory.annotation.Value
@@ -52,6 +54,7 @@ class MeHomeService(
     private val connectionRepository: ConnectionRepository,
     private val dismissalRepository: ConnectionHomeDismissalRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
+    private val participationRepository: SecondChatParticipationRepository,
     private val visualReviewRepository: VisualReviewRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
@@ -60,7 +63,13 @@ class MeHomeService(
     private val readMetrics: ReadMetrics,
 
     @param:Value("\${chat.second-chat.duration-minutes:120}")
-    private val secondChatDurationMinutes: Long
+    private val secondChatDurationMinutes: Long,
+
+    @param:Value("\${chat.second-chat.entry-window-minutes:20}")
+    private val entryWindowMinutes: Long,
+
+    @param:Value("\${chat.second-chat.read-only-retention-minutes:1440}")
+    private val secondChatReadOnlyRetentionMinutes: Long
 ) {
 
     data class HomeProjection(
@@ -78,7 +87,8 @@ class MeHomeService(
         val visibleConnections: List<Connection>,
         val pendingSchedulingConnections: List<Connection>,
         val secondChatsByConnectionId: Map<UUID, Chat>,
-        val confirmedNegotiationsByConnectionId: Map<UUID, com.reals.backend.domain.ScheduleNegotiation>
+        val confirmedNegotiationsByConnectionId: Map<UUID, com.reals.backend.domain.ScheduleNegotiation>,
+        val myAttendanceStatusByConnectionId: Map<UUID, SecondChatAttendanceStatus>
     )
 
     @Transactional(readOnly = true)
@@ -130,6 +140,7 @@ class MeHomeService(
                 secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
                     connection.id
                 ]?.confirmedDateTime,
+                myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
                 partner = partnerProfilesByUserId[
                     partnerUserId(connection.userAId, connection.userBId, userId)
                 ],
@@ -141,9 +152,9 @@ class MeHomeService(
 
         val activeInteractionsSummary = HomeActiveInteractionsSummaryResponse(
             activeInitialCount = pendingActions.size,
-            activeConnectionCount = nextSteps.size,
+            activeConnectionCount = nextSteps.count { it.type != HomeNextStepType.SECOND_CHAT_EXPIRED },
             hasPendingSchedulingConnection = hasPendingSchedulingConnection,
-            actionableConnectionCount = nextSteps.size
+            actionableConnectionCount = nextSteps.count { it.type != HomeNextStepType.SECOND_CHAT_EXPIRED }
         )
 
         val matchmakingAvailability = matchmakingAvailabilityService.availabilityFor(
@@ -208,13 +219,14 @@ class MeHomeService(
                     secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
                         connection.id
                     ]?.confirmedDateTime,
+                    myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
                     now = snapshot.now
                 )
             },
             passiveNotices = passiveNoticesForPendingScheduling(
                 hasPendingSchedulingConnection
             ),
-            serverTime = OffsetDateTime.now()
+            serverTime = snapshot.now
         )
     }
 
@@ -286,9 +298,18 @@ class MeHomeService(
                 )
             ).filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
 
+        val historicalClosedConnections = connectionRepository
+            .findRecentClosedConfirmedSecondChatConnectionsWithoutChat(
+                userId = userId,
+                confirmedAfter = now.minusMinutes(
+                    entryWindowMinutes + secondChatReadOnlyRetentionMinutes
+                )
+            )
+            .filterNot { it.counterpartIdFor(userId) in blockedCounterpartIds }
+
         val visibleConnections = filterDismissedConnections(
             userId = userId,
-            connections = activeConnections
+            connections = (activeConnections + historicalClosedConnections).distinctBy { it.id }
         )
 
         val pendingSchedulingConnections = filterDismissedConnections(
@@ -324,6 +345,15 @@ class MeHomeService(
                 .associateBy { it.connectionId }
         }
 
+        val myAttendanceStatusByConnectionId = if (visibleConnections.isEmpty()) {
+            emptyMap()
+        } else {
+            participationRepository
+                .findByConnectionIdIn(visibleConnections.map { it.id })
+                .filter { it.userId == userId }
+                .associate { it.connectionId to it.attendanceStatus }
+        }
+
         return HomeOperationalSnapshot(
             now = now,
             blockedCounterpartIds = blockedCounterpartIds,
@@ -335,11 +365,13 @@ class MeHomeService(
                 connections = visibleConnections,
                 secondChatsByConnectionId = secondChatsByConnectionId,
                 confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId,
+                myAttendanceStatusByConnectionId = myAttendanceStatusByConnectionId,
                 now = now
             ),
             pendingSchedulingConnections = pendingSchedulingConnections,
             secondChatsByConnectionId = secondChatsByConnectionId,
-            confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId
+            confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId,
+            myAttendanceStatusByConnectionId = myAttendanceStatusByConnectionId
         )
     }
 
@@ -384,6 +416,7 @@ class MeHomeService(
         connections: List<Connection>,
         secondChatsByConnectionId: Map<UUID, Chat>,
         confirmedNegotiationsByConnectionId: Map<UUID, ScheduleNegotiation>,
+        myAttendanceStatusByConnectionId: Map<UUID, SecondChatAttendanceStatus>,
         now: OffsetDateTime
     ): List<Connection> =
         connections.sortedWith { leftConnection, rightConnection ->
@@ -392,12 +425,14 @@ class MeHomeService(
                     connection = leftConnection,
                     secondChat = secondChatsByConnectionId[leftConnection.id],
                     confirmedDateTime = confirmedNegotiationsByConnectionId[leftConnection.id]?.confirmedDateTime,
+                    myAttendanceStatus = myAttendanceStatusByConnectionId[leftConnection.id],
                     now = now
                 ),
                 right = homeConnectionOrderKey(
                     connection = rightConnection,
                     secondChat = secondChatsByConnectionId[rightConnection.id],
                     confirmedDateTime = confirmedNegotiationsByConnectionId[rightConnection.id]?.confirmedDateTime,
+                    myAttendanceStatus = myAttendanceStatusByConnectionId[rightConnection.id],
                     now = now
                 )
             )
@@ -475,27 +510,52 @@ class MeHomeService(
         connection: Connection,
         secondChat: Chat?,
         confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime
     ): HomeConnectionOrderKey {
         val category =
             when (connection.state) {
-                ConnectionState.SECOND_CHAT_AVAILABLE -> HOME_ORDER_CURRENT_SECOND_CHAT
+                ConnectionState.SECOND_CHAT_AVAILABLE ->
+                    if (isSecondChatEntryExpiredForCurrentUser(confirmedDateTime, myAttendanceStatus, now)) {
+                        HOME_ORDER_EXPIRED_SECOND_CHAT
+                    } else {
+                        HOME_ORDER_CURRENT_SECOND_CHAT
+                    }
                 ConnectionState.SECOND_CHAT ->
-                    when (secondChatNextStepType(secondChat, now)) {
+                    when (secondChatNextStepType(secondChat, confirmedDateTime, myAttendanceStatus, now)) {
                         HomeNextStepType.SECOND_CHAT_AVAILABLE -> HOME_ORDER_CURRENT_SECOND_CHAT
+                        HomeNextStepType.SECOND_CHAT_EXPIRED -> HOME_ORDER_EXPIRED_SECOND_CHAT
                         HomeNextStepType.SECOND_CHAT_READ_ONLY -> HOME_ORDER_READ_ONLY_SECOND_CHAT
                         else -> HOME_ORDER_OTHER
                     }
-                ConnectionState.SECOND_CHAT_SCHEDULED -> HOME_ORDER_SCHEDULED_SECOND_CHAT
+                ConnectionState.SECOND_CHAT_SCHEDULED ->
+                    when (scheduledSecondChatNextStepType(confirmedDateTime, myAttendanceStatus, now)) {
+                        HomeNextStepType.SECOND_CHAT_AVAILABLE -> HOME_ORDER_CURRENT_SECOND_CHAT
+                        HomeNextStepType.SECOND_CHAT_EXPIRED -> HOME_ORDER_EXPIRED_SECOND_CHAT
+                        HomeNextStepType.SECOND_CHAT_SCHEDULED -> HOME_ORDER_SCHEDULED_SECOND_CHAT
+                        else -> HOME_ORDER_OTHER
+                    }
                 ConnectionState.SCHEDULING_PHASE -> HOME_ORDER_SCHEDULING_PHASE
-                ConnectionState.SCHEDULING_PENDING,
-                ConnectionState.CLOSED -> HOME_ORDER_OTHER
+                ConnectionState.CLOSED ->
+                    if (closedZeroAttendanceSecondChatExpiredType(
+                            secondChat = secondChat,
+                            confirmedDateTime = confirmedDateTime,
+                            myAttendanceStatus = myAttendanceStatus,
+                            now = now
+                        ) != null
+                    ) {
+                        HOME_ORDER_EXPIRED_SECOND_CHAT
+                    } else {
+                        HOME_ORDER_OTHER
+                    }
+                ConnectionState.SCHEDULING_PENDING -> HOME_ORDER_OTHER
             }
 
         val timestamp =
             when (category) {
                 HOME_ORDER_CURRENT_SECOND_CHAT,
                 HOME_ORDER_SCHEDULED_SECOND_CHAT -> secondChat?.availableAt ?: confirmedDateTime
+                HOME_ORDER_EXPIRED_SECOND_CHAT -> recentExpiredSecondChatUntil(confirmedDateTime)
                 HOME_ORDER_SCHEDULING_PHASE -> connection.schedulingExpiresAt
                 HOME_ORDER_READ_ONLY_SECOND_CHAT -> secondChat?.readOnlyUntil
                     ?: secondChat?.endedAt
@@ -687,24 +747,35 @@ class MeHomeService(
         connection: Connection,
         secondChat: Chat?,
         secondChatAvailableAt: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         partner: Profile?,
         now: OffsetDateTime
     ): HomeNextStepResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
-            ConnectionState.SECOND_CHAT_SCHEDULED -> {
-                if (isScheduledSecondChatWindowExpired(secondChatAvailableAt, now)) {
-                    return null
-                }
-                HomeNextStepType.SECOND_CHAT_SCHEDULED
-            }
-            ConnectionState.SECOND_CHAT_AVAILABLE -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+            ConnectionState.SECOND_CHAT_SCHEDULED -> scheduledSecondChatNextStepType(
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
+            ConnectionState.SECOND_CHAT_AVAILABLE -> availableSecondChatNextStepType(
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
             ConnectionState.SECOND_CHAT -> secondChatNextStepType(
                 secondChat = secondChat,
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
                 now = now
             ) ?: return null
             ConnectionState.SCHEDULING_PENDING,
-            ConnectionState.CLOSED -> return null
+            ConnectionState.CLOSED -> closedZeroAttendanceSecondChatExpiredType(
+                secondChat = secondChat,
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
         }
 
         return HomeNextStepResponse(
@@ -715,6 +786,7 @@ class MeHomeService(
             secondChat = secondChatResponse(
                 chat = secondChat,
                 availableAt = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
                 partner = partner
             )
         )
@@ -724,23 +796,34 @@ class MeHomeService(
         connection: Connection,
         secondChat: Chat?,
         secondChatAvailableAt: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime
     ): HomeNextStepLiteResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
-            ConnectionState.SECOND_CHAT_SCHEDULED -> {
-                if (isScheduledSecondChatWindowExpired(secondChatAvailableAt, now)) {
-                    return null
-                }
-                HomeNextStepType.SECOND_CHAT_SCHEDULED
-            }
-            ConnectionState.SECOND_CHAT_AVAILABLE -> HomeNextStepType.SECOND_CHAT_AVAILABLE
+            ConnectionState.SECOND_CHAT_SCHEDULED -> scheduledSecondChatNextStepType(
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
+            ConnectionState.SECOND_CHAT_AVAILABLE -> availableSecondChatNextStepType(
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
             ConnectionState.SECOND_CHAT -> secondChatNextStepType(
                 secondChat = secondChat,
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
                 now = now
             ) ?: return null
             ConnectionState.SCHEDULING_PENDING,
-            ConnectionState.CLOSED -> return null
+            ConnectionState.CLOSED -> closedZeroAttendanceSecondChatExpiredType(
+                secondChat = secondChat,
+                confirmedDateTime = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            ) ?: return null
         }
 
         return HomeNextStepLiteResponse(
@@ -749,42 +832,102 @@ class MeHomeService(
             matchId = connection.matchId,
             secondChat = secondChatLiteResponse(
                 chat = secondChat,
-                availableAt = secondChatAvailableAt
+                availableAt = secondChatAvailableAt,
+                myAttendanceStatus = myAttendanceStatus
             )
         )
     }
 
-    private fun isScheduledSecondChatWindowExpired(
-        availableAt: OffsetDateTime?,
+    private fun scheduledSecondChatNextStepType(
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
+        now: OffsetDateTime
+    ): HomeNextStepType? {
+        confirmedDateTime ?: return HomeNextStepType.SECOND_CHAT_SCHEDULED
+        if (isSecondChatEntryExpiredForCurrentUser(confirmedDateTime, myAttendanceStatus, now)) {
+            return if (isRecentExpiredSecondChatVisible(confirmedDateTime, now)) {
+                HomeNextStepType.SECOND_CHAT_EXPIRED
+            } else {
+                null
+            }
+        }
+
+        return if (now.isBefore(confirmedDateTime)) {
+            HomeNextStepType.SECOND_CHAT_SCHEDULED
+        } else {
+            HomeNextStepType.SECOND_CHAT_AVAILABLE
+        }
+    }
+
+    private fun availableSecondChatNextStepType(
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
+        now: OffsetDateTime
+    ): HomeNextStepType? =
+        if (isSecondChatEntryExpiredForCurrentUser(confirmedDateTime, myAttendanceStatus, now)) {
+            if (isRecentExpiredSecondChatVisible(confirmedDateTime, now)) {
+                HomeNextStepType.SECOND_CHAT_EXPIRED
+            } else {
+                null
+            }
+        } else {
+            HomeNextStepType.SECOND_CHAT_AVAILABLE
+        }
+
+    private fun closedZeroAttendanceSecondChatExpiredType(
+        secondChat: Chat?,
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
+        now: OffsetDateTime
+    ): HomeNextStepType? =
+        if (
+            secondChat == null &&
+            !hasJoinedSecondChat(myAttendanceStatus) &&
+            myAttendanceStatus == SecondChatAttendanceStatus.NO_SHOW &&
+            isRecentExpiredSecondChatVisible(confirmedDateTime, now)
+        ) {
+            HomeNextStepType.SECOND_CHAT_EXPIRED
+        } else {
+            null
+        }
+    private fun isSecondChatEntryExpiredForCurrentUser(
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime
     ): Boolean {
-        val expiresAt = availableAt?.plusMinutes(secondChatDurationMinutes)
+        val entryClosesAt = confirmedDateTime?.plusMinutes(entryWindowMinutes)
             ?: return false
 
-        return !expiresAt.isAfter(now)
+        return !hasJoinedSecondChat(myAttendanceStatus) &&
+            !entryClosesAt.isAfter(now)
     }
 
     private fun secondChatResponse(
         chat: Chat?,
         availableAt: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         partner: Profile?
     ): HomeChatResponse? {
         val resolvedAvailableAt = availableAt ?: chat?.availableAt ?: return null
         val expiresAt = chat?.timeoutAt ?: resolvedAvailableAt.plusMinutes(secondChatDurationMinutes)
+        val resolvedAttendanceStatus = myAttendanceStatus ?: SecondChatAttendanceStatus.PENDING
 
         return HomeChatResponse.from(
             chat = chat,
             availableAt = resolvedAvailableAt,
+            entryClosesAt = resolvedAvailableAt.plusMinutes(entryWindowMinutes),
             expiresAt = expiresAt,
             readOnlyUntil = chat?.readOnlyUntil,
             durationMinutes = secondChatDurationMinutes,
+            myAttendanceStatus = resolvedAttendanceStatus,
             partner = partner
         )
     }
 
     private fun secondChatLiteResponse(
         chat: Chat?,
-        availableAt: OffsetDateTime?
+        availableAt: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?
     ): HomePendingSecondChatLiteResponse? {
         val resolvedAvailableAt = availableAt ?: chat?.availableAt ?: return null
         val expiresAt = chat?.timeoutAt ?: resolvedAvailableAt.plusMinutes(secondChatDurationMinutes)
@@ -792,16 +935,28 @@ class MeHomeService(
         return HomePendingSecondChatLiteResponse(
             chatId = chat?.id,
             availableAt = resolvedAvailableAt,
+            entryClosesAt = resolvedAvailableAt.plusMinutes(entryWindowMinutes),
             expiresAt = expiresAt,
             readOnlyUntil = chat?.readOnlyUntil,
-            durationMinutes = secondChatDurationMinutes
+            durationMinutes = secondChatDurationMinutes,
+            myAttendanceStatus = myAttendanceStatus ?: SecondChatAttendanceStatus.PENDING
         )
     }
 
     private fun secondChatNextStepType(
         secondChat: Chat?,
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime
     ): HomeNextStepType? {
+        if (isSecondChatEntryExpiredForCurrentUser(confirmedDateTime, myAttendanceStatus, now)) {
+            return if (isRecentExpiredSecondChatVisible(confirmedDateTime, now)) {
+                HomeNextStepType.SECOND_CHAT_EXPIRED
+            } else {
+                null
+            }
+        }
+
         return when (secondChat?.status) {
             ChatStatus.FINISHED,
             ChatStatus.EXPIRED,
@@ -816,6 +971,23 @@ class MeHomeService(
             else -> HomeNextStepType.SECOND_CHAT_AVAILABLE
         }
     }
+
+    private fun hasJoinedSecondChat(status: SecondChatAttendanceStatus?): Boolean =
+        status == SecondChatAttendanceStatus.ON_TIME ||
+            status == SecondChatAttendanceStatus.LATE
+
+    private fun isRecentExpiredSecondChatVisible(
+        confirmedDateTime: OffsetDateTime?,
+        now: OffsetDateTime
+    ): Boolean =
+        recentExpiredSecondChatUntil(confirmedDateTime)?.isAfter(now) == true
+
+    private fun recentExpiredSecondChatUntil(
+        confirmedDateTime: OffsetDateTime?
+    ): OffsetDateTime? =
+        confirmedDateTime
+            ?.plusMinutes(entryWindowMinutes)
+            ?.plusMinutes(secondChatReadOnlyRetentionMinutes)
 
     private fun passiveNoticesForPendingScheduling(
         hasPendingSchedulingConnection: Boolean
@@ -855,6 +1027,88 @@ class MeHomeService(
             }
             .minOrNull()
 
+            .let { visualRefreshAt ->
+                val secondChatRefreshAt = snapshot.visibleConnections
+                    .asSequence()
+                    .flatMap { connection ->
+                        secondChatRefreshBoundaries(
+                            connection = connection,
+                            secondChat = snapshot.secondChatsByConnectionId[connection.id],
+                            confirmedDateTime = snapshot.confirmedNegotiationsByConnectionId[
+                                connection.id
+                            ]?.confirmedDateTime,
+                            myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[
+                                connection.id
+                            ],
+                            now = snapshot.now
+                        )
+                    }
+                    .filter { it.isAfter(snapshot.now) }
+                    .minOrNull()
+
+                listOfNotNull(visualRefreshAt, secondChatRefreshAt).minOrNull()
+            }
+
+    private fun secondChatRefreshBoundaries(
+        connection: Connection,
+        secondChat: Chat?,
+        confirmedDateTime: OffsetDateTime?,
+        myAttendanceStatus: SecondChatAttendanceStatus?,
+        now: OffsetDateTime
+    ): Sequence<OffsetDateTime> {
+        confirmedDateTime ?: return emptySequence()
+
+        val entryClosesAt = confirmedDateTime.plusMinutes(entryWindowMinutes)
+        val recentUntil = entryClosesAt.plusMinutes(secondChatReadOnlyRetentionMinutes)
+        val type = when (connection.state) {
+            ConnectionState.SECOND_CHAT_SCHEDULED -> scheduledSecondChatNextStepType(
+                confirmedDateTime = confirmedDateTime,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            )
+            ConnectionState.SECOND_CHAT_AVAILABLE -> availableSecondChatNextStepType(
+                confirmedDateTime = confirmedDateTime,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            )
+            ConnectionState.SECOND_CHAT -> secondChatNextStepType(
+                secondChat = secondChat,
+                confirmedDateTime = confirmedDateTime,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            )
+            ConnectionState.CLOSED -> closedZeroAttendanceSecondChatExpiredType(
+                secondChat = secondChat,
+                confirmedDateTime = confirmedDateTime,
+                myAttendanceStatus = myAttendanceStatus,
+                now = now
+            )
+            ConnectionState.SCHEDULING_PENDING,
+            ConnectionState.SCHEDULING_PHASE -> null
+        }
+
+        return sequence {
+            if (
+                connection.state == ConnectionState.SECOND_CHAT_SCHEDULED &&
+                now.isBefore(confirmedDateTime)
+            ) {
+                yield(confirmedDateTime)
+            }
+            if (
+                !hasJoinedSecondChat(myAttendanceStatus) &&
+                now.isBefore(entryClosesAt)
+            ) {
+                yield(entryClosesAt)
+            }
+            if (
+                type == HomeNextStepType.SECOND_CHAT_EXPIRED &&
+                now.isBefore(recentUntil)
+            ) {
+                yield(recentUntil)
+            }
+        }
+    }
+
     private data class HomeConnectionOrderKey(
         val category: Int,
         val timestamp: OffsetDateTime?,
@@ -871,7 +1125,8 @@ class MeHomeService(
         const val HOME_ORDER_SCHEDULED_SECOND_CHAT = 1
         const val HOME_ORDER_SCHEDULING_PHASE = 2
         const val HOME_ORDER_READ_ONLY_SECOND_CHAT = 3
-        const val HOME_ORDER_OTHER = 4
+        const val HOME_ORDER_EXPIRED_SECOND_CHAT = 4
+        const val HOME_ORDER_OTHER = 5
     }
 }
 

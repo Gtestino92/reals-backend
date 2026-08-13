@@ -5,6 +5,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -77,6 +78,7 @@ enum class HomeNextStepType {
     SCHEDULING,
     SECOND_CHAT_SCHEDULED,
     SECOND_CHAT_AVAILABLE,
+    SECOND_CHAT_EXPIRED,
     SECOND_CHAT_READ_ONLY
 }
 
@@ -98,9 +100,11 @@ data class HomeNextStepLiteResponse(
 data class HomePendingSecondChatLiteResponse(
     val chatId: UUID?,
     val availableAt: OffsetDateTime?,
+    val entryClosesAt: OffsetDateTime?,
     val expiresAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
-    val durationMinutes: Long?
+    val durationMinutes: Long?,
+    val myAttendanceStatus: SecondChatAttendanceStatus?
 )
 
 enum class HomePassiveNoticeType {
@@ -116,27 +120,33 @@ data class HomeChatResponse(
     val chatType: ChatType?,
     val chatStatus: ChatStatus?,
     val availableAt: OffsetDateTime,
+    val entryClosesAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val readOnlyUntil: OffsetDateTime?,
     val durationMinutes: Long,
+    val myAttendanceStatus: SecondChatAttendanceStatus,
     val partner: PartnerSummaryResponse?
 ) {
     companion object {
         fun from(
             chat: Chat?,
             availableAt: OffsetDateTime,
+            entryClosesAt: OffsetDateTime,
             expiresAt: OffsetDateTime,
             readOnlyUntil: OffsetDateTime?,
             durationMinutes: Long,
+            myAttendanceStatus: SecondChatAttendanceStatus,
             partner: Profile?
         ) = HomeChatResponse(
             chatId = chat?.id,
             chatType = chat?.chatType,
             chatStatus = chat?.status,
             availableAt = availableAt,
+            entryClosesAt = entryClosesAt,
             expiresAt = expiresAt,
             readOnlyUntil = readOnlyUntil,
             durationMinutes = durationMinutes,
+            myAttendanceStatus = myAttendanceStatus,
             partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }

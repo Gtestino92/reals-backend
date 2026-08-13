@@ -15,6 +15,10 @@ interface SecondChatParticipationRepository : JpaRepository<SecondChatParticipat
         connectionId: UUID
     ): List<SecondChatParticipation>
 
+    fun findByConnectionIdIn(
+        connectionIds: Collection<UUID>
+    ): List<SecondChatParticipation>
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from SecondChatParticipation p where p.connectionId = :connectionId order by p.userId asc")
     fun findByConnectionIdForUpdate(

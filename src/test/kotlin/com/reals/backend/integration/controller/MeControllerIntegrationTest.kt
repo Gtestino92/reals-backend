@@ -9,6 +9,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.SecondChatAttendanceStatus
 import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.domain.VisualDecision
@@ -989,6 +990,13 @@ class MeControllerIntegrationTest : ControllerIT() {
                     equalTo(DateTimeFormatter.ISO_INSTANT.format(scheduledSlot.plusMinutes(120).toInstant()))
                 )
             )
+            .andExpect(
+                jsonPath(
+                    "$.nextSteps[0].secondChat.entryClosesAt",
+                    equalTo(DateTimeFormatter.ISO_INSTANT.format(scheduledSlot.plusMinutes(20).toInstant()))
+                )
+            )
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("PENDING")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
 
         val availableSetup = createActiveSecondChat()
@@ -1011,6 +1019,8 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("ACTIVE")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.entryClosesAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("ON_TIME")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(availableSetup.userBId.toString())))
             .andExpect { result ->
                 val body = result.response.contentAsString
@@ -1048,22 +1058,25 @@ class MeControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatType", equalTo("SECOND_CHAT")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.chatStatus", equalTo("EXPIRED")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.entryClosesAt").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.expiresAt").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.readOnlyUntil").exists())
             .andExpect(jsonPath("$.nextSteps[0].secondChat.durationMinutes", equalTo(120)))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("ON_TIME")))
             .andExpect(jsonPath("$.nextSteps[0].secondChat.partner.userId", equalTo(setup.userBId.toString())))
     }
 
     @Test
-    fun `home excludes expired scheduled second chat without chat`() {
+    fun `home returns SECOND_CHAT_EXPIRED when unjoined entry window closed before lifecycle job`() {
         val setup = createConnectionInSchedulingPhase()
         val scheduledSlot = futureHalfHourSlot()
         schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot, 1)
         schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot, 1)
 
+        val scheduledAt = OffsetDateTime.now().minusMinutes(20)
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,
-            confirmedDateTime = OffsetDateTime.now().minusMinutes(121)
+            confirmedDateTime = scheduledAt
         )
 
         mockMvc.perform(
@@ -1071,9 +1084,133 @@ class MeControllerIntegrationTest : ControllerIT() {
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_EXPIRED")))
+            .andExpect(jsonPath("$.nextSteps[0].connectionId", equalTo(setup.connectionId.toString())))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.chatId").doesNotExist())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.availableAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.entryClosesAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("PENDING")))
             .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
             .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home/pending")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_EXPIRED")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.entryClosesAt").exists())
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("PENDING")))
+    }
+
+    @Test
+    fun `home keeps zero attendance closed second chat as recent expired history`() {
+        val setup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot, 1)
+        val scheduledAt = OffsetDateTime.now().minusMinutes(21)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = scheduledAt
+        )
+
+        assertEquals(
+            true,
+            secondChatLifecycleService.resolveHardCutoffNoShow(
+                connectionId = setup.connectionId,
+                now = scheduledAt.plusMinutes(20)
+            )
+        )
+        assertEquals(ConnectionState.CLOSED, connectionRepository.findById(setup.connectionId).orElseThrow().state)
+        assertNull(chatRepository.findByConnectionIdAndChatType(setup.connectionId, ChatType.SECOND_CHAT))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(1)))
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_EXPIRED")))
+            .andExpect(jsonPath("$.nextSteps[0].secondChat.myAttendanceStatus", equalTo("NO_SHOW")))
+            .andExpect(jsonPath("$.activeInteractionsSummary.activeConnectionCount", equalTo(0)))
+            .andExpect(jsonPath("$.activeInteractionsSummary.actionableConnectionCount", equalTo(0)))
+    }
+
+    @Test
+    fun `home omits dismissed or retention-ended expired second chat history`() {
+        val dismissed = createConnectionInSchedulingPhase()
+        val dismissedSlot = futureHalfHourSlot()
+        schedulingService.addProposal(dismissed.connectionId, dismissed.userAId, dismissedSlot, 1)
+        schedulingService.addProposal(dismissed.connectionId, dismissed.userBId, dismissedSlot, 1)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = dismissed.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(21)
+        )
+        secondChatLifecycleService.resolveHardCutoffNoShow(
+            connectionId = dismissed.connectionId,
+            now = OffsetDateTime.now()
+        )
+        connectionService.dismissSecondChatFromHome(dismissed.connectionId, dismissed.userAId)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(dismissed.userAId))
+        )
+            .andExpect(status().isOk)
             .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+
+        val old = createConnectionInSchedulingPhase()
+        val oldSlot = futureHalfHourSlot()
+        schedulingService.addProposal(old.connectionId, old.userAId, oldSlot, 1)
+        schedulingService.addProposal(old.connectionId, old.userBId, oldSlot, 1)
+        val oldScheduledAt = OffsetDateTime.now().minusMinutes(1461)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = old.connectionId,
+            confirmedDateTime = oldScheduledAt
+        )
+        secondChatParticipationRepository.findByConnectionId(old.connectionId).forEach {
+            it.attendanceStatus = SecondChatAttendanceStatus.NO_SHOW
+            it.resolvedAt = oldScheduledAt.plusMinutes(20)
+            secondChatParticipationRepository.save(it)
+        }
+        val oldConnection = connectionRepository.findById(old.connectionId).orElseThrow()
+        oldConnection.state = ConnectionState.CLOSED
+        connectionRepository.saveAndFlush(oldConnection)
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(old.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+    }
+
+    @Test
+    fun `home schedules refresh for second chat entry close`() {
+        val setup = createConnectionInSchedulingPhase()
+        val scheduledSlot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, scheduledSlot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, scheduledSlot, 1)
+        val scheduledAt = OffsetDateTime.now().minusMinutes(15)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = scheduledAt
+        )
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_AVAILABLE")))
+
+        assertEquals(
+            scheduledAt.plusMinutes(20).toInstant().toEpochMilli(),
+            homeStatusService.getOrCreateStatus(setup.userAId).nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
     }
 
     @Test

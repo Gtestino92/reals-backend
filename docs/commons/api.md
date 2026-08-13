@@ -212,15 +212,15 @@ Home also returns `activeInteractionsSummary`:
 - `activeInitialCount`: visible pending initial-stage actions for the current
   user. It does not count an interaction while the current user is only waiting
   for the other person's hidden decision.
-- `activeConnectionCount`: visible connection next steps returned in
-  `nextSteps[]`. It is currently the same projection as
-  `actionableConnectionCount` and is preserved for client compatibility.
+- `activeConnectionCount`: visible active/actionable connection next steps.
+  Recent `SECOND_CHAT_EXPIRED` history is returned in `nextSteps[]` but is not
+  counted here.
 - `hasPendingSchedulingConnection`: boolean that indicates at least one
   non-dismissed, non-blocked connection is internally waiting for scheduling
   preparation. It intentionally avoids exposing an exact internal count.
-- `actionableConnectionCount`: visible connection next steps returned in
-  `nextSteps[]`. It is currently the same projection as
-  `activeConnectionCount`.
+- `actionableConnectionCount`: visible active/actionable connection next steps.
+  Recent `SECOND_CHAT_EXPIRED` history is returned in `nextSteps[]` but is not
+  counted here.
 
 The lightweight pending endpoint intentionally omits partner summaries. Clients
 that need full profile/matchmaking context should call `GET /api/me/home`,
@@ -233,7 +233,8 @@ Bruno debug requests for this `local-firebase` flow live under
 `Authorization: Bearer ...` tokens, not `X-Dev-User-Id`.
 
 `nextSteps[]` includes `SCHEDULING`, `SECOND_CHAT_SCHEDULED`,
-`SECOND_CHAT_AVAILABLE` and `SECOND_CHAT_READ_ONLY` items. `SCHEDULING_PENDING`
+`SECOND_CHAT_AVAILABLE`, `SECOND_CHAT_EXPIRED` and
+`SECOND_CHAT_READ_ONLY` items. `SCHEDULING_PENDING`
 is not actionable and is surfaced through
 `activeInteractionsSummary.hasPendingSchedulingConnection` plus one generic
 `passiveNotices[]` item with `type = SCHEDULING_PREPARING` until the activation
@@ -251,19 +252,34 @@ recalculates `schedulingExpiresAt` from that moment.
 Second-chat next steps include `secondChat.availableAt` when a confirmed
 negotiation exists. This value is the agreed second-chat start time in ISO-8601
 format with offset, for example `2026-06-19T21:00:00Z`. Clients may enable
-entry at `availableAt`; before that time, render the agreed
-  time. `secondChat.expiresAt` is the end of the writable second-chat window, and
-  `secondChat.durationMinutes` exposes the configured maximum writable duration so
-  clients do not hardcode it. In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` is
-  absent until `GET /api/connections/{connectionId}/chat` materializes the second
-  chat row. If that GET is called before `availableAt`, it returns conflict with
-  `SECOND_CHAT_NOT_AVAILABLE_YET`. If it is called after `expiresAt` and no chat
-  exists, it returns conflict with `SECOND_CHAT_EXPIRED` and does not create a
-  chat. Expired scheduled second-chat windows without a chat are omitted from Home
-  and cleaned up by `SecondChatLifecycleJob`. After
-  expiration, Home may return `SECOND_CHAT_READ_ONLY` with
-  `secondChat.chatStatus = EXPIRED` and `secondChat.readOnlyUntil`; clients can
-  show prior messages but must not allow sending new messages. Once
+entry at `availableAt`; before that time, render the agreed time.
+`secondChat.entryClosesAt` is the backend-calculated entry cutoff for the
+current user, derived from the configured
+`chat.second-chat.entry-window-minutes`, and participants who have not joined
+may enter only while `serverTime < entryClosesAt`. `secondChat.myAttendanceStatus`
+is the current user's attendance status. `secondChat.expiresAt` is the end of
+the absolute writable second-chat window, and `secondChat.durationMinutes`
+exposes the configured maximum writable duration so clients do not hardcode it.
+In `SECOND_CHAT_SCHEDULED`, `secondChat.chatId` is absent until
+`POST /api/connections/{connectionId}/second-chat/join` materializes the second
+chat row. If join is called before `availableAt`, it returns conflict with
+`SECOND_CHAT_NOT_AVAILABLE_YET`. If it is called at or after `entryClosesAt`
+for a user who has not joined, it returns conflict with
+`SECOND_CHAT_ENTRY_CLOSED` and does not create a chat for that user.
+When the current user has not joined and `serverTime >= entryClosesAt`, Home
+returns `SECOND_CHAT_EXPIRED` as a recent, dismissible interaction rather than
+an active/actionable second chat. This effective read-side state is derived
+without mutating the connection and does not require `SecondChatLifecycleJob` to
+have run. If the lifecycle job later closes a zero-attendance connection without
+materializing a second-chat row, Home continues to return
+`SECOND_CHAT_EXPIRED` until the user dismisses it or until
+`entryClosesAt + chat.second-chat.read-only-retention-minutes`; historical
+expired items do not increment active/actionable connection counts. A user who
+already joined with `ON_TIME` or `LATE` is not converted to
+`SECOND_CHAT_EXPIRED` at the entry cutoff. After terminal chat expiration, Home
+may return `SECOND_CHAT_READ_ONLY` with `secondChat.chatStatus = EXPIRED` and
+`secondChat.readOnlyUntil`; clients can show prior messages but must not allow
+sending new messages. Once
 `SecondChatLifecycleJob` closes the read-only chat, it disappears from Home.
 Users may also hide a finished or otherwise non-actionable second chat from
 their own Home with
