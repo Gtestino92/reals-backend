@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.controller.dto.HomeNextStepType
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatDecision
@@ -10,6 +11,8 @@ import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ScheduleNegotiation
+import com.reals.backend.domain.SecondChatAttendanceStatus
+import com.reals.backend.domain.SecondChatParticipation
 import com.reals.backend.domain.UserHomeStatus
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ChatDecisionRepository
@@ -20,6 +23,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.matching.MatchmakingAvailability
 import com.reals.backend.service.matching.MatchmakingAvailabilityService
@@ -39,6 +43,7 @@ class MeHomeServiceTest {
     private val connectionRepository = Mockito.mock(ConnectionRepository::class.java)
     private val dismissalRepository = Mockito.mock(ConnectionHomeDismissalRepository::class.java)
     private val negotiationRepository = Mockito.mock(ScheduleNegotiationRepository::class.java)
+    private val participationRepository = Mockito.mock(SecondChatParticipationRepository::class.java)
     private val visualReviewRepository = Mockito.mock(VisualReviewRepository::class.java)
     private val chatDecisionRepository = Mockito.mock(ChatDecisionRepository::class.java)
     private val matchmakingAvailabilityService = Mockito.mock(MatchmakingAvailabilityService::class.java)
@@ -54,13 +59,16 @@ class MeHomeServiceTest {
         connectionRepository = connectionRepository,
         dismissalRepository = dismissalRepository,
         negotiationRepository = negotiationRepository,
+        participationRepository = participationRepository,
         visualReviewRepository = visualReviewRepository,
         chatDecisionRepository = chatDecisionRepository,
         matchmakingAvailabilityService = matchmakingAvailabilityService,
         homeStatusService = homeStatusService,
         userBlockService = userBlockService,
         readMetrics = readMetrics,
-        secondChatDurationMinutes = 120
+        secondChatDurationMinutes = 120,
+        entryWindowMinutes = 20,
+        secondChatReadOnlyRetentionMinutes = 1440
     )
 
     @Test
@@ -186,6 +194,276 @@ class MeHomeServiceTest {
 
         assertEquals(listOf(active.id, scheduled.id, scheduling.id, readOnly.id), fullOrder)
         assertEquals(fullOrder, pendingOrder)
+    }
+
+    @Test
+    fun `scheduled second chat stays upcoming before start and maps entry metadata`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000301"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_SCHEDULED
+        )
+        val scheduledAt = now.plusMinutes(30)
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation(connection, scheduledAt)),
+            participations = listOf(participation(connection, userId, SecondChatAttendanceStatus.PENDING))
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val full = service.getHome(userId)
+        val pending = service.getPendingHomeState(userId)
+
+        assertEquals(HomeNextStepType.SECOND_CHAT_SCHEDULED, full.nextSteps.single().type)
+        assertEquals(scheduledAt, full.nextSteps.single().secondChat?.availableAt)
+        assertEquals(scheduledAt.plusMinutes(20), full.nextSteps.single().secondChat?.entryClosesAt)
+        assertEquals(SecondChatAttendanceStatus.PENDING, full.nextSteps.single().secondChat?.myAttendanceStatus)
+        assertEquals(HomeNextStepType.SECOND_CHAT_SCHEDULED, pending.nextSteps.single().type)
+        assertEquals(scheduledAt.plusMinutes(20), pending.nextSteps.single().secondChat?.entryClosesAt)
+        assertEquals(SecondChatAttendanceStatus.PENDING, pending.nextSteps.single().secondChat?.myAttendanceStatus)
+    }
+
+    @Test
+    fun `unjoined second chat is available during on time and late entry windows`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val onTimeConnection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000311"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_SCHEDULED
+        )
+        val lateConnection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000312"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(onTimeConnection, lateConnection),
+            negotiations = listOf(
+                negotiation(onTimeConnection, now.minusMinutes(5)),
+                negotiation(lateConnection, now.minusMinutes(15))
+            ),
+            participations = listOf(
+                participation(onTimeConnection, userId, SecondChatAttendanceStatus.PENDING),
+                participation(lateConnection, userId, SecondChatAttendanceStatus.PENDING)
+            )
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(
+            listOf(HomeNextStepType.SECOND_CHAT_AVAILABLE, HomeNextStepType.SECOND_CHAT_AVAILABLE),
+            response.nextSteps.map { it.type }
+        )
+        assertEquals(2, response.activeInteractionsSummary.activeConnectionCount)
+        assertEquals(2, response.activeInteractionsSummary.actionableConnectionCount)
+    }
+
+    @Test
+    fun `unjoined second chat becomes expired at entry cutoff without active counts`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000321"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+        val scheduledAt = now.minusMinutes(20)
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation(connection, scheduledAt)),
+            participations = listOf(participation(connection, userId, SecondChatAttendanceStatus.PENDING))
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(HomeNextStepType.SECOND_CHAT_EXPIRED, response.nextSteps.single().type)
+        assertEquals(0, response.activeInteractionsSummary.activeConnectionCount)
+        assertEquals(0, response.activeInteractionsSummary.actionableConnectionCount)
+        assertEquals(scheduledAt.plusMinutes(20), response.nextSteps.single().secondChat?.entryClosesAt)
+    }
+
+    @Test
+    fun `joined second chat is not expired at entry cutoff`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000331"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+        val scheduledAt = now.minusMinutes(25)
+        val chat = secondChat(
+            connection = connection,
+            status = ChatStatus.ACTIVE,
+            availableAt = scheduledAt,
+            timeoutAt = scheduledAt.plusMinutes(120)
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            secondChats = listOf(chat),
+            negotiations = listOf(negotiation(connection, scheduledAt)),
+            participations = listOf(participation(connection, userId, SecondChatAttendanceStatus.LATE))
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(HomeNextStepType.SECOND_CHAT_AVAILABLE, response.nextSteps.single().type)
+        assertEquals(1, response.activeInteractionsSummary.activeConnectionCount)
+        assertEquals(SecondChatAttendanceStatus.LATE, response.nextSteps.single().secondChat?.myAttendanceStatus)
+    }
+
+    @Test
+    fun `closed zero attendance second chat remains recent expired until retention ends`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val recent = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000341"),
+            userId = userId,
+            state = ConnectionState.CLOSED
+        )
+        val old = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000342"),
+            userId = userId,
+            state = ConnectionState.CLOSED
+        )
+        val recentScheduledAt = now.minusMinutes(1439)
+        val oldScheduledAt = now.minusMinutes(1461)
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            historicalConnections = listOf(recent, old),
+            negotiations = listOf(
+                negotiation(recent, recentScheduledAt),
+                negotiation(old, oldScheduledAt)
+            ),
+            participations = listOf(
+                participation(recent, userId, SecondChatAttendanceStatus.NO_SHOW),
+                participation(old, userId, SecondChatAttendanceStatus.NO_SHOW)
+            )
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(listOf(recent.id), response.nextSteps.map { it.connectionId })
+        assertEquals(HomeNextStepType.SECOND_CHAT_EXPIRED, response.nextSteps.single().type)
+        assertEquals(0, response.activeInteractionsSummary.activeConnectionCount)
+        assertEquals(0, response.activeInteractionsSummary.actionableConnectionCount)
+    }
+
+    @Test
+    fun `dismissed recent expired second chat is omitted`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000351"),
+            userId = userId,
+            state = ConnectionState.CLOSED
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            historicalConnections = listOf(connection),
+            dismissedConnectionIds = listOf(connection.id),
+            negotiations = listOf(negotiation(connection, now.minusMinutes(30))),
+            participations = listOf(participation(connection, userId, SecondChatAttendanceStatus.NO_SHOW))
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(emptyList(), response.nextSteps)
+        assertEquals(0, response.activeInteractionsSummary.activeConnectionCount)
+    }
+
+    @Test
+    fun `actual terminal second chat remains read only`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000361"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT
+        )
+        val scheduledAt = now.minusMinutes(130)
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            secondChats = listOf(
+                secondChat(
+                    connection = connection,
+                    status = ChatStatus.EXPIRED,
+                    availableAt = scheduledAt,
+                    timeoutAt = scheduledAt.plusMinutes(120),
+                    readOnlyUntil = now.plusMinutes(30)
+                )
+            ),
+            negotiations = listOf(negotiation(connection, scheduledAt)),
+            participations = listOf(participation(connection, userId, SecondChatAttendanceStatus.ON_TIME))
+        )
+        stubFullHome(userId)
+
+        val response = service.getHome(userId)
+
+        assertEquals(HomeNextStepType.SECOND_CHAT_READ_ONLY, response.nextSteps.single().type)
+        assertEquals(1, response.activeInteractionsSummary.activeConnectionCount)
+    }
+
+    @Test
+    fun `home refresh includes entry close and recent retention boundaries`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.now()
+        val beforeEntryClose = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000371"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_AVAILABLE
+        )
+        val recentExpired = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000372"),
+            userId = userId,
+            state = ConnectionState.CLOSED
+        )
+        val entryBoundaryScheduledAt = now.minusMinutes(15)
+        val recentScheduledAt = now.minusMinutes(100)
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(beforeEntryClose),
+            historicalConnections = listOf(recentExpired),
+            negotiations = listOf(
+                negotiation(beforeEntryClose, entryBoundaryScheduledAt),
+                negotiation(recentExpired, recentScheduledAt)
+            ),
+            participations = listOf(
+                participation(beforeEntryClose, userId, SecondChatAttendanceStatus.PENDING),
+                participation(recentExpired, userId, SecondChatAttendanceStatus.NO_SHOW)
+            )
+        )
+        stubFullHome(userId)
+
+        val projection = service.getHomeProjection(userId)
+
+        assertEquals(
+            entryBoundaryScheduledAt.plusMinutes(20).toInstant().toEpochMilli(),
+            projection.nextRefreshAt?.toInstant()?.toEpochMilli()
+        )
     }
 
     @Test
@@ -446,8 +724,11 @@ class MeHomeServiceTest {
         userId: UUID,
         matches: List<Match>,
         connections: List<com.reals.backend.domain.Connection> = emptyList(),
+        historicalConnections: List<com.reals.backend.domain.Connection> = emptyList(),
+        dismissedConnectionIds: List<UUID> = emptyList(),
         secondChats: List<Chat> = emptyList(),
         negotiations: List<ScheduleNegotiation> = emptyList(),
+        participations: List<SecondChatParticipation> = emptyList(),
         firstChats: List<Chat>? = null,
         visualReviews: List<VisualReview> = emptyList()
     ) {
@@ -473,7 +754,9 @@ class MeHomeServiceTest {
             Mockito.`when`(profileRepository.findByUserIdIn(matches.map { it.userBId }))
                 .thenReturn(emptyList())
         }
-        val partnerUserIds = matches.map { it.userBId } + connections.map { it.userBId }
+        val partnerUserIds = matches.map { it.userBId } +
+            connections.map { it.userBId } +
+            historicalConnections.map { it.userBId }
         if (partnerUserIds.isNotEmpty()) {
             Mockito.`when`(profileRepository.findByUserIdIn(partnerUserIds))
                 .thenReturn(emptyList())
@@ -490,26 +773,38 @@ class MeHomeServiceTest {
             )
         ).thenReturn(connections)
         Mockito.`when`(
+            connectionRepository.findRecentClosedConfirmedSecondChatConnectionsWithoutChat(
+                eqUuid(userId),
+                anyOffsetDateTime()
+            )
+        ).thenReturn(historicalConnections)
+        Mockito.`when`(
             connectionRepository.findByParticipantIdAndStateIn(
                 userId,
                 listOf(ConnectionState.SCHEDULING_PENDING)
             )
         ).thenReturn(emptyList())
-        if (connections.isNotEmpty()) {
+        val visibleCandidateConnections = (connections + historicalConnections).distinctBy { it.id }
+        if (visibleCandidateConnections.isNotEmpty()) {
             Mockito.`when`(
                 dismissalRepository.findDismissedConnectionIds(
                     userId = userId,
-                    connectionIds = connections.map { it.id }
+                    connectionIds = visibleCandidateConnections.map { it.id }
                 )
-            ).thenReturn(emptyList())
+            ).thenReturn(dismissedConnectionIds)
+        }
+        val visibleConnections = visibleCandidateConnections.filter { it.id !in dismissedConnectionIds }
+        if (visibleConnections.isNotEmpty()) {
             Mockito.`when`(
                 chatRepository.findByConnectionIdInAndChatType(
-                    connectionIds = connections.map { it.id },
+                    connectionIds = visibleConnections.map { it.id },
                     chatType = ChatType.SECOND_CHAT
                 )
             ).thenReturn(secondChats)
-            Mockito.`when`(negotiationRepository.findByConnectionIdIn(connections.map { it.id }))
+            Mockito.`when`(negotiationRepository.findByConnectionIdIn(visibleConnections.map { it.id }))
                 .thenReturn(negotiations)
+            Mockito.`when`(participationRepository.findByConnectionIdIn(visibleConnections.map { it.id }))
+                .thenReturn(participations)
         }
     }
 
@@ -611,4 +906,25 @@ class MeHomeServiceTest {
             status = NegotiationStatus.CONFIRMED,
             confirmedDateTime = confirmedDateTime
         )
+
+    private fun participation(
+        connection: com.reals.backend.domain.Connection,
+        userId: UUID,
+        attendanceStatus: SecondChatAttendanceStatus
+    ): SecondChatParticipation =
+        SecondChatParticipation(
+            connectionId = connection.id,
+            userId = userId,
+            attendanceStatus = attendanceStatus
+        )
+
+    private fun eqUuid(value: UUID): UUID {
+        Mockito.eq(value)
+        return value
+    }
+
+    private fun anyOffsetDateTime(): OffsetDateTime {
+        Mockito.any(OffsetDateTime::class.java)
+        return OffsetDateTime.now()
+    }
 }

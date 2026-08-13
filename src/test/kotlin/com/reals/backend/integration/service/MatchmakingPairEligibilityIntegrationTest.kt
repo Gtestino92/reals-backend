@@ -18,9 +18,16 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.test.context.TestPropertySource
 import java.time.OffsetDateTime
 import java.util.UUID
 
+@TestPropertySource(
+    properties = [
+        "matchmaking.allow-active-pair-duplicates=false",
+        "matchmaking.exclude-previous-pairing=true"
+    ]
+)
 class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
     @Test
@@ -132,7 +139,6 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
 
     @Test
     fun `match creation refuses recent historical cooldown after users are locked`() {
-        val now = fixedNow()
         val userA = createActiveProfile(
             email = "duplicate-history-a-${UUID.randomUUID()}@example.com",
             displayName = "Duplicate History A",
@@ -145,7 +151,7 @@ class MatchmakingPairEligibilityIntegrationTest : BaseIT() {
             gender = Gender.MALE,
             lookingForGenders = setOf(Gender.FEMALE)
         )
-        saveHistoricalMatch(userA, userB, MatchState.CHAT_REJECTED, now.minusDays(1))
+        saveHistoricalMatch(userA, userB, MatchState.CHAT_REJECTED, OffsetDateTime.now().minusDays(1))
 
         assertThrows<IllegalStateException> {
             matchService.createMatch(userA, userB)

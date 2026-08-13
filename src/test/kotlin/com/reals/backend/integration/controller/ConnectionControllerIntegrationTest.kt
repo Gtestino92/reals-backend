@@ -1007,6 +1007,61 @@ class ConnectionControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `user can dismiss unjoined second chat after entry window closes before lifecycle job`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        schedulingService.addProposal(setup.connectionId, setup.userAId, slot, 1)
+        schedulingService.addProposal(setup.connectionId, setup.userBId, slot, 1)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = OffsetDateTime.now().minusMinutes(20)
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.dismissed", equalTo(true)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps.length()", equalTo(0)))
+
+        mockMvc.perform(
+            get("/api/me/home")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.nextSteps[0].type", equalTo("SECOND_CHAT_EXPIRED")))
+    }
+
+    @Test
+    fun `joined participant cannot dismiss active second chat after partner entry window closes`() {
+        val setup = createScheduledSecondChatReadyToEnter()
+        val scheduledAt = OffsetDateTime.now().minusMinutes(25)
+        negotiationRepository.updateConfirmedDateTimeByConnectionId(
+            connectionId = setup.connectionId,
+            confirmedDateTime = scheduledAt
+        )
+        joinSecondChatOrThrow(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            now = scheduledAt.plusMinutes(5)
+        )
+
+        mockMvc.perform(
+            post("/api/connections/${setup.connectionId}/second-chat-dismissal")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("DOMAIN_CONFLICT")))
+    }
+
+    @Test
     fun `second chat dismissal rejects non participant`() {
         val setup = createReadOnlySecondChat()
         val stranger = userService.createUser("dismiss-stranger-${java.util.UUID.randomUUID()}@example.com")

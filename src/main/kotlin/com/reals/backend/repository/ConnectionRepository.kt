@@ -93,6 +93,27 @@ interface ConnectionRepository :
 
     @Query(
         """
+        select c from Connection c, ScheduleNegotiation n
+        where n.connectionId = c.id
+          and (c.userAId = :userId or c.userBId = :userId)
+          and c.state = 'CLOSED'
+          and n.status = 'CONFIRMED'
+          and n.confirmedDateTime is not null
+          and n.confirmedDateTime >= :confirmedAfter
+          and not exists (
+              select chat.id from Chat chat
+              where chat.connectionId = c.id
+                and chat.chatType = 'SECOND_CHAT'
+          )
+        """
+    )
+    fun findRecentClosedConfirmedSecondChatConnectionsWithoutChat(
+        @Param("userId") userId: UUID,
+        @Param("confirmedAfter") confirmedAfter: OffsetDateTime
+    ): List<Connection>
+
+    @Query(
+        """
         select c from Connection c
         where ((c.userAId = :userAId and c.userBId = :userBId)
             or (c.userAId = :userBId and c.userBId = :userAId))

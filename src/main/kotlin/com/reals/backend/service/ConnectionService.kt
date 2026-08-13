@@ -6,6 +6,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -20,6 +21,7 @@ class ConnectionService(
     private val chatRepository: ChatRepository,
     private val dismissalRepository: ConnectionHomeDismissalRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
+    private val participationRepository: SecondChatParticipationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
     private val userBlockService: UserBlockService,
@@ -35,7 +37,10 @@ class ConnectionService(
     private val schedulingActivationDelayMinutes: Long,
 
     @param:Value($$"${chat.second-chat.duration-minutes:120}")
-    private val secondChatDurationMinutes: Long
+    private val secondChatDurationMinutes: Long,
+
+    @param:Value($$"${chat.second-chat.entry-window-minutes:20}")
+    private val entryWindowMinutes: Long
 
 ) {
 
@@ -394,7 +399,7 @@ class ConnectionService(
             return existing
         }
 
-        check(isSecondChatDismissible(connection)) {
+        check(isSecondChatDismissible(connection, userId)) {
             "Second chat for connection $connectionId is still actionable"
         }
 
@@ -411,12 +416,34 @@ class ConnectionService(
         return dismissal
     }
 
-    private fun isSecondChatDismissible(connection: Connection): Boolean {
+    private fun isSecondChatDismissible(
+        connection: Connection,
+        userId: UUID
+    ): Boolean {
         if (connection.state == ConnectionState.CLOSED) {
             return true
         }
 
         val now = OffsetDateTime.now()
+        val negotiation = negotiationRepository.findByConnectionId(connection.id)
+        val confirmedDateTime = negotiation?.confirmedDateTime
+        val myAttendanceStatus =
+            participationRepository
+                .findByConnectionIdAndUserId(
+                    connectionId = connection.id,
+                    userId = userId
+                )
+                ?.attendanceStatus
+                ?: SecondChatAttendanceStatus.PENDING
+
+        if (
+            confirmedDateTime != null &&
+            !hasJoinedSecondChat(myAttendanceStatus) &&
+            !confirmedDateTime.plusMinutes(entryWindowMinutes).isAfter(now)
+        ) {
+            return true
+        }
+
         val secondChat =
             chatRepository.findByConnectionIdAndChatType(
                 connectionId = connection.id,
@@ -426,8 +453,7 @@ class ConnectionService(
         return when (connection.state) {
             ConnectionState.SECOND_CHAT_SCHEDULED ->
                 secondChat == null &&
-                    negotiationRepository.findByConnectionId(connection.id)
-                        ?.confirmedDateTime
+                    confirmedDateTime
                         ?.plusMinutes(secondChatDurationMinutes)
                         ?.let { !it.isAfter(now) } == true
 
@@ -452,4 +478,8 @@ class ConnectionService(
             ConnectionState.CLOSED -> false
         }
     }
+
+    private fun hasJoinedSecondChat(status: SecondChatAttendanceStatus): Boolean =
+        status == SecondChatAttendanceStatus.ON_TIME ||
+            status == SecondChatAttendanceStatus.LATE
 }
