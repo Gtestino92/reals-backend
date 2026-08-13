@@ -1121,7 +1121,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             true,
             secondChatLifecycleService.resolveHardCutoffNoShow(
                 connectionId = setup.connectionId,
-                now = scheduledAt.plusMinutes(20)
+                now = scheduledAt.plusMinutes(20).plusSeconds(1)
             )
         )
         assertEquals(ConnectionState.CLOSED, connectionRepository.findById(setup.connectionId).orElseThrow().state)
