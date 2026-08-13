@@ -10,6 +10,10 @@ post {
   auth: none
 }
 
+vars:pre-request {
+  counterpartMatchId: 4cf0653e-e32c-4486-89b0-912d79a0aa68
+}
+
 script:post-response {
   const body = res.getBody();
   if (!body || body.target !== "visual-review-availability") {
