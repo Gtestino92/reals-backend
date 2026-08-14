@@ -930,6 +930,32 @@ paths:
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/chats/{chatId}/messages/{messageId}/reaction:
+    put:
+      tags: [Chats]
+      summary: Put chat message reaction
+      description: Persists one irreversible `HEART` reaction on a message sent by the other chat participant. `HEART` is currently the only supported type. New reactions are accepted only for messages in the caller's latest incoming block ordered by `(sentAt, id)`; own messages sent after that block do not invalidate it, while a newer incoming block supersedes older unreacted incoming messages. Repeating `PUT HEART` on an already-hearted message is idempotent and returns the canonical message even after the block expires or the chat later becomes read-only. Reactions are metadata only and do not count as conversational activity, update `sentAt`, reset inactivity, extend deadlines, trigger notifications, affect reliability/penalties, alter scheduling/Home state, or create chat-message side effects.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        $ref: '#/components/requestBodies/PutMessageReaction'
+      responses:
+        '200':
+          description: Updated canonical message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatAvailabilityConflict'
   /api/chats/{chatId}/audio-messages:
     post:
       tags: [Chats]
@@ -1720,6 +1746,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SendMessageRequest'
+    PutMessageReaction:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PutMessageReactionRequest'
     ChatExitRequestCreate:
       required: true
       content:
@@ -1942,7 +1974,7 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
+      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends and new reactions may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; new reactions may return `CHAT_MESSAGE_REACTION_NOT_AVAILABLE`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -1973,6 +2005,11 @@ components:
                 code: FIRST_CHAT_DECISION_ONLY
                 error: Conflict
                 message: Only a final first-chat decision is available now
+            messageReactionNotAvailable:
+              value:
+                code: CHAT_MESSAGE_REACTION_NOT_AVAILABLE
+                error: Conflict
+                message: Chat message reaction is not available
     FirstChatGuidanceConflict:
       description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING`, `FIRST_CHAT_DECISION_ONLY` or `LEGAL_ACTION_REQUIRED`.
       content:
@@ -3183,6 +3220,12 @@ components:
           maxLength: 1000
           pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$'
           description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
+    PutMessageReactionRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatMessageReactionType'
     ChatMessageResponse:
       type: object
       required: [id, chatSessionId, senderId, messageType, sentAt]
@@ -3196,6 +3239,10 @@ components:
         audio:
           allOf:
             - $ref: '#/components/schemas/ChatMessageAudioResponse'
+          nullable: true
+        reactionType:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageReactionType'
           nullable: true
         sentAt: { type: string, format: date-time }
     ChatMessageAudioResponse:
@@ -3657,6 +3704,9 @@ components:
     ChatMessageType:
       type: string
       enum: [TEXT, AUDIO]
+    ChatMessageReactionType:
+      type: string
+      enum: [HEART]
     ChatAudioUnavailableReason:
       type: string
       enum: [FEATURE_DISABLED, CHAT_NOT_WRITABLE, GUIDANCE_NOT_AVAILABLE, GUIDANCE_REQUIRED, LIMIT_REACHED, WAITING_FOR_BOTH, WAITING_DELAY]

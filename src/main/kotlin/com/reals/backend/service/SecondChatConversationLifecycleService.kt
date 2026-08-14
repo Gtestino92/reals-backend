@@ -374,6 +374,40 @@ class SecondChatConversationLifecycleService(
         return SecondChatMessageResult.Continue(chat)
     }
 
+    fun requireSecondChatMetadataMutationAllowed(
+        chat: Chat,
+        now: OffsetDateTime
+    ) {
+        if (chat.chatType != ChatType.SECOND_CHAT) {
+            return
+        }
+        val connectionId = chat.connectionId ?: throw conversationResolvedException(chat.id)
+        connectionRepository.findById(connectionId).orElse(null)
+            ?: throw conversationResolvedException(chat.id)
+        val pending = findPendingRequestForUpdate(connectionId)
+
+        if (
+            pending?.type == SecondChatResolutionRequestType.PARTNER_NO_SHOW &&
+            !pending.expiresAt.isAfter(now)
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_ALREADY_RESOLVED,
+                message = "Second chat for connection $connectionId is already resolved by no-show"
+            )
+        }
+
+        if (
+            pending?.type == SecondChatResolutionRequestType.PARTNER_INACTIVITY &&
+            !pending.expiresAt.isAfter(now)
+        ) {
+            throw conversationResolvedException(chat.id)
+        }
+
+        if (isInitialSilenceDue(chat, now) || isPartnerInactivityDue(chat, now)) {
+            throw conversationResolvedException(chat.id)
+        }
+    }
+
     fun findExpiredMutualCompletionRequestIds(now: OffsetDateTime, limit: Int): List<UUID> =
         resolutionRequestRepository.findExpiredPendingRequestIdsByType(
             now = now,
@@ -873,6 +907,12 @@ class SecondChatConversationLifecycleService(
 
     private fun rejectedConversationResolved(chatId: UUID): SecondChatMessageResult.RejectedAfterResolution =
         SecondChatMessageResult.RejectedAfterResolution(
+            code = DomainErrorCode.SECOND_CHAT_CONVERSATION_ALREADY_RESOLVED,
+            message = "Second chat $chatId is already resolved"
+        )
+
+    private fun conversationResolvedException(chatId: UUID): DomainConflictException =
+        DomainConflictException(
             code = DomainErrorCode.SECOND_CHAT_CONVERSATION_ALREADY_RESOLVED,
             message = "Second chat $chatId is already resolved"
         )

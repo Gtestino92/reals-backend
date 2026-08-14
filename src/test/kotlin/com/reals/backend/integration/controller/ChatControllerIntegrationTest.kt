@@ -5,6 +5,7 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageReactionType
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
@@ -23,6 +24,7 @@ import org.mockito.Mockito
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
@@ -157,6 +159,29 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.messages[0].content", equalTo("Respuesta desde controller")))
             .andExpect(jsonPath("$.hasMore", equalTo(false)))
             .andExpect(jsonPath("$.serverTime").exists())
+    }
+
+    @Test
+    fun `put message reaction returns canonical message response`() {
+        val setup = createMatchWithFirstChat("reaction-http")
+        val message = sendMessageOrThrow(setup.firstChatId, setup.userBId, "Mensaje reactable")
+
+        mockMvc.perform(
+            put("/api/chats/${setup.firstChatId}/messages/${message.id}/reaction")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"type":"HEART"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id", equalTo(message.id.toString())))
+            .andExpect(jsonPath("$.reactionType", equalTo(ChatMessageReactionType.HEART.name)))
+
+        mockMvc.perform(
+            get("/api/chats/${setup.firstChatId}/messages")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].reactionType", equalTo(ChatMessageReactionType.HEART.name)))
     }
 
     @Test
