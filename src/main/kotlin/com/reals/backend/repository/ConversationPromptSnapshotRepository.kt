@@ -12,5 +12,10 @@ interface ConversationPromptSnapshotRepository : JpaRepository<ConversationPromp
         ordinal: Int
     ): ConversationPromptSnapshot?
 
+    fun findByChatIdAndId(
+        chatId: UUID,
+        id: UUID
+    ): ConversationPromptSnapshot?
+
     fun countByChatId(chatId: UUID): Long
 }

@@ -13,6 +13,7 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatMessageReactionType
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatParticipantDecisionStatus
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.Connection
@@ -25,6 +26,7 @@ import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatRepository
+import com.reals.backend.repository.ConversationPromptSnapshotRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.exception.DomainBadRequestException
@@ -47,6 +49,7 @@ import java.util.UUID
 class ChatService(
     private val chatRepository: ChatRepository,
     private val chatMessageRepository: ChatMessageRepository,
+    private val promptSnapshotRepository: ConversationPromptSnapshotRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
@@ -95,6 +98,16 @@ class ChatService(
             val message: String
         ) : SendMessageResult
     }
+
+    data class ChatReplyTarget(
+        val type: ChatReplyTargetType,
+        val targetId: UUID
+    )
+
+    private data class ResolvedReplyTarget(
+        val replyToMessageId: UUID?,
+        val replyToPromptSnapshotId: UUID?
+    )
 
     sealed interface SendAudioMessageResult {
         data class Created(val message: ChatMessage) : SendAudioMessageResult
@@ -214,9 +227,11 @@ class ChatService(
     fun sendMessage(
         chatId: UUID,
         senderId: UUID,
-        content: String
+        content: String,
+        clientMessageId: UUID? = null,
+        replyTarget: ChatReplyTarget? = null
     ): ChatMessage =
-        when (val result = sendMessageWithResult(chatId, senderId, content)) {
+        when (val result = sendMessageWithResult(chatId, senderId, content, clientMessageId, replyTarget)) {
             is SendMessageResult.Sent -> result.message
             is SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
@@ -226,15 +241,41 @@ class ChatService(
         chatId: UUID,
         senderId: UUID,
         content: String,
-        now: OffsetDateTime = OffsetDateTime.now()
+        clientMessageId: UUID? = null,
+        replyTarget: ChatReplyTarget? = null,
+        now: OffsetDateTime? = null
     ): SendMessageResult {
         val normalizedContent = normalizeMessageContent(content)
 
         val chat = findByIdForUpdateOrThrow(chatId)
+        validateChatParticipant(chat, senderId)
+
+        if (replyTarget != null && clientMessageId == null) {
+            throw DomainBadRequestException(
+                code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                message = "clientMessageId is required when replyTo is provided"
+            )
+        }
+
+        if (clientMessageId != null) {
+            chatMessageRepository.findByChatSessionIdAndSenderIdAndClientMessageId(
+                chatSessionId = chatId,
+                senderId = senderId,
+                clientMessageId = clientMessageId
+            )?.let { existing ->
+                validateTextReplayOrThrow(
+                    existing = existing,
+                    normalizedContent = normalizedContent,
+                    replyTarget = replyTarget
+                )
+                return SendMessageResult.Sent(existing)
+            }
+        }
+
+        val effectiveNow = now ?: OffsetDateTime.now()
 
         requireChatPairNotBlocked(chat)
         validateActiveChatWindow(chat)
-        validateChatParticipant(chat, senderId)
         requireSecondChatJoinedForMessage(chat, senderId)
         if (chat.chatType == ChatType.FIRST_CHAT) {
             firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, senderId)
@@ -246,7 +287,7 @@ class ChatService(
                 secondChatConversationLifecycleService.beforeSecondChatMessage(
                     chat = chat,
                     senderId = senderId,
-                    now = now
+                    now = effectiveNow
                 )
         ) {
             is SecondChatConversationLifecycleService.SecondChatMessageResult.Continue -> Unit
@@ -257,14 +298,23 @@ class ChatService(
                 )
         }
 
+        val resolvedReplyTarget = resolveReplyTarget(
+            chat = chat,
+            senderId = senderId,
+            replyTarget = replyTarget
+        )
+
         val message =
             chatMessageRepository.save(
                 ChatMessage(
                     chatSessionId = chat.id,
                     senderId = senderId,
                     messageType = ChatMessageType.TEXT,
+                    clientMessageId = clientMessageId,
                     content = normalizedContent,
-                    sentAt = now
+                    replyToMessageId = resolvedReplyTarget.replyToMessageId,
+                    replyToPromptSnapshotId = resolvedReplyTarget.replyToPromptSnapshotId,
+                    sentAt = effectiveNow
                 )
             )
 
@@ -275,6 +325,80 @@ class ChatService(
         chatRepository.save(chat)
 
         return SendMessageResult.Sent(message)
+    }
+
+    private fun validateTextReplayOrThrow(
+        existing: ChatMessage,
+        normalizedContent: String,
+        replyTarget: ChatReplyTarget?
+    ) {
+        val requestedReplyToMessageId =
+            replyTarget?.takeIf { it.type == ChatReplyTargetType.MESSAGE }?.targetId
+        val requestedReplyToPromptSnapshotId =
+            replyTarget?.takeIf { it.type == ChatReplyTargetType.GUIDANCE_QUESTION }?.targetId
+
+        if (
+            existing.messageType != ChatMessageType.TEXT ||
+            existing.content != normalizedContent ||
+            existing.replyToMessageId != requestedReplyToMessageId ||
+            existing.replyToPromptSnapshotId != requestedReplyToPromptSnapshotId
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
+                message = "Client message id was already used with a different text message payload"
+            )
+        }
+    }
+
+    private fun resolveReplyTarget(
+        chat: Chat,
+        senderId: UUID,
+        replyTarget: ChatReplyTarget?
+    ): ResolvedReplyTarget {
+        if (replyTarget == null) {
+            return ResolvedReplyTarget(
+                replyToMessageId = null,
+                replyToPromptSnapshotId = null
+            )
+        }
+
+        return when (replyTarget.type) {
+            ChatReplyTargetType.MESSAGE -> {
+                val target =
+                    chatMessageRepository.findById(replyTarget.targetId)
+                        .orElseThrow { replyTargetNotAvailable() }
+
+                if (
+                    target.chatSessionId != chat.id ||
+                    target.senderId == senderId ||
+                    target.messageType !in setOf(ChatMessageType.TEXT, ChatMessageType.AUDIO)
+                ) {
+                    throw replyTargetNotAvailable()
+                }
+
+                ResolvedReplyTarget(
+                    replyToMessageId = target.id,
+                    replyToPromptSnapshotId = null
+                )
+            }
+
+            ChatReplyTargetType.GUIDANCE_QUESTION -> {
+                if (chat.chatType != ChatType.FIRST_CHAT) {
+                    throw replyTargetNotAvailable()
+                }
+
+                val snapshot =
+                    promptSnapshotRepository.findByChatIdAndId(
+                        chatId = chat.id,
+                        id = replyTarget.targetId
+                    ) ?: throw replyTargetNotAvailable()
+
+                ResolvedReplyTarget(
+                    replyToMessageId = null,
+                    replyToPromptSnapshotId = snapshot.id
+                )
+            }
+        }
     }
 
     fun findAudioMessageReplayOrThrowOnConflict(
@@ -1558,6 +1682,12 @@ class ChatService(
         DomainConflictException(
             code = DomainErrorCode.CHAT_MESSAGE_REACTION_NOT_AVAILABLE,
             message = "Chat message reaction is not available"
+        )
+
+    private fun replyTargetNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE,
+            message = "Chat message reply target is not available"
         )
 
     private fun isCurrentlyReactableMessage(

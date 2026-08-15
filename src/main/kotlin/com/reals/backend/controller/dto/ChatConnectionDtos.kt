@@ -1,8 +1,11 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.*
+import com.reals.backend.service.ChatMessageReplyPreview
+import com.reals.backend.service.FirstChatGuidanceProgressionAction
 import com.reals.backend.service.FirstChatGuidanceState
 import com.reals.backend.validation.PlainText
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Pattern
@@ -157,6 +160,7 @@ data class FirstChatResponse(
 
 data class FirstChatGuidanceQuestionResponse(
     val id: String,
+    val instanceId: UUID?,
     val text: String
 )
 
@@ -165,6 +169,9 @@ data class FirstChatGuidanceResponse(
     val questionOrdinal: Int,
     val maxQuestions: Int,
     val requiredCharacters: Int,
+    val requiredParticipationScore: Int,
+    val directQuestionReplyMultiplier: Int,
+    val progressionAction: FirstChatGuidanceProgressionAction?,
     val canRequestNext: Boolean,
     val myNextRequested: Boolean,
     val completed: Boolean
@@ -174,11 +181,15 @@ data class FirstChatGuidanceResponse(
             FirstChatGuidanceResponse(
                 question = FirstChatGuidanceQuestionResponse(
                     id = state.questionId,
+                    instanceId = state.questionInstanceId,
                     text = state.questionText
                 ),
                 questionOrdinal = state.questionOrdinal,
                 maxQuestions = state.maxQuestions,
                 requiredCharacters = state.requiredCharacters,
+                requiredParticipationScore = state.requiredParticipationScore,
+                directQuestionReplyMultiplier = state.directQuestionReplyMultiplier,
+                progressionAction = state.progressionAction,
                 canRequestNext = state.canRequestNext,
                 myNextRequested = state.myNextRequested,
                 completed = state.completed
@@ -192,7 +203,17 @@ data class SendMessageRequest(
     @field:NotBlank
     @field:Size(max = 1000)
     @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
-    val content: String
+    val content: String,
+
+    val clientMessageId: UUID? = null,
+
+    @field:Valid
+    val replyTo: ChatReplyTargetRequest? = null
+)
+
+data class ChatReplyTargetRequest(
+    val type: ChatReplyTargetType,
+    val targetId: UUID
 )
 
 data class ChatExitRequestCreateRequest(
@@ -229,6 +250,7 @@ data class ChatMessageResponse(
     val content: String?,
     val audio: ChatMessageAudioResponse?,
     val reactionType: ChatMessageReactionType?,
+    val replyTo: ChatMessageReplyResponse?,
     val sentAt: OffsetDateTime
 ) {
     companion object {
@@ -236,7 +258,8 @@ data class ChatMessageResponse(
             m: ChatMessage,
             audioUrlResolver: (ChatMessage) -> String = {
                 error("Audio URL resolver is required for audio messages")
-            }
+            },
+            replyTo: ChatMessageReplyPreview? = null
         ) = ChatMessageResponse(
             id = m.id,
             chatSessionId = m.chatSessionId,
@@ -255,8 +278,28 @@ data class ChatMessageResponse(
                 null
             },
             reactionType = m.reactionType,
+            replyTo = replyTo?.let { ChatMessageReplyResponse.from(it) },
             sentAt = m.sentAt
         )
+    }
+}
+
+data class ChatMessageReplyResponse(
+    val type: ChatReplyTargetType,
+    val targetId: UUID,
+    val senderId: UUID?,
+    val messageType: ChatMessageType?,
+    val previewText: String?
+) {
+    companion object {
+        fun from(preview: ChatMessageReplyPreview) =
+            ChatMessageReplyResponse(
+                type = preview.type,
+                targetId = preview.targetId,
+                senderId = preview.senderId,
+                messageType = preview.messageType,
+                previewText = preview.previewText
+            )
     }
 }
 
@@ -283,9 +326,10 @@ data class ChatMessagesResponse(
             serverTime: OffsetDateTime = OffsetDateTime.now(),
             audioUrlResolver: (ChatMessage) -> String = {
                 error("Audio URL resolver is required for audio messages")
-            }
+            },
+            replyPreviews: Map<UUID, ChatMessageReplyPreview> = emptyMap()
         ) = ChatMessagesResponse(
-            messages = messages.map { ChatMessageResponse.from(it, audioUrlResolver) },
+            messages = messages.map { ChatMessageResponse.from(it, audioUrlResolver, replyPreviews[it.id]) },
             hasMore = hasMore,
             serverTime = serverTime
         )

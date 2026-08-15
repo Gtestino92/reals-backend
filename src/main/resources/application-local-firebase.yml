@@ -158,6 +158,7 @@ chat:
     enabled: true
   first-chat:
     guidance:
-      required-characters: 10
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
     audio:
       required-answered-guidance-questions: 1

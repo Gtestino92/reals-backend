@@ -139,7 +139,17 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
 
     @Query(
         value = """
-            select coalesce(sum(length(content)), 0)
+            select coalesce(
+                sum(
+                    length(content) *
+                    case
+                        when reply_to_prompt_snapshot_id = :currentPromptSnapshotId
+                            then :directQuestionReplyMultiplier
+                        else 1
+                    end
+                ),
+                0
+            )
             from chat_messages
             where chat_session_id = :chatId
               and sender_id = :senderId
@@ -149,9 +159,11 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         """,
         nativeQuery = true
     )
-    fun sumContentLengthByChatSenderSince(
+    fun sumParticipationScoreByChatSenderSince(
         @Param("chatId") chatId: UUID,
         @Param("senderId") senderId: UUID,
-        @Param("sentAt") sentAt: OffsetDateTime
+        @Param("sentAt") sentAt: OffsetDateTime,
+        @Param("currentPromptSnapshotId") currentPromptSnapshotId: UUID,
+        @Param("directQuestionReplyMultiplier") directQuestionReplyMultiplier: Int
     ): Long
 }

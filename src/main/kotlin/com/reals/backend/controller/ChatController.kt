@@ -8,6 +8,7 @@ import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
 import com.reals.backend.service.ChatAudioUploadGuard
+import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.S3StorageService
@@ -31,6 +32,7 @@ class ChatController(
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
     private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val chatMessageReplyPreviewResolver: ChatMessageReplyPreviewResolver,
     private val storageService: S3StorageService,
     private val chatExitService: ChatExitService,
     private val legalComplianceService: LegalComplianceService
@@ -69,11 +71,18 @@ class ChatController(
             val result = chatService.sendMessageWithResult(
                 chatId = chatId,
                 senderId = userId,
-                content = request.content
+                content = request.content,
+                clientMessageId = request.clientMessageId,
+                replyTarget = request.replyTo?.let {
+                    ChatService.ChatReplyTarget(
+                        type = it.type,
+                        targetId = it.targetId
+                    )
+                }
             )
         ) {
             is ChatService.SendMessageResult.Sent ->
-                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                ResponseEntity.ok(messageResponse(result.message))
 
             is ChatService.SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
@@ -104,9 +113,9 @@ class ChatController(
         return when (result) {
             is ChatAudioSendResult.Created ->
                 ResponseEntity.status(HttpStatus.CREATED)
-                    .body(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                    .body(messageResponse(result.message))
             is ChatAudioSendResult.Replayed ->
-                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                ResponseEntity.ok(messageResponse(result.message))
         }
     }
 
@@ -117,18 +126,16 @@ class ChatController(
         @PathVariable messageId: UUID,
         @Valid
         @RequestBody request: PutMessageReactionRequest
-    ): ResponseEntity<ChatMessageResponse> =
-        ResponseEntity.ok(
-            ChatMessageResponse.from(
-                chatService.putMessageReaction(
-                    chatId = chatId,
-                    messageId = messageId,
-                    userId = userId,
-                    reactionType = request.type
-                ),
-                ::audioReadUrl
+    ): ResponseEntity<ChatMessageResponse> {
+        val message =
+            chatService.putMessageReaction(
+                chatId = chatId,
+                messageId = messageId,
+                userId = userId,
+                reactionType = request.type
             )
-        )
+        return ResponseEntity.ok(messageResponse(message))
+    }
 
     @PostMapping("/{chatId}/guidance/next-request")
     fun requestNextGuidanceQuestion(
@@ -172,7 +179,8 @@ class ChatController(
                 ChatMessagesResponse.from(
                     messages = page.messages,
                     hasMore = page.hasMore,
-                    audioUrlResolver = ::audioReadUrl
+                    audioUrlResolver = ::audioReadUrl,
+                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
                 )
             )
         }
@@ -184,7 +192,7 @@ class ChatController(
         )
 
         return ResponseEntity.ok<Any>(
-            messages.map { ChatMessageResponse.from(it, ::audioReadUrl) }
+            messageResponses(messages)
         )
     }
 
@@ -319,5 +327,23 @@ class ChatController(
             bucket = requireNotNull(message.audioBucket),
             key = requireNotNull(message.audioObjectKey)
         )
+
+    private fun messageResponse(message: com.reals.backend.domain.ChatMessage): ChatMessageResponse =
+        ChatMessageResponse.from(
+            m = message,
+            audioUrlResolver = ::audioReadUrl,
+            replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
+        )
+
+    private fun messageResponses(messages: List<com.reals.backend.domain.ChatMessage>): List<ChatMessageResponse> {
+        val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(messages)
+        return messages.map { message ->
+            ChatMessageResponse.from(
+                m = message,
+                audioUrlResolver = ::audioReadUrl,
+                replyTo = replyPreviews[message.id]
+            )
+        }
+    }
 
 }

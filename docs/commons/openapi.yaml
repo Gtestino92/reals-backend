@@ -870,7 +870,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
-      description: Sends a message as the authenticated chat participant. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; while exactly one first-chat participant has approved and the other remains pending, ordinary message sends from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion.
+      description: Sends a TEXT message as the authenticated chat participant. `clientMessageId` is optional for legacy no-reply TEXT sends; when present it makes the TEXT send idempotent in the same `(chat, sender, clientMessageId)` namespace as audio. `replyTo` is optional and requires `clientMessageId`; V1 supports shallow replies to another participant's TEXT/AUDIO message in the same chat or to a same-chat first-chat guidance question snapshot. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; while exactly one first-chat participant has approved and the other remains pending, ordinary message sends from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion. Exact idempotent replay returns the original canonical message before ordinary mutable eligibility checks; key reuse with different content, target or message type returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1016,7 +1016,7 @@ paths:
     post:
       tags: [Chats]
       summary: Request next first-chat guidance question
-      description: Authenticated first-chat participant requests advancement from the current guided question. The request has no body. The question advances only after both participants have independently requested it and each requester has met the configured participation threshold for the active question interval. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed. First-chat decision-only state rejects next requests with `FIRST_CHAT_DECISION_ONLY`.
+      description: Authenticated first-chat participant requests the current guidance progression action. The request has no body. The next question activates, or final guidance completes, only after both participants have independently requested the action and each requester has met the configured weighted participation score for the active question interval. Ordinary authored TEXT characters count 1 point; authored TEXT characters directly replying to the current guidance question snapshot count with `directQuestionReplyMultiplier`; quoted preview text and AUDIO count 0. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed. First-chat decision-only state rejects next requests with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       responses:
@@ -1974,7 +1974,7 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends and new reactions may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; new reactions may return `CHAT_MESSAGE_REACTION_NOT_AVAILABLE`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
+      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends and new reactions may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; message sends may return `CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE` or `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`; new reactions may return `CHAT_MESSAGE_REACTION_NOT_AVAILABLE`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -2010,6 +2010,16 @@ components:
                 code: CHAT_MESSAGE_REACTION_NOT_AVAILABLE
                 error: Conflict
                 message: Chat message reaction is not available
+            messageReplyTargetNotAvailable:
+              value:
+                code: CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE
+                error: Conflict
+                message: Chat message reply target is not available
+            messageIdempotencyConflict:
+              value:
+                code: CHAT_MESSAGE_IDEMPOTENCY_CONFLICT
+                error: Conflict
+                message: Client message id was already used with a different text message payload
     FirstChatGuidanceConflict:
       description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING`, `FIRST_CHAT_DECISION_ONLY` or `LEGAL_ACTION_REQUIRED`.
       content:
@@ -3176,7 +3186,14 @@ components:
       type: object
       required: [id, text]
       properties:
-        id: { type: string }
+        id:
+          type: string
+          description: Stable source/catalog question id.
+        instanceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Stable `conversation_prompt_snapshots.id` for this chat question instance. New first chats return a real UUID; legacy rows without snapshots may return null.
         text: { type: string }
     FirstChatGuidanceResponse:
       type: object
@@ -3185,6 +3202,8 @@ components:
         - questionOrdinal
         - maxQuestions
         - requiredCharacters
+        - requiredParticipationScore
+        - directQuestionReplyMultiplier
         - canRequestNext
         - myNextRequested
         - completed
@@ -3200,7 +3219,19 @@ components:
           example: 3
         requiredCharacters:
           type: integer
-          example: 40
+          example: 60
+          description: Legacy compatibility field equal to the ordinary-character count needed to satisfy `requiredParticipationScore`.
+        requiredParticipationScore:
+          type: integer
+          example: 60
+        directQuestionReplyMultiplier:
+          type: integer
+          example: 2
+        progressionAction:
+          allOf:
+            - $ref: '#/components/schemas/FirstChatGuidanceProgressionAction'
+          nullable: true
+          description: Current action the user can request after reaching score; null when guidance is completed.
         canRequestNext:
           type: boolean
           description: Eligibility for the authenticated user only.
@@ -3209,17 +3240,36 @@ components:
           description: Whether the authenticated user has requested continuation for the current question.
         completed:
           type: boolean
-          description: True when the final configured guidance question is active. The final question remains returned as `question`, and no further next-request action is available.
+          description: True only after the terminal guidance completion state has been persisted (`completedAt != null`). The final question remains active and incomplete until both participants reach score and request `COMPLETE`.
     SendMessageRequest:
       type: object
       required: [content]
       properties:
+        clientMessageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Client-generated idempotency key. Optional for legacy no-reply TEXT sends; required when `replyTo` is present.
         content:
           type: string
           minLength: 1
           maxLength: 1000
           pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$'
           description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
+        replyTo:
+          allOf:
+            - $ref: '#/components/schemas/ChatReplyTargetRequest'
+          nullable: true
+          description: Optional shallow quoted-reply target. Requires `clientMessageId`.
+    ChatReplyTargetRequest:
+      type: object
+      required: [type, targetId]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatReplyTargetType'
+        targetId:
+          type: string
+          format: uuid
     PutMessageReactionRequest:
       type: object
       required: [type]
@@ -3244,7 +3294,35 @@ components:
           allOf:
             - $ref: '#/components/schemas/ChatMessageReactionType'
           nullable: true
+        replyTo:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageReplyResponse'
+          nullable: true
+          description: Server-derived shallow preview of the direct reply target. Never contains nested reply metadata or target reaction metadata.
         sentAt: { type: string, format: date-time }
+    ChatMessageReplyResponse:
+      type: object
+      required: [type, targetId]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatReplyTargetType'
+        targetId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Present for MESSAGE targets, null for GUIDANCE_QUESTION.
+        messageType:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageType'
+          nullable: true
+          description: Present for MESSAGE targets, null for GUIDANCE_QUESTION.
+        previewText:
+          type: string
+          nullable: true
+          description: TEXT target content or immutable guidance prompt text. Null for AUDIO targets.
     ChatMessageAudioResponse:
       type: object
       required: [url, durationMillis, contentType, sizeBytes]
@@ -3707,6 +3785,12 @@ components:
     ChatMessageReactionType:
       type: string
       enum: [HEART]
+    ChatReplyTargetType:
+      type: string
+      enum: [MESSAGE, GUIDANCE_QUESTION]
+    FirstChatGuidanceProgressionAction:
+      type: string
+      enum: [NEXT_QUESTION, COMPLETE]
     ChatAudioUnavailableReason:
       type: string
       enum: [FEATURE_DISABLED, CHAT_NOT_WRITABLE, GUIDANCE_NOT_AVAILABLE, GUIDANCE_REQUIRED, LIMIT_REACHED, WAITING_FOR_BOTH, WAITING_DELAY]

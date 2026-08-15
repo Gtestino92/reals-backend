@@ -182,7 +182,8 @@ chat:
     # Mutual cancellation and safety cancellation bypass this rule.
 
     guidance:
-      required-characters: 10
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
       max-questions: 3
       catalog: classpath:first-chat-guided-questions.es.json
     audio:

@@ -1143,7 +1143,7 @@ MVP decision implemented:
 - Chat remains free-form. The backend does not semantically evaluate answers.
 - A participant needs 40 accumulated persisted characters during the active question interval before requesting another question. One long message can satisfy the threshold.
 - Advancement requires both participants to independently request it. Partner readiness/request state is not exposed.
-- The maximum is 3 questions. When both participants request continuation from the penultimate question and the final configured question becomes active, guidance completes immediately, no fourth question is selected, and the final question remains available as the final prompt.
+- The maximum is 3 questions. When both participants request continuation from the penultimate question, the final configured question becomes active and remains incomplete. Guidance completes only after both participants reach the required participation score on that final question and request `COMPLETE`; no fourth question is selected.
 - Clients observe changes through existing first-chat polling. No analytics events are implemented yet.
 
 Future work:
