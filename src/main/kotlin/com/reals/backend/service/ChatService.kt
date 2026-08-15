@@ -10,6 +10,7 @@ import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatExitRequestStatus
 import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageReactionType
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatStatus
@@ -410,6 +411,56 @@ class ChatService(
         mediaCleanupTaskService.deleteTaskInCurrentTransaction(cleanupTaskId)
 
         return SendAudioMessageResult.Created(message)
+    }
+
+    fun putMessageReaction(
+        chatId: UUID,
+        messageId: UUID,
+        userId: UUID,
+        reactionType: ChatMessageReactionType,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): ChatMessage {
+        if (reactionType != ChatMessageReactionType.HEART) {
+            throw reactionNotAvailable()
+        }
+
+        val chat = findByIdForUpdateOrThrow(chatId)
+        validateChatParticipant(chat, userId)
+
+        val message =
+            chatMessageRepository.findById(messageId)
+                .orElseThrow { chatNotAvailable() }
+
+        if (message.chatSessionId != chatId) {
+            throw chatNotAvailable()
+        }
+
+        if (message.senderId == userId) {
+            throw reactionNotAvailable()
+        }
+
+        if (message.reactionType == ChatMessageReactionType.HEART) {
+            return message
+        }
+
+        requireChatPairNotBlocked(chat)
+        validateActiveChatWindow(chat)
+        requireSecondChatJoinedForMessage(chat, userId)
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
+            requireNoPendingMutualCancellation(chat.id)
+        }
+        secondChatConversationLifecycleService.requireSecondChatMetadataMutationAllowed(
+            chat = chat,
+            now = now
+        )
+
+        if (!isCurrentlyReactableMessage(chatId = chatId, userId = userId, message = message)) {
+            throw reactionNotAvailable()
+        }
+
+        message.reactionType = ChatMessageReactionType.HEART
+        return chatMessageRepository.save(message)
     }
 
     fun recordChatDecision(
@@ -1502,6 +1553,50 @@ class ChatService(
             code = DomainErrorCode.CHAT_MESSAGE_INVALID,
             message = "Chat message is invalid"
         )
+
+    private fun reactionNotAvailable(): DomainConflictException =
+        DomainConflictException(
+            code = DomainErrorCode.CHAT_MESSAGE_REACTION_NOT_AVAILABLE,
+            message = "Chat message reaction is not available"
+        )
+
+    private fun isCurrentlyReactableMessage(
+        chatId: UUID,
+        userId: UUID,
+        message: ChatMessage
+    ): Boolean {
+        val latestIncoming =
+            chatMessageRepository.findLatestIncomingMessage(
+                chatSessionId = chatId,
+                userId = userId
+            ) ?: return false
+
+        if (compareMessageOrder(message, latestIncoming) > 0) {
+            return false
+        }
+
+        val boundary =
+            chatMessageRepository.findLatestOwnMessageBefore(
+                chatSessionId = chatId,
+                userId = userId,
+                cursorId = latestIncoming.id,
+                messageId = latestIncoming.id.toString()
+            )
+
+        return boundary == null || compareMessageOrder(message, boundary) > 0
+    }
+
+    private fun compareMessageOrder(
+        left: ChatMessage,
+        right: ChatMessage
+    ): Int {
+        val sentAtComparison = left.sentAt.compareTo(right.sentAt)
+        return if (sentAtComparison != 0) {
+            sentAtComparison
+        } else {
+            left.id.toString().compareTo(right.id.toString())
+        }
+    }
 
     private fun resolveMessagePageLimit(limit: Int?): Int {
         val resolvedLimit = limit ?: defaultMessagePageLimit

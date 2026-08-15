@@ -675,6 +675,7 @@ Implemented first step:
 - PostgreSQL/Testcontainers profile `postgres-it` includes a 5,000-message baseline for bounded initial and incremental reads, UUID tie-break pagination and V30 index presence. Local durations are diagnostic logs, not CI performance thresholds.
 
 Future work:
+- Message reactions are persisted on existing message rows, so changing `reaction_type` does not advance the `(sentAt, id)` cursor. Cross-device synchronization for old-row reaction mutations requires a future reaction event stream, updated-at cursor, tail polling strategy or equivalent product decision.
 - Add broader product/traffic metrics only after there is real usage volume:
   - messages sent per minute;
   - active chats;

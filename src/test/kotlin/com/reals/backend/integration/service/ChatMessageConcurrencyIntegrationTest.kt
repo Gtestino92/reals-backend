@@ -7,6 +7,7 @@ import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.ChatMessageReactionType
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -158,6 +159,35 @@ class ChatMessageConcurrencyIntegrationTest : BaseIT() {
                 "No message may commit after a pending request is visible"
             )
         }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `duplicate concurrent heart reactions converge to one persisted value`() {
+        val setup = createMatchWithFirstChat("concurrent-reaction")
+        val message = chatService.sendMessage(setup.firstChatId, setup.userBId, "message to heart")
+
+        val outcomes = runConcurrently(
+            {
+                chatService.putMessageReaction(
+                    chatId = setup.firstChatId,
+                    messageId = message.id,
+                    userId = setup.userAId,
+                    reactionType = ChatMessageReactionType.HEART
+                )
+            },
+            {
+                chatService.putMessageReaction(
+                    chatId = setup.firstChatId,
+                    messageId = message.id,
+                    userId = setup.userAId,
+                    reactionType = ChatMessageReactionType.HEART
+                )
+            }
+        )
+
+        assertTrue(outcomes.all { it.value != null }, outcomes.toString())
+        assertEquals(ChatMessageReactionType.HEART, chatMessageRepository.findById(message.id).orElseThrow().reactionType)
     }
 
     private fun createAvailableSecondChat(): ActiveSecondChatFixture {

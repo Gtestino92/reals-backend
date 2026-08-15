@@ -110,6 +110,26 @@ class ChatController(
         }
     }
 
+    @PutMapping("/{chatId}/messages/{messageId}/reaction")
+    fun putMessageReaction(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID,
+        @PathVariable messageId: UUID,
+        @Valid
+        @RequestBody request: PutMessageReactionRequest
+    ): ResponseEntity<ChatMessageResponse> =
+        ResponseEntity.ok(
+            ChatMessageResponse.from(
+                chatService.putMessageReaction(
+                    chatId = chatId,
+                    messageId = messageId,
+                    userId = userId,
+                    reactionType = request.type
+                ),
+                ::audioReadUrl
+            )
+        )
+
     @PostMapping("/{chatId}/guidance/next-request")
     fun requestNextGuidanceQuestion(
         @CurrentUserId userId: UUID,

@@ -90,6 +90,55 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
 
     @Query(
         value = """
+            select *
+            from chat_messages
+            where chat_session_id = :chatSessionId
+              and sender_id <> :userId
+            order by sent_at desc, cast(id as varchar) desc
+            limit 1
+        """,
+        nativeQuery = true
+    )
+    fun findLatestIncomingMessage(
+        @Param("chatSessionId") chatSessionId: UUID,
+        @Param("userId") userId: UUID
+    ): ChatMessage?
+
+    @Query(
+        value = """
+            select *
+            from chat_messages
+            where chat_session_id = :chatSessionId
+              and sender_id = :userId
+              and (
+                sent_at < (
+                  select cursor.sent_at
+                  from chat_messages cursor
+                  where cursor.id = :cursorId
+                )
+                or (
+                  sent_at = (
+                    select cursor.sent_at
+                    from chat_messages cursor
+                    where cursor.id = :cursorId
+                  )
+                  and cast(id as varchar) < :messageId
+                )
+              )
+            order by sent_at desc, cast(id as varchar) desc
+            limit 1
+        """,
+        nativeQuery = true
+    )
+    fun findLatestOwnMessageBefore(
+        @Param("chatSessionId") chatSessionId: UUID,
+        @Param("userId") userId: UUID,
+        @Param("cursorId") cursorId: UUID,
+        @Param("messageId") messageId: String
+    ): ChatMessage?
+
+    @Query(
+        value = """
             select coalesce(sum(length(content)), 0)
             from chat_messages
             where chat_session_id = :chatId

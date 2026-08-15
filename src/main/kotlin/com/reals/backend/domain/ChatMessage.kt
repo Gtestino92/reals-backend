@@ -14,6 +14,10 @@ enum class ChatMessageType {
     AUDIO
 }
 
+enum class ChatMessageReactionType {
+    HEART
+}
+
 @Entity
 @Table(name = "chat_messages")
 data class ChatMessage(
@@ -54,6 +58,10 @@ data class ChatMessage(
 
     @Column(name = "audio_sha256")
     var audioSha256: String? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_type")
+    var reactionType: ChatMessageReactionType? = null,
 
     @Column(name = "sent_at", nullable = false)
     var sentAt: OffsetDateTime = OffsetDateTime.now()

@@ -228,6 +228,7 @@ data class ChatMessageResponse(
     val messageType: ChatMessageType,
     val content: String?,
     val audio: ChatMessageAudioResponse?,
+    val reactionType: ChatMessageReactionType?,
     val sentAt: OffsetDateTime
 ) {
     companion object {
@@ -253,10 +254,15 @@ data class ChatMessageResponse(
             } else {
                 null
             },
+            reactionType = m.reactionType,
             sentAt = m.sentAt
         )
     }
 }
+
+data class PutMessageReactionRequest(
+    val type: ChatMessageReactionType
+)
 
 data class ChatMessageAudioResponse(
     val url: String,
