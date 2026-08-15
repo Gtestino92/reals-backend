@@ -224,21 +224,21 @@ class ChatMessageReactionIntegrationTest : BaseIT() {
             senderId = setup.userBId,
             content = "old incoming",
             sentAt = sentAt,
-            id = UUID.fromString("00000000-0000-0000-0000-000000000010")
+            id = UUID.fromString("00000000-0000-0000-0000-000000000001")
         )
         saveTextMessage(
             chatId = setup.firstChatId,
             senderId = setup.userAId,
             content = "boundary",
             sentAt = sentAt,
-            id = UUID.fromString("00000000-0000-0000-0000-000000000020")
+            id = UUID.fromString("00000000-0000-0000-0000-000000000002")
         )
         val latestIncoming = saveTextMessage(
             chatId = setup.firstChatId,
             senderId = setup.userBId,
             content = "latest incoming",
             sentAt = sentAt,
-            id = UUID.fromString("00000000-0000-0000-0000-000000000030")
+            id = UUID.fromString("00000000-0000-0000-0000-000000000003")
         )
 
         assertReactionRejected(setup.firstChatId, oldIncoming, setup.userAId)

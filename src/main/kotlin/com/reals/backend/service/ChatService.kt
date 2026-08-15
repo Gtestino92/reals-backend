@@ -1579,7 +1579,7 @@ class ChatService(
             chatMessageRepository.findLatestOwnMessageBefore(
                 chatSessionId = chatId,
                 userId = userId,
-                sentAt = latestIncoming.sentAt,
+                cursorId = latestIncoming.id,
                 messageId = latestIncoming.id.toString()
             )
 

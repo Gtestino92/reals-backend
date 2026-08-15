@@ -111,8 +111,19 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
             where chat_session_id = :chatSessionId
               and sender_id = :userId
               and (
-                sent_at < :sentAt
-                or (sent_at = :sentAt and cast(id as varchar) < :messageId)
+                sent_at < (
+                  select cursor.sent_at
+                  from chat_messages cursor
+                  where cursor.id = :cursorId
+                )
+                or (
+                  sent_at = (
+                    select cursor.sent_at
+                    from chat_messages cursor
+                    where cursor.id = :cursorId
+                  )
+                  and cast(id as varchar) < :messageId
+                )
               )
             order by sent_at desc, cast(id as varchar) desc
             limit 1
@@ -122,7 +133,7 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
     fun findLatestOwnMessageBefore(
         @Param("chatSessionId") chatSessionId: UUID,
         @Param("userId") userId: UUID,
-        @Param("sentAt") sentAt: OffsetDateTime,
+        @Param("cursorId") cursorId: UUID,
         @Param("messageId") messageId: String
     ): ChatMessage?
 
