@@ -413,17 +413,7 @@ class ChatService(
                 senderId = senderId,
                 clientMessageId = clientMessageId
             ) ?: return null
-
-        val (requestedReplyToMessageId, requestedReplyToPromptSnapshotId) = getReplyIdsForTarget(replyTarget)
-
-        if (existing.audioSha256 != audioSha256 || existing.replyToMessageId != requestedReplyToMessageId ||
-            existing.replyToPromptSnapshotId != requestedReplyToPromptSnapshotId) {
-            throw DomainConflictException(
-                code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
-                message = "Client message id was already used with different audio content"
-            )
-        }
-
+        validateAudioReplayOrThrow(existing, audioSha256, replyTarget)
         return existing
     }
 
@@ -446,6 +436,11 @@ class ChatService(
         requireChatPairNotBlocked(chat)
         validateActiveChatWindowSideEffectFree(chat, now)
         requireSecondChatJoinedForMessage(chat, senderId)
+        resolveReplyTarget(
+            chat = chat,
+            senderId = senderId,
+            replyTarget = replyTarget,
+        )
         if (chat.chatType == ChatType.FIRST_CHAT) {
             firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, senderId)
             requireNoPendingMutualCancellation(chat.id)
@@ -474,25 +469,19 @@ class ChatService(
     ): SendAudioMessageResult {
         val chat = findByIdForUpdateOrThrow(chatId)
         validateChatParticipant(chat, senderId)
-        val resolvedReplyTarget = resolveReplyTarget(
-            chat = chat,
-            senderId = senderId,
-            replyTarget = replyTarget,
-        )
         chatMessageRepository.findByChatSessionIdAndSenderIdAndClientMessageId(
             chatSessionId = chatId,
             senderId = senderId,
             clientMessageId = clientMessageId
         )?.let { existing ->
-            if (existing.audioSha256 != audioSha256) {
-                throw DomainConflictException(
-                    code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
-                    message = "Client message id was already used with different audio content"
-                )
-            }
+            validateAudioReplayOrThrow(existing, audioSha256, replyTarget)
             return SendAudioMessageResult.Replayed(existing)
         }
-
+        val resolvedReplyTarget = resolveReplyTarget(
+            chat = chat,
+            senderId = senderId,
+            replyTarget = replyTarget,
+        )
         requireChatPairNotBlocked(chat)
         validateActiveChatWindow(chat)
         requireSecondChatJoinedForMessage(chat, senderId)
@@ -1795,6 +1784,27 @@ class ChatService(
             ChatContinueDecision.APPROVED -> ChatParticipantDecisionStatus.APPROVED
             ChatContinueDecision.REJECTED -> ChatParticipantDecisionStatus.REJECTED
             null -> ChatParticipantDecisionStatus.PENDING
+        }
+    }
+
+    private fun validateAudioReplayOrThrow(
+        existing: ChatMessage,
+        audioSha256: String,
+        replyTarget: ChatReplyTarget?,
+    ) {
+        val (requestedReplyToMessageId, requestedReplyToPromptSnapshotId) =
+            getReplyIdsForTarget(replyTarget)
+
+        if (
+            existing.messageType != ChatMessageType.AUDIO ||
+            existing.audioSha256 != audioSha256 ||
+            existing.replyToMessageId != requestedReplyToMessageId ||
+            existing.replyToPromptSnapshotId != requestedReplyToPromptSnapshotId
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
+                message = "Client message id was already used with a different audio message payload"
+            )
         }
     }
 }

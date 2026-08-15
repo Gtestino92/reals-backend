@@ -44,7 +44,9 @@ class ChatMessageRepliesMigrationTest {
         insertAudioMessage(jdbc, chatId, userA, UUID.randomUUID())
 
         assertRejected(jdbc) {
-            val audioWithReply = insertAudioMessage(jdbc, chatId, userA, UUID.randomUUID())
+            val audioWithReply =
+                insertAudioMessage(jdbc, chatId, userA, UUID.randomUUID())
+
             jdbc.update(
                 "UPDATE chat_messages SET reply_to_message_id = ? WHERE id = ?",
                 targetMessageId,
