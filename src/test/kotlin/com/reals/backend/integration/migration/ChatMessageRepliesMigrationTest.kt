@@ -44,6 +44,24 @@ class ChatMessageRepliesMigrationTest {
         insertAudioMessage(jdbc, chatId, userA, UUID.randomUUID())
 
         assertRejected(jdbc) {
+            val audioWithReply = insertAudioMessage(jdbc, chatId, userA, UUID.randomUUID())
+            jdbc.update(
+                "UPDATE chat_messages SET reply_to_message_id = ? WHERE id = ?",
+                targetMessageId,
+                audioWithReply
+            )
+        }
+
+        assertRejected(jdbc) {
+            val legacyReply = insertTextMessage(jdbc, chatId, userA, null, "legacy reply")
+            jdbc.update(
+                "UPDATE chat_messages SET reply_to_message_id = ? WHERE id = ?",
+                targetMessageId,
+                legacyReply
+            )
+        }
+
+        assertRejected(jdbc) {
             jdbc.update(
                 "UPDATE chat_messages SET reply_to_prompt_snapshot_id = ? WHERE id = ?",
                 snapshotId,
@@ -173,7 +191,8 @@ class ChatMessageRepliesMigrationTest {
         chatId: UUID,
         senderId: UUID,
         clientMessageId: UUID
-    ) {
+    ): UUID {
+        val id = UUID.randomUUID()
         jdbc.update(
             """
             INSERT INTO chat_messages (
@@ -184,11 +203,12 @@ class ChatMessageRepliesMigrationTest {
             VALUES (?, ?, ?, 'AUDIO', ?, null, 'bucket', 'key', 'audio/mp4', 3, 1000,
                 '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81', now())
             """.trimIndent(),
-            UUID.randomUUID(),
+            id,
             chatId,
             senderId,
             clientMessageId
         )
+        return id
     }
 
     private fun indexPredicate(
