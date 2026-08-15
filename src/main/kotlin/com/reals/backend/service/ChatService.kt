@@ -332,10 +332,7 @@ class ChatService(
         normalizedContent: String,
         replyTarget: ChatReplyTarget?
     ) {
-        val requestedReplyToMessageId =
-            replyTarget?.takeIf { it.type == ChatReplyTargetType.MESSAGE }?.targetId
-        val requestedReplyToPromptSnapshotId =
-            replyTarget?.takeIf { it.type == ChatReplyTargetType.GUIDANCE_QUESTION }?.targetId
+        val (requestedReplyToMessageId, requestedReplyToPromptSnapshotId) = getReplyIdsForTarget(replyTarget)
 
         if (
             existing.messageType != ChatMessageType.TEXT ||
@@ -405,7 +402,8 @@ class ChatService(
         chatId: UUID,
         senderId: UUID,
         clientMessageId: UUID,
-        audioSha256: String
+        audioSha256: String,
+        replyTarget: ChatReplyTarget? = null,
     ): ChatMessage? {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, senderId)
@@ -416,7 +414,10 @@ class ChatService(
                 clientMessageId = clientMessageId
             ) ?: return null
 
-        if (existing.audioSha256 != audioSha256) {
+        val (requestedReplyToMessageId, requestedReplyToPromptSnapshotId) = getReplyIdsForTarget(replyTarget)
+
+        if (existing.audioSha256 != audioSha256 || existing.replyToMessageId != requestedReplyToMessageId ||
+            existing.replyToPromptSnapshotId != requestedReplyToPromptSnapshotId) {
             throw DomainConflictException(
                 code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
                 message = "Client message id was already used with different audio content"
@@ -426,10 +427,19 @@ class ChatService(
         return existing
     }
 
+    private fun getReplyIdsForTarget(replyTarget: ChatReplyTarget?): Pair<UUID?, UUID?> {
+        val requestedReplyToMessageId =
+            replyTarget?.takeIf { it.type == ChatReplyTargetType.MESSAGE }?.targetId
+        val requestedReplyToPromptSnapshotId =
+            replyTarget?.takeIf { it.type == ChatReplyTargetType.GUIDANCE_QUESTION }?.targetId
+        return Pair(requestedReplyToMessageId, requestedReplyToPromptSnapshotId)
+    }
+
     fun preflightNewAudioMessage(
         chatId: UUID,
         senderId: UUID,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime = OffsetDateTime.now(),
+        replyTarget: ChatReplyTarget? = null,
     ) {
         val chat = findByIdOrThrow(chatId)
         validateChatParticipant(chat, senderId)
@@ -459,11 +469,16 @@ class ChatService(
         audioObjectKey: String,
         cleanupTaskId: UUID,
         messageId: UUID,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime = OffsetDateTime.now(),
+        replyTarget: ChatReplyTarget? = null,
     ): SendAudioMessageResult {
         val chat = findByIdForUpdateOrThrow(chatId)
         validateChatParticipant(chat, senderId)
-
+        val resolvedReplyTarget = resolveReplyTarget(
+            chat = chat,
+            senderId = senderId,
+            replyTarget = replyTarget,
+        )
         chatMessageRepository.findByChatSessionIdAndSenderIdAndClientMessageId(
             chatSessionId = chatId,
             senderId = senderId,
@@ -523,8 +538,10 @@ class ChatService(
                     audioSizeBytes = audioSizeBytes,
                     audioDurationMillis = audioDurationMillis,
                     audioSha256 = audioSha256,
-                    sentAt = now
-                )
+                    sentAt = now,
+                    replyToMessageId = resolvedReplyTarget.replyToMessageId,
+                    replyToPromptSnapshotId = resolvedReplyTarget.replyToPromptSnapshotId,
+                    )
             )
 
         chat.lastMessageAt = maxOf(chat.lastMessageAt ?: message.sentAt, message.sentAt)

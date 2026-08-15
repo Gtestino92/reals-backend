@@ -3,6 +3,7 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
@@ -12,7 +13,9 @@ import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.S3StorageService
+import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -97,16 +100,33 @@ class ChatController(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID,
         @RequestPart("file") file: MultipartFile,
-        @RequestPart("clientMessageId") clientMessageId: String
+        @RequestPart("clientMessageId") clientMessageId: String,
+        @RequestPart(value = "replyToType", required = false) replyToType: ChatReplyTargetType?,
+        @RequestPart(value = "replyToTargetId", required = false) replyToTargetId: UUID?,
     ): ResponseEntity<ChatMessageResponse> {
         val parsedClientMessageId = UUID.fromString(clientMessageId)
+        val replyTarget = when {
+            replyToType == null && replyToTargetId == null -> null
+
+            replyToType != null && replyToTargetId != null ->
+                ChatService.ChatReplyTarget(
+                    type = replyToType,
+                    targetId = replyToTargetId,
+                )
+
+            else -> throw DomainBadRequestException(
+                code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                message = "replyToType and replyToTargetId must be provided together",
+            )
+        }
         val result = chatAudioUploadGuard.withPermit {
             chatAudioService.sendAudioMessage(
                 chatId = chatId,
                 senderId = userId,
                 clientMessageId = parsedClientMessageId,
                 contentType = file.contentType,
-                bytes = file.inputStream.use { it.readBytes() }
+                bytes = file.inputStream.use { it.readBytes() },
+                replyTarget = replyTarget,
             )
         }
 
