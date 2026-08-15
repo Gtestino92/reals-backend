@@ -218,6 +218,132 @@ class ChatMessageReplyIntegrationTest : BaseIT() {
         assertNull(second.clientMessageId)
     }
 
+    @Test
+    fun `audio replay requires same direct reply target`() {
+        val setup = createMatchWithFirstChat("audio-reply-idempotency")
+        val firstTarget =
+            sendMessageOrThrow(setup.firstChatId, setup.userBId, "target one")
+        val secondTarget =
+            sendMessageOrThrow(setup.firstChatId, setup.userBId, "target two")
+        val clientMessageId = UUID.randomUUID()
+
+        val existing = saveAudioMessage(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            clientMessageId = clientMessageId,
+            replyToMessageId = firstTarget.id,
+        )
+
+        val replayed = chatService.findAudioMessageReplayOrThrowOnConflict(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            clientMessageId = clientMessageId,
+            audioSha256 = AUDIO_SHA256,
+            replyTarget = ChatService.ChatReplyTarget(
+                ChatReplyTargetType.MESSAGE,
+                firstTarget.id,
+            ),
+        )
+
+        assertEquals(existing.id, replayed?.id)
+
+        assertIdempotencyConflict {
+            chatService.findAudioMessageReplayOrThrowOnConflict(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                clientMessageId = clientMessageId,
+                audioSha256 = AUDIO_SHA256,
+                replyTarget = ChatService.ChatReplyTarget(
+                    ChatReplyTargetType.MESSAGE,
+                    secondTarget.id,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `audio replay under chat lock rejects different reply target`() {
+        val setup = createMatchWithFirstChat("audio-reply-lock-replay")
+        val firstTarget =
+            sendMessageOrThrow(setup.firstChatId, setup.userBId, "target one")
+        val secondTarget =
+            sendMessageOrThrow(setup.firstChatId, setup.userBId, "target two")
+        val clientMessageId = UUID.randomUUID()
+
+        val existing = saveAudioMessage(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            clientMessageId = clientMessageId,
+            replyToMessageId = firstTarget.id,
+        )
+
+        val replayed = chatService.sendAudioMessageWithResult(
+            chatId = setup.firstChatId,
+            senderId = setup.userAId,
+            clientMessageId = clientMessageId,
+            audioContentType = "audio/mp4",
+            audioSizeBytes = 3,
+            audioDurationMillis = 1_000,
+            audioSha256 = AUDIO_SHA256,
+            audioBucket = "unused-on-replay",
+            audioObjectKey = "unused-on-replay",
+            cleanupTaskId = UUID.randomUUID(),
+            messageId = UUID.randomUUID(),
+            replyTarget = ChatService.ChatReplyTarget(
+                ChatReplyTargetType.MESSAGE,
+                firstTarget.id,
+            ),
+        )
+
+        assertEquals(
+            existing.id,
+            (replayed as ChatService.SendAudioMessageResult.Replayed).message.id,
+        )
+
+        assertIdempotencyConflict {
+            chatService.sendAudioMessageWithResult(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                clientMessageId = clientMessageId,
+                audioContentType = "audio/mp4",
+                audioSizeBytes = 3,
+                audioDurationMillis = 1_000,
+                audioSha256 = AUDIO_SHA256,
+                audioBucket = "unused-on-conflict",
+                audioObjectKey = "unused-on-conflict",
+                cleanupTaskId = UUID.randomUUID(),
+                messageId = UUID.randomUUID(),
+                replyTarget = ChatService.ChatReplyTarget(
+                    ChatReplyTargetType.MESSAGE,
+                    secondTarget.id,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `audio reply preflight rejects unavailable target before upload`() {
+        val setup = createMatchWithFirstChat("audio-reply-preflight")
+        val ownMessage =
+            sendMessageOrThrow(setup.firstChatId, setup.userAId, "own target")
+
+        val exception = assertThrows<DomainConflictException> {
+            chatService.preflightNewAudioMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                replyTarget = ChatService.ChatReplyTarget(
+                    ChatReplyTargetType.MESSAGE,
+                    ownMessage.id,
+                ),
+            )
+        }
+
+        assertEquals(
+            DomainErrorCode.CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE,
+            exception.code,
+        )
+    }
+
     private fun sendReply(
         chatId: UUID,
         senderId: UUID,
@@ -278,7 +404,9 @@ class ChatMessageReplyIntegrationTest : BaseIT() {
     private fun saveAudioMessage(
         chatId: UUID,
         senderId: UUID,
-        clientMessageId: UUID = UUID.randomUUID()
+        clientMessageId: UUID = UUID.randomUUID(),
+        replyToMessageId: UUID? = null,
+        replyToPromptSnapshotId: UUID? = null,
     ): ChatMessage =
         chatMessageRepository.saveAndFlush(
             ChatMessage(
@@ -292,7 +420,14 @@ class ChatMessageReplyIntegrationTest : BaseIT() {
                 audioContentType = "audio/mp4",
                 audioSizeBytes = 3,
                 audioDurationMillis = 1_000,
-                audioSha256 = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+                audioSha256 = AUDIO_SHA256,
+                replyToMessageId = replyToMessageId,
+                replyToPromptSnapshotId = replyToPromptSnapshotId,
             )
         )
+
+    private companion object {
+        const val AUDIO_SHA256 =
+            "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+    }
 }
