@@ -550,6 +550,27 @@ abstract class BaseIT {
         chatId: UUID,
         senderId: UUID,
         content: String,
+        now: OffsetDateTime
+    ): ChatMessage =
+        when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = senderId,
+                content = content,
+                now = now
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent -> result.message
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    protected fun sendMessageOrThrow(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        clientMessageId: UUID? = null,
+        replyTarget: ChatService.ChatReplyTarget? = null,
         now: OffsetDateTime = OffsetDateTime.now()
     ): ChatMessage =
         when (
@@ -557,6 +578,8 @@ abstract class BaseIT {
                 chatId = chatId,
                 senderId = senderId,
                 content = content,
+                clientMessageId = clientMessageId,
+                replyTarget = replyTarget,
                 now = now
             )
         ) {

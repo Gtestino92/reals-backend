@@ -7,6 +7,7 @@ import com.reals.backend.domain.ChatExitRequestType
 import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatMessageReactionType
 import com.reals.backend.domain.ChatMessageType
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
@@ -14,6 +15,7 @@ import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
+import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
@@ -226,7 +228,8 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 senderId = eqUuid(setup.userAId),
                 clientMessageId = eqUuid(clientMessageId),
                 contentType = Mockito.eq("audio/mp4"),
-                bytes = anyBytes()
+                bytes = anyBytes(),
+                replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
             )
         ).thenReturn(ChatAudioSendResult.Created(audioMessage))
         Mockito.clearInvocations(legalComplianceService)
@@ -262,7 +265,8 @@ class ChatControllerIntegrationTest : ControllerIT() {
             senderId = eqUuid(setup.userAId),
             clientMessageId = eqUuid(clientMessageId),
             contentType = Mockito.eq("audio/mp4"),
-            bytes = anyBytes()
+            bytes = anyBytes(),
+            replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
         )
     }
 
@@ -274,7 +278,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
             post("/api/chats/${setup.firstChatId}/messages")
                 .with(authenticatedAs(setup.userAId))
                 .contentType(jsonContentType)
-                .content(jsonBody(mapOf("content" to "a".repeat(40))))
+                .content(jsonBody(mapOf("content" to "a".repeat(60))))
         )
             .andExpect(status().isOk)
 
@@ -287,7 +291,10 @@ class ChatControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.question.text").exists())
             .andExpect(jsonPath("$.questionOrdinal", equalTo(1)))
             .andExpect(jsonPath("$.maxQuestions", equalTo(3)))
-            .andExpect(jsonPath("$.requiredCharacters", equalTo(40)))
+            .andExpect(jsonPath("$.requiredCharacters", equalTo(60)))
+            .andExpect(jsonPath("$.requiredParticipationScore", equalTo(60)))
+            .andExpect(jsonPath("$.directQuestionReplyMultiplier", equalTo(2)))
+            .andExpect(jsonPath("$.progressionAction", equalTo("NEXT_QUESTION")))
             .andExpect(jsonPath("$.canRequestNext", equalTo(false)))
             .andExpect(jsonPath("$.myNextRequested", equalTo(true)))
             .andExpect(jsonPath("$.completed", equalTo(false)))
@@ -890,7 +897,104 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 )
             )
     }
-    
+
+    @Test
+    fun `audio reply multipart accepts text plain reply target parts`() {
+        val setup = createMatchWithFirstChat("audio-reply-http")
+        val targetMessage =
+            sendMessageOrThrow(
+                setup.firstChatId,
+                setup.userBId,
+                "Mensaje citado",
+            )
+
+        val clientMessageId = UUID.randomUUID()
+
+        val audioMessage = ChatMessage(
+            id = UUID.randomUUID(),
+            chatSessionId = setup.firstChatId,
+            senderId = setup.userAId,
+            messageType = ChatMessageType.AUDIO,
+            clientMessageId = clientMessageId,
+            content = null,
+            audioBucket = "reals-media-test",
+            audioObjectKey = "chats/${setup.firstChatId}/messages/$clientMessageId.m4a",
+            audioContentType = "audio/mp4",
+            audioSizeBytes = 3,
+            audioDurationMillis = 1_000,
+            audioSha256 = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+            replyToMessageId = targetMessage.id,
+        )
+
+        Mockito.`when`(
+            chatAudioService.sendAudioMessage(
+                chatId = eqUuid(setup.firstChatId),
+                senderId = eqUuid(setup.userAId),
+                clientMessageId = eqUuid(clientMessageId),
+                contentType = Mockito.eq("audio/mp4"),
+                bytes = anyBytes(),
+                replyTarget = Mockito.eq(
+                    ChatService.ChatReplyTarget(
+                        type = ChatReplyTargetType.MESSAGE,
+                        targetId = targetMessage.id,
+                    )
+                ),
+            )
+        ).thenReturn(ChatAudioSendResult.Created(audioMessage))
+
+        mockMvc.perform(
+            multipart("/api/chats/${setup.firstChatId}/audio-messages")
+                .file(
+                    MockMultipartFile(
+                        "file",
+                        "message.m4a",
+                        "audio/mp4",
+                        byteArrayOf(1, 2, 3),
+                    )
+                )
+                .file(
+                    MockMultipartFile(
+                        "clientMessageId",
+                        "",
+                        "text/plain",
+                        clientMessageId.toString().toByteArray(),
+                    )
+                )
+                .file(
+                    MockMultipartFile(
+                        "replyToType",
+                        "",
+                        "text/plain",
+                        "MESSAGE".toByteArray(),
+                    )
+                )
+                .file(
+                    MockMultipartFile(
+                        "replyToTargetId",
+                        "",
+                        "text/plain",
+                        targetMessage.id.toString().toByteArray(),
+                    )
+                )
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isCreated)
+
+        Mockito.verify(chatAudioService).sendAudioMessage(
+            chatId = eqUuid(setup.firstChatId),
+            senderId = eqUuid(setup.userAId),
+            clientMessageId = eqUuid(clientMessageId),
+            contentType = Mockito.eq("audio/mp4"),
+            bytes = anyBytes(),
+            replyTarget = Mockito.eq(
+                ChatService.ChatReplyTarget(
+                    type = ChatReplyTargetType.MESSAGE,
+                    targetId = targetMessage.id,
+                )
+            ),
+        )
+    }
+
     private fun pendingMutualRequests(chatId: UUID) =
         chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(chatId)
             .filter {

@@ -3,15 +3,19 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
 import com.reals.backend.service.ChatAudioUploadGuard
+import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import com.reals.backend.service.S3StorageService
+import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -31,6 +35,7 @@ class ChatController(
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
     private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val chatMessageReplyPreviewResolver: ChatMessageReplyPreviewResolver,
     private val storageService: S3StorageService,
     private val chatExitService: ChatExitService,
     private val legalComplianceService: LegalComplianceService
@@ -69,11 +74,18 @@ class ChatController(
             val result = chatService.sendMessageWithResult(
                 chatId = chatId,
                 senderId = userId,
-                content = request.content
+                content = request.content,
+                clientMessageId = request.clientMessageId,
+                replyTarget = request.replyTo?.let {
+                    ChatService.ChatReplyTarget(
+                        type = it.type,
+                        targetId = it.targetId
+                    )
+                }
             )
         ) {
             is ChatService.SendMessageResult.Sent ->
-                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                ResponseEntity.ok(messageResponse(result.message))
 
             is ChatService.SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
@@ -88,25 +100,70 @@ class ChatController(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID,
         @RequestPart("file") file: MultipartFile,
-        @RequestPart("clientMessageId") clientMessageId: String
+        @RequestPart("clientMessageId") clientMessageId: String,
+        @RequestPart(value = "replyToType", required = false) replyToType: String?,
+        @RequestPart(value = "replyToTargetId", required = false) replyToTargetId: String?,
     ): ResponseEntity<ChatMessageResponse> {
         val parsedClientMessageId = UUID.fromString(clientMessageId)
+        val parsedReplyToType = replyToType
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    ChatReplyTargetType.valueOf(raw.uppercase())
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToType",
+                    )
+                }
+            }
+
+        val parsedReplyToTargetId = replyToTargetId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    UUID.fromString(raw)
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToTargetId",
+                    )
+                }
+            }
+
+        val replyTarget = when {
+            parsedReplyToType == null && parsedReplyToTargetId == null -> null
+
+            parsedReplyToType != null && parsedReplyToTargetId != null ->
+                ChatService.ChatReplyTarget(
+                    type = parsedReplyToType,
+                    targetId = parsedReplyToTargetId,
+                )
+
+            else -> throw DomainBadRequestException(
+                code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                message = "replyToType and replyToTargetId must be provided together",
+            )
+        }
         val result = chatAudioUploadGuard.withPermit {
             chatAudioService.sendAudioMessage(
                 chatId = chatId,
                 senderId = userId,
                 clientMessageId = parsedClientMessageId,
                 contentType = file.contentType,
-                bytes = file.inputStream.use { it.readBytes() }
+                bytes = file.inputStream.use { it.readBytes() },
+                replyTarget = replyTarget,
             )
         }
 
         return when (result) {
             is ChatAudioSendResult.Created ->
                 ResponseEntity.status(HttpStatus.CREATED)
-                    .body(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                    .body(messageResponse(result.message))
             is ChatAudioSendResult.Replayed ->
-                ResponseEntity.ok(ChatMessageResponse.from(result.message, ::audioReadUrl))
+                ResponseEntity.ok(messageResponse(result.message))
         }
     }
 
@@ -117,18 +174,16 @@ class ChatController(
         @PathVariable messageId: UUID,
         @Valid
         @RequestBody request: PutMessageReactionRequest
-    ): ResponseEntity<ChatMessageResponse> =
-        ResponseEntity.ok(
-            ChatMessageResponse.from(
-                chatService.putMessageReaction(
-                    chatId = chatId,
-                    messageId = messageId,
-                    userId = userId,
-                    reactionType = request.type
-                ),
-                ::audioReadUrl
+    ): ResponseEntity<ChatMessageResponse> {
+        val message =
+            chatService.putMessageReaction(
+                chatId = chatId,
+                messageId = messageId,
+                userId = userId,
+                reactionType = request.type
             )
-        )
+        return ResponseEntity.ok(messageResponse(message))
+    }
 
     @PostMapping("/{chatId}/guidance/next-request")
     fun requestNextGuidanceQuestion(
@@ -172,7 +227,8 @@ class ChatController(
                 ChatMessagesResponse.from(
                     messages = page.messages,
                     hasMore = page.hasMore,
-                    audioUrlResolver = ::audioReadUrl
+                    audioUrlResolver = ::audioReadUrl,
+                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
                 )
             )
         }
@@ -184,7 +240,7 @@ class ChatController(
         )
 
         return ResponseEntity.ok<Any>(
-            messages.map { ChatMessageResponse.from(it, ::audioReadUrl) }
+            messageResponses(messages)
         )
     }
 
@@ -319,5 +375,23 @@ class ChatController(
             bucket = requireNotNull(message.audioBucket),
             key = requireNotNull(message.audioObjectKey)
         )
+
+    private fun messageResponse(message: com.reals.backend.domain.ChatMessage): ChatMessageResponse =
+        ChatMessageResponse.from(
+            m = message,
+            audioUrlResolver = ::audioReadUrl,
+            replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
+        )
+
+    private fun messageResponses(messages: List<com.reals.backend.domain.ChatMessage>): List<ChatMessageResponse> {
+        val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(messages)
+        return messages.map { message ->
+            ChatMessageResponse.from(
+                m = message,
+                audioUrlResolver = ::audioReadUrl,
+                replyTo = replyPreviews[message.id]
+            )
+        }
+    }
 
 }

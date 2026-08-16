@@ -72,7 +72,8 @@ class ChatAudioServiceTest {
             .preflightNewAudioMessage(
                 chatId = eqValue(CHAT_ID),
                 senderId = eqValue(SENDER_ID),
-                now = anyOffsetDateTime()
+                now = anyOffsetDateTime(),
+                replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
             )
 
         val ex = assertThrows<DomainConflictException> {

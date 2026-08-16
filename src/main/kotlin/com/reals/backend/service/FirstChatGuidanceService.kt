@@ -28,14 +28,23 @@ data class FirstChatGuidedQuestion(
 
 data class FirstChatGuidanceState(
     val questionId: String,
+    val questionInstanceId: UUID?,
     val questionText: String,
     val questionOrdinal: Int,
     val maxQuestions: Int,
     val requiredCharacters: Int,
+    val requiredParticipationScore: Int,
+    val directQuestionReplyMultiplier: Int,
+    val progressionAction: FirstChatGuidanceProgressionAction?,
     val canRequestNext: Boolean,
     val myNextRequested: Boolean,
     val completed: Boolean
 )
+
+enum class FirstChatGuidanceProgressionAction {
+    NEXT_QUESTION,
+    COMPLETE
+}
 
 @Component
 class FirstChatGuidedQuestionCatalog(
@@ -165,15 +174,23 @@ class FirstChatGuidanceService(
     private val matchService: MatchService,
     private val questionCatalog: FirstChatGuidedQuestionCatalog,
     private val promptSnapshotRepository: ConversationPromptSnapshotRepository,
-    @param:Value("\${chat.first-chat.guidance.required-characters:40}")
-    private val requiredCharacters: Int,
+    @param:Value("\${chat.first-chat.guidance.required-participation-score:\${chat.first-chat.guidance.required-characters:60}}")
+    private val requiredParticipationScore: Int,
+    @param:Value("\${chat.first-chat.guidance.direct-question-reply-multiplier:2}")
+    private val directQuestionReplyMultiplier: Int,
     @param:Value("\${chat.first-chat.guidance.max-questions:3}")
     private val maxQuestions: Int
 ) {
+    private companion object {
+        val NO_CURRENT_PROMPT_SNAPSHOT_ID: UUID = UUID(0, 0)
+    }
 
     init {
-        require(requiredCharacters >= 0) {
-            "chat.first-chat.guidance.required-characters must not be negative"
+        require(requiredParticipationScore >= 0) {
+            "chat.first-chat.guidance.required-participation-score must not be negative"
+        }
+        require(directQuestionReplyMultiplier >= 1) {
+            "chat.first-chat.guidance.direct-question-reply-multiplier must be at least 1"
         }
         require(maxQuestions > 0) {
             "chat.first-chat.guidance.max-questions must be positive"
@@ -193,7 +210,7 @@ class FirstChatGuidanceService(
                 currentQuestionText = question.questionText,
                 currentQuestionOrdinal = 1,
                 currentQuestionActivatedAt = now,
-                completedAt = if (maxQuestions == 1) now else null,
+                completedAt = null,
                 createdAt = now,
                 updatedAt = now
             )
@@ -207,8 +224,6 @@ class FirstChatGuidanceService(
         val guidance = guidanceRepository.findByChatId(chat.id)
             ?: return null
 
-        normalizeFinalQuestionCompletionIfNeeded(guidance)
-
         return guidance.toState(chat, userId)
     }
 
@@ -219,8 +234,6 @@ class FirstChatGuidanceService(
         val guidance =
             guidanceRepository.findByChatIdForUpdate(chat.id)
                 ?: throw guidanceNotFound()
-
-        normalizeFinalQuestionCompletionIfNeeded(guidance)
 
         if (guidance.completedAt != null) {
             throw DomainConflictException(
@@ -244,14 +257,15 @@ class FirstChatGuidanceService(
             )
         }
 
-        val participationCharacters =
-            participationCharacters(
+        val participationScore =
+            participationScore(
                 chatId = chat.id,
                 userId = userId,
-                since = guidance.currentQuestionActivatedAt
+                since = guidance.currentQuestionActivatedAt,
+                currentPromptSnapshotId = currentQuestionInstanceId(chat.id, guidance.currentQuestionOrdinal)
             )
 
-        if (participationCharacters < requiredCharacters) {
+        if (participationScore < requiredParticipationScore) {
             throw DomainConflictException(
                 code = DomainErrorCode.FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED,
                 message = "Minimum participation is required before requesting another question"
@@ -279,6 +293,14 @@ class FirstChatGuidanceService(
         guidance: FirstChatGuidance,
         now: OffsetDateTime
     ) {
+        guidance.userANextRequestedAt = null
+        guidance.userBNextRequestedAt = null
+
+        if (guidance.currentQuestionOrdinal >= maxQuestions) {
+            guidance.completedAt = now
+            return
+        }
+
         val nextOrdinal = guidance.currentQuestionOrdinal + 1
         val nextQuestion = snapshotOrGenericQuestion(chat.id, nextOrdinal)
 
@@ -286,22 +308,6 @@ class FirstChatGuidanceService(
         guidance.currentQuestionText = nextQuestion.questionText
         guidance.currentQuestionOrdinal = nextOrdinal
         guidance.currentQuestionActivatedAt = now
-        guidance.userANextRequestedAt = null
-        guidance.userBNextRequestedAt = null
-        guidance.completedAt = if (nextOrdinal >= maxQuestions) now else null
-    }
-
-    private fun normalizeFinalQuestionCompletionIfNeeded(guidance: FirstChatGuidance) {
-        if (guidance.currentQuestionOrdinal < maxQuestions || guidance.completedAt != null) {
-            return
-        }
-
-        val now = OffsetDateTime.now()
-        guidance.completedAt = now
-        guidance.userANextRequestedAt = null
-        guidance.userBNextRequestedAt = null
-        guidance.updatedAt = now
-        guidanceRepository.save(guidance)
     }
 
     private fun snapshotOrGenericQuestion(
@@ -330,41 +336,63 @@ class FirstChatGuidanceService(
             when (userId) {
                 match.userAId -> userANextRequestedAt != null
                 match.userBId -> userBNextRequestedAt != null
-                else -> throw IllegalArgumentException("User $userId does not belong to chat ${chat.id}")
-            }
+            else -> throw IllegalArgumentException("User $userId does not belong to chat ${chat.id}")
+        }
 
-        val completed = completedAt != null || currentQuestionOrdinal >= maxQuestions
+        val completed = completedAt != null
+        val questionInstanceId = currentQuestionInstanceId(chat.id, currentQuestionOrdinal)
         val canRequestNext =
             !completed &&
                 !myNextRequested &&
-                participationCharacters(
+                participationScore(
                     chatId = chat.id,
                     userId = userId,
-                    since = currentQuestionActivatedAt
-                ) >= requiredCharacters
+                    since = currentQuestionActivatedAt,
+                    currentPromptSnapshotId = questionInstanceId
+                ) >= requiredParticipationScore
 
         return FirstChatGuidanceState(
             questionId = currentQuestionId,
+            questionInstanceId = questionInstanceId,
             questionText = currentQuestionText,
             questionOrdinal = currentQuestionOrdinal,
             maxQuestions = maxQuestions,
-            requiredCharacters = requiredCharacters,
+            requiredCharacters = requiredParticipationScore,
+            requiredParticipationScore = requiredParticipationScore,
+            directQuestionReplyMultiplier = directQuestionReplyMultiplier,
+            progressionAction = when {
+                completed -> null
+                currentQuestionOrdinal >= maxQuestions -> FirstChatGuidanceProgressionAction.COMPLETE
+                else -> FirstChatGuidanceProgressionAction.NEXT_QUESTION
+            },
             canRequestNext = canRequestNext,
             myNextRequested = myNextRequested,
             completed = completed
         )
     }
 
-    private fun participationCharacters(
+    private fun participationScore(
         chatId: UUID,
         userId: UUID,
-        since: OffsetDateTime
+        since: OffsetDateTime,
+        currentPromptSnapshotId: UUID?
     ): Long =
-        chatMessageRepository.sumContentLengthByChatSenderSince(
+        chatMessageRepository.sumParticipationScoreByChatSenderSince(
             chatId = chatId,
             senderId = userId,
-            sentAt = since
+            sentAt = since,
+            currentPromptSnapshotId = currentPromptSnapshotId ?: NO_CURRENT_PROMPT_SNAPSHOT_ID,
+            directQuestionReplyMultiplier = directQuestionReplyMultiplier
         )
+
+    private fun currentQuestionInstanceId(
+        chatId: UUID,
+        ordinal: Int
+    ): UUID? =
+        promptSnapshotRepository.findByChatIdAndOrdinal(
+            chatId = chatId,
+            ordinal = ordinal
+        )?.id
 
     private fun guidanceNotFound(): DomainNotFoundException =
         DomainNotFoundException(

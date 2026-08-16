@@ -101,7 +101,8 @@ chat:
     min-messages-per-user: 0
     min-messages-before-free-cancel: 1
     guidance:
-      required-characters: 40
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
       max-questions: 3
       catalog: classpath:first-chat-guided-questions.es.json
     audio:

@@ -30,7 +30,8 @@ class ChatAudioService(
         senderId: UUID,
         clientMessageId: UUID,
         contentType: String?,
-        bytes: ByteArray
+        bytes: ByteArray,
+        replyTarget: ChatService.ChatReplyTarget? = null,
     ): ChatAudioSendResult {
         val inspection = validationService.inspect(contentType, bytes)
         val sha256 = sha256Hex(bytes)
@@ -39,12 +40,14 @@ class ChatAudioService(
             chatId = chatId,
             senderId = senderId,
             clientMessageId = clientMessageId,
-            audioSha256 = sha256
+            audioSha256 = sha256,
+            replyTarget = replyTarget,
         )?.let { return ChatAudioSendResult.Replayed(it) }
 
         chatService.preflightNewAudioMessage(
             chatId = chatId,
-            senderId = senderId
+            senderId = senderId,
+            replyTarget = replyTarget,
         )
 
         val messageId = UUID.randomUUID()
@@ -75,7 +78,8 @@ class ChatAudioService(
                     audioBucket = storedObject.bucket,
                     audioObjectKey = storedObject.key,
                     cleanupTaskId = guardTask.id,
-                    messageId = messageId
+                    messageId = messageId,
+                    replyTarget = replyTarget,
                 )
             ) {
                 is ChatService.SendAudioMessageResult.Created ->
@@ -90,7 +94,8 @@ class ChatAudioService(
                 chatId = chatId,
                 senderId = senderId,
                 clientMessageId = clientMessageId,
-                audioSha256 = sha256
+                audioSha256 = sha256,
+                replyTarget = replyTarget,
             ) ?: throw DomainConflictException(
                 code = DomainErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT,
                 message = "Audio message idempotency race could not be resolved"

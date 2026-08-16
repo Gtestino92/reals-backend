@@ -25,9 +25,9 @@ script:post-response {
       throw new Error("Expected guidance.question object.");
     }
     const keys = Object.keys(question).sort();
-    const expectedKeys = ["id", "text"];
+    const expectedKeys = ["id", "instanceId", "text"];
     if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
-      throw new Error(`Expected guidance.question keys id,text only, got ${keys.join(",")}.`);
+      throw new Error(`Expected guidance.question keys id,instanceId,text only, got ${keys.join(",")}.`);
     }
     for (const field of ["answerCode", "answerLabel", "categoryId", "semanticVersion", "conversationKind", "conversationPotential", "score", "percentage"]) {
       if (Object.prototype.hasOwnProperty.call(question, field)) {

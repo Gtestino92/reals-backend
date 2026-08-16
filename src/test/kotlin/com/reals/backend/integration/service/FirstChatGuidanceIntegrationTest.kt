@@ -4,7 +4,9 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConversationPromptSnapshotSourceType
 import com.reals.backend.domain.FirstChatGuidance
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.ChatService
 import com.reals.backend.service.affinity.AffinityDerivedSnapshotInitializationService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -182,7 +184,7 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
         assertFalse(userAInitial.canRequestNext)
         assertFalse(userAInitial.myNextRequested)
 
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(40))
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(60))
 
         val belowThreshold =
             assertThrows(DomainConflictException::class.java) {
@@ -190,12 +192,12 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
             }
         assertEquals(DomainErrorCode.FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED, belowThreshold.code)
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(20))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(30))
         assertThrows(DomainConflictException::class.java) {
             chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
         }
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "c".repeat(20))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "c".repeat(30))
 
         val userARequested =
             chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
@@ -244,12 +246,12 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
             ) ?: error("Expected user A Q2 guidance")
         assertFalse(userAAfterQ2.canRequestNext)
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "d".repeat(40))
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "e".repeat(15))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "d".repeat(60))
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "e".repeat(30))
         assertThrows(DomainConflictException::class.java) {
             chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userBId)
         }
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "f".repeat(25))
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "f".repeat(30))
 
         val q2UserARequest =
             chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
@@ -262,7 +264,7 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
         assertEquals(3, q3ForUserB.questionOrdinal)
         assertNotEquals(q1Id, q3ForUserB.questionId)
         assertNotEquals(q2Id, q3ForUserB.questionId)
-        assertTrue(q3ForUserB.completed)
+        assertFalse(q3ForUserB.completed)
         assertFalse(q3ForUserB.canRequestNext)
         assertFalse(q3ForUserB.myNextRequested)
 
@@ -272,22 +274,44 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
         val q3Text = q3Guidance.currentQuestionText
         assertEquals(3, q3Guidance.currentQuestionOrdinal)
         assertEquals(q3ForUserB.questionId, q3Id)
-        assertNotNull(q3Guidance.completedAt)
+        assertNull(q3Guidance.completedAt)
         assertNull(q3Guidance.userANextRequestedAt)
         assertNull(q3Guidance.userBNextRequestedAt)
 
-        val completedForUserA =
+        val q3ForUserA =
             chatService.getFirstChatGuidanceState(
                 chat = chatService.findByIdOrThrow(setup.firstChatId),
                 userId = setup.userAId
-            ) ?: error("Expected completed Q3 guidance")
+            ) ?: error("Expected Q3 guidance")
 
-        assertEquals(3, completedForUserA.questionOrdinal)
-        assertEquals(q3Id, completedForUserA.questionId)
-        assertEquals(q3Text, completedForUserA.questionText)
-        assertTrue(completedForUserA.completed)
-        assertFalse(completedForUserA.canRequestNext)
-        assertFalse(completedForUserA.myNextRequested)
+        assertEquals(3, q3ForUserA.questionOrdinal)
+        assertEquals(q3Id, q3ForUserA.questionId)
+        assertEquals(q3Text, q3ForUserA.questionText)
+        assertFalse(q3ForUserA.completed)
+        assertFalse(q3ForUserA.canRequestNext)
+        assertFalse(q3ForUserA.myNextRequested)
+
+        assertThrows(DomainConflictException::class.java) {
+            chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
+        }
+
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "g".repeat(60))
+        val q3ARequested =
+            chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
+
+        assertEquals(3, q3ARequested.questionOrdinal)
+        assertTrue(q3ARequested.myNextRequested)
+        assertFalse(q3ARequested.completed)
+
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "h".repeat(60))
+        val completedForUserB =
+            chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userBId)
+
+        assertEquals(3, completedForUserB.questionOrdinal)
+        assertEquals(q3Id, completedForUserB.questionId)
+        assertTrue(completedForUserB.completed)
+        assertFalse(completedForUserB.canRequestNext)
+        assertFalse(completedForUserB.myNextRequested)
 
         val completedAgain =
             assertThrows(DomainConflictException::class.java) {
@@ -306,14 +330,84 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
         )
         val snapshots = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(setup.firstChatId)
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(40))
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(40))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(60))
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(60))
         chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
         val advanced = chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userBId)
 
         assertEquals(2, advanced.questionOrdinal)
         assertEquals(snapshots[1].sourceQuestionId, advanced.questionId)
         assertEquals(snapshots[1].promptText, advanced.questionText)
+    }
+
+    @Test
+    fun `guidance participation score weights only direct replies to current question`() {
+        val setup = createMatchWithFirstChat("guidance-weighted")
+        val q1 = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(setup.firstChatId)[0]
+
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(59))
+        assertParticipationRequired(setup.firstChatId, setup.userAId)
+
+        val directSetup = createMatchWithFirstChat("guidance-weighted-direct")
+        val directQ1 = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(directSetup.firstChatId)[0]
+        sendGuidanceReply(directSetup.firstChatId, directSetup.userAId, "b".repeat(29), directQ1.id)
+        assertParticipationRequired(directSetup.firstChatId, directSetup.userAId)
+        sendGuidanceReply(directSetup.firstChatId, directSetup.userAId, "c", directQ1.id)
+        assertTrue(
+            chatService.getFirstChatGuidanceState(
+                chat = chatService.findByIdOrThrow(directSetup.firstChatId),
+                userId = directSetup.userAId
+            )?.canRequestNext == true
+        )
+
+        val mixedSetup = createMatchWithFirstChat("guidance-weighted-mixed")
+        val mixedQ1 = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(mixedSetup.firstChatId)[0]
+        sendGuidanceReply(mixedSetup.firstChatId, mixedSetup.userAId, "d".repeat(20), mixedQ1.id)
+        chatService.sendMessage(mixedSetup.firstChatId, mixedSetup.userAId, "e".repeat(20))
+        assertTrue(
+            chatService.getFirstChatGuidanceState(
+                chat = chatService.findByIdOrThrow(mixedSetup.firstChatId),
+                userId = mixedSetup.userAId
+            )?.canRequestNext == true
+        )
+
+        val partnerReplySetup = createMatchWithFirstChat("guidance-weighted-partner")
+        val partnerMessage = sendMessageOrThrow(partnerReplySetup.firstChatId, partnerReplySetup.userBId, "partner")
+        sendMessageOrThrow(
+            chatId = partnerReplySetup.firstChatId,
+            senderId = partnerReplySetup.userAId,
+            content = "f".repeat(30),
+            clientMessageId = UUID.randomUUID(),
+            replyTarget = ChatService.ChatReplyTarget(ChatReplyTargetType.MESSAGE, partnerMessage.id)
+        )
+        assertParticipationRequired(partnerReplySetup.firstChatId, partnerReplySetup.userAId)
+
+        val historicalSetup = createMatchWithFirstChat("guidance-weighted-historical")
+        val historicalQ1 = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(historicalSetup.firstChatId)[0]
+        chatService.sendMessage(historicalSetup.firstChatId, historicalSetup.userAId, "g".repeat(60))
+        chatService.sendMessage(historicalSetup.firstChatId, historicalSetup.userBId, "h".repeat(60))
+        chatService.requestFirstChatGuidanceNext(historicalSetup.firstChatId, historicalSetup.userAId)
+        chatService.requestFirstChatGuidanceNext(historicalSetup.firstChatId, historicalSetup.userBId)
+        sendGuidanceReply(historicalSetup.firstChatId, historicalSetup.userAId, "i".repeat(30), historicalQ1.id)
+        assertParticipationRequired(historicalSetup.firstChatId, historicalSetup.userAId)
+
+        val audioSetup = createMatchWithFirstChat("guidance-weighted-audio")
+        chatMessageRepository.saveAndFlush(
+            com.reals.backend.domain.ChatMessage(
+                chatSessionId = audioSetup.firstChatId,
+                senderId = audioSetup.userAId,
+                messageType = com.reals.backend.domain.ChatMessageType.AUDIO,
+                clientMessageId = UUID.randomUUID(),
+                content = null,
+                audioBucket = "reals-media-test",
+                audioObjectKey = "chats/${audioSetup.firstChatId}/messages/${UUID.randomUUID()}.m4a",
+                audioContentType = "audio/mp4",
+                audioSizeBytes = 3,
+                audioDurationMillis = 1_000,
+                audioSha256 = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+            )
+        )
+        assertParticipationRequired(audioSetup.firstChatId, audioSetup.userAId)
     }
 
     @Test
@@ -324,8 +418,8 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
         conversationPromptSnapshotRepository.flush()
         val genericQ2 = firstChatGuidedQuestionCatalog.questionFor(setup.firstChatId, 2)
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(40))
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(40))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(60))
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "b".repeat(60))
         chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userAId)
         val advanced = chatService.requestFirstChatGuidanceNext(setup.firstChatId, setup.userBId)
 
@@ -352,7 +446,7 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
             }
         assertEquals(DomainErrorCode.CHAT_NOT_AVAILABLE, secondChatFailure.code)
 
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(40))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(60))
         val chat = chatService.findByIdOrThrow(setup.firstChatId)
         chat.status = ChatStatus.CLOSED
         chatRepository.save(chat)
@@ -371,7 +465,7 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
     @Test
     fun `pending mutual cancellation blocks first chat guidance next without mutation`() {
         val setup = createMatchWithFirstChat("guidance-mutual-pending")
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(40))
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "a".repeat(60))
         val before = firstChatGuidanceRepository.findByChatId(setup.firstChatId)
             ?: error("Expected guidance")
 
@@ -412,6 +506,35 @@ class FirstChatGuidanceIntegrationTest : BaseIT() {
                 )
             )
         }
+    }
+
+    private fun sendGuidanceReply(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        snapshotId: UUID
+    ) {
+        sendMessageOrThrow(
+            chatId = chatId,
+            senderId = senderId,
+            content = content,
+            clientMessageId = UUID.randomUUID(),
+            replyTarget = ChatService.ChatReplyTarget(
+                type = ChatReplyTargetType.GUIDANCE_QUESTION,
+                targetId = snapshotId
+            )
+        )
+    }
+
+    private fun assertParticipationRequired(
+        chatId: UUID,
+        userId: UUID
+    ) {
+        val exception =
+            assertThrows(DomainConflictException::class.java) {
+                chatService.requestFirstChatGuidanceNext(chatId, userId)
+            }
+        assertEquals(DomainErrorCode.FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED, exception.code)
     }
 
     private fun createAnsweredMatchWithFirstChat(

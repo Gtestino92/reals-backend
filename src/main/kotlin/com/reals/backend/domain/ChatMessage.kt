@@ -18,6 +18,11 @@ enum class ChatMessageReactionType {
     HEART
 }
 
+enum class ChatReplyTargetType {
+    MESSAGE,
+    GUIDANCE_QUESTION
+}
+
 @Entity
 @Table(name = "chat_messages")
 data class ChatMessage(
@@ -62,6 +67,12 @@ data class ChatMessage(
     @Enumerated(EnumType.STRING)
     @Column(name = "reaction_type")
     var reactionType: ChatMessageReactionType? = null,
+
+    @Column(name = "reply_to_message_id")
+    var replyToMessageId: UUID? = null,
+
+    @Column(name = "reply_to_prompt_snapshot_id")
+    var replyToPromptSnapshotId: UUID? = null,
 
     @Column(name = "sent_at", nullable = false)
     var sentAt: OffsetDateTime = OffsetDateTime.now()

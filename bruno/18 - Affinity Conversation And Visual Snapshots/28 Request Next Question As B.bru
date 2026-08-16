@@ -17,8 +17,8 @@ headers {
 script:post-response {
   function assertQuestionShape(question) {
     const keys = Object.keys(question || {}).sort();
-    if (JSON.stringify(keys) !== JSON.stringify(["id", "text"])) {
-      throw new Error(`Expected guidance question keys id,text only, got ${keys.join(",")}.`);
+    if (JSON.stringify(keys) !== JSON.stringify(["id", "instanceId", "text"])) {
+      throw new Error(`Expected guidance question keys id,instanceId,text only, got ${keys.join(",")}.`);
     }
   }
   const status = res.getStatus();
