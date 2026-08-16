@@ -960,7 +960,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat audio message
-      description: Sends an audio message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. New messages return 201; idempotent replay with matching SHA-256 returns 200; same id with different content returns CHAT_MESSAGE_IDEMPOTENCY_CONFLICT. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted durationMillis is rounded up from the MP4 timescale rational value. First-chat decision-only state rejects new audio with `FIRST_CHAT_DECISION_ONLY`.
+      description: Sends an AUDIO message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. An optional shallow reply target is represented by `replyToType` plus `replyToTargetId`; both parts must be provided together, `replyToType` is `MESSAGE` or `GUIDANCE_QUESTION`, and the target follows the same availability rules as TEXT replies. Malformed or partial reply metadata returns `CHAT_MESSAGE_INVALID`; an unavailable reply target returns `CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE`. New messages return 201. An exact idempotent replay with the same accepted audio SHA-256 and the same direct reply target returns 200 before ordinary mutable eligibility checks; reusing the same `(chat, sender, clientMessageId)` with different audio bytes, direct reply target, or message type returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted `durationMillis` is rounded up from the MP4 timescale rational value. First-chat decision-only state rejects new audio with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -978,6 +978,23 @@ paths:
                 clientMessageId:
                   type: string
                   format: uuid
+                replyToType:
+                  allOf:
+                    - $ref: '#/components/schemas/ChatReplyTargetType'
+                  nullable: true
+                  description: Optional shallow reply target type. Must be provided together with `replyToTargetId`.
+                replyToTargetId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional direct reply target UUID. Must be provided together with `replyToType`.
+            encoding:
+              clientMessageId:
+                contentType: text/plain
+              replyToType:
+                contentType: text/plain
+              replyToTargetId:
+                contentType: text/plain
       responses:
         '200':
           description: Existing message returned for an idempotent replay
@@ -2019,7 +2036,7 @@ components:
               value:
                 code: CHAT_MESSAGE_IDEMPOTENCY_CONFLICT
                 error: Conflict
-                message: Client message id was already used with a different text message payload
+                message: Client message id was already used with a different message payload
     FirstChatGuidanceConflict:
       description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING`, `FIRST_CHAT_DECISION_ONLY` or `LEGAL_ACTION_REQUIRED`.
       content:
@@ -2659,7 +2676,7 @@ components:
       type: object
       required: [displayName, birthDate, gender, lookingForGenders, intention, city, countryCode, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$' }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$' }
         birthDate: { type: string, format: date }
         gender: { $ref: '#/components/schemas/Gender' }
         lookingForGenders:
@@ -2674,35 +2691,35 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           description: Free-text city value.
         countryCode:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           description: ISO 3166-1 alpha-2 country code. Input is trimmed and normalized to uppercase; display names are not accepted. Clients should obtain allowed values from `GET /api/reference/countries`.
-        bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$', nullable: true }
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
     UpdateProfileRequest:
       type: object
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$', nullable: true }
-        bio: { type: string, maxLength: 1000, pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$', nullable: true }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$', nullable: true }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$', nullable: true }
         city:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           nullable: true
           description: Free-text city value.
         countryCode:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '^[^\u0000-\u001F\u007F-\u009F\u2028\u2029<>]*$'
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           nullable: true
           description: Optional ISO 3166-1 alpha-2 country code. Null preserves the existing country code; non-null input is trimmed, uppercased and validated.
     UpdateMatchFiltersRequest:
@@ -2920,7 +2937,7 @@ components:
         contentVersion:
           type: integer
           minimum: 1
-          description: Wording-only version. Content-only changes do not invalidate stored answers.
+          description: Wording-only version. Content-only changes do not invalidate answers.
         prompt:
           type: string
           description: Single-line Spanish prompt.
@@ -3110,7 +3127,7 @@ components:
       type: object
       required: [message]
       properties:
-        message: { type: string, minLength: 1, maxLength: 280, pattern: '^[^\p{Cntrl}<>]*$' }
+        message: { type: string, minLength: 1, maxLength: 280, pattern: '^[^\\p{Cntrl}<>]*$' }
     PartnerMessageResponse:
       type: object
       required: [message]
@@ -3254,7 +3271,7 @@ components:
           type: string
           minLength: 1
           maxLength: 1000
-          pattern: '^[^\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F<>]*$'
+          pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$'
           description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
         replyTo:
           allOf:
@@ -3352,7 +3369,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$', nullable: true }
     ChatCancellationRequest:
       type: object
       properties:
@@ -3360,7 +3377,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$', nullable: true }
     ChatSafetyCancellationRequest:
       type: object
       required: [reason, details]
@@ -3368,7 +3385,7 @@ components:
         reason:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
-        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     CreateSafetyReportRequest:
       type: object
       required: [reportedUserId, contextType, reason, details]
@@ -3380,7 +3397,7 @@ components:
         connectionId: { type: string, format: uuid, nullable: true }
         profilePhotoId: { type: string, format: uuid, nullable: true }
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
-        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     SafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, status, createdAt]
@@ -3464,7 +3481,7 @@ components:
           description: Version from the queue item the admin reviewed. Stale versions are rejected with PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE.
         decision:
           $ref: '#/components/schemas/AdminPhotoModerationDecision'
-        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     AdminSafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, priorityReview, createdAt]
@@ -3543,7 +3560,7 @@ components:
     SafetyReportDismissRequest:
       type: object
       properties:
-        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     SafetyReportPenaltyRequest:
       type: object
       required: [type, reason]
@@ -3555,8 +3572,8 @@ components:
           minimum: 1
           nullable: true
           description: Required for TEMPORARY_BAN and rejected for PERMANENT_BAN.
-        reason: { type: string, minLength: 1, maxLength: 255, pattern: '^[^\p{Cntrl}<>]*$' }
-        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        reason: { type: string, minLength: 1, maxLength: 255, pattern: '^[^\\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     ConnectionResponse:
       type: object
       required: [id, matchId, userAId, userBId, state, schedulingExpiresAt, createdAt, updatedAt]
