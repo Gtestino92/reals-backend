@@ -101,17 +101,45 @@ class ChatController(
         @PathVariable chatId: UUID,
         @RequestPart("file") file: MultipartFile,
         @RequestPart("clientMessageId") clientMessageId: String,
-        @RequestPart(value = "replyToType", required = false) replyToType: ChatReplyTargetType?,
-        @RequestPart(value = "replyToTargetId", required = false) replyToTargetId: UUID?,
+        @RequestPart(value = "replyToType", required = false) replyToType: String?,
+        @RequestPart(value = "replyToTargetId", required = false) replyToTargetId: String?,
     ): ResponseEntity<ChatMessageResponse> {
         val parsedClientMessageId = UUID.fromString(clientMessageId)
-        val replyTarget = when {
-            replyToType == null && replyToTargetId == null -> null
+        val parsedReplyToType = replyToType
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    ChatReplyTargetType.valueOf(raw.uppercase())
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToType",
+                    )
+                }
+            }
 
-            replyToType != null && replyToTargetId != null ->
+        val parsedReplyToTargetId = replyToTargetId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    UUID.fromString(raw)
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToTargetId",
+                    )
+                }
+            }
+
+        val replyTarget = when {
+            parsedReplyToType == null && parsedReplyToTargetId == null -> null
+
+            parsedReplyToType != null && parsedReplyToTargetId != null ->
                 ChatService.ChatReplyTarget(
-                    type = replyToType,
-                    targetId = replyToTargetId,
+                    type = parsedReplyToType,
+                    targetId = parsedReplyToTargetId,
                 )
 
             else -> throw DomainBadRequestException(
