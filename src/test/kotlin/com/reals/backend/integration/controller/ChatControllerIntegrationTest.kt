@@ -228,7 +228,8 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 senderId = eqUuid(setup.userAId),
                 clientMessageId = eqUuid(clientMessageId),
                 contentType = Mockito.eq("audio/mp4"),
-                bytes = anyBytes()
+                bytes = anyBytes(),
+                replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
             )
         ).thenReturn(ChatAudioSendResult.Created(audioMessage))
         Mockito.clearInvocations(legalComplianceService)
