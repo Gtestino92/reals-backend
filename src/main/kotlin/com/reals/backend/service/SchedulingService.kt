@@ -513,17 +513,20 @@ class SchedulingService(
         }
 
         if (negotiation != null && negotiation.status == NegotiationStatus.PENDING) {
-            val usersWithAnyProposal =
-                proposalRepository.findByConnectionId(connectionId)
-                    .map { it.userId }
-                    .toSet()
+            val currentRoundProposals =
+                proposalRepository.findByConnectionIdAndRoundNumber(
+                    connectionId = connectionId,
+                    roundNumber = negotiation.roundNumber
+                )
 
-            listOf(connection.userAId, connection.userBId)
-                .filter { it !in usersWithAnyProposal }
+            pendingSchedulingResponsibilityUserIds(
+                connection = connection,
+                currentRoundProposals = currentRoundProposals
+            )
                 .forEach { userId ->
                     userReliabilityScoreService.recordEvent(
                         userId = userId,
-                        eventType = UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL,
+                        eventType = UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING,
                         relatedMatchId = connection.matchId,
                         relatedConnectionId = connectionId
                     )
@@ -541,6 +544,29 @@ class SchedulingService(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    private fun pendingSchedulingResponsibilityUserIds(
+        connection: Connection,
+        currentRoundProposals: List<ScheduleProposal>
+    ): List<UUID> {
+        val proposalsByUser = currentRoundProposals.groupBy { it.userId }
+
+        return listOf(connection.userAId, connection.userBId)
+            .filter { userId ->
+                val partnerUserId =
+                    if (userId == connection.userAId) {
+                        connection.userBId
+                    } else {
+                        connection.userAId
+                    }
+                val ownProposals = proposalsByUser[userId].orEmpty()
+                val partnerPendingProposals =
+                    proposalsByUser[partnerUserId].orEmpty()
+                        .any { it.status == ProposalStatus.PENDING }
+
+                ownProposals.isEmpty() || partnerPendingProposals
+            }
+    }
 
     private fun lockNegotiationOrThrow(connectionId: UUID): ScheduleNegotiation {
         return negotiationRepository.findByConnectionIdForUpdate(connectionId)

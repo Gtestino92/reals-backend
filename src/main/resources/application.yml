@@ -174,9 +174,12 @@ chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
 
-    # Minimum number of messages a user must have sent before being allowed to approve
-    # 0 = disabled (default). Enforce in production once UX is validated
+    # Legacy fallback for approval.min-messages-per-user when the nested approval key is absent.
     min-messages-per-user: 0
+
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:5}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:2}
 
     # Minimum messages a user must send before unilateral cancellation is penalty-free.
     # Mutual cancellation and safety cancellation bypass this rule.
@@ -321,6 +324,8 @@ user-reliability:
   half-weight-days: ${USER_RELIABILITY_HALF_WEIGHT_DAYS:10}
   expiration-days: ${USER_RELIABILITY_EXPIRATION_DAYS:20}
   first-chat:
+    early-engagement-messages-per-user: ${FIRST_CHAT_EARLY_ENGAGEMENT_MESSAGES_PER_USER:1}
+    early-engagement-minutes: ${FIRST_CHAT_EARLY_ENGAGEMENT_MINUTES:2}
     min-participation-messages-per-user: ${FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER:2}
     min-participation-minutes: ${FIRST_CHAT_MIN_PARTICIPATION_MINUTES:5}
   matchmaking:
