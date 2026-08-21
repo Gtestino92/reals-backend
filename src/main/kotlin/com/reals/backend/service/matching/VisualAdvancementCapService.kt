@@ -33,14 +33,15 @@ class VisualAdvancementCapService(
             )
         }
 
-        val oldestActiveAdvancement = visualReviewRepository.findOldestAdvancementCreatedAfter(
+        val thresholdAdvancement = visualReviewRepository.findRetryThresholdAdvancementCreatedAfter(
             userId = userId,
-            cutoff = cutoff
+            cutoff = cutoff,
+            offset = limit - 1
         )
 
         return VisualAdvancementCapStatus(
             blocked = true,
-            nextAvailableAt = oldestActiveAdvancement?.plusHours(windowHours)
+            nextAvailableAt = thresholdAdvancement?.plusHours(windowHours)
         )
     }
 

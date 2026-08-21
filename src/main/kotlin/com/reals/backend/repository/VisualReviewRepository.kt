@@ -91,14 +91,15 @@ interface VisualReviewRepository :
             m.user_a_id = :userId
             or m.user_b_id = :userId
           )
-        order by v.created_at asc, v.id asc
-        limit 1
+        order by v.created_at desc, v.id desc
+        limit 1 offset :offset
         """,
         nativeQuery = true
     )
-    fun findOldestAdvancementCreatedAfter(
+    fun findRetryThresholdAdvancementCreatedAfter(
         @Param("userId") userId: UUID,
-        @Param("cutoff") cutoff: OffsetDateTime
+        @Param("cutoff") cutoff: OffsetDateTime,
+        @Param("offset") offset: Int
     ): OffsetDateTime?
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

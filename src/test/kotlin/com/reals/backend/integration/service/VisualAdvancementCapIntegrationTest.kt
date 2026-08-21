@@ -77,6 +77,20 @@ class VisualAdvancementCapIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `twelve active advancements use tenth most recent advancement for next available time`() {
+        val now = fixedNow()
+        val userId = activeFemale("twelve")
+        val oldest = now.minusHours(23).minusMinutes(40)
+        saveAdvancements(userId, count = 12, firstCreatedAt = oldest)
+
+        val availability = matchmakingAvailabilityService.availabilityForUserNotInQueue(userId, now)
+
+        assertFalse(availability.canSearch)
+        assertEquals(DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED.name, availability.blockedReason?.code)
+        assertEquals(oldest.plusMinutes(2).plusHours(24), availability.blockedReason?.nextAvailableAt)
+    }
+
+    @Test
     fun `eleven historical advancements with nine in the active window can search`() {
         val now = fixedNow()
         val userId = activeFemale("historical")
@@ -351,7 +365,7 @@ class VisualAdvancementCapConfigurationIntegrationTest : BaseIT() {
     private lateinit var matchmakingAvailabilityService: MatchmakingAvailabilityService
 
     @Test
-    fun `max per window is configurable`() {
+    fun `max per window retry threshold is configurable`() {
         val now = OffsetDateTime.parse("2026-07-14T12:00:00Z")
         val userId = createActiveProfile(
             email = "configurable-${UUID.randomUUID()}@example.com",
@@ -359,9 +373,10 @@ class VisualAdvancementCapConfigurationIntegrationTest : BaseIT() {
             gender = Gender.FEMALE,
             lookingForGenders = setOf(Gender.MALE)
         )
+        val oldest = now.minusHours(23)
 
-        repeat(2) { index ->
-            val createdAt = now.minusHours(23).plusMinutes(index.toLong())
+        repeat(4) { index ->
+            val createdAt = oldest.plusMinutes(index.toLong())
             val match = matchRepository.saveAndFlush(
                 Match(
                     userAId = userId,
@@ -386,5 +401,6 @@ class VisualAdvancementCapConfigurationIntegrationTest : BaseIT() {
 
         assertFalse(availability.canSearch)
         assertEquals(DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED.name, availability.blockedReason?.code)
+        assertEquals(oldest.plusMinutes(2).plusHours(24), availability.blockedReason?.nextAvailableAt)
     }
 }
