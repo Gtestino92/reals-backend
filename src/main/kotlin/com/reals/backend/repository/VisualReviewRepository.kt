@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -100,7 +101,7 @@ interface VisualReviewRepository :
         @Param("userId") userId: UUID,
         @Param("cutoff") cutoff: OffsetDateTime,
         @Param("offset") offset: Int
-    ): OffsetDateTime?
+    ): Instant?
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update VisualReview v set v.expiresAt = :expiresAt where v.matchId = :matchId")

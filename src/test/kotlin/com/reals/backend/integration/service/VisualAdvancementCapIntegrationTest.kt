@@ -23,6 +23,7 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 @TestPropertySource(
@@ -288,8 +289,8 @@ class VisualAdvancementCapIntegrationTest : BaseIT() {
             DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED.name,
             projection.home.matchmaking.blockedReason?.code
         )
-        assertEquals(oldest.plusHours(24), projection.home.matchmaking.blockedReason?.nextAvailableAt)
-        assertEquals(oldest.plusHours(24), projection.nextRefreshAt)
+        assertEquals(utcNextAvailableAt(oldest), projection.home.matchmaking.blockedReason?.nextAvailableAt)
+        assertEquals(utcNextAvailableAt(oldest), projection.nextRefreshAt)
     }
 
     private fun saveAdvancements(
@@ -351,6 +352,11 @@ class VisualAdvancementCapIntegrationTest : BaseIT() {
 
     private fun fixedNow(): OffsetDateTime =
         OffsetDateTime.parse("2026-07-14T12:00:00Z")
+
+    private fun utcNextAvailableAt(createdAt: OffsetDateTime): OffsetDateTime =
+        createdAt.toInstant()
+            .atOffset(ZoneOffset.UTC)
+            .plusHours(24)
 }
 
 @TestPropertySource(
