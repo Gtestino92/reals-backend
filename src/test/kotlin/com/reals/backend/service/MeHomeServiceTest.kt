@@ -33,6 +33,7 @@ import org.mockito.Mockito
 import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class MeHomeServiceTest {
 
@@ -720,6 +721,109 @@ class MeHomeServiceTest {
         assertEquals(fullOrder, pendingOrder)
     }
 
+    @Test
+    fun `scheduling next step exposes negotiation created time and scheduling expiration`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.parse("2026-08-20T12:00:00Z")
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000501"),
+            userId = userId,
+            state = ConnectionState.SCHEDULING_PHASE,
+            schedulingExpiresAt = now.plusHours(24)
+        )
+        val negotiation = negotiation(
+            connection = connection,
+            confirmedDateTime = null,
+            status = NegotiationStatus.PENDING,
+            createdAt = now.minusMinutes(5)
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation)
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val fullNextStep = service.getHome(userId).nextSteps.single()
+        val pendingNextStep = service.getPendingHomeState(userId).nextSteps.single()
+
+        assertEquals(HomeNextStepType.SCHEDULING, fullNextStep.type)
+        assertEquals(negotiation.createdAt, fullNextStep.createdAt)
+        assertEquals(connection.schedulingExpiresAt, fullNextStep.schedulingExpiresAt)
+        assertEquals(HomeNextStepType.SCHEDULING, pendingNextStep.type)
+        assertEquals(negotiation.createdAt, pendingNextStep.createdAt)
+        assertEquals(connection.schedulingExpiresAt, pendingNextStep.schedulingExpiresAt)
+    }
+
+    @Test
+    fun `non scheduling next step keeps scheduling progress timestamps null`() {
+        val userId = UUID.randomUUID()
+        val scheduledAt = OffsetDateTime.now().plusMinutes(30)
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000502"),
+            userId = userId,
+            state = ConnectionState.SECOND_CHAT_SCHEDULED
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation(connection, confirmedDateTime = scheduledAt))
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        val fullNextStep = service.getHome(userId).nextSteps.single()
+        val pendingNextStep = service.getPendingHomeState(userId).nextSteps.single()
+
+        assertEquals(HomeNextStepType.SECOND_CHAT_SCHEDULED, fullNextStep.type)
+        assertNull(fullNextStep.createdAt)
+        assertNull(fullNextStep.schedulingExpiresAt)
+        assertEquals(HomeNextStepType.SECOND_CHAT_SCHEDULED, pendingNextStep.type)
+        assertNull(pendingNextStep.createdAt)
+        assertNull(pendingNextStep.schedulingExpiresAt)
+    }
+
+    @Test
+    fun `scheduling next step uses current negotiation created time when historical negotiations exist`() {
+        val userId = UUID.randomUUID()
+        val now = OffsetDateTime.parse("2026-08-20T12:00:00Z")
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000503"),
+            userId = userId,
+            state = ConnectionState.SCHEDULING_PHASE,
+            schedulingExpiresAt = now.plusHours(24)
+        )
+        val historicalNegotiation = negotiation(
+            connection = connection,
+            confirmedDateTime = null,
+            status = NegotiationStatus.FAILED,
+            createdAt = now.minusDays(1)
+        )
+        val currentNegotiation = negotiation(
+            connection = connection,
+            confirmedDateTime = null,
+            status = NegotiationStatus.PENDING,
+            createdAt = now.minusMinutes(2)
+        )
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(currentNegotiation, historicalNegotiation)
+        )
+        stubFullHome(userId)
+
+        val fullNextStep = service.getHome(userId).nextSteps.single()
+
+        assertEquals(currentNegotiation.createdAt, fullNextStep.createdAt)
+        assertEquals(connection.schedulingExpiresAt, fullNextStep.schedulingExpiresAt)
+    }
+
     private fun stubOperationalState(
         userId: UUID,
         matches: List<Match>,
@@ -899,12 +1003,16 @@ class MeHomeServiceTest {
 
     private fun negotiation(
         connection: com.reals.backend.domain.Connection,
-        confirmedDateTime: OffsetDateTime
+        confirmedDateTime: OffsetDateTime?,
+        status: NegotiationStatus = NegotiationStatus.CONFIRMED,
+        createdAt: OffsetDateTime = OffsetDateTime.now()
     ): ScheduleNegotiation =
         ScheduleNegotiation(
             connectionId = connection.id,
-            status = NegotiationStatus.CONFIRMED,
-            confirmedDateTime = confirmedDateTime
+            status = status,
+            confirmedDateTime = confirmedDateTime,
+            createdAt = createdAt,
+            updatedAt = createdAt
         )
 
     private fun participation(

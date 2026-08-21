@@ -156,6 +156,14 @@ user. Clients should compare it to the response `serverTime`; when
 `serverTime >= nextRefreshAt`, a full `GET /api/me/home` refresh reconciles the
 marker. The marker may remain in the past until that full Home refresh succeeds.
 
+For scheduling navigation, Home exposes a `nextSteps[]` item with
+`type = SCHEDULING` only while the connection is in `SCHEDULING_PHASE`. Both
+`GET /api/me/home` and `GET /api/me/home/pending` include `createdAt`, the
+current `ScheduleNegotiation.createdAt` and progress start, and
+`schedulingExpiresAt`, the parent `Connection.schedulingExpiresAt` and progress
+end, on that next step. Both fields are `null` for next steps that are not
+`SCHEDULING`.
+
 When a visual review first becomes available, the backend no longer sends an
 immediate availability push. At `VisualReview` creation time it persists
 `reminderEligibleAt`, calculated from the configured visual-review duration so

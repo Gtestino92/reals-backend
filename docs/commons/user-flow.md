@@ -377,6 +377,13 @@ deadline from the actual activation time. In local profiles, where
 schedulers are disabled, run `SchedulingActivationJob` manually before testing
 scheduling proposals or scheduling timeout.
 
+While a connection is in `SCHEDULING_PHASE`, Home exposes scheduling progress on
+the `SCHEDULING` next step in both full and pending-lite responses:
+`createdAt` is the current `ScheduleNegotiation.createdAt` and
+`schedulingExpiresAt` is the parent `Connection.schedulingExpiresAt`. These
+fields are only a progress range for the active scheduling phase and remain
+`null` for non-scheduling next steps.
+
 Scheduling proposal submissions and confirmations emit after-commit push events.
 `SCHEDULING_PROPOSALS_RECEIVED` goes only to the partner for one connection and
 round, and is skipped when the submission immediately confirms an overlap.
