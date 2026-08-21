@@ -48,6 +48,7 @@ class MatchmakingService(
     private val affinityQuestionPairEvaluator: AffinityQuestionPairEvaluator,
     private val affinityPairAssessmentAggregator: AffinityPairAssessmentAggregator,
     private val affinityMetrics: MatchmakingAffinityMetrics,
+    private val visualAdvancementCapService: VisualAdvancementCapService,
 
     @param:Value("\${matchmaking.candidate-pair-limit:50}")
     private val candidatePairLimit: Int,
@@ -129,6 +130,21 @@ class MatchmakingService(
         }
     }
 
+    fun removeVisualAdvancementCappedQueueEntries(
+        userAId: UUID,
+        userBId: UUID
+    ) {
+        val now = OffsetDateTime.now()
+        listOf(userAId, userBId)
+            .filter { userId -> visualAdvancementCapService.isBlocked(userId = userId, now = now) }
+            .forEach { userId ->
+                removeStaleQueuedUser(
+                    userId = userId,
+                    reason = "matchmaking_visual_advancement_limit_final_recheck"
+                )
+            }
+    }
+
     /**
      * Claims one eligible anchor queue row, scores a bounded partner window,
      * then claims partners one at a time with SKIP LOCKED fallback.
@@ -173,6 +189,14 @@ class MatchmakingService(
             )
                 ?: return null
 
+        if (visualAdvancementCapService.isBlocked(anchor.userId, now)) {
+            removeStaleQueuedUser(
+                userId = anchor.userId,
+                reason = "matchmaking_visual_advancement_limit_anchor"
+            )
+            return null
+        }
+
         val partnerCandidates =
             candidateRepository.findEligiblePartnerCandidates(
                 anchorQueueEntryId = anchor.queueEntryId,
@@ -203,6 +227,37 @@ class MatchmakingService(
                 )
 
             if (claimed != null) {
+                val anchorCapBlocked = visualAdvancementCapService.isBlocked(
+                    userId = claimed.pair.userAId,
+                    now = now
+                )
+                val partnerCapBlocked = visualAdvancementCapService.isBlocked(
+                    userId = claimed.pair.userBId,
+                    now = now
+                )
+
+                if (anchorCapBlocked) {
+                    removeStaleQueuedUser(
+                        userId = claimed.pair.userAId,
+                        reason = "matchmaking_visual_advancement_limit_claimed_anchor"
+                    )
+                    if (partnerCapBlocked) {
+                        removeStaleQueuedUser(
+                            userId = claimed.pair.userBId,
+                            reason = "matchmaking_visual_advancement_limit_claimed_partner"
+                        )
+                    }
+                    return null
+                }
+
+                if (partnerCapBlocked) {
+                    removeStaleQueuedUser(
+                        userId = claimed.pair.userBId,
+                        reason = "matchmaking_visual_advancement_limit_claimed_partner"
+                    )
+                    continue
+                }
+
                 return Pair(
                     claimed.pair.userAId,
                     claimed.pair.userBId
@@ -211,6 +266,19 @@ class MatchmakingService(
         }
 
         return null
+    }
+
+    private fun removeStaleQueuedUser(
+        userId: UUID,
+        reason: String
+    ) {
+        val removed = queueRepository.deleteByUserId(userId)
+        if (removed > 0) {
+            homeStateInvalidationService.bump(
+                userId = userId,
+                reason = reason
+            )
+        }
     }
 
     private fun rankPartnerClaimAttempts(

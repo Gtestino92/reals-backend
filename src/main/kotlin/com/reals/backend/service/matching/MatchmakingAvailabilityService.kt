@@ -9,6 +9,7 @@ import com.reals.backend.service.PenaltyService
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
 import java.util.UUID
 
 @Service
@@ -16,6 +17,7 @@ class MatchmakingAvailabilityService(
     private val profileRepository: ProfileRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val penaltyService: PenaltyService,
+    private val visualAdvancementCapService: VisualAdvancementCapService,
 
     @param:Value("\${engagement.max-active-matches:5}")
     private val maxActiveMatches: Int,
@@ -41,6 +43,17 @@ class MatchmakingAvailabilityService(
 
     @Transactional(readOnly = true)
     fun availabilityForUserNotInQueue(userId: UUID): MatchmakingAvailability {
+        return availabilityForUserNotInQueue(
+            userId = userId,
+            now = OffsetDateTime.now()
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun availabilityForUserNotInQueue(
+        userId: UUID,
+        now: OffsetDateTime
+    ): MatchmakingAvailability {
         val profile = profileRepository.findByUserId(userId)
             ?: return blocked(
                 code = DomainErrorCode.PROFILE_REQUIRED,
@@ -85,6 +98,19 @@ class MatchmakingAvailabilityService(
             )
         }
 
+        val visualAdvancementStatus = visualAdvancementCapService.statusFor(
+            userId = userId,
+            now = now
+        )
+
+        if (visualAdvancementStatus.blocked) {
+            return blocked(
+                code = DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED,
+                message = "User has reached the Visual Review advancement limit",
+                nextAvailableAt = visualAdvancementStatus.nextAvailableAt
+            )
+        }
+
         return MatchmakingAvailability(
             canSearch = true,
             blockedReason = null
@@ -93,13 +119,15 @@ class MatchmakingAvailabilityService(
 
     private fun blocked(
         code: DomainErrorCode,
-        message: String
+        message: String,
+        nextAvailableAt: OffsetDateTime? = null
     ): MatchmakingAvailability =
         MatchmakingAvailability(
             canSearch = false,
             blockedReason = MatchmakingBlockedReason(
                 code = code.name,
-                message = message
+                message = message,
+                nextAvailableAt = nextAvailableAt
             )
         )
 }

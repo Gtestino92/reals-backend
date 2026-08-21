@@ -6,6 +6,8 @@ import com.reals.backend.domain.MatchmakingProcessResult
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.MatchFoundEvent
 import com.reals.backend.service.MatchService
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
@@ -50,6 +52,15 @@ class MatchmakingProcessorService(
                 candidatePairs += 1
                 createdMatches.add(match)
             } catch (ex: MatchmakingPairProcessingException) {
+                if (ex.isVisualAdvancementLimit()) {
+                    candidatePairs += 1
+                    matchmakingService.removeVisualAdvancementCappedQueueEntries(
+                        userAId = ex.userAId,
+                        userBId = ex.userBId
+                    )
+                    continue
+                }
+
                 candidatePairs += 1
                 failedPairs += 1
                 log.error(
@@ -103,4 +114,9 @@ class MatchmakingProcessorService(
                 )
             }
         }
+
+    private fun MatchmakingPairProcessingException.isVisualAdvancementLimit(): Boolean {
+        val conflict = cause as? DomainConflictException ?: return false
+        return conflict.code == DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED
+    }
 }

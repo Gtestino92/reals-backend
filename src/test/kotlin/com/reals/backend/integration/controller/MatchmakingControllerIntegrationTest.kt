@@ -2,7 +2,10 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
+import com.reals.backend.domain.Match
+import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.VisualReview
 import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -196,6 +199,32 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `enqueue with visual advancement cap returns stable error code`() {
+        val userId = createActiveProfile(
+            email = "queue-visual-cap-${UUID.randomUUID()}@example.com",
+            displayName = "Queue Visual Cap",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val oldest = OffsetDateTime.now().minusHours(23).withNano(0)
+        repeat(10) { index ->
+            saveVisualAdvancementFor(
+                userId = userId,
+                createdAt = oldest.plusMinutes(index.toLong())
+            )
+        }
+
+        mockMvc.perform(
+            post("/api/matchmaking/queue")
+                .with(authenticatedAs(userId))
+                .contentType(jsonContentType)
+                .content(validQueueBody())
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_ADVANCEMENT_LIMIT_REACHED")))
+    }
+
+    @Test
     fun `matchmaking accepts mutual gender preference sets`() {
         val userA = createActiveProfile(
             email = "queue-compatible-a-${UUID.randomUUID()}@example.com",
@@ -272,4 +301,28 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
           "accuracyMeters": 50
         }
         """.trimIndent()
+
+    private fun saveVisualAdvancementFor(
+        userId: UUID,
+        createdAt: OffsetDateTime
+    ) {
+        val match = matchRepository.saveAndFlush(
+            Match(
+                userAId = userId,
+                userBId = UUID.randomUUID(),
+                state = MatchState.VISUAL_PHASE,
+                createdAt = createdAt.minusMinutes(15),
+                updatedAt = createdAt
+            )
+        )
+        visualReviewRepository.saveAndFlush(
+            VisualReview(
+                matchId = match.id,
+                expiresAt = createdAt.plusHours(24),
+                availableAt = createdAt,
+                createdAt = createdAt,
+                updatedAt = createdAt
+            )
+        )
+    }
 }

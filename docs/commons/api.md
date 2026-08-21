@@ -205,7 +205,10 @@ Home returns `matchmaking` for search UX:
   informative for UX; `POST /api/matchmaking/queue` remains the transactional
   authority.
 - `blockedReason`: stable code/message when search is blocked by profile,
-  penalty or active engagement limits.
+  penalty, active engagement limits or the rolling Visual Review advancement
+  cap. `blockedReason.nextAvailableAt` is populated for
+  `VISUAL_ADVANCEMENT_LIMIT_REACHED` with the absolute backend timestamp when
+  the oldest counted advancement leaves the rolling window.
 
 Home also returns `activeInteractionsSummary`:
 
@@ -457,7 +460,7 @@ requires a human admin decision.
 
 ## Matchmaking
 
-- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`.
+- `POST /api/matchmaking/queue`: enqueue authenticated user. Body requires current search location: `latitude`, `longitude`, optional `accuracyMeters`. This operation is idempotent: if the user is already queued, it keeps a single queue entry and refreshes `latitude`, `longitude` and `accuracyMeters`. It rejects new search with `VISUAL_ADVANCEMENT_LIMIT_REACHED` when the user has reached the rolling Visual Review advancement cap; clients can refresh Home for the authoritative `nextAvailableAt`.
 - `DELETE /api/matchmaking/queue`: remove authenticated user from queue.
 - `GET /api/matchmaking/queue`: check queue status for authenticated user.
 
@@ -684,6 +687,7 @@ Selected stable frontend-facing domain codes:
 - `ACTIVE_PENALTY`: user cannot enter matchmaking while an active penalty exists.
 - `ACTIVE_MATCH_LIMIT_REACHED`: user has reached the active match limit.
 - `ACTIVE_CONNECTION_LIMIT_REACHED`: user has reached the active connection limit.
+- `VISUAL_ADVANCEMENT_LIMIT_REACHED`: user has reached the rolling Visual Review advancement cap for starting new matchmaking search.
 - `INVALID_SEARCH_LOCATION`: provided matchmaking search location is invalid.
 - `PROFILE_ALREADY_EXISTS`: user attempted to create a second profile.
 - `PROFILE_NOT_FOUND`: authenticated user or match partner profile was not found.
