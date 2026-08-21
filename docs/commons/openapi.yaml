@@ -2591,6 +2591,16 @@ components:
           allOf:
             - $ref: '#/components/schemas/HomeChatResponse'
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the current ScheduleNegotiation.createdAt used as the scheduling progress start; null for non-scheduling next steps.
+        schedulingExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the parent Connection.schedulingExpiresAt used as the scheduling progress end; null for non-scheduling next steps.
     HomeNextStepLiteResponse:
       type: object
       required: [type, connectionId, matchId]
@@ -2602,6 +2612,16 @@ components:
           allOf:
             - $ref: '#/components/schemas/HomePendingSecondChatLiteResponse'
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the current ScheduleNegotiation.createdAt used as the scheduling progress start; null for non-scheduling next steps.
+        schedulingExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the parent Connection.schedulingExpiresAt used as the scheduling progress end; null for non-scheduling next steps.
     HomePendingSecondChatLiteResponse:
       type: object
       properties:
