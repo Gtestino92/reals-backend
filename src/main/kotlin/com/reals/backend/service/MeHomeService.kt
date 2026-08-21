@@ -87,6 +87,7 @@ class MeHomeService(
         val visibleConnections: List<Connection>,
         val pendingSchedulingConnections: List<Connection>,
         val secondChatsByConnectionId: Map<UUID, Chat>,
+        val currentNegotiationsByConnectionId: Map<UUID, ScheduleNegotiation>,
         val confirmedNegotiationsByConnectionId: Map<UUID, com.reals.backend.domain.ScheduleNegotiation>,
         val myAttendanceStatusByConnectionId: Map<UUID, SecondChatAttendanceStatus>
     )
@@ -140,6 +141,7 @@ class MeHomeService(
                 secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
                     connection.id
                 ]?.confirmedDateTime,
+                currentNegotiation = snapshot.currentNegotiationsByConnectionId[connection.id],
                 myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
                 partner = partnerProfilesByUserId[
                     partnerUserId(connection.userAId, connection.userBId, userId)
@@ -219,6 +221,7 @@ class MeHomeService(
                     secondChatAvailableAt = snapshot.confirmedNegotiationsByConnectionId[
                         connection.id
                     ]?.confirmedDateTime,
+                    currentNegotiation = snapshot.currentNegotiationsByConnectionId[connection.id],
                     myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
                     now = snapshot.now
                 )
@@ -336,14 +339,22 @@ class MeHomeService(
                 .toMap()
         }
 
-        val confirmedNegotiationsByConnectionId = if (visibleConnections.isEmpty()) {
+        val negotiationsByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
         } else {
             negotiationRepository
                 .findByConnectionIdIn(visibleConnections.map { it.id })
-                .filter { it.confirmedDateTime != null }
-                .associateBy { it.connectionId }
+                .groupBy { it.connectionId }
         }
+        val currentNegotiationsByConnectionId = negotiationsByConnectionId.mapValues { (_, negotiations) ->
+            negotiations.maxWith(compareBy<ScheduleNegotiation> { it.createdAt }.thenBy { it.id })
+        }
+        val confirmedNegotiationsByConnectionId = negotiationsByConnectionId.mapNotNull { (connectionId, negotiations) ->
+            negotiations
+                .filter { it.confirmedDateTime != null }
+                .maxWithOrNull(compareBy<ScheduleNegotiation> { it.createdAt }.thenBy { it.id })
+                ?.let { connectionId to it }
+        }.toMap()
 
         val myAttendanceStatusByConnectionId = if (visibleConnections.isEmpty()) {
             emptyMap()
@@ -370,6 +381,7 @@ class MeHomeService(
             ),
             pendingSchedulingConnections = pendingSchedulingConnections,
             secondChatsByConnectionId = secondChatsByConnectionId,
+            currentNegotiationsByConnectionId = currentNegotiationsByConnectionId,
             confirmedNegotiationsByConnectionId = confirmedNegotiationsByConnectionId,
             myAttendanceStatusByConnectionId = myAttendanceStatusByConnectionId
         )
@@ -747,6 +759,7 @@ class MeHomeService(
         connection: Connection,
         secondChat: Chat?,
         secondChatAvailableAt: OffsetDateTime?,
+        currentNegotiation: ScheduleNegotiation?,
         myAttendanceStatus: SecondChatAttendanceStatus?,
         partner: Profile?,
         now: OffsetDateTime
@@ -783,6 +796,8 @@ class MeHomeService(
             connectionId = connection.id,
             matchId = connection.matchId,
             partner = partner?.let { PartnerSummaryResponse.from(it) },
+            createdAt = schedulingCreatedAt(type, currentNegotiation),
+            schedulingExpiresAt = schedulingExpiresAt(type, connection),
             secondChat = secondChatResponse(
                 chat = secondChat,
                 availableAt = secondChatAvailableAt,
@@ -796,6 +811,7 @@ class MeHomeService(
         connection: Connection,
         secondChat: Chat?,
         secondChatAvailableAt: OffsetDateTime?,
+        currentNegotiation: ScheduleNegotiation?,
         myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime
     ): HomeNextStepLiteResponse? {
@@ -830,6 +846,8 @@ class MeHomeService(
             type = type,
             connectionId = connection.id,
             matchId = connection.matchId,
+            createdAt = schedulingCreatedAt(type, currentNegotiation),
+            schedulingExpiresAt = schedulingExpiresAt(type, connection),
             secondChat = secondChatLiteResponse(
                 chat = secondChat,
                 availableAt = secondChatAvailableAt,
@@ -837,6 +855,26 @@ class MeHomeService(
             )
         )
     }
+
+    private fun schedulingCreatedAt(
+        type: HomeNextStepType,
+        currentNegotiation: ScheduleNegotiation?
+    ): OffsetDateTime? =
+        if (type == HomeNextStepType.SCHEDULING) {
+            currentNegotiation?.createdAt
+        } else {
+            null
+        }
+
+    private fun schedulingExpiresAt(
+        type: HomeNextStepType,
+        connection: Connection
+    ): OffsetDateTime? =
+        if (type == HomeNextStepType.SCHEDULING) {
+            connection.schedulingExpiresAt
+        } else {
+            null
+        }
 
     private fun scheduledSecondChatNextStepType(
         confirmedDateTime: OffsetDateTime?,
