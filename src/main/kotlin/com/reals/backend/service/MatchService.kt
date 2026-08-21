@@ -4,7 +4,10 @@ import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.matching.MatchmakingPairEligibilityService
+import com.reals.backend.service.matching.VisualAdvancementCapService
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.beans.factory.annotation.Value
@@ -22,6 +25,7 @@ class MatchService(
     private val userService: UserService,
     private val userBlockService: UserBlockService,
     private val matchmakingPairEligibilityService: MatchmakingPairEligibilityService,
+    private val visualAdvancementCapService: VisualAdvancementCapService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
 
     @param:Value("\${engagement.max-active-matches:5}")
@@ -63,6 +67,8 @@ class MatchService(
             userAId = userAId,
             userBId = userBId
         )
+        requireVisualAdvancementCapacity(userId = userAId)
+        requireVisualAdvancementCapacity(userId = userBId)
         checkMatchLimit(userId = userAId)
         checkMatchLimit(userId = userBId)
 
@@ -109,6 +115,16 @@ class MatchService(
 
         check(active < maxActiveMatches) {
             "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
+        }
+    }
+
+    private fun requireVisualAdvancementCapacity(userId: UUID) {
+        val status = visualAdvancementCapService.statusFor(userId = userId)
+        if (status.blocked) {
+            throw DomainConflictException(
+                code = DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED,
+                message = "User has reached the Visual Review advancement limit"
+            )
         }
     }
 

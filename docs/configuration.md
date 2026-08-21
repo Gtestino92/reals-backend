@@ -630,6 +630,15 @@ and should stay empty until that provider is implemented.
 
 `matchmaking.ranking.affinity` is private affinity evidence for probabilistic ranking. `OFF` performs no answer loading or evaluation. `SHADOW` batch-loads answers for the bounded candidate window and records aggregate low-cardinality observations without changing order. `ACTIVE` adds the bounded affinity log-weight to `PROBABILISTIC_WEIGHTED` only and is rejected with `LEGACY_EARLY_ACCEPT`. The default rollback is `MATCHMAKING_RANKING_AFFINITY_MODE=OFF`.
 
+`matchmaking.visual-advancement.max-per-window` and
+`matchmaking.visual-advancement.window-hours` control the rolling cap on new
+Visual Review advancements. Defaults are
+`MATCHMAKING_VISUAL_ADVANCEMENT_MAX_PER_WINDOW=10` and
+`MATCHMAKING_VISUAL_ADVANCEMENT_WINDOW_HOURS=24` in base, dev, prod and test
+configuration. The cap counts persisted `VisualReview.createdAt` rows joined to
+Match participants while `createdAt > now - window`; equality is available and
+the Home retry timestamp is `oldestActiveCreatedAt + window`.
+
 ## How Injection Works
 
 The application only sees environment variables such as `DATABASE_PASSWORD` or `STORAGE_S3_BUCKET`. The CI/CD or runtime platform is responsible for resolving those values from its own config store or secret manager before starting the process.

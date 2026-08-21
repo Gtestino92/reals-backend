@@ -1,5 +1,7 @@
 package com.reals.backend.service.matching
 
+import java.time.OffsetDateTime
+
 data class MatchmakingAvailability(
     val canSearch: Boolean,
     val blockedReason: MatchmakingBlockedReason?
@@ -7,5 +9,6 @@ data class MatchmakingAvailability(
 
 data class MatchmakingBlockedReason(
     val code: String,
-    val message: String
+    val message: String,
+    val nextAvailableAt: OffsetDateTime? = null
 )

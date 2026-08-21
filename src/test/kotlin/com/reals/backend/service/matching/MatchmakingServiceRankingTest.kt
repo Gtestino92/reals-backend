@@ -704,6 +704,7 @@ class MatchmakingServiceRankingTest {
             affinityQuestionPairEvaluator = AffinityQuestionPairEvaluator(),
             affinityPairAssessmentAggregator = AffinityPairAssessmentAggregator(resolvedRankingProperties),
             affinityMetrics = MatchmakingAffinityMetrics(SimpleMeterRegistry()),
+            visualAdvancementCapService = Mockito.mock(VisualAdvancementCapService::class.java),
             candidatePairLimit = candidatePairLimit,
             minCompatibilityScore = minCompatibilityScore,
             earlyAcceptCompatibilityScore = earlyAcceptCompatibilityScore

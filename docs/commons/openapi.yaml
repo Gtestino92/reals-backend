@@ -2536,8 +2536,13 @@ components:
       properties:
         code:
           type: string
-          enum: [PROFILE_REQUIRED, PROFILE_NOT_ACTIVE, ACTIVE_MATCH_LIMIT_REACHED, ACTIVE_CONNECTION_LIMIT_REACHED, ACTIVE_PENALTY]
+          enum: [PROFILE_REQUIRED, PROFILE_NOT_ACTIVE, ACTIVE_MATCH_LIMIT_REACHED, ACTIVE_CONNECTION_LIMIT_REACHED, ACTIVE_PENALTY, VISUAL_ADVANCEMENT_LIMIT_REACHED]
         message: { type: string }
+        nextAvailableAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative backend timestamp when search may be attempted again for rolling-window blocked reasons. Populated for VISUAL_ADVANCEMENT_LIMIT_REACHED and null or absent for existing reasons without a natural retry time.
     HomePendingActionResponse:
       type: object
       required: [type, matchId]

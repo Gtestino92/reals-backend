@@ -119,6 +119,7 @@ enum class DomainErrorCode {
     SAFETY_REPORT_NOT_FOUND,
     USER_BLOCK_SELF_NOT_ALLOWED,
     USER_PAIR_BLOCKED,
+    VISUAL_ADVANCEMENT_LIMIT_REACHED,
 }
 
 sealed class DomainException(

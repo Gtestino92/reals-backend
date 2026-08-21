@@ -91,6 +91,10 @@ matchmaking:
   exclude-previous-pairing: true
   previous-pairing-cooldown-days: 30
   first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
+  visual-advancement:
+    max-per-window: 10
+    window-hours: 24
 
 chat:
   audio:

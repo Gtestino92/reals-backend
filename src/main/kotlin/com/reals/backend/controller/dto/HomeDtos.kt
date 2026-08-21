@@ -49,7 +49,8 @@ data class HomeMatchmakingResponse(
 
 data class HomeMatchmakingBlockedReasonResponse(
     val code: String,
-    val message: String
+    val message: String,
+    val nextAvailableAt: OffsetDateTime? = null
 )
 
 enum class HomePendingActionType {

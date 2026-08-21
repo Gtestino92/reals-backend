@@ -61,6 +61,47 @@ interface VisualReviewRepository :
         @Param("now") now: OffsetDateTime
     ): List<VisualReview>
 
+    @Query(
+        value = """
+        select count(*)
+        from visual_reviews v
+        join matches m
+          on m.id = v.match_id
+        where v.created_at > :cutoff
+          and (
+            m.user_a_id = :userId
+            or m.user_b_id = :userId
+          )
+        """,
+        nativeQuery = true
+    )
+    fun countAdvancementsForUserCreatedAfter(
+        @Param("userId") userId: UUID,
+        @Param("cutoff") cutoff: OffsetDateTime
+    ): Long
+
+    @Query(
+        value = """
+        select v.created_at
+        from visual_reviews v
+        join matches m
+          on m.id = v.match_id
+        where v.created_at > :cutoff
+          and (
+            m.user_a_id = :userId
+            or m.user_b_id = :userId
+          )
+        order by v.created_at desc, v.id desc
+        limit 1 offset :offset
+        """,
+        nativeQuery = true
+    )
+    fun findRetryThresholdAdvancementCreatedAfter(
+        @Param("userId") userId: UUID,
+        @Param("cutoff") cutoff: OffsetDateTime,
+        @Param("offset") offset: Int
+    ): OffsetDateTime?
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update VisualReview v set v.expiresAt = :expiresAt where v.matchId = :matchId")
     fun updateExpiresAtByMatchId(

@@ -173,7 +173,8 @@ class MeHomeService(
                     blockedReason = matchmakingAvailability.blockedReason?.let {
                         HomeMatchmakingBlockedReasonResponse(
                             code = it.code,
-                            message = it.message
+                            message = it.message,
+                            nextAvailableAt = it.nextAvailableAt
                         )
                     }
                 ),
@@ -186,7 +187,8 @@ class MeHomeService(
             ),
             nextRefreshAt = nextHiddenHomeTransitionAt(
                 snapshot = snapshot,
-                currentUserId = userId
+                currentUserId = userId,
+                matchmakingAvailability = matchmakingAvailability
             )
         )
     }
@@ -1042,7 +1044,8 @@ class MeHomeService(
 
     private fun nextHiddenHomeTransitionAt(
         snapshot: HomeOperationalSnapshot,
-        currentUserId: UUID
+        currentUserId: UUID,
+        matchmakingAvailability: com.reals.backend.service.matching.MatchmakingAvailability
     ): OffsetDateTime? =
         snapshot.activeMatches
             .asSequence()
@@ -1084,7 +1087,12 @@ class MeHomeService(
                     .filter { it.isAfter(snapshot.now) }
                     .minOrNull()
 
-                listOfNotNull(visualRefreshAt, secondChatRefreshAt).minOrNull()
+                listOfNotNull(
+                    visualRefreshAt,
+                    secondChatRefreshAt,
+                    matchmakingAvailability.blockedReason?.nextAvailableAt
+                        ?.takeIf { it.isAfter(snapshot.now) }
+                ).minOrNull()
             }
 
     private fun secondChatRefreshBoundaries(

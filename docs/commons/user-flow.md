@@ -138,12 +138,13 @@ Eligibility checks include:
 - not already queued
 - below active match limit
 - below active connection limit
+- below rolling Visual Review advancement cap
 
 The backend does not infer queue exit from app backgrounding, minimizing or
 process death. Queue exit remains explicit through the existing dequeue and
 domain-lifecycle behavior.
 
-Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, and `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness and historical cooldowns, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
+Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, rechecks the rolling Visual Review advancement cap before returning a claimed pair, and removes stale queue entries that became capped after enqueue. `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness and historical cooldowns, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
 
 Pair exclusion has three separate meanings:
 
@@ -152,6 +153,14 @@ Pair exclusion has three separate meanings:
 - User blocks are permanent exclusions in either direction. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create blocks.
 
 Expired matches are classified by persisted phase evidence. `EXPIRED` with no `VisualReview` is first-chat expiration and uses the 7-day policy; `EXPIRED` with a `VisualReview` is visual-review expiration and uses the 30-day policy. First-chat automatic terminal metadata (`ChatStatus.EXPIRED`/`ABSOLUTE_TIMEOUT` or `ChatStatus.ABANDONED`/`INACTIVITY_TIMEOUT`) supplies `Chat.endedAt` when present, with `Match.updatedAt` as fallback for legacy or safety-net rows. `CHAT_REJECTED` with first-chat `ChatEndReason.FIRST_CHAT_DECISION_MISMATCH` uses the dedicated 7-day decision-mismatch policy; legacy `CHAT_REJECTED` rows without that end reason keep the general 30-day previous-pairing policy. Cooldowns are calculated from existing rows; there is no cleanup job or derived exclusion table.
+
+Visual Review advancement pacing is separate from reliability and pair history.
+Each persisted `VisualReview` counts once for each participant for the full
+rolling window configured by `matchmaking.visual-advancement.window-hours`.
+Rows are counted while `createdAt > now - window`; equality belongs to the
+available side. `nextAvailableAt` is `oldestActiveVisualReview.createdAt +
+window`. Later `APPROVED`, `REJECTED`, expiry, connection creation and Match
+closure do not change the calculation.
 
 ## 3. First Chat
 
@@ -270,7 +279,7 @@ Each user starts with a `PENDING` first-chat decision. While both users are `PEN
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
 - `REJECTED` while the counterpart is still `PENDING` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
 - `APPROVED` by one participant while the counterpart remains `PENDING` keeps the match in `CHAT_ACTIVE` and the first chat in `ACTIVE`, but puts the chat in decision-only mode. Both participants can read and poll, use safety report/cancellation, or use manual block. The unresolved participant can submit the remaining `APPROVED` or `REJECTED` decision; the already-decided participant cannot replace their persisted decision. Ordinary first-chat conversation and exit mutations from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`: text send, new audio send, next-guidance request, new mutual-cancellation request and direct unilateral cancellation. In this state `inactivityExpiresAt` is absent and inactivity timeout is disabled; the original absolute `expiresAt`/`timeoutAt` remains authoritative.
-- `REJECTED` by the still-pending participant after the counterpart already persisted `APPROVED` is a completed decision mismatch, not unilateral cancellation. The backend persists both `ChatDecision` values (`APPROVED`/`REJECTED` or `REJECTED`/`APPROVED`), finishes the first chat as `FINISHED / FIRST_CHAT_DECISION_MISMATCH`, moves the match to `CHAT_REJECTED`, releases locks, emits the normal chat-ended audit and `FirstChatTerminatedEvent`, and does not record `FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE`. No mutual-cancellation request, unilateral-cancellation exit request or ordinary cancellation penalty is created.
+- `REJECTED` by the still-pending participant after the counterpart already persisted `APPROVED` is a completed decision mismatch, not unilateral cancellation. The backend persists both `ChatDecision` values (`APPROVED`/`REJECTED` or `REJECTED`/`APPROVED`), finishes the first chat as `FINISHED / FIRST_CHAT_DECISION_MISMATCH`, moves the match to `CHAT_REJECTED`, releases locks, emits the normal chat-ended audit and `FirstChatTerminatedEvent`, and does not record mutual-no-spark or unilateral-close reliability events. No mutual-cancellation request, unilateral-cancellation exit request or ordinary cancellation penalty is created.
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
 - Mutual cancellation request rejected by the other participant also cancels the chat without penalty.
 - Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
@@ -289,6 +298,9 @@ Each user submits one `VisualDecision`.
 - If one user rejects while the other has not decided, the match remains in `VISUAL_PHASE` for the pending participant. This avoids an immediate rejection signal through Home.
 - When both users have decided, mutual `APPROVED` moves the match to `VISUAL_APPROVED` and creates a pending connection.
 - When both users have decided and at least one rejected, the match moves to `VISUAL_REJECTED` and remaining match locks are released.
+- The Visual Review advancement cap never blocks Visual Review creation for an
+  existing first chat that reached mutual approval. If that creation reaches the
+  cap, it only blocks future matchmaking search.
 
 Personal messages are optional and stored on `VisualReview`. Current behavior
 allows reading the partner message during visual review once it exists. Reading

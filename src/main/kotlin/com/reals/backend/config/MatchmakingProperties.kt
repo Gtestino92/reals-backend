@@ -8,7 +8,8 @@ data class MatchmakingProperties(
     val excludePreviousPairing: Boolean = true,
     val previousPairingCooldownDays: Long = 30,
     val firstChatExpirationCooldownDays: Long = 7,
-    val firstChatDecisionMismatchCooldownDays: Long = 7
+    val firstChatDecisionMismatchCooldownDays: Long = 7,
+    val visualAdvancement: VisualAdvancementProperties = VisualAdvancementProperties()
 ) {
     init {
         require(previousPairingCooldownDays >= 0) {
@@ -19,6 +20,20 @@ data class MatchmakingProperties(
         }
         require(firstChatDecisionMismatchCooldownDays >= 0) {
             "matchmaking.first-chat-decision-mismatch-cooldown-days must be non-negative"
+        }
+    }
+}
+
+data class VisualAdvancementProperties(
+    val maxPerWindow: Int = 10,
+    val windowHours: Long = 24
+) {
+    init {
+        require(maxPerWindow > 0) {
+            "matchmaking.visual-advancement.max-per-window must be greater than 0"
+        }
+        require(windowHours > 0) {
+            "matchmaking.visual-advancement.window-hours must be greater than 0"
         }
     }
 }

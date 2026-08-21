@@ -432,6 +432,18 @@ Hard filtering is first applied in the matchmaking queue query. The query filter
 
 `SearchLocationMatchFilter` applies mutual dynamic maximum distance from queue search locations before a pair can be accepted. Final ranking is delegated to `CompatibilityScorer`. The current basic scorer uses `CompatibilityEvaluator`, which repeats profile-level compatibility checks as a service-layer guard.
 
+New search is also paced by the rolling Visual Review advancement cap. A
+persisted `VisualReview` is the durable advancement record and counts once for
+each Match participant from `VisualReview.createdAt`. The active window counts
+rows with `createdAt > now - matchmaking.visual-advancement.window-hours`; at
+exactly `createdAt + window`, that row no longer consumes capacity. Later
+visual decisions, visual-review expiry, connection creation and Match closure
+do not refund or add capacity, so the cap does not reveal counterpart decisions.
+The cap blocks matchmaking admission and stale queued assignment only; it does
+not block first-chat messages, first-chat `APPROVED`, mutual approval, Visual
+Review creation for an existing Match, Visual decisions, scheduling or second
+chat.
+
 Advanced criteria such as affinity tags or probabilistic scoring are not implemented.
 
 The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.
