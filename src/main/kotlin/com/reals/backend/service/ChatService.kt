@@ -81,10 +81,10 @@ class ChatService(
     @param:Value("\${chat.second-chat.read-only-retention-minutes:1440}")
     private val secondChatReadOnlyRetentionMinutes: Long,
 
-    @param:Value("\${chat.first-chat.approval.min-elapsed-minutes:5}")
+    @param:Value("\${chat.first-chat.approval.min-elapsed-minutes:1}")
     private val firstChatApprovalMinElapsedMinutes: Long,
 
-    @param:Value("\${chat.first-chat.approval.min-messages-per-user:\${chat.first-chat.min-messages-per-user:2}}")
+    @param:Value("\${chat.first-chat.approval.min-messages-per-user:3}")
     private val firstChatApprovalMinMessagesPerUser: Int,
 
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")

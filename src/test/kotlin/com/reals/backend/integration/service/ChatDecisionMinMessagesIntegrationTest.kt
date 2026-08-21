@@ -15,9 +15,8 @@ import java.time.OffsetDateTime
 
 @TestPropertySource(
     properties = [
-        "chat.first-chat.approval.min-elapsed-minutes=5",
-        "chat.first-chat.approval.min-messages-per-user=2",
-        "chat.first-chat.min-messages-per-user=0"
+        "chat.first-chat.approval.min-elapsed-minutes=1",
+        "chat.first-chat.approval.min-messages-per-user=3"
     ]
 )
 class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
@@ -25,7 +24,7 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     @Test
     fun `approving first chat before minimum elapsed returns stable code`() {
         val setup = createMatchWithFirstChat()
-        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 2)
+        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 3)
 
         val exception = assertThrows<DomainConflictException> {
             chatService.recordChatDecision(
@@ -41,9 +40,9 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     @Test
     fun `approving first chat with insufficient approving user messages returns stable code`() {
         val setup = createMatchWithFirstChat()
-        chatService.sendMessage(setup.firstChatId, setup.userAId, "A message")
-        repeat(2) { index -> chatService.sendMessage(setup.firstChatId, setup.userBId, "B message $index") }
-        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 5)
+        repeat(2) { index -> chatService.sendMessage(setup.firstChatId, setup.userAId, "A message $index") }
+        repeat(3) { index -> chatService.sendMessage(setup.firstChatId, setup.userBId, "B message $index") }
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
 
         val exception = assertThrows<DomainConflictException> {
             chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
@@ -55,9 +54,9 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     @Test
     fun `approving first chat with insufficient partner messages returns stable code`() {
         val setup = createMatchWithFirstChat()
-        repeat(2) { index -> chatService.sendMessage(setup.firstChatId, setup.userAId, "A message $index") }
-        chatService.sendMessage(setup.firstChatId, setup.userBId, "B message")
-        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 5)
+        repeat(3) { index -> chatService.sendMessage(setup.firstChatId, setup.userAId, "A message $index") }
+        repeat(2) { index -> chatService.sendMessage(setup.firstChatId, setup.userBId, "B message $index") }
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
 
         val exception = assertThrows<DomainConflictException> {
             chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
@@ -67,10 +66,10 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `approving first chat at exact elapsed and message boundary succeeds`() {
+    fun `approving first chat at exact one minute and three message boundary succeeds`() {
         val setup = createMatchWithFirstChat()
-        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 2)
-        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 5)
+        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 3)
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
 
@@ -103,8 +102,8 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     @Test
     fun `repeated approved decision remains already submitted after eligible approval`() {
         val setup = createMatchWithFirstChat()
-        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 2)
-        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 5)
+        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 3)
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
 
         val exception = assertThrows<DomainConflictException> {
@@ -117,8 +116,8 @@ class ChatDecisionMinMessagesIntegrationTest : BaseIT() {
     @Test
     fun `mutual eligible approvals transition to visual review`() {
         val setup = createMatchWithFirstChat()
-        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 2)
-        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 5)
+        sendBilateralMessages(setup.firstChatId, setup.userAId, setup.userBId, countPerUser = 3)
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)

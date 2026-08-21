@@ -174,12 +174,9 @@ chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
 
-    # Legacy fallback for approval.min-messages-per-user when the nested approval key is absent.
-    min-messages-per-user: 0
-
     approval:
-      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:5}
-      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:2}
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
 
     # Minimum messages a user must send before unilateral cancellation is penalty-free.
     # Mutual cancellation and safety cancellation bypass this rule.
