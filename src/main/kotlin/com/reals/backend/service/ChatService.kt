@@ -81,8 +81,11 @@ class ChatService(
     @param:Value("\${chat.second-chat.read-only-retention-minutes:1440}")
     private val secondChatReadOnlyRetentionMinutes: Long,
 
-    @param:Value("\${chat.first-chat.min-messages-per-user:0}")
-    private val minMessagesPerUser: Int,
+    @param:Value("\${chat.first-chat.approval.min-elapsed-minutes:1}")
+    private val firstChatApprovalMinElapsedMinutes: Long,
+
+    @param:Value("\${chat.first-chat.approval.min-messages-per-user:3}")
+    private val firstChatApprovalMinMessagesPerUser: Int,
 
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val firstChatInactivityThresholdMinutes: Long,
@@ -651,19 +654,18 @@ class ChatService(
                     )
                 )
 
-        if (decision == ChatContinueDecision.APPROVED && minMessagesPerUser > 0) {
-            val sent =
-                chatMessageRepository.countByChatSessionIdAndSenderId(
-                    chatSessionId = chat.id,
-                    senderId = userId
-                )
-
-            if (sent < minMessagesPerUser) {
-                throw DomainConflictException(
-                    code = DomainErrorCode.CHAT_MIN_MESSAGES_REQUIRED,
-                    message = "Minimum chat messages are required before approval"
-                )
-            }
+        if (decision == ChatContinueDecision.APPROVED) {
+            val partnerUserId =
+                when (userId) {
+                    match.userAId -> match.userBId
+                    match.userBId -> match.userAId
+                    else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
+                }
+            requireFirstChatApprovalEligible(
+                chat = chat,
+                approvingUserId = userId,
+                partnerUserId = partnerUserId
+            )
         }
 
         when (userId) {
@@ -713,6 +715,19 @@ class ChatService(
                     preResolutionPairReliabilityScore = preResolutionPairReliabilityScore
                 )
             } else {
+                if (mismatchRejection) {
+                    val counterpartUserId =
+                        when (userId) {
+                            match.userAId -> match.userBId
+                            match.userBId -> match.userAId
+                            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
+                        }
+                    chatExitService.recordFirstChatRejectionReliability(
+                        chat = chat,
+                        rejectingUserId = userId,
+                        counterpartUserId = counterpartUserId
+                    )
+                }
                 finishFirstChatDecisionMismatch(chat)
             }
         }
@@ -1187,6 +1202,49 @@ class ChatService(
         }
     }
 
+    private fun requireFirstChatApprovalEligible(
+        chat: Chat,
+        approvingUserId: UUID,
+        partnerUserId: UUID
+    ) {
+        val now = OffsetDateTime.now()
+        val elapsedThresholdMet =
+            firstChatApprovalMinElapsedMinutes <= 0 ||
+                !chat.startedAt.plusMinutes(firstChatApprovalMinElapsedMinutes).isAfter(now)
+
+        if (!elapsedThresholdMet) {
+            throw DomainConflictException(
+                code = DomainErrorCode.FIRST_CHAT_APPROVAL_TOO_EARLY,
+                message = "More conversation time is required before continuing"
+            )
+        }
+
+        if (firstChatApprovalMinMessagesPerUser <= 0) {
+            return
+        }
+
+        val approvingMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = approvingUserId
+            )
+        val partnerMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = partnerUserId
+            )
+
+        if (
+            approvingMessages < firstChatApprovalMinMessagesPerUser.toLong() ||
+            partnerMessages < firstChatApprovalMinMessagesPerUser.toLong()
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.FIRST_CHAT_APPROVAL_PARTICIPATION_REQUIRED,
+                message = "Both participants need to take part in the conversation before continuing"
+            )
+        }
+    }
+
     private fun finishFirstChatDecisionMismatch(chat: Chat) {
         val match = matchService.findByIdOrThrow(chat.matchId)
         chat.status = ChatStatus.FINISHED
@@ -1195,15 +1253,6 @@ class ChatService(
         chatRepository.save(chat)
         recordChatEnded(chat)
         publishFirstChatTerminated(chat)
-
-        listOf(match.userAId, match.userBId).forEach { participantId ->
-            userReliabilityScoreService.recordEvent(
-                userId = participantId,
-                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE,
-                relatedMatchId = match.id,
-                relatedChatId = chat.id
-            )
-        }
 
         matchService.rejectChatPhase(chat.matchId)
     }

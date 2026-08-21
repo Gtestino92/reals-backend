@@ -31,20 +31,23 @@ any more-specific nested `AGENTS.md` files first.
 - When starting a new development task from `development`, create/use a focused
   feature branch whose name starts with `feature/`. This is not required when
   applying a patch on an already-active feature branch.
-- A feature branch must track its same-named remote branch, for example
-  `feature/example` -> `origin/feature/example`. Do not leave a feature branch
-  with upstream `origin/development`; use `development` only as the base.
+- A feature branch should track its same-named remote branch by task completion
+  or publication time, for example `feature/example` ->
+  `origin/feature/example`. Do not leave a feature branch with upstream
+  `origin/development`; use `development` only as the base.
 - Standing authorization: when the only missing step for a new development task
   is creating the same-named remote feature branch and setting it as upstream,
   agents may run the branch-bootstrap push needed for that exact purpose, with
   no implementation changes included in that push.
 - After creating a feature branch from `development`, verify the upstream before
   making code changes. If the same-named remote branch already exists, set
-  upstream to that branch immediately. If it does not exist, either create it
-  with an explicit user-approved `git push -u origin HEAD` or stop and report
-  that same-named upstream cannot be configured without pushing. Never continue
-  substantial implementation work on a feature branch with no upstream or with
-  upstream set to `origin/development`.
+  upstream to that branch immediately. If it does not exist, unset any inherited
+  upstream and continue local implementation unless the user has asked to publish
+  the branch. Do not block local implementation merely because the same-named
+  remote branch does not exist yet. Before final delivery, publication, or any
+  push, verify whether the same-named upstream exists or clearly report that it
+  still needs to be created. Never continue substantial implementation work on a
+  feature branch whose upstream is `origin/development`.
 
 ## 3. Scope And Architecture
 

@@ -5,6 +5,7 @@ import com.reals.backend.controller.dev.DevUserReliabilityController
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.UserReliabilityDimension
@@ -73,17 +74,59 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
         assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
         assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED)
     }
 
     @Test
-    fun `first chat decision mismatch uses mutual no spark reliability for both users`() {
+    fun `mutual close request creation alone does not reward requester`() {
+        val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "I prefer a mutual close")
+
+        chatExitService.requestMutualCancellation(setup.firstChatId, setup.userAId)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED)
+    }
+
+    @Test
+    fun `accepted mutual close request rewards requester initiative once`() {
+        val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "I prefer a mutual close")
+        val request = chatExitService.requestMutualCancellation(setup.firstChatId, setup.userAId)
+
+        chatExitService.acceptMutualCancellation(setup.firstChatId, request.id, setup.userBId)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertSingleEvent(
+            setup.userAId,
+            UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED,
+            1
+        )
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED)
+    }
+
+    @Test
+    fun `resolved mutual close request with no requester message does not reward initiative`() {
+        val setup = createMatchWithFirstChat()
+        val request = chatExitService.requestMutualCancellation(setup.firstChatId, setup.userAId)
+        request.createdAt = OffsetDateTime.now().minusSeconds(30)
+        chatExitRequestRepository.save(request)
+
+        chatExitService.timeoutMutualCancellation(setup.firstChatId, request.id, setup.userAId)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED, -2)
+    }
+
+    @Test
+    fun `first chat decision mismatch does not use mutual no spark reliability`() {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.REJECTED)
 
-        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
-        assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE, 2)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE)
         assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
         assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
         assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION)
@@ -91,17 +134,43 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `early unilateral first chat close creates event for closer`() {
+    fun `first chat decision mismatch is neutral when second user approves first`() {
+        val setup = createMatchWithFirstChat()
+
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.REJECTED)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
+    }
+
+    @Test
+    fun `below lower threshold unilateral first chat close creates strong event for closer`() {
         val setup = createMatchWithFirstChat()
 
         chatExitService.cancelChatUnilaterally(setup.firstChatId, setup.userAId)
 
-        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE, -2)
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE, -3)
         assertNoEvents(setup.userBId)
     }
 
     @Test
-    fun `unilateral first chat close after minimum participation creates light event for closer`() {
+    fun `lower threshold met but sufficient threshold not met creates partial event for closer`() {
+        val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "A message")
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "B message")
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 2)
+
+        chatExitService.cancelChatUnilaterally(setup.firstChatId, setup.userAId)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE, -1)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE)
+    }
+
+    @Test
+    fun `unilateral first chat close after sufficient participation creates no event for closer`() {
         val setup = createMatchWithFirstChat()
         repeat(2) { index ->
             chatService.sendMessage(setup.firstChatId, setup.userAId, "A message $index")
@@ -111,11 +180,33 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
         chatExitService.cancelChatUnilaterally(setup.firstChatId, setup.userAId)
 
-        assertSingleEvent(
-            setup.userAId,
-            UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION,
-            -1
-        )
+        assertNoEvents(setup.userAId)
+        assertNoEvents(setup.userBId)
+    }
+
+    @Test
+    fun `enough elapsed without bilateral lower messages remains strong early close`() {
+        val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "A message")
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 3)
+
+        chatExitService.cancelChatUnilaterally(setup.firstChatId, setup.userAId)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE, -3)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE)
+    }
+
+    @Test
+    fun `bilateral lower messages before lower elapsed remains strong early close`() {
+        val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "A message")
+        chatService.sendMessage(setup.firstChatId, setup.userBId, "B message")
+        moveFirstChatStartIntoPast(setup.firstChatId, minutes = 1)
+
+        chatExitService.cancelChatUnilaterally(setup.firstChatId, setup.userAId)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE, -3)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE)
     }
 
     @Test
@@ -137,13 +228,18 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     @Test
     fun `mutual close request timeout creates event for ignoring user only`() {
         val setup = createMatchWithFirstChat()
+        chatService.sendMessage(setup.firstChatId, setup.userAId, "I prefer to close cleanly")
         val request = chatExitService.requestMutualCancellation(setup.firstChatId, setup.userAId)
         request.createdAt = OffsetDateTime.now().minusSeconds(30)
         chatExitRequestRepository.save(request)
 
         chatExitService.timeoutMutualCancellation(setup.firstChatId, request.id, setup.userAId)
 
-        assertNoEvents(setup.userAId)
+        assertSingleEvent(
+            setup.userAId,
+            UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED,
+            1
+        )
         assertSingleEvent(setup.userBId, UserReliabilityEventType.FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED, -2)
     }
 
@@ -172,6 +268,18 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
         assertNoEvent(setup.userAId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION)
         assertSingleEvent(setup.userBId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION, -2)
+    }
+
+    @Test
+    fun `visual review rejection creates no negative reliability event`() {
+        val setup = createMatchInVisualPhase()
+        val beforeCount = userReliabilityEventRepository.count()
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.REJECTED)
+
+        assertEquals(beforeCount, userReliabilityEventRepository.count())
+        assertNoEvent(setup.userAId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION)
     }
 
     @Test
@@ -253,15 +361,93 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `scheduling proposal and expiration create expected events`() {
+    fun `scheduling expiration penalizes current round missing submitter only`() {
         val setup = createConnectionInSchedulingPhase()
 
         schedulingService.addProposal(setup.connectionId, setup.userAId, futureHalfHourSlot(), 1)
         schedulingService.expireNegotiation(setup.connectionId)
 
         assertSingleEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_SLOTS_PROPOSED_ON_TIME, 1)
-        assertNoEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL)
-        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL, -3)
+        assertNoEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
+    }
+
+    @Test
+    fun `scheduling expiration ignores historical proposals from previous rounds`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposals(setup.connectionId, setup.userAId, 1, listOf(slot))
+        schedulingService.rejectPartnerProposals(setup.connectionId, setup.userBId, 1)
+        schedulingService.addProposals(setup.connectionId, setup.userBId, 1, listOf(slot.plusHours(1)))
+        schedulingService.rejectPartnerProposals(setup.connectionId, setup.userAId, 1)
+        schedulingService.addProposals(setup.connectionId, setup.userAId, 2, listOf(slot.plusHours(2)))
+
+        schedulingService.expireNegotiation(setup.connectionId)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
+    }
+
+    @Test
+    fun `scheduling expiration penalizes both when both have unresolved partner proposals`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposals(setup.connectionId, setup.userAId, 1, listOf(slot))
+        schedulingService.addProposals(setup.connectionId, setup.userBId, 1, listOf(slot.plusHours(1)))
+
+        schedulingService.expireNegotiation(setup.connectionId)
+
+        assertSingleEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
+    }
+
+    @Test
+    fun `scheduling expiration penalizes only user with remaining partner proposals to resolve`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposals(setup.connectionId, setup.userAId, 1, listOf(slot))
+        schedulingService.addProposals(setup.connectionId, setup.userBId, 1, listOf(slot.plusHours(1)))
+        schedulingService.rejectPartnerProposals(setup.connectionId, setup.userAId, 1)
+
+        schedulingService.expireNegotiation(setup.connectionId)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING)
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
+    }
+
+    @Test
+    fun `scheduling legitimate exhausted rounds do not create expiration responsibility events`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        repeat(3) { roundIndex ->
+            val roundNumber = roundIndex + 1
+            val roundSlot = slot.plusHours((roundIndex * 2).toLong())
+            schedulingService.addProposals(setup.connectionId, setup.userAId, roundNumber, listOf(roundSlot))
+            schedulingService.rejectPartnerProposals(setup.connectionId, setup.userBId, roundNumber)
+            schedulingService.addProposals(setup.connectionId, setup.userBId, roundNumber, listOf(roundSlot.plusHours(1)))
+            schedulingService.rejectPartnerProposals(setup.connectionId, setup.userAId, roundNumber)
+        }
+
+        assertEquals(NegotiationStatus.FAILED, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+        schedulingService.expireNegotiation(setup.connectionId)
+
+        assertNoEvent(setup.userAId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING)
+        assertNoEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING)
+    }
+
+    @Test
+    fun `scheduling expiration responsibility event is idempotent`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        schedulingService.addProposal(setup.connectionId, setup.userAId, futureHalfHourSlot(), 1)
+        schedulingService.expireNegotiation(setup.connectionId)
+        schedulingService.expireNegotiation(setup.connectionId)
+
+        assertSingleEvent(setup.userBId, UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING, -3)
     }
 
     @Test
@@ -408,7 +594,7 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
         )
         userReliabilityScoreService.recordEvent(
             userId = user.id,
-            eventType = UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL,
+            eventType = UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING,
             relatedConnectionId = UUID.randomUUID(),
             occurredAt = now.minusDays(10)
         )
@@ -423,19 +609,19 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
         assertEquals(user.id, response.userId)
         assertTrue(response.enabled)
         assertEquals(100, response.baseScore)
-        assertEquals(-3.5, response.weightedDelta)
-        assertEquals(96.5, response.effectiveScore)
+        assertEquals(-4.5, response.weightedDelta)
+        assertEquals(95.5, response.effectiveScore)
         assertEquals(2, response.events.size)
         assertEquals(beforeCount, userReliabilityEventRepository.count())
 
         val fullWeightEvent =
             response.events.single { it.eventType == UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE }
-        assertEquals(-2, fullWeightEvent.delta)
+        assertEquals(-3, fullWeightEvent.delta)
         assertEquals(1.0, fullWeightEvent.temporalWeight)
-        assertEquals(-2.0, fullWeightEvent.effectiveDelta)
+        assertEquals(-3.0, fullWeightEvent.effectiveDelta)
 
         val halfWeightEvent =
-            response.events.single { it.eventType == UserReliabilityEventType.SCHEDULING_EXPIRED_NO_PROPOSAL }
+            response.events.single { it.eventType == UserReliabilityEventType.SCHEDULING_EXPIRED_ACTION_PENDING }
         assertEquals(-3, halfWeightEvent.delta)
         assertEquals(0.5, halfWeightEvent.temporalWeight)
         assertEquals(-1.5, halfWeightEvent.effectiveDelta)

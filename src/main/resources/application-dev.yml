@@ -112,7 +112,9 @@ chat:
   first-chat:
     duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
-    min-messages-per-user: 0
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
     guidance:
       required-participation-score: 60
       direct-question-reply-multiplier: 2

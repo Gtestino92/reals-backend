@@ -55,6 +55,12 @@ class ChatExitService(
     @param:Value("\${chat.exit-request.mutual-timeout-seconds:20}")
     private val mutualCancellationTimeoutSeconds: Long,
 
+    @param:Value("\${user-reliability.first-chat.early-engagement-messages-per-user:1}")
+    private val reliabilityEarlyEngagementMessagesPerUser: Int,
+
+    @param:Value("\${user-reliability.first-chat.early-engagement-minutes:2}")
+    private val reliabilityEarlyEngagementMinutes: Long,
+
     @param:Value("\${user-reliability.first-chat.min-participation-messages-per-user:2}")
     private val reliabilityMinParticipationMessagesPerUser: Int,
 
@@ -163,6 +169,7 @@ class ChatExitService(
         )
 
         recordFirstChatMutualNoSparkClosure(chat)
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
 
         return ChatExitOutcome(
             chat = chat,
@@ -199,6 +206,8 @@ class ChatExitService(
             endedReason = ChatEndReason.MUTUAL_CANCEL,
             actorUserId = responderUserId
         )
+
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
 
         return ChatExitOutcome(
             chat = chat,
@@ -253,6 +262,7 @@ class ChatExitService(
                 relatedChatId = chat.id
             )
         }
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
 
         // Client-triggered mutual timeout means the pending request was not
         // answered in time. It is not a unilateral cancellation and must not
@@ -317,9 +327,9 @@ class ChatExitService(
             actorUserId = userId
         )
 
-        recordFirstChatUnilateralClosure(
+        recordFirstChatRejectionReliability(
             chat = chat,
-            closingUserId = userId,
+            rejectingUserId = userId,
             counterpartUserId = responderUserId
         )
 
@@ -405,9 +415,35 @@ class ChatExitService(
         }
     }
 
-    private fun recordFirstChatUnilateralClosure(
+    private fun recordFirstChatResponsibleCloseRequestResolved(
         chat: Chat,
-        closingUserId: UUID,
+        exitRequest: ChatExitRequest
+    ) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val requesterMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = exitRequest.requesterUserId
+            )
+
+        if (requesterMessages <= 0L) {
+            return
+        }
+
+        userReliabilityScoreService.recordEvent(
+            userId = exitRequest.requesterUserId,
+            eventType = UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED,
+            relatedMatchId = chat.matchId,
+            relatedChatId = chat.id
+        )
+    }
+
+    fun recordFirstChatRejectionReliability(
+        chat: Chat,
+        rejectingUserId: UUID,
         counterpartUserId: UUID
     ) {
         if (chat.chatType != ChatType.FIRST_CHAT) {
@@ -419,7 +455,7 @@ class ChatExitService(
         val closingUserMessages =
             chatMessageRepository.countByChatSessionIdAndSenderId(
                 chatSessionId = chat.id,
-                senderId = closingUserId
+                senderId = rejectingUserId
             )
         val counterpartMessages =
             chatMessageRepository.countByChatSessionIdAndSenderId(
@@ -437,15 +473,24 @@ class ChatExitService(
             return
         }
 
-        val minimumParticipationMet =
+        val sufficientParticipationMet =
             elapsedThresholdMet &&
                 closingUserMessages >= reliabilityMinParticipationMessagesPerUser.toLong() &&
                 counterpartMessages >= reliabilityMinParticipationMessagesPerUser.toLong()
 
+        if (sufficientParticipationMet) {
+            return
+        }
+
+        val earlyEngagementThresholdMet =
+            !chat.startedAt.plusMinutes(reliabilityEarlyEngagementMinutes).isAfter(now) &&
+                closingUserMessages >= reliabilityEarlyEngagementMessagesPerUser.toLong() &&
+                counterpartMessages >= reliabilityEarlyEngagementMessagesPerUser.toLong()
+
         userReliabilityScoreService.recordEvent(
-            userId = closingUserId,
-            eventType = if (minimumParticipationMet) {
-                UserReliabilityEventType.FIRST_CHAT_UNILATERAL_CLOSE_AFTER_MINIMUM_PARTICIPATION
+            userId = rejectingUserId,
+            eventType = if (earlyEngagementThresholdMet) {
+                UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE
             } else {
                 UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE
             },
