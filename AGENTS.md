@@ -198,6 +198,16 @@ any more-specific nested `AGENTS.md` files first.
 - Never run `./mvnw clean test`.
 - Never run `clean` merely as routine validation.
 - Run only exact affected test classes or focused test methods.
+- For native SQL, JDBC-specific queries, scalar projections, or custom
+  projections involving date/time values, verify the actual
+  PostgreSQL/Hibernate/JDBC materialized type with a real database integration
+  test; do not assume the entity mapping type.
+- PostgreSQL `timestamptz` native scalars may materialize as `Instant` even
+  when the entity property is `OffsetDateTime`; convert explicitly at the
+  application boundary rather than relying on casts.
+- Require a real database check when introducing native date/time scalar
+  queries, changing temporal projections, or relying on timezone/offset
+  behavior.
 - If complete-suite execution is genuinely required, stop, explain why, and ask
   the user to run it or leave it to CI.
 - Cover success, rejection, temporal boundaries, idempotent replay, duplicate

@@ -5,6 +5,7 @@ import com.reals.backend.repository.VisualReviewRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 @Service
@@ -41,7 +42,9 @@ class VisualAdvancementCapService(
 
         return VisualAdvancementCapStatus(
             blocked = true,
-            nextAvailableAt = thresholdAdvancement?.plusHours(windowHours)
+            nextAvailableAt = thresholdAdvancement
+                ?.atOffset(ZoneOffset.UTC)
+                ?.plusHours(windowHours)
         )
     }
 
