@@ -327,9 +327,9 @@ class ChatExitService(
             actorUserId = userId
         )
 
-        recordFirstChatUnilateralClosure(
+        recordFirstChatRejectionReliability(
             chat = chat,
-            closingUserId = userId,
+            rejectingUserId = userId,
             counterpartUserId = responderUserId
         )
 
@@ -441,9 +441,9 @@ class ChatExitService(
         )
     }
 
-    private fun recordFirstChatUnilateralClosure(
+    fun recordFirstChatRejectionReliability(
         chat: Chat,
-        closingUserId: UUID,
+        rejectingUserId: UUID,
         counterpartUserId: UUID
     ) {
         if (chat.chatType != ChatType.FIRST_CHAT) {
@@ -455,7 +455,7 @@ class ChatExitService(
         val closingUserMessages =
             chatMessageRepository.countByChatSessionIdAndSenderId(
                 chatSessionId = chat.id,
-                senderId = closingUserId
+                senderId = rejectingUserId
             )
         val counterpartMessages =
             chatMessageRepository.countByChatSessionIdAndSenderId(
@@ -488,7 +488,7 @@ class ChatExitService(
                 counterpartMessages >= reliabilityEarlyEngagementMessagesPerUser.toLong()
 
         userReliabilityScoreService.recordEvent(
-            userId = closingUserId,
+            userId = rejectingUserId,
             eventType = if (earlyEngagementThresholdMet) {
                 UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE
             } else {

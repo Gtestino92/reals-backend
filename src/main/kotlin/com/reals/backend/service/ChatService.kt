@@ -715,6 +715,19 @@ class ChatService(
                     preResolutionPairReliabilityScore = preResolutionPairReliabilityScore
                 )
             } else {
+                if (mismatchRejection) {
+                    val counterpartUserId =
+                        when (userId) {
+                            match.userAId -> match.userBId
+                            match.userBId -> match.userAId
+                            else -> throw AccessDeniedException("User $userId does not belong to match $matchId")
+                        }
+                    chatExitService.recordFirstChatRejectionReliability(
+                        chat = chat,
+                        rejectingUserId = userId,
+                        counterpartUserId = counterpartUserId
+                    )
+                }
                 finishFirstChatDecisionMismatch(chat)
             }
         }
