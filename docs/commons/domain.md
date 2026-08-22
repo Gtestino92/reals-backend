@@ -311,7 +311,9 @@ and does not treat every action as legal consent.
 
 ## Active Engagement Locks
 
-Users can have multiple active matches and connections up to configured limits:
+Users can have multiple active matches and connections. Configured capacity
+limits are admission controls for new matchmaking opportunities, not hard
+lifecycle ceilings for engagements that already exist:
 
 - `engagement.max-active-matches: 5`
 - `engagement.max-active-connections: 2`
@@ -324,6 +326,13 @@ The lock table is the source of truth for active engagement counting.
 - Mutual visual approval creates a `SCHEDULING_PENDING` connection and creates `CONNECTION` locks immediately, so the pending connection occupies connection capacity before scheduling is actionable.
 - Visual rejection closes the match and releases remaining match locks only after both users have decided or the visual phase expires.
 - Connection closure deletes connection locks.
+
+Match capacity gates new Match creation. The Visual Advancement Cap gates future
+matchmaking from recent `VisualReview.createdAt` throughput. Connection capacity
+gates future matchmaking from active `CONNECTION` locks. An existing engagement
+can temporarily push counts above a configured limit as it progresses; the user
+stays unavailable for new matchmaking until capacity falls below the relevant
+threshold.
 
 Do not infer active engagement counts from match or connection state alone.
 

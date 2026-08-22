@@ -27,9 +27,6 @@ class ConnectionService(
     private val userBlockService: UserBlockService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
 
-    @param:Value($$"${engagement.max-active-connections:2}")
-    private val maxActiveConnections: Int,
-
     @param:Value($$"${scheduling.negotiation-duration-minutes:2880}")
     private val negotiationDurationMinutes: Long,
 
@@ -149,18 +146,6 @@ class ConnectionService(
         return saved
     }
 
-    private fun checkConnectionLimit(userId: UUID) {
-
-        val active = lockRepository.countByUserIdAndEngagementType(
-            userId,
-            EngagementType.CONNECTION
-        )
-
-        check(active < maxActiveConnections) {
-            "User $userId has reached the maximum number of active connections ($maxActiveConnections)"
-        }
-    }
-
     private fun validateParticipant(
         connection: Connection,
         userId: UUID
@@ -199,8 +184,6 @@ class ConnectionService(
         ) {
             return
         }
-
-        checkConnectionLimit(userId)
 
         lockRepository.save(
             ActiveEngagementLock(

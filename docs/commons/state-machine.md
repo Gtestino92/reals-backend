@@ -153,6 +153,14 @@ cancellation penalty.
 
 State transitions and lock changes should stay coupled in service methods.
 
+Capacity limits gate admission to new matchmaking opportunities; they are not
+lifecycle transition guards for engagements that already exist. Match capacity
+limits new Match creation. The Visual Advancement Cap limits future matchmaking
+from recent `VisualReview.createdAt` throughput. Connection capacity limits
+future matchmaking from active `CONNECTION` locks. Existing engagements may
+temporarily take counts above current limits while progressing, and that
+overshoot is valid until later closures release capacity.
+
 ## Block containment
 
 - `CHAT_ACTIVE -> CHAT_REJECTED`; an active first chat becomes `CANCELLED / USER_BLOCK`.

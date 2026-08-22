@@ -355,7 +355,21 @@ user and match.
 
 `ConnectionService.createFromMatch(match)` creates a connection after visual approval.
 
-It validates active connection limits and creates `CONNECTION` locks immediately. A connection starts in `SCHEDULING_PENDING` with `schedulingAvailableAt`; it occupies connection capacity but is not yet actionable in Home. `SCHEDULING_PENDING` is a deferred activation state, not a user-driven coordination state.
+It creates `CONNECTION` locks immediately without rechecking active connection
+capacity. A connection starts in `SCHEDULING_PENDING` with
+`schedulingAvailableAt`; it occupies connection capacity but is not yet
+actionable in Home. `SCHEDULING_PENDING` is a deferred activation state, not a
+user-driven coordination state.
+
+Matchmaking capacity limits are admission controls for new opportunities. Match
+capacity controls creation of new Match opportunities, the Visual Advancement
+Cap controls future matchmaking admission from recent `VisualReview.createdAt`
+throughput, and connection capacity controls future matchmaking admission from
+downstream active commitments. Once an engagement exists, reaching a limit later
+must not prevent that engagement from progressing through later lifecycle phases.
+Existing engagements can temporarily push active counts above a configured
+limit; the user remains unavailable for new matchmaking until the relevant count
+falls below that limit.
 
 ## 7. Scheduling
 

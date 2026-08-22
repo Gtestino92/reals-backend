@@ -50,6 +50,13 @@ A match can produce one connection. Mutual visual approval creates a
 counts against connection capacity; scheduling becomes actionable later when the
 activation job transitions it to `SCHEDULING_PHASE`.
 
+Engagement capacity limits are matchmaking admission controls. The match cap
+gates new Match opportunities, the Visual Advancement Cap gates future
+matchmaking from recent visual-review advancement throughput, and the connection
+cap gates future matchmaking from active downstream commitments. Existing
+engagements continue through later lifecycle phases even if that temporarily
+takes active counts above a configured limit.
+
 Chat responsibilities are split conservatively:
 
 - `ChatService`: chat creation, messages, first-chat approval decisions and timeout/abandonment endings.

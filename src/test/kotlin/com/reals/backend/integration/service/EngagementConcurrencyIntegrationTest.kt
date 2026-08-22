@@ -12,7 +12,7 @@ import com.reals.backend.service.MatchService
 import com.reals.backend.service.UserService
 import com.reals.backend.service.VisualReviewService
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -83,7 +83,7 @@ class EngagementConcurrencyIntegrationTest {
     }
 
     @Test
-    fun `concurrent connection creation cannot exceed active connection limit`() {
+    fun `concurrent connection creation may exceed active connection limit`() {
         val sharedUserId = createUser("shared-connection")
 
         val existingMatch = matchService.createMatch(
@@ -106,16 +106,16 @@ class EngagementConcurrencyIntegrationTest {
             { connectionService.createFromMatch(candidateMatchB) }
         )
 
-        assertEquals(1, results.count { it })
-        assertEquals(1, results.count { !it })
+        assertEquals(2, results.count { it })
+        assertEquals(0, results.count { !it })
         assertEquals(
-            2,
+            3,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
         )
     }
 
     @Test
-    fun `mutual visual approval rolls back when pending connection would exceed active connection limit`() {
+    fun `mutual visual approval creates connection when participant is at active connection limit`() {
         val sharedUserId = createUser("shared-visual-limit")
 
         repeat(2) {
@@ -136,16 +136,52 @@ class EngagementConcurrencyIntegrationTest {
         visualReviewService.makeAvailableNowForTest(candidateMatch.id)
 
         visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userBId, VisualDecision.APPROVED)
 
-        org.junit.jupiter.api.assertThrows<IllegalStateException> {
-            visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userBId, VisualDecision.APPROVED)
+        assertEquals(MatchState.VISUAL_APPROVED, matchService.findByIdOrThrow(candidateMatch.id).state)
+        assertNotNull(connectionRepository.findByMatchId(candidateMatch.id))
+        assertEquals(
+            3,
+            lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
+        )
+    }
+
+    @Test
+    fun `replaying connection creation does not duplicate connection locks above active connection limit`() {
+        val sharedUserId = createUser("shared-idempotent-limit")
+
+        repeat(3) {
+            val existingMatch = matchService.createMatch(
+                userAId = sharedUserId,
+                userBId = createUser("existing-idempotent-limit-$it")
+            )
+            connectionService.createFromMatch(existingMatch)
         }
 
-        assertEquals(MatchState.VISUAL_PHASE, matchService.findByIdOrThrow(candidateMatch.id).state)
-        assertNull(connectionRepository.findByMatchId(candidateMatch.id))
+        val candidateMatch = matchService.createMatch(
+            userAId = sharedUserId,
+            userBId = createUser("candidate-idempotent-limit")
+        )
+
+        val first = connectionService.createFromMatch(candidateMatch)
+        val second = connectionService.createFromMatch(candidateMatch)
+
+        assertEquals(first.id, second.id)
         assertEquals(
-            2,
+            1,
+            connectionRepository.findAll().count { it.matchId == candidateMatch.id }
+        )
+        assertEquals(
+            4,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
+        )
+        assertEquals(
+            1,
+            lockRepository.findAll().count {
+                it.userId == sharedUserId &&
+                    it.engagementId == first.id &&
+                    it.engagementType == EngagementType.CONNECTION
+            }
         )
     }
 
