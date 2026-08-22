@@ -2,12 +2,14 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
+import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.VisualResourceAccessPolicy
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.matching.MatchmakingAvailabilityService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -17,11 +19,15 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class VisualReviewIntegrationTest : BaseIT() {
+
+    @Autowired
+    private lateinit var matchmakingAvailabilityService: MatchmakingAvailabilityService
 
     @Test
     fun `visual review initialization persists availableAt and expires from availability`() {
@@ -604,6 +610,88 @@ class VisualReviewIntegrationTest : BaseIT() {
         assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
     }
 
+    @Test
+    fun `visual approval creates connection when one participant is exactly at connection admission limit`() {
+        val setup = createMatchInVisualPhase()
+
+        repeat(2) { index ->
+            createConnectionForFemaleParticipant(setup.userAId, "visual-at-limit-$index")
+        }
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+
+        assertEquals(MatchState.VISUAL_APPROVED, matchService.findByIdOrThrow(setup.matchId).state)
+        assertEquals(ConnectionState.SCHEDULING_PENDING, connection.state)
+        assertEquals(3, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `visual approval creates connection when one participant is above connection admission limit`() {
+        val setup = createMatchInVisualPhase()
+
+        repeat(3) { index ->
+            createConnectionForFemaleParticipant(setup.userAId, "visual-above-limit-$index")
+        }
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        assertNotNull(connectionRepository.findByMatchId(setup.matchId))
+        assertEquals(MatchState.VISUAL_APPROVED, matchService.findByIdOrThrow(setup.matchId).state)
+        assertEquals(4, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `visual approval creates connection when both participants are at or above connection admission limit`() {
+        val setup = createMatchInVisualPhase()
+
+        repeat(2) { index ->
+            createConnectionForFemaleParticipant(setup.userAId, "visual-both-a-$index")
+        }
+        repeat(3) { index ->
+            createConnectionForMaleParticipant(setup.userBId, "visual-both-b-$index")
+        }
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        assertNotNull(connectionRepository.findByMatchId(setup.matchId))
+        assertEquals(3, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertEquals(4, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.CONNECTION))
+    }
+
+    @Test
+    fun `connection overshoot blocks matchmaking until active locks fall below limit`() {
+        val setup = createMatchInVisualPhase()
+        val existingConnections =
+            (0 until 2).map { index ->
+                createConnectionForFemaleParticipant(setup.userAId, "visual-overshoot-$index")
+            }
+
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+
+        assertEquals(3, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertConnectionLimitBlocksSearch(setup.userAId)
+
+        connectionService.closeConnection(existingConnections[0])
+
+        assertEquals(2, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertConnectionLimitBlocksSearch(setup.userAId)
+
+        connectionService.closeConnection(existingConnections[1])
+
+        val availability = matchmakingAvailabilityService.availabilityForUserNotInQueue(setup.userAId)
+        assertEquals(1, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.CONNECTION))
+        assertTrue(availability.canSearch)
+        assertNull(availability.blockedReason)
+    }
+
     private fun createVisualApprovedConnection(
         connectionState: ConnectionState
     ): ConnectionFixture {
@@ -633,5 +721,42 @@ class VisualReviewIntegrationTest : BaseIT() {
             connectionRepository = connectionRepository,
             userBlockService = userBlockService
         )
+
+    private fun createConnectionForFemaleParticipant(
+        userId: UUID,
+        prefix: String
+    ): UUID {
+        val partnerId =
+            createActiveProfile(
+                email = "$prefix-${UUID.randomUUID()}@example.com",
+                displayName = "$prefix partner",
+                gender = Gender.MALE,
+                lookingForGenders = setOf(Gender.FEMALE)
+            )
+        val match = matchService.createMatch(userId, partnerId)
+        return connectionService.createFromMatch(match).id
+    }
+
+    private fun createConnectionForMaleParticipant(
+        userId: UUID,
+        prefix: String
+    ): UUID {
+        val partnerId =
+            createActiveProfile(
+                email = "$prefix-${UUID.randomUUID()}@example.com",
+                displayName = "$prefix partner",
+                gender = Gender.FEMALE,
+                lookingForGenders = setOf(Gender.MALE)
+            )
+        val match = matchService.createMatch(partnerId, userId)
+        return connectionService.createFromMatch(match).id
+    }
+
+    private fun assertConnectionLimitBlocksSearch(userId: UUID) {
+        val availability = matchmakingAvailabilityService.availabilityForUserNotInQueue(userId)
+
+        assertFalse(availability.canSearch)
+        assertEquals(DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED.name, availability.blockedReason?.code)
+    }
 
 }
