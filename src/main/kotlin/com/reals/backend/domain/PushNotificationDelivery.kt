@@ -26,6 +26,7 @@ enum class PushDeliveryStatus {
     SENT,
     SKIPPED_NO_ACTIVE_TOKEN,
     SKIPPED_ALREADY_JOINED,
+    SKIPPED_USER_PREFERENCE,
     FAILED
 }
 

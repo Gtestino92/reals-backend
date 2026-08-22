@@ -18,6 +18,8 @@ import com.reals.backend.scheduler.SecondChatStartNotificationJob
 import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.service.MatchFoundEvent
+import com.reals.backend.service.NotificationPreferenceService
+import com.reals.backend.service.NotificationPreferenceSettings
 import com.reals.backend.service.SchedulingConfirmedEvent
 import com.reals.backend.service.SchedulingProposalsReceivedEvent
 import com.reals.backend.service.notification.MatchFoundNotificationService
@@ -96,6 +98,9 @@ class PushNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var secondChatStartNotificationJob: SecondChatStartNotificationJob
+
+    @Autowired
+    private lateinit var notificationPreferenceService: NotificationPreferenceService
 
     @BeforeEach
     fun resetPushSender() {
@@ -286,6 +291,72 @@ class PushNotificationIntegrationTest : BaseIT() {
         assertEquals(2, deliveries.size)
         assertEquals(PushDeliveryStatus.SENT, deliveries.first { it.userId == setup.userAId }.status)
         assertEquals(PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN, deliveries.first { it.userId == setup.userBId }.status)
+    }
+
+    @Test
+    fun `match found notification is suppressed when activity preference is disabled`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val setup = createMatchWithFirstChat("match-found-preference-disabled")
+        updateFirstChatTimeoutAt(setup.firstChatId, now.plusMinutes(5))
+        pushDeviceTokenService.registerToken(setup.userAId, "match-preference-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "match-preference-token-b", PushPlatform.ANDROID)
+        disableActivity(setup.userAId)
+        disableActivity(setup.userBId)
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        val deliveries = matchFoundDeliveriesFor(setup.matchId)
+        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_USER_PREFERENCE })
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+        enableAllPreferences(setup.userAId)
+        enableAllPreferences(setup.userBId)
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        assertEquals(0, pushSender.attempts.size)
+        assertEquals(2, matchFoundDeliveriesFor(setup.matchId).size)
+    }
+
+    @Test
+    fun `match found disabled preference wins over missing active token`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val setup = createMatchWithFirstChat("match-found-preference-before-token")
+        updateFirstChatTimeoutAt(setup.firstChatId, now.plusMinutes(5))
+        disableActivity(setup.userAId)
+        disableActivity(setup.userBId)
+
+        matchFoundNotificationService.notifyMatchFound(
+            event = MatchFoundEvent(
+                matchId = setup.matchId,
+                chatId = setup.firstChatId
+            ),
+            now = now
+        )
+
+        val deliveries = matchFoundDeliveriesFor(setup.matchId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_USER_PREFERENCE })
+        assertEquals(0, pushSender.attempts.size)
     }
 
     @Test
@@ -588,6 +659,22 @@ class PushNotificationIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `visual review reminder is suppressed when reminders preference is disabled`() {
+        val setup = createDueVisualReview("push-reminder-preference-disabled")
+        pushDeviceTokenService.registerToken(setup.userAId, "reminder-preference-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "reminder-preference-token-b", PushPlatform.ANDROID)
+        disableReminders(setup.userAId)
+        disableReminders(setup.userBId)
+
+        visualReviewReminderNotificationJob.runNowForDev()
+
+        val deliveries = visualReviewReminderDeliveriesFor(setup.matchId)
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_USER_PREFERENCE })
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
     fun `visual review reminder sender failure creates failed delivery and does not throw`() {
         val setup = createDueVisualReview("push-failed")
         pushDeviceTokenService.registerToken(setup.userAId, "failed-token-a", PushPlatform.ANDROID)
@@ -783,6 +870,28 @@ class PushNotificationIntegrationTest : BaseIT() {
             }
         assertEquals(2, deliveries.size)
         assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN })
+        assertEquals(0, pushSender.attempts.size)
+    }
+
+    @Test
+    fun `scheduling available is suppressed when activity preference is disabled`() {
+        val setup = createConnectionInSchedulingPhase()
+        pushDeviceTokenService.registerToken(setup.userAId, "scheduling-preference-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "scheduling-preference-token-b", PushPlatform.ANDROID)
+        disableActivity(setup.userAId)
+        disableActivity(setup.userBId)
+
+        schedulingAvailableNotificationService.notifySchedulingAvailable(listOf(setup.connectionId))
+
+        val deliveries =
+            listOf(setup.userAId, setup.userBId).flatMap { userId ->
+                schedulingAvailableDeliveriesFor(
+                    userId = userId,
+                    connectionIds = listOf(setup.connectionId)
+                )
+            }
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SKIPPED_USER_PREFERENCE })
         assertEquals(0, pushSender.attempts.size)
     }
 
@@ -2040,6 +2149,39 @@ class PushNotificationIntegrationTest : BaseIT() {
         visualReviewRepository.saveAndFlush(review)
 
         return setup
+    }
+
+    private fun disableActivity(userId: UUID) {
+        notificationPreferenceService.updatePreferences(
+            userId = userId,
+            input = NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = true
+            )
+        )
+    }
+
+    private fun disableReminders(userId: UUID) {
+        notificationPreferenceService.updatePreferences(
+            userId = userId,
+            input = NotificationPreferenceSettings(
+                activityEnabled = true,
+                remindersEnabled = false,
+                availabilityEnabled = true
+            )
+        )
+    }
+
+    private fun enableAllPreferences(userId: UUID) {
+        notificationPreferenceService.updatePreferences(
+            userId = userId,
+            input = NotificationPreferenceSettings(
+                activityEnabled = true,
+                remindersEnabled = true,
+                availabilityEnabled = true
+            )
+        )
     }
 
     @TestConfiguration

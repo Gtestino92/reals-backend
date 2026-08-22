@@ -17,7 +17,7 @@ import java.util.UUID
 class SchedulingConfirmedNotificationService(
     private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -65,42 +65,23 @@ class SchedulingConfirmedNotificationService(
             val aggregateId = connection.id
             val now = OffsetDateTime.now()
 
-            if (
-                deliveryPersistenceService.deliveryExists(
-                    userId = recipientUserId,
-                    notificationType = PushNotificationType.SCHEDULING_CONFIRMED,
-                    aggregateId = aggregateId
-                )
-            ) {
-                return@execute PreparedPushBatch(skipped = 1)
-            }
-
-            val activeTokens = deliveryPersistenceService.activeTokenSnapshots(recipientUserId)
-            if (activeTokens.isEmpty()) {
-                deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
+            val recipient =
+                recipientPreparationService.prepareRecipient(
                     userId = recipientUserId,
                     notificationType = PushNotificationType.SCHEDULING_CONFIRMED,
                     aggregateId = aggregateId,
                     now = now
-                )
-                return@execute PreparedPushBatch(skipped = 1)
-            }
+                ) {
+                    schedulingConfirmedNotification(
+                        connectionId = connection.id,
+                        matchId = connection.matchId,
+                        confirmedDateTime = confirmedDateTime
+                    )
+                }
 
             PreparedPushBatch(
-                commands = listOf(
-                    PreparedPushCommand(
-                        userId = recipientUserId,
-                        notificationType = PushNotificationType.SCHEDULING_CONFIRMED,
-                        aggregateId = aggregateId,
-                        tokens = activeTokens,
-                        notification = schedulingConfirmedNotification(
-                            connectionId = connection.id,
-                            matchId = connection.matchId,
-                            confirmedDateTime = confirmedDateTime
-                        ),
-                        preparedAt = now
-                    )
-                )
+                commands = listOfNotNull(recipient.command),
+                skipped = if (recipient.skipped) 1 else 0
             )
         }
 

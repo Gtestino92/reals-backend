@@ -29,6 +29,9 @@ import com.reals.backend.domain.UserLegalDocumentAction
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.repository.UserLegalDocumentActionRepository
+import com.reals.backend.repository.UserNotificationPreferenceRepository
+import com.reals.backend.service.NotificationPreferenceService
+import com.reals.backend.service.NotificationPreferenceSettings
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -43,6 +46,12 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var userLegalDocumentActionRepository: UserLegalDocumentActionRepository
+
+    @Autowired
+    private lateinit var notificationPreferenceService: NotificationPreferenceService
+
+    @Autowired
+    private lateinit var notificationPreferenceRepository: UserNotificationPreferenceRepository
 
     @Test
     fun `deletion removes all ephemeral state and preserves counterpart Home invalidation`() {
@@ -205,6 +214,14 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
                 providerMessageId = "provider-message"
             )
         )
+        notificationPreferenceService.updatePreferences(
+            userId = userId,
+            input = NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = true
+            )
+        )
         connectionHomeDismissalRepository.save(
             ConnectionHomeDismissal(
                 userId = userId,
@@ -221,6 +238,7 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
         assertTrue(pushDeviceTokenRepository.findByUserIdAndEnabledTrue(userId).isEmpty())
         assertFalse(pushDeviceTokenRepository.findAll().any { it.userId == userId })
         assertFalse(pushNotificationDeliveryRepository.findAll().any { it.userId == userId })
+        assertFalse(notificationPreferenceRepository.findAll().any { it.userId == userId })
         assertFalse(connectionHomeDismissalRepository.findAll().any { it.userId == userId })
         assertFalse(homeStatusRepository.existsById(userId))
     }

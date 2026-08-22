@@ -17,7 +17,7 @@ import java.util.UUID
 class SchedulingProposalsReceivedNotificationService(
     private val connectionService: ConnectionService,
     private val schedulingService: SchedulingService,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -72,42 +72,23 @@ class SchedulingProposalsReceivedNotificationService(
                 )
             val now = OffsetDateTime.now()
 
-            if (
-                deliveryPersistenceService.deliveryExists(
-                    userId = event.recipientUserId,
-                    notificationType = PushNotificationType.SCHEDULING_PROPOSALS_RECEIVED,
-                    aggregateId = aggregateId
-                )
-            ) {
-                return@execute PreparedPushBatch(skipped = 1)
-            }
-
-            val activeTokens = deliveryPersistenceService.activeTokenSnapshots(event.recipientUserId)
-            if (activeTokens.isEmpty()) {
-                deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
+            val recipient =
+                recipientPreparationService.prepareRecipient(
                     userId = event.recipientUserId,
                     notificationType = PushNotificationType.SCHEDULING_PROPOSALS_RECEIVED,
                     aggregateId = aggregateId,
                     now = now
-                )
-                return@execute PreparedPushBatch(skipped = 1)
-            }
+                ) {
+                    proposalsReceivedNotification(
+                        connectionId = event.connectionId,
+                        matchId = connection.matchId,
+                        roundNumber = event.roundNumber
+                    )
+                }
 
             PreparedPushBatch(
-                commands = listOf(
-                    PreparedPushCommand(
-                        userId = event.recipientUserId,
-                        notificationType = PushNotificationType.SCHEDULING_PROPOSALS_RECEIVED,
-                        aggregateId = aggregateId,
-                        tokens = activeTokens,
-                        notification = proposalsReceivedNotification(
-                            connectionId = event.connectionId,
-                            matchId = connection.matchId,
-                            roundNumber = event.roundNumber
-                        ),
-                        preparedAt = now
-                    )
-                )
+                commands = listOfNotNull(recipient.command),
+                skipped = if (recipient.skipped) 1 else 0
             )
         }
 

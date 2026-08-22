@@ -14,7 +14,7 @@ import java.util.UUID
 @Service
 class SchedulingAvailableNotificationService(
     private val connectionRepository: ConnectionRepository,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -82,37 +82,17 @@ class SchedulingAvailableNotificationService(
                     connectionIds = userConnectionIds
                 )
 
-            if (
-                deliveryPersistenceService.deliveryExists(
-                    userId = userId,
-                    notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                    aggregateId = aggregateId
-                )
-            ) {
-                skipped += 1
-                return@forEach
-            }
-
-            val activeTokens = deliveryPersistenceService.activeTokenSnapshots(userId)
-            if (activeTokens.isEmpty()) {
-                deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
+            val recipient =
+                recipientPreparationService.prepareRecipient(
                     userId = userId,
                     notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
                     aggregateId = aggregateId,
                     now = now
-                )
+                ) { schedulingAvailableNotification() }
+            recipient.command?.let { commands += it }
+            if (recipient.skipped) {
                 skipped += 1
-                return@forEach
             }
-
-            commands += PreparedPushCommand(
-                userId = userId,
-                notificationType = PushNotificationType.SCHEDULING_AVAILABLE,
-                aggregateId = aggregateId,
-                tokens = activeTokens,
-                notification = schedulingAvailableNotification(),
-                preparedAt = now
-            )
         }
 
         return PreparedPushBatch(

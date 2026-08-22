@@ -9,6 +9,8 @@ import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.FirstChatTerminatedEvent
+import com.reals.backend.service.NotificationPreferenceService
+import com.reals.backend.service.NotificationPreferenceSettings
 import com.reals.backend.service.notification.MatchFoundInvalidationNotificationService
 import com.reals.backend.service.notification.sender.PushNotification
 import com.reals.backend.service.notification.sender.PushNotificationAndroidPriority
@@ -41,6 +43,9 @@ class MatchFoundInvalidationNotificationIntegrationTest : BaseIT() {
 
     @Autowired
     private lateinit var notificationService: MatchFoundInvalidationNotificationService
+
+    @Autowired
+    private lateinit var notificationPreferenceService: NotificationPreferenceService
 
     @BeforeEach
     fun resetPushSender() {
@@ -84,6 +89,27 @@ class MatchFoundInvalidationNotificationIntegrationTest : BaseIT() {
 
         assertEquals(0, pushSender.attempts.size)
         assertEquals(2, invalidationDeliveriesFor(setup.matchId).size)
+    }
+
+    @Test
+    fun `match found invalidation remains allowed when activity preference is disabled`() {
+        val now = OffsetDateTime.parse("2040-07-17T12:00:00Z")
+        val setup = createTerminalFirstChat("match-found-invalidation-system", now, now.plusMinutes(5))
+        pushDeviceTokenService.registerToken(setup.userAId, "invalidation-system-token-a", PushPlatform.ANDROID)
+        pushDeviceTokenService.registerToken(setup.userBId, "invalidation-system-token-b", PushPlatform.ANDROID)
+        disableActivity(setup.userAId)
+        disableActivity(setup.userBId)
+
+        notificationService.notifyMatchFoundInvalidated(eventFor(setup), now)
+
+        val deliveries = invalidationDeliveriesFor(setup.matchId)
+        assertEquals(2, pushSender.attempts.size)
+        assertEquals(
+            listOf("invalidation-system-token-a", "invalidation-system-token-b"),
+            pushSender.attempts.flatMap { it.tokens }.sorted()
+        )
+        assertEquals(2, deliveries.size)
+        assertTrue(deliveries.all { it.status == PushDeliveryStatus.SENT })
     }
 
     @Test
@@ -225,6 +251,17 @@ class MatchFoundInvalidationNotificationIntegrationTest : BaseIT() {
             notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
             aggregateId = matchId
         )
+
+    private fun disableActivity(userId: UUID) {
+        notificationPreferenceService.updatePreferences(
+            userId = userId,
+            input = NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = true
+            )
+        )
+    }
 
     @TestConfiguration
     class PushSenderTestConfig {

@@ -14,7 +14,7 @@ import java.util.UUID
 @Service
 class SecondChatReminderNotificationService(
     private val connectionService: ConnectionService,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -55,58 +55,26 @@ class SecondChatReminderNotificationService(
                     connectionId = connectionId,
                     minutesBefore = minutesBefore
                 )
-            val commands = mutableListOf<PreparedPushCommand>()
-            var skipped = 0
             val now = OffsetDateTime.now()
             val remainingTtlMillis = Duration.between(now, confirmedDateTime).toMillis()
             if (remainingTtlMillis <= 0) {
                 return@execute PreparedPushBatch(skipped = 1, eligible = false)
             }
 
-            listOf(connection.userAId, connection.userBId).forEach { userId ->
-                if (
-                    deliveryPersistenceService.deliveryExists(
-                        userId = userId,
-                        notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
-                        aggregateId = deliveryAggregateId
-                    )
-                ) {
-                    skipped += 1
-                    return@forEach
-                }
-
-                val activeTokens = deliveryPersistenceService.activeTokenSnapshots(userId)
-                if (activeTokens.isEmpty()) {
-                    deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
-                        userId = userId,
-                        notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
-                        aggregateId = deliveryAggregateId,
-                        now = now
-                    )
-                    skipped += 1
-                    return@forEach
-                }
-
-                commands += PreparedPushCommand(
-                    userId = userId,
-                    notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
-                    aggregateId = deliveryAggregateId,
-                    tokens = activeTokens,
-                    notification = secondChatReminderNotification(
+            recipientPreparationService.prepareRecipients(
+                userIds = listOf(connection.userAId, connection.userBId),
+                notificationType = PushNotificationType.SECOND_CHAT_REMINDER,
+                aggregateId = deliveryAggregateId,
+                now = now
+            ) {
+                secondChatReminderNotification(
                         connectionId = connectionId,
                         confirmedDateTime = confirmedDateTime,
                         minutesBefore = minutesBefore,
                         ttlMillis = remainingTtlMillis
-                    ),
-                    preparedAt = now
                 )
             }
-
-            PreparedPushBatch(
-                commands = commands,
-                skipped = skipped,
-                eligible = true
-            )
+                .copy(eligible = true)
         }
 
     private fun sendAndPersist(command: PreparedPushCommand) {
