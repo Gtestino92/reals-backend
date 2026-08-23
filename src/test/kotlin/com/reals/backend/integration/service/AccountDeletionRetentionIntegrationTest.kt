@@ -57,6 +57,12 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
     fun `deletion removes all ephemeral state and preserves counterpart Home invalidation`() {
         val setup = createConnectionInSchedulingPhase()
         createEphemeralState(setup.userAId, setup.connectionId)
+        val expectedPreferences =
+            NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = false
+            )
         val counterpartVersionBefore = homeStatusService.getOrCreateStatus(setup.userBId).version
 
         userService.deleteUser(setup.userAId)
@@ -66,6 +72,8 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
         assertNotNull(deletedUser.deletedAt)
         assertNotNull(deletedUser.deletionFinalizesAt)
         assertEphemeralStateAbsent(setup.userAId)
+        assertPreferenceRowsExist(setup.userAId)
+        assertEquals(expectedPreferences, notificationPreferenceService.preferencesFor(setup.userAId))
         assertTrue(
             homeStatusRepository.findById(setup.userBId).orElseThrow().version >
                 counterpartVersionBefore
@@ -160,6 +168,12 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
     fun `reactivation does not restore ephemeral state and allows fresh Home and FCM state`() {
         val setup = createConnectionInSchedulingPhase()
         createEphemeralState(setup.userAId, setup.connectionId)
+        val expectedPreferences =
+            NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = false
+            )
         val oldHomeVersion = homeStatusService.bump(setup.userAId, "retention_test").version
         val oldToken = pushDeviceTokenRepository.findByUserIdAndEnabledTrue(setup.userAId).single().token
 
@@ -169,6 +183,8 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
         assertEquals(UserStatus.ACTIVE, reactivated.status)
         assertEquals(ProfileStatus.DRAFT, profileRepository.findByUserId(setup.userAId)!!.status)
         assertEphemeralStateAbsent(setup.userAId)
+        assertPreferenceRowsExist(setup.userAId)
+        assertEquals(expectedPreferences, notificationPreferenceService.preferencesFor(setup.userAId))
 
         val recreatedHomeStatus = homeStatusService.getOrCreateStatus(setup.userAId)
         assertTrue(homeStatusRepository.existsById(setup.userAId))
@@ -181,6 +197,25 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
         )
         assertTrue(pushDeviceTokenRepository.existsById(newToken.id))
         assertFalse(pushDeviceTokenRepository.findAll().any { it.token == oldToken })
+    }
+
+    @Test
+    fun `user with no explicit preferences remains default enabled across deletion and reactivation`() {
+        val user = userService.createUser("retention-default-preferences-${UUID.randomUUID()}@example.com")
+        assertEquals(0, notificationPreferenceRepository.findByUserId(user.id).size)
+
+        userService.deleteUser(user.id)
+        userService.reactivateUser(user.id)
+
+        assertEquals(
+            NotificationPreferenceSettings(
+                activityEnabled = true,
+                remindersEnabled = true,
+                availabilityEnabled = true
+            ),
+            notificationPreferenceService.preferencesFor(user.id)
+        )
+        assertEquals(0, notificationPreferenceRepository.findByUserId(user.id).size)
     }
 
     private fun createEphemeralState(userId: UUID, connectionId: UUID) {
@@ -219,7 +254,7 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
             input = NotificationPreferenceSettings(
                 activityEnabled = false,
                 remindersEnabled = true,
-                availabilityEnabled = true
+                availabilityEnabled = false
             )
         )
         connectionHomeDismissalRepository.save(
@@ -238,8 +273,11 @@ class AccountDeletionRetentionIntegrationTest : BaseIT() {
         assertTrue(pushDeviceTokenRepository.findByUserIdAndEnabledTrue(userId).isEmpty())
         assertFalse(pushDeviceTokenRepository.findAll().any { it.userId == userId })
         assertFalse(pushNotificationDeliveryRepository.findAll().any { it.userId == userId })
-        assertFalse(notificationPreferenceRepository.findAll().any { it.userId == userId })
         assertFalse(connectionHomeDismissalRepository.findAll().any { it.userId == userId })
         assertFalse(homeStatusRepository.existsById(userId))
+    }
+
+    private fun assertPreferenceRowsExist(userId: UUID) {
+        assertEquals(3, notificationPreferenceRepository.findByUserId(userId).size)
     }
 }

@@ -128,6 +128,81 @@ class NotificationPreferenceControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `put notification preferences rejects missing activity without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "remindersEnabled": true,
+              "availabilityEnabled": false
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
+    fun `put notification preferences rejects missing reminders without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "activityEnabled": false,
+              "availabilityEnabled": false
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
+    fun `put notification preferences rejects missing availability without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "activityEnabled": false,
+              "remindersEnabled": true
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
+    fun `put notification preferences rejects null activity without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "activityEnabled": null,
+              "remindersEnabled": true,
+              "availabilityEnabled": false
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
+    fun `put notification preferences rejects null reminders without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "activityEnabled": false,
+              "remindersEnabled": null,
+              "availabilityEnabled": false
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
+    fun `put notification preferences rejects null availability without mutation`() {
+        assertMalformedPutDoesNotMutate(
+            """
+            {
+              "activityEnabled": false,
+              "remindersEnabled": true,
+              "availabilityEnabled": null
+            }
+            """.trimIndent()
+        )
+    }
+
+    @Test
     fun `preferences are account settings independent of profile existence`() {
         val noProfileUser = userService.createUser("notification-no-profile-${UUID.randomUUID()}@example.com")
 
@@ -191,5 +266,30 @@ class NotificationPreferenceControllerIntegrationTest : ControllerIT() {
 
         val categories = notificationPreferenceRepository.findByUserId(user.id).map { it.category }.toSet()
         assertFalse(NotificationPreferenceCategory.SYSTEM in categories)
+    }
+
+    private fun assertMalformedPutDoesNotMutate(body: String) {
+        val user = userService.createUser("notification-invalid-${UUID.randomUUID()}@example.com")
+        val original =
+            NotificationPreferenceSettings(
+                activityEnabled = true,
+                remindersEnabled = false,
+                availabilityEnabled = true
+            )
+        notificationPreferenceService.updatePreferences(
+            userId = user.id,
+            input = original
+        )
+
+        mockMvc.perform(
+            put("/api/me/notification-preferences")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+
+        assertEquals(original, notificationPreferenceService.preferencesFor(user.id))
+        assertEquals(3, notificationPreferenceRepository.findByUserId(user.id).size)
     }
 }

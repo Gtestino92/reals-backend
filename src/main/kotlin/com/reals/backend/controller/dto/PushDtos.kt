@@ -3,6 +3,7 @@ package com.reals.backend.controller.dto
 import com.reals.backend.domain.PushPlatform
 import com.reals.backend.service.NotificationPreferenceSettings
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 
 data class RegisterPushTokenRequest(
     @field:NotBlank
@@ -15,15 +16,20 @@ data class RegisterPushTokenResponse(
 )
 
 data class NotificationPreferenceRequest(
-    val activityEnabled: Boolean,
-    val remindersEnabled: Boolean,
-    val availabilityEnabled: Boolean
+    @field:NotNull
+    val activityEnabled: Boolean?,
+
+    @field:NotNull
+    val remindersEnabled: Boolean?,
+
+    @field:NotNull
+    val availabilityEnabled: Boolean?
 ) {
     fun toSettings(): NotificationPreferenceSettings =
         NotificationPreferenceSettings(
-            activityEnabled = activityEnabled,
-            remindersEnabled = remindersEnabled,
-            availabilityEnabled = availabilityEnabled
+            activityEnabled = activityEnabled!!,
+            remindersEnabled = remindersEnabled!!,
+            availabilityEnabled = availabilityEnabled!!
         )
 }
 

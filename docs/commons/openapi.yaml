@@ -2434,14 +2434,17 @@ components:
       properties:
         activityEnabled:
           type: boolean
+          nullable: false
           description: Enables configurable activity notifications.
           example: true
         remindersEnabled:
           type: boolean
+          nullable: false
           description: Enables configurable reminder notifications.
           example: false
         availabilityEnabled:
           type: boolean
+          nullable: false
           description: Reserved for future availability notifications; no current push type maps to it.
           example: true
     NotificationPreferenceResponse:

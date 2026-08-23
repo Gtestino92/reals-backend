@@ -182,9 +182,11 @@ unread count.
 Notification preferences are authenticated account settings under
 `/api/me/notification-preferences`, not Profile data. `GET` returns
 `activityEnabled`, `remindersEnabled` and `availabilityEnabled`; `PUT` replaces
-that complete configurable state and returns the authoritative result. Missing
-preference rows default to enabled, so existing users preserve current push
-behavior without backfill. Current group mapping is:
+that complete configurable state and returns the authoritative result. The PUT
+payload must include all three non-null booleans; incomplete or null fields are
+rejected as malformed requests. Missing preference rows default to enabled, so
+existing users preserve current push behavior without backfill. Current group
+mapping is:
 
 - `ACTIVITY`: `MATCH_FOUND`, `VISUAL_REVIEW_AVAILABLE`,
   `SCHEDULING_AVAILABLE`, `SCHEDULING_PROPOSALS_RECEIVED`,
