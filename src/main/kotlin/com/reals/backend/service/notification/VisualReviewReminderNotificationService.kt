@@ -27,7 +27,7 @@ data class VisualReviewReminderProcessingResult(
 class VisualReviewReminderNotificationService(
     private val matchService: MatchService,
     private val visualReviewRepository: VisualReviewRepository,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -86,63 +86,13 @@ class VisualReviewReminderNotificationService(
                 return@execute PreparedPushBatch(skipped = 1)
             }
 
-            prepareRecipients(
+            recipientPreparationService.prepareRecipients(
                 userIds = pendingUserIds,
                 notificationType = PushNotificationType.VISUAL_REVIEW_REMINDER,
                 aggregateId = matchId,
                 now = now
             ) { visualReviewReminderNotification(matchId) }
         }
-
-    private fun prepareRecipients(
-        userIds: List<UUID>,
-        notificationType: PushNotificationType,
-        aggregateId: UUID,
-        now: OffsetDateTime,
-        notificationFactory: () -> PushNotification
-    ): PreparedPushBatch {
-        val commands = mutableListOf<PreparedPushCommand>()
-        var skipped = 0
-
-        userIds.forEach { userId ->
-            if (
-                deliveryPersistenceService.deliveryExists(
-                    userId = userId,
-                    notificationType = notificationType,
-                    aggregateId = aggregateId
-                )
-            ) {
-                skipped += 1
-                return@forEach
-            }
-
-            val activeTokens = deliveryPersistenceService.activeTokenSnapshots(userId)
-            if (activeTokens.isEmpty()) {
-                deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
-                    userId = userId,
-                    notificationType = notificationType,
-                    aggregateId = aggregateId,
-                    now = now
-                )
-                skipped += 1
-                return@forEach
-            }
-
-            commands += PreparedPushCommand(
-                userId = userId,
-                notificationType = notificationType,
-                aggregateId = aggregateId,
-                tokens = activeTokens,
-                notification = notificationFactory(),
-                preparedAt = now
-            )
-        }
-
-        return PreparedPushBatch(
-            commands = commands,
-            skipped = skipped
-        )
-    }
 
     private fun sendAndPersist(
         command: PreparedPushCommand,

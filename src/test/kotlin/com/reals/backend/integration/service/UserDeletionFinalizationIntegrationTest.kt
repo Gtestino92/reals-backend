@@ -5,6 +5,9 @@ import com.reals.backend.domain.User
 import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.repository.UserNotificationPreferenceRepository
+import com.reals.backend.service.NotificationPreferenceService
+import com.reals.backend.service.NotificationPreferenceSettings
 import com.reals.backend.service.identity.ExternalAccountDeletionResult
 import com.reals.backend.service.identity.FirebaseExternalAccountService
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -14,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -22,6 +26,12 @@ class UserDeletionFinalizationIntegrationTest : BaseIT() {
 
     @MockitoBean
     private lateinit var firebaseExternalAccountService: FirebaseExternalAccountService
+
+    @Autowired
+    private lateinit var notificationPreferenceService: NotificationPreferenceService
+
+    @Autowired
+    private lateinit var notificationPreferenceRepository: UserNotificationPreferenceRepository
 
     @Test
     fun `successful external deletion finalizes local identifiers and records audit`() {
@@ -64,6 +74,27 @@ class UserDeletionFinalizationIntegrationTest : BaseIT() {
         Mockito.verify(firebaseExternalAccountService).deleteAccountIfPresent(firebaseUid)
         assertFinalizedLocally(user)
         assertFinalizationAuditExists(user.id)
+    }
+
+    @Test
+    fun `finalization removes retained notification preference rows`() {
+        val user = createDeletedUser(deadline = OffsetDateTime.now().minusMinutes(1))
+        notificationPreferenceService.updatePreferences(
+            userId = user.id,
+            input = NotificationPreferenceSettings(
+                activityEnabled = false,
+                remindersEnabled = true,
+                availabilityEnabled = false
+            )
+        )
+        assertEquals(3, notificationPreferenceRepository.findByUserId(user.id).size)
+        Mockito.`when`(firebaseExternalAccountService.deleteAccountIfPresent(user.firebaseUid!!))
+            .thenReturn(ExternalAccountDeletionResult.DELETED)
+
+        assertTrue(userService.finalizeRecoverableAccountDeletion(user.id))
+
+        assertEquals(0, notificationPreferenceRepository.findByUserId(user.id).size)
+        assertFinalizedLocally(user)
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.config.security.authentication.FirebaseSignInProvider
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.UserNotificationPreferenceRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -36,6 +37,7 @@ class UserService(
     private val firebaseExternalAccountService: FirebaseExternalAccountService,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userNotificationPreferenceRepository: UserNotificationPreferenceRepository,
     transactionManager: PlatformTransactionManager,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
@@ -350,6 +352,7 @@ class UserService(
         user.firebaseUid = null
         user.deletionFinalizesAt = null
         user.updatedAt = now
+        userNotificationPreferenceRepository.deleteByUserId(userId)
         userRepository.save(user)
         auditEventService.record(
             eventType = AuditEventType.ACCOUNT_DELETION_FINALIZED,

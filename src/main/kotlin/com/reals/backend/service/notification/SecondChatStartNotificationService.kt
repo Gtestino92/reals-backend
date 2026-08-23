@@ -36,6 +36,7 @@ class SecondChatStartNotificationService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val participationRepository: SecondChatParticipationRepository,
     private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate,
 
@@ -133,31 +134,24 @@ class SecondChatStartNotificationService(
                     return@forEach
                 }
 
-                val activeTokens = deliveryPersistenceService.activeTokenSnapshots(userId)
-                if (activeTokens.isEmpty()) {
-                    deliveryPersistenceService.saveSkippedNoActiveTokenInCurrentTransaction(
+                val recipient =
+                    recipientPreparationService.prepareRecipient(
                         userId = userId,
                         notificationType = PushNotificationType.SECOND_CHAT_STARTED,
                         aggregateId = aggregateId,
                         now = now
-                    )
+                    ) {
+                        secondChatStartedNotification(
+                            connectionId = connectionId,
+                            matchId = connection.matchId,
+                            confirmedDateTime = confirmedDateTime,
+                            ttlMillis = remainingTtlMillis
+                        )
+                    }
+                recipient.command?.let { commands += it }
+                if (recipient.skipped) {
                     skipped += 1
-                    return@forEach
                 }
-
-                commands += PreparedPushCommand(
-                    userId = userId,
-                    notificationType = PushNotificationType.SECOND_CHAT_STARTED,
-                    aggregateId = aggregateId,
-                    tokens = activeTokens,
-                    notification = secondChatStartedNotification(
-                        connectionId = connectionId,
-                        matchId = connection.matchId,
-                        confirmedDateTime = confirmedDateTime,
-                        ttlMillis = remainingTtlMillis
-                    ),
-                    preparedAt = now
-                )
             }
 
             PreparedPushBatch(

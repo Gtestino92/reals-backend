@@ -196,6 +196,45 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/me/notification-preferences:
+    get:
+      tags: [Me]
+      summary: Get authenticated user's notification preference groups
+      description: Returns account-level backend-authoritative notification group toggles. Missing rows default to enabled. SYSTEM notifications are internal, always allowed and not exposed.
+      responses:
+        '200':
+          description: Effective notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Me]
+      summary: Replace authenticated user's notification preference groups
+      description: Replaces the complete configurable account-level state for ACTIVITY, REMINDERS and AVAILABILITY. SYSTEM is always allowed and cannot be configured.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferenceRequest'
+      responses:
+        '200':
+          description: Authoritative notification preferences after update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/reactivation:
     post:
       tags: [Me]
@@ -2389,6 +2428,38 @@ components:
       required: [registered]
       properties:
         registered: { type: boolean, example: true }
+    NotificationPreferenceRequest:
+      type: object
+      required: [activityEnabled, remindersEnabled, availabilityEnabled]
+      properties:
+        activityEnabled:
+          type: boolean
+          nullable: false
+          description: Enables configurable activity notifications.
+          example: true
+        remindersEnabled:
+          type: boolean
+          nullable: false
+          description: Enables configurable reminder notifications.
+          example: false
+        availabilityEnabled:
+          type: boolean
+          nullable: false
+          description: Reserved for future availability notifications; no current push type maps to it.
+          example: true
+    NotificationPreferenceResponse:
+      type: object
+      required: [activityEnabled, remindersEnabled, availabilityEnabled]
+      properties:
+        activityEnabled:
+          type: boolean
+          example: true
+        remindersEnabled:
+          type: boolean
+          example: false
+        availabilityEnabled:
+          type: boolean
+          example: true
     CurrentLegalDocumentsResponse:
       type: object
       required: [documents]

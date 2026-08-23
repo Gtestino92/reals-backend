@@ -68,7 +68,15 @@ Push notification responsibilities are split between application orchestration
 and provider transport:
 
 - `service.notification`: event-specific notification services that decide
-  recipients, eligibility, payloads, idempotency keys and delivery recording.
+  notification-specific eligibility, payloads and idempotency keys.
+- `PushRecipientPreparationService`: shared recipient-level preparation. It
+  checks existing delivery rows, applies account-level notification preferences,
+  records `SKIPPED_USER_PREFERENCE` before token lookup, handles no-token skips
+  and creates `PreparedPushCommand` instances.
+- `NotificationPreferenceService`: account-level configurable groups
+  (`ACTIVITY`, `REMINDERS`, `AVAILABILITY`) with default-enabled missing rows
+  and an internal always-on `SYSTEM` category for technical notifications such
+  as `MATCH_FOUND_INVALIDATED`.
 - `service.notification.sender`: provider adapters for external push delivery,
   such as Firebase and no-op local/test senders.
 

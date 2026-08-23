@@ -19,7 +19,7 @@ import java.util.UUID
 class MatchFoundInvalidationNotificationService(
     private val matchService: MatchService,
     private val chatService: ChatService,
-    private val deliveryPersistenceService: PushNotificationDeliveryPersistenceService,
+    private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -77,57 +77,18 @@ class MatchFoundInvalidationNotificationService(
                 .toMillis()
                 .coerceAtLeast(1L)
 
-            val commands = mutableListOf<PreparedPushCommand>()
-            var skipped = 0
-
-            listOf(match.userAId, match.userBId)
-                .distinct()
-                .forEach { userId ->
-                    if (
-                        deliveryPersistenceService.deliveryExists(
-                            userId = userId,
-                            notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
-                            aggregateId = match.id
-                        )
-                    ) {
-                        skipped += 1
-                        return@forEach
-                    }
-
-                    val activeTokens =
-                        deliveryPersistenceService.activeTokenSnapshots(userId)
-
-                    if (activeTokens.isEmpty()) {
-                        deliveryPersistenceService
-                            .saveSkippedNoActiveTokenInCurrentTransaction(
-                                userId = userId,
-                                notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
-                                aggregateId = match.id,
-                                now = now
-                            )
-
-                        skipped += 1
-                        return@forEach
-                    }
-
-                    commands += PreparedPushCommand(
-                        userId = userId,
-                        notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
-                        aggregateId = match.id,
-                        tokens = activeTokens,
-                        notification = matchFoundInvalidatedNotification(
-                            matchId = match.id,
-                            expiresAt = chat.timeoutAt,
-                            ttlMillis = ttlMillis
-                        ),
-                        preparedAt = now
-                    )
-                }
-
-            PreparedPushBatch(
-                commands = commands,
-                skipped = skipped
-            )
+            recipientPreparationService.prepareRecipients(
+                userIds = listOf(match.userAId, match.userBId).distinct(),
+                notificationType = PushNotificationType.MATCH_FOUND_INVALIDATED,
+                aggregateId = match.id,
+                now = now
+            ) {
+                matchFoundInvalidatedNotification(
+                    matchId = match.id,
+                    expiresAt = chat.timeoutAt,
+                    ttlMillis = ttlMillis
+                )
+            }
         }
 
     private fun sendAndPersist(

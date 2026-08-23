@@ -2,6 +2,7 @@ package com.reals.backend.service
 
 import com.reals.backend.domain.User
 import com.reals.backend.repository.ProfileRepository
+import com.reals.backend.repository.UserNotificationPreferenceRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.service.identity.FirebaseExternalAccountService
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -56,6 +57,7 @@ class UserServiceProvisioningRetryTest {
             firebaseExternalAccountService = Mockito.mock(FirebaseExternalAccountService::class.java),
             auditEventService = Mockito.mock(AuditEventService::class.java),
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
+            userNotificationPreferenceRepository = Mockito.mock(UserNotificationPreferenceRepository::class.java),
             transactionManager = transactionTemplate.transactionManager!!,
             accountDeletionRecoveryWindowDays = 30
         )

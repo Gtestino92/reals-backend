@@ -179,6 +179,30 @@ whose `reminderEligibleAt` is `null` are ignored unless manually backfilled
 outside Flyway. There is no internal notification inbox, notification bell or
 unread count.
 
+Notification preferences are authenticated account settings under
+`/api/me/notification-preferences`, not Profile data. `GET` returns
+`activityEnabled`, `remindersEnabled` and `availabilityEnabled`; `PUT` replaces
+that complete configurable state and returns the authoritative result. The PUT
+payload must include all three non-null booleans; incomplete or null fields are
+rejected as malformed requests. Missing preference rows default to enabled, so
+existing users preserve current push behavior without backfill. Current group
+mapping is:
+
+- `ACTIVITY`: `MATCH_FOUND`, `VISUAL_REVIEW_AVAILABLE`,
+  `SCHEDULING_AVAILABLE`, `SCHEDULING_PROPOSALS_RECEIVED`,
+  `SCHEDULING_CONFIRMED`, `SECOND_CHAT_STARTED`.
+- `REMINDERS`: `VISUAL_REVIEW_REMINDER`, `SECOND_CHAT_REMINDER`.
+- `AVAILABILITY`: reserved for future availability notifications; no current
+  `PushNotificationType` maps to it.
+- `SYSTEM`: internal and always allowed. `MATCH_FOUND_INVALIDATED` is SYSTEM
+  and is not exposed as a public toggle.
+
+These backend groups are independent from Android notification channels.
+Suppressed configurable notifications persist a delivery row with
+`SKIPPED_USER_PREFERENCE` before token lookup and remain deduplicated by
+`(userId, notificationType, aggregateId)`, so re-enabling a group does not send
+an already-handled aggregate retroactively.
+
 When a second chat has a confirmed scheduled time and the connection is still
 `SECOND_CHAT_SCHEDULED`, `SecondChatReminderNotificationJob`
 attempts privacy-safe external push reminders per participant before
