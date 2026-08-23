@@ -125,6 +125,7 @@ class NotificationPreferenceService(
             PushNotificationType.SCHEDULING_PROPOSALS_RECEIVED -> NotificationPreferenceCategory.ACTIVITY
             PushNotificationType.SCHEDULING_CONFIRMED -> NotificationPreferenceCategory.ACTIVITY
             PushNotificationType.SECOND_CHAT_STARTED -> NotificationPreferenceCategory.ACTIVITY
+            PushNotificationType.MATCHMAKING_AVAILABLE -> NotificationPreferenceCategory.AVAILABILITY
             PushNotificationType.VISUAL_REVIEW_REMINDER -> NotificationPreferenceCategory.REMINDERS
             PushNotificationType.SECOND_CHAT_REMINDER -> NotificationPreferenceCategory.REMINDERS
             PushNotificationType.MATCH_FOUND_INVALIDATED -> NotificationPreferenceCategory.SYSTEM

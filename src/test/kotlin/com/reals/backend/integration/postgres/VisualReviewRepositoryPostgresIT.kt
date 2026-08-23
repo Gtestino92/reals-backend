@@ -4,6 +4,7 @@ import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Match
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualReview
+import com.reals.backend.repository.MatchmakingAvailabilityNotificationEpisodeRepository
 import com.reals.backend.service.matching.VisualAdvancementCapService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -25,6 +26,9 @@ class VisualReviewRepositoryPostgresIT : PostgresITBase() {
 
     @Autowired
     private lateinit var visualAdvancementCapService: VisualAdvancementCapService
+
+    @Autowired
+    private lateinit var availabilityEpisodeRepository: MatchmakingAvailabilityNotificationEpisodeRepository
 
     @Test
     fun `native retry threshold query materializes timestamptz as instant and preserves cap ordering`() {
@@ -146,6 +150,40 @@ class VisualReviewRepositoryPostgresIT : PostgresITBase() {
 
         assertTrue(status.blocked)
         assertEquals(OffsetDateTime.parse("2026-08-22T04:00:00Z"), status.nextAvailableAt)
+    }
+
+    @Test
+    fun `availability discovery query counts user A and user B advancements without duplicates`() {
+        val now = OffsetDateTime.parse("2026-08-22T12:00:00Z")
+        val cutoff = now.minusHours(24)
+        val onlyUserA = activeFemale("pg-availability-a")
+        val onlyUserB = activeMale("pg-availability-b")
+        val bothSides = activeFemale("pg-availability-both")
+        val partnerA = activeMale("pg-availability-partner-a")
+        val partnerB = activeFemale("pg-availability-partner-b")
+        val partnerC = activeMale("pg-availability-partner-c")
+        val belowLimit = activeFemale("pg-availability-below")
+
+        saveVisualAdvancement(onlyUserA, partnerA, UUID.randomUUID(), cutoff.plusHours(1))
+        saveVisualAdvancement(onlyUserA, partnerC, UUID.randomUUID(), cutoff.plusHours(2))
+        saveVisualAdvancement(partnerB, onlyUserB, UUID.randomUUID(), cutoff.plusHours(3))
+        saveVisualAdvancement(partnerA, onlyUserB, UUID.randomUUID(), cutoff.plusHours(4))
+        saveVisualAdvancement(bothSides, partnerA, UUID.randomUUID(), cutoff.plusHours(5))
+        saveVisualAdvancement(partnerB, bothSides, UUID.randomUUID(), cutoff.plusHours(6))
+        saveVisualAdvancement(belowLimit, partnerC, UUID.randomUUID(), cutoff.plusHours(7))
+
+        val discovered =
+            availabilityEpisodeRepository.findUsersAtOrOverVisualAdvancementCap(
+                cutoff = cutoff,
+                limit = 2,
+                pageable = org.springframework.data.domain.PageRequest.of(0, 20)
+            )
+
+        assertEquals(
+            setOf(onlyUserA, onlyUserB, bothSides),
+            discovered.map { UUID.fromString(it) }.toSet()
+        )
+        assertEquals(discovered.toSet().size, discovered.size)
     }
 
     private fun saveVisualAdvancement(

@@ -192,8 +192,7 @@ mapping is:
   `SCHEDULING_AVAILABLE`, `SCHEDULING_PROPOSALS_RECEIVED`,
   `SCHEDULING_CONFIRMED`, `SECOND_CHAT_STARTED`.
 - `REMINDERS`: `VISUAL_REVIEW_REMINDER`, `SECOND_CHAT_REMINDER`.
-- `AVAILABILITY`: reserved for future availability notifications; no current
-  `PushNotificationType` maps to it.
+- `AVAILABILITY`: `MATCHMAKING_AVAILABLE`.
 - `SYSTEM`: internal and always allowed. `MATCH_FOUND_INVALIDATED` is SYSTEM
   and is not exposed as a public toggle.
 
@@ -202,6 +201,35 @@ Suppressed configurable notifications persist a delivery row with
 `SKIPPED_USER_PREFERENCE` before token lookup and remain deduplicated by
 `(userId, notificationType, aggregateId)`, so re-enabling a group does not send
 an already-handled aggregate retroactively.
+
+
+`MATCHMAKING_AVAILABLE` is currently triggered only by recovery from the rolling
+Visual Advancement Cap. When a newly created `VisualReview` makes a participant
+cap-blocked, backend reconciliation persists at most one pending durable
+availability-notification episode per user and stores the cap service's current
+`nextAvailableAt` as a wake-up hint. Because the cap window is rolling and
+already-admitted first chats may still advance to Visual Review, valid overshoot
+can move that pending episode's `nextCheckAt` later; the backend reuses
+`VisualAdvancementCapService.statusFor(...)` instead of duplicating threshold
+math. A scheduled self-healing pass also discovers users currently at or over
+the configured cap from `visual_reviews` plus both `matches.user_a_id` and
+`matches.user_b_id`, without mutating Home read endpoints or hardcoding runtime
+cap configuration.
+
+When a pending episode is due, the backend first revalidates the current Visual
+Advancement Cap with the authoritative backend clock. If still blocked, the
+pending episode remains pending and its `nextCheckAt` is updated to the current
+cap threshold. If the visual cap has cleared, the backend then checks current
+queue state and `MatchmakingAvailabilityService`. The push is sent only when the
+user is not already queued and can actually search. If another blocker remains
+(for example profile, penalty, active MATCH/CONNECTION capacity, deletion or
+queue state), the visual-cap episode is terminally cancelled without sending and
+is not kept around waiting for unrelated blockers. The provider payload is
+privacy-safe: title `Ya podés buscar de nuevo`, body `Cuando quieras, podés
+volver a buscar a alguien nuevo.`, data `{ "type": "MATCHMAKING_AVAILABLE" }`,
+normal Android priority, one-hour TTL and tag `matchmaking-availability`. Backend
+delivery deduplication uses the episode UUID as `aggregateId`, so future
+independent cap episodes can notify independently.
 
 When a second chat has a confirmed scheduled time and the connection is still
 `SECOND_CHAT_SCHEDULED`, `SecondChatReminderNotificationJob`
@@ -685,6 +713,11 @@ Second-chat start push notifications can be tested locally with:
 Visual-review reminder push notifications can be tested locally with:
 
 - `POST /api/local-dev/jobs/visual-review-reminder/run`
+
+Matchmaking availability notification discovery and due processing can be tested
+locally with:
+
+- `POST /api/local-dev/jobs/matchmaking-availability-notification/run`
 
 Deferred scheduling activation can be tested locally with:
 

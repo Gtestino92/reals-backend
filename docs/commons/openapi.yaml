@@ -2445,7 +2445,7 @@ components:
         availabilityEnabled:
           type: boolean
           nullable: false
-          description: Reserved for future availability notifications; no current push type maps to it.
+          description: Enables availability notifications. Currently maps to MATCHMAKING_AVAILABLE for Visual Advancement Cap recovery.
           example: true
     NotificationPreferenceResponse:
       type: object
