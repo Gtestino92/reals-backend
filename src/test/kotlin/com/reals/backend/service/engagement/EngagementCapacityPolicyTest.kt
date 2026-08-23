@@ -193,11 +193,61 @@ class EngagementCapacityPolicyTest {
                 rewardScale = 0.0,
                 penaltyScale = 10.0
             ).validate(
-                prefix = "engagement.reliability-capacity.match"
+                prefix = "engagement.reliability-capacity.match",
+                baseline = 5,
+                baselineProperty = "engagement.max-active-matches"
             )
         }
 
         assertTrue(exception.message.orEmpty().contains("reward-scale"))
+    }
+
+    @Test
+    fun `configuration rejects match baseline below curve minimum`() {
+        val exception = assertThrows<IllegalArgumentException> {
+            EngagementProperties(maxActiveMatches = 2)
+        }
+
+        assertTrue(exception.message.orEmpty().contains("engagement.max-active-matches"))
+    }
+
+    @Test
+    fun `configuration rejects match baseline above curve maximum`() {
+        val exception = assertThrows<IllegalArgumentException> {
+            EngagementProperties(maxActiveMatches = 10)
+        }
+
+        assertTrue(exception.message.orEmpty().contains("engagement.max-active-matches"))
+    }
+
+    @Test
+    fun `configuration rejects connection baseline below curve minimum`() {
+        val exception = assertThrows<IllegalArgumentException> {
+            EngagementProperties(maxActiveConnections = 1)
+        }
+
+        assertTrue(exception.message.orEmpty().contains("engagement.max-active-connections"))
+    }
+
+    @Test
+    fun `configuration rejects connection baseline above curve maximum`() {
+        val exception = assertThrows<IllegalArgumentException> {
+            EngagementProperties(maxActiveConnections = 7)
+        }
+
+        assertTrue(exception.message.orEmpty().contains("engagement.max-active-connections"))
+    }
+
+    @Test
+    fun `configuration accepts neutral baselines on curve boundaries`() {
+        EngagementProperties(
+            maxActiveMatches = 3,
+            maxActiveConnections = 2
+        )
+        EngagementProperties(
+            maxActiveMatches = 9,
+            maxActiveConnections = 6
+        )
     }
 
     private fun enabledPolicy(score: Double): EngagementCapacityPolicy {

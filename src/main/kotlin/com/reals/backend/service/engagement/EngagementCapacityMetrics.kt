@@ -8,7 +8,8 @@ import kotlin.math.abs
 
 enum class EngagementCapacityEvaluationPhase(val tagValue: String) {
     AVAILABILITY("availability"),
-    FINAL_MATCH_ADMISSION("final_match_admission")
+    FINAL_MATCH_ADMISSION("final_match_admission"),
+    QUEUE_RECONCILIATION("queue_reconciliation")
 }
 
 enum class EngagementCapacityOutcome(val tagValue: String) {

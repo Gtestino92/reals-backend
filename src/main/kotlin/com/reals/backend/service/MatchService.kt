@@ -54,10 +54,10 @@ class MatchService(
      * The first ChatSession must be started separately via ChatService.startFirstChat().
      */
     fun createMatch(userAId: UUID, userBId: UUID): Match {
-        val now = OffsetDateTime.now()
-
         userService.lockActiveUsersOrThrow(listOf(userAId, userBId),
             "Cannot create match: one or more users were not found")
+
+        val now = OffsetDateTime.now()
 
         userBlockService.requirePairNotBlocked(
             userAId = userAId,

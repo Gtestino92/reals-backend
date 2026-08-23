@@ -12,7 +12,9 @@ import java.util.UUID
     properties = [
         "matchmaking.allow-active-pair-duplicates=true",
         "matchmaking.exclude-previous-pairing=false",
-        "engagement.max-active-matches=1"
+        "engagement.max-active-matches=1",
+        "engagement.reliability-capacity.match.min=1",
+        "engagement.reliability-capacity.match.max=1"
     ]
 )
 class MatchmakingActivePairDuplicatesCapacityIntegrationTest : BaseIT() {

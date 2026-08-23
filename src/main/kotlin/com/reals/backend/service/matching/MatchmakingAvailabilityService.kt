@@ -47,6 +47,28 @@ class MatchmakingAvailabilityService(
     fun availabilityForUserNotInQueue(
         userId: UUID,
         now: OffsetDateTime
+    ): MatchmakingAvailability =
+        availabilityForUserNotInQueue(
+            userId = userId,
+            now = now,
+            capacityEvaluationPhase = EngagementCapacityEvaluationPhase.AVAILABILITY
+        )
+
+    @Transactional(readOnly = true)
+    fun availabilityForQueueReconciliation(
+        userId: UUID,
+        now: OffsetDateTime
+    ): MatchmakingAvailability =
+        availabilityForUserNotInQueue(
+            userId = userId,
+            now = now,
+            capacityEvaluationPhase = EngagementCapacityEvaluationPhase.QUEUE_RECONCILIATION
+        )
+
+    private fun availabilityForUserNotInQueue(
+        userId: UUID,
+        now: OffsetDateTime,
+        capacityEvaluationPhase: EngagementCapacityEvaluationPhase
     ): MatchmakingAvailability {
         val profile = profileRepository.findByUserId(userId)
             ?: return blocked(
@@ -71,7 +93,7 @@ class MatchmakingAvailabilityService(
         val capacityDecision = engagementCapacityAdmissionService.evaluateUser(
             userId = userId,
             now = now,
-            phase = EngagementCapacityEvaluationPhase.AVAILABILITY
+            phase = capacityEvaluationPhase
         )
 
         when (capacityDecision.outcome) {

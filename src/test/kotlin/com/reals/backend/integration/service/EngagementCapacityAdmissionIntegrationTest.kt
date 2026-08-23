@@ -157,6 +157,29 @@ class EngagementCapacityAdmissionIntegrationTest : BaseIT() {
         assertNull(availability.blockedReason)
     }
 
+    @Test
+    fun `processor removes stale queue user capped by final connection admission`() {
+        val cappedUserId = activeFemale("dynamic-processor-capped")
+        val partnerId = activeMale("dynamic-processor-partner")
+        enqueueForMatchmaking(cappedUserId)
+        enqueueForMatchmaking(partnerId)
+        recordNoShow(cappedUserId)
+        saveLocks(
+            userId = cappedUserId,
+            type = EngagementType.CONNECTION,
+            count = 3
+        )
+
+        val result = matchmakingProcessorService.process(maxPairsPerRun = 1)
+
+        assertEquals(1, result.candidatePairs)
+        assertEquals(0, result.matchesCreated)
+        assertEquals(0, result.failedPairs)
+        assertFalse(matchmakingQueueRepository.existsByUserId(cappedUserId))
+        assertTrue(matchmakingQueueRepository.existsByUserId(partnerId))
+        assertFalse(matchExistsForUsers(cappedUserId, partnerId))
+    }
+
     private fun recordNoShow(userId: UUID) {
         userReliabilityScoreService.recordEvent(
             userId = userId,

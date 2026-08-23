@@ -332,7 +332,9 @@ matchmaking from active `CONNECTION` locks. `UserReliabilityScore`, when
 enabled, derives per-user effective Match and Connection admission caps from the
 current decayed score; the effective score, reliability tier and effective caps
 are not persisted. When reliability is disabled, effective caps are exactly the
-configured neutral baselines. The Visual Advancement Cap remains separate and
+configured neutral baselines. The configured neutral baseline must be inside
+the corresponding reliability-capacity min/max range so the base-score capacity
+equals the configured baseline. The Visual Advancement Cap remains separate and
 static: it gates future matchmaking from recent `VisualReview.createdAt`
 throughput and is not reliability-dependent.
 

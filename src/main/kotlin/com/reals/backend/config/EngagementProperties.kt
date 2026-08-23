@@ -15,8 +15,16 @@ data class EngagementProperties(
         require(maxActiveConnections > 0) {
             "engagement.max-active-connections must be greater than 0"
         }
-        reliabilityCapacity.match.validate(prefix = "engagement.reliability-capacity.match")
-        reliabilityCapacity.connection.validate(prefix = "engagement.reliability-capacity.connection")
+        reliabilityCapacity.match.validate(
+            prefix = "engagement.reliability-capacity.match",
+            baseline = maxActiveMatches,
+            baselineProperty = "engagement.max-active-matches"
+        )
+        reliabilityCapacity.connection.validate(
+            prefix = "engagement.reliability-capacity.connection",
+            baseline = maxActiveConnections,
+            baselineProperty = "engagement.max-active-connections"
+        )
     }
 }
 
@@ -41,12 +49,19 @@ data class ReliabilityCapacityCurveProperties(
     val rewardScale: Double,
     val penaltyScale: Double
 ) {
-    fun validate(prefix: String) {
+    fun validate(
+        prefix: String,
+        baseline: Int,
+        baselineProperty: String
+    ) {
         require(min > 0) {
             "$prefix.min must be greater than 0"
         }
         require(max >= min) {
             "$prefix.max must be greater than or equal to min"
+        }
+        require(baseline in min..max) {
+            "$baselineProperty must be within $prefix.min and $prefix.max"
         }
         require(rewardScale.isFinite() && rewardScale > 0.0) {
             "$prefix.reward-scale must be finite and greater than 0"

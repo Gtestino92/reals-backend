@@ -47,4 +47,36 @@ class EngagementCapacityMetricsTest {
                 .totalAmount()
         )
     }
+
+    @Test
+    fun `queue reconciliation records a distinct evaluation phase`() {
+        val registry = SimpleMeterRegistry()
+        val metrics = EngagementCapacityMetrics(registry)
+
+        metrics.recordDecision(
+            phase = EngagementCapacityEvaluationPhase.QUEUE_RECONCILIATION,
+            decision = EngagementCapacityAdmissionDecision(
+                userId = UUID.randomUUID(),
+                capacity = EffectiveEngagementCapacity(
+                    effectiveScore = 100.0,
+                    matchCap = 5,
+                    connectionCap = 4
+                ),
+                activeMatches = 1,
+                activeConnections = 1,
+                reliabilityBaseScore = 100,
+                outcome = EngagementCapacityOutcome.ALLOWED
+            )
+        )
+
+        assertEquals(
+            1.0,
+            registry.get(EngagementCapacityMetrics.EVALUATIONS)
+                .tag("phase", "queue_reconciliation")
+                .tag("direction", "neutral")
+                .tag("outcome", "allowed")
+                .counter()
+                .count()
+        )
+    }
 }

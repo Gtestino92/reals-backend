@@ -178,8 +178,9 @@ engagement.max-active-connections=4
 `EngagementCapacityPolicy` derives effective Match and Connection caps from the
 current decayed score. The derived caps are not persisted, and there is no
 persisted reliability tier. One explicit backend `now` is used for a capacity
-decision; final two-user Match admission evaluates both users with the same
-`now` and a batched reliability score lookup.
+decision; final two-user Match admission captures that `now` after acquiring
+the participant user locks, then evaluates both users with the same timestamp
+and a batched reliability score lookup.
 
 The curve is continuous and then discretized with normal Kotlin nearest-integer
 rounding:
@@ -204,6 +205,10 @@ reliability reduces capacity relatively quickly, positive reliability earns
 extra capacity more gradually, and the Connection positive curve is more
 conservative. With defaults, about `-10` reliability delta gives `4` Matches and
 `3` Connections, while about `+10` gives `6` Matches and `4` Connections.
+Startup validation requires the configured neutral baseline to fit inside its
+dynamic curve range: `match.min <= engagement.max-active-matches <= match.max`
+and
+`connection.min <= engagement.max-active-connections <= connection.max`.
 
 Capacity is an admission cap only. It does not affect already-admitted Matches,
 already-admitted Visual Reviews, already-created Connections or lifecycle
@@ -228,25 +233,29 @@ observable.
 Micrometer metrics under `reals.engagement.capacity.*` record low-cardinality
 aggregate signals:
 
-- evaluation phase: `availability` or `final_match_admission`
+- evaluation phase: `availability`, `final_match_admission` or `queue_reconciliation`
 - reliability direction: `below_base`, `neutral` or `above_base`
 - outcome: `allowed`, `blocked_match_cap` or `blocked_connection_cap`
 - effective Match cap distribution
 - effective Connection cap distribution
 - absolute distance from the reliability base score, tagged only by direction
 
-Metrics do not tag by user id or raw score. The operational diagnostic query in
-`docs/engagement-capacity-diagnostics.sql` can inspect the current/recent
-population by derived score, effective caps, active lock counts, headroom and
-overshoot.
+Metrics do not tag by user id or raw score. The backend emits these Micrometer
+meters and Actuator exposes them in configured runtimes, but this feature does
+not add Prometheus, CloudWatch, OTLP, Grafana or any other durable metrics
+backend. Durable longitudinal retention across process restarts or deployments
+requires an external metrics registry/backend.
+
+The operational diagnostic query in `docs/engagement-capacity-diagnostics.sql`
+can inspect the current/recent population by derived score, effective caps,
+active lock counts, headroom and overshoot.
 
 Reliability events are temporally bounded and expired events are deleted. The
 operational database can reconstruct current or recent reliability-derived
 capacity from retained events, but it cannot provide indefinite historical
-per-user score/cap trajectories after those events are gone. Micrometer and
-time-series retention provide initial longitudinal aggregate visibility. True
-long-term cohort or causal analysis requires a separate analytics/history
-pipeline, which is outside this task.
+per-user score/cap trajectories after those events are gone. Long-term cohort
+or causal analysis requires a separate analytics/history pipeline, which is
+outside this task.
 
 ## Persistence And Idempotency
 

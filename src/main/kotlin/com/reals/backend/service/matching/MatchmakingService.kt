@@ -137,7 +137,7 @@ class MatchmakingService(
         val now = OffsetDateTime.now()
         listOf(userAId, userBId)
             .filter { userId ->
-                matchmakingAvailabilityService.availabilityForUserNotInQueue(
+                matchmakingAvailabilityService.availabilityForQueueReconciliation(
                     userId = userId,
                     now = now
                 ).blockedReason?.code in setOf(
