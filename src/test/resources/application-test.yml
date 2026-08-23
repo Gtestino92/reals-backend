@@ -150,7 +150,7 @@ profile:
 
 engagement:
   max-active-matches: 5
-  max-active-connections: 2
+  max-active-connections: 4
 
 security:
   rate-limit:

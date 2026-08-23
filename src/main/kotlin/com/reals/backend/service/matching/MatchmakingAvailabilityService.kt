@@ -1,12 +1,12 @@
 package com.reals.backend.service.matching
 
-import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.ProfileStatus
-import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.PenaltyService
-import org.springframework.beans.factory.annotation.Value
+import com.reals.backend.service.engagement.EngagementCapacityAdmissionService
+import com.reals.backend.service.engagement.EngagementCapacityEvaluationPhase
+import com.reals.backend.service.engagement.EngagementCapacityOutcome
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -15,15 +15,9 @@ import java.util.UUID
 @Service
 class MatchmakingAvailabilityService(
     private val profileRepository: ProfileRepository,
-    private val lockRepository: ActiveEngagementLockRepository,
     private val penaltyService: PenaltyService,
     private val visualAdvancementCapService: VisualAdvancementCapService,
-
-    @param:Value("\${engagement.max-active-matches:5}")
-    private val maxActiveMatches: Int,
-
-    @param:Value("\${engagement.max-active-connections:2}")
-    private val maxActiveConnections: Int
+    private val engagementCapacityAdmissionService: EngagementCapacityAdmissionService
 ) {
 
     @Transactional(readOnly = true)
@@ -74,28 +68,26 @@ class MatchmakingAvailabilityService(
             )
         }
 
-        val activeMatches = lockRepository.countByUserIdAndEngagementType(
+        val capacityDecision = engagementCapacityAdmissionService.evaluateUser(
             userId = userId,
-            engagementType = EngagementType.MATCH
+            now = now,
+            phase = EngagementCapacityEvaluationPhase.AVAILABILITY
         )
 
-        if (activeMatches >= maxActiveMatches) {
-            return blocked(
-                code = DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED,
-                message = "User has reached the maximum number of active matches ($maxActiveMatches)"
-            )
-        }
+        when (capacityDecision.outcome) {
+            EngagementCapacityOutcome.BLOCKED_MATCH_CAP ->
+                return blocked(
+                    code = DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED,
+                    message = "User has reached the active match capacity"
+                )
 
-        val activeConnections = lockRepository.countByUserIdAndEngagementType(
-            userId = userId,
-            engagementType = EngagementType.CONNECTION
-        )
+            EngagementCapacityOutcome.BLOCKED_CONNECTION_CAP ->
+                return blocked(
+                    code = DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED,
+                    message = "User has reached the active connection capacity"
+                )
 
-        if (activeConnections >= maxActiveConnections) {
-            return blocked(
-                code = DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED,
-                message = "User has reached the maximum number of active connections ($maxActiveConnections)"
-            )
+            EngagementCapacityOutcome.ALLOWED -> Unit
         }
 
         val visualAdvancementStatus = visualAdvancementCapService.statusFor(

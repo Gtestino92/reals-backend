@@ -63,8 +63,8 @@ class MatchmakingService(
     /**
      * Adds a user to the matchmaking queue.
      * Preconditions:
-     *  - active match count < maxActiveMatches (configurable, default 5)
-     *  - active connection count < maxActiveConnections (configurable, default 2)
+     *  - active match count < effective active match admission cap
+     *  - active connection count < effective active connection admission cap
      *  - no active penalty
      *  - profile is ACTIVE (photo validation already happened at profile activation)
      *  - current search location is present and valid
@@ -130,17 +130,26 @@ class MatchmakingService(
         }
     }
 
-    fun removeVisualAdvancementCappedQueueEntries(
+    fun removeAdmissionCappedQueueEntries(
         userAId: UUID,
         userBId: UUID
     ) {
         val now = OffsetDateTime.now()
         listOf(userAId, userBId)
-            .filter { userId -> visualAdvancementCapService.isBlocked(userId = userId, now = now) }
+            .filter { userId ->
+                matchmakingAvailabilityService.availabilityForUserNotInQueue(
+                    userId = userId,
+                    now = now
+                ).blockedReason?.code in setOf(
+                    DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED.name,
+                    DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED.name,
+                    DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED.name
+                )
+            }
             .forEach { userId ->
                 removeStaleQueuedUser(
                     userId = userId,
-                    reason = "matchmaking_visual_advancement_limit_final_recheck"
+                    reason = "matchmaking_admission_capacity_final_recheck"
                 )
             }
     }

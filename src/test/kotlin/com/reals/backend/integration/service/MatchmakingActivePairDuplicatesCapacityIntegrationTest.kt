@@ -2,6 +2,7 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.test.context.TestPropertySource
@@ -33,7 +34,7 @@ class MatchmakingActivePairDuplicatesCapacityIntegrationTest : BaseIT() {
 
         matchService.createMatch(userA, userB)
 
-        assertThrows<IllegalStateException> {
+        assertThrows<DomainConflictException> {
             matchService.createMatch(userA, userB)
         }
     }

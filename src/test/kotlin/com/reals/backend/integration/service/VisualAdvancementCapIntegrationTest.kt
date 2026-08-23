@@ -255,7 +255,7 @@ class VisualAdvancementCapIntegrationTest : BaseIT() {
                 )
             )
         }
-        repeat(2) {
+        repeat(4) {
             lockRepository.save(
                 ActiveEngagementLock(
                     userId = connectionCappedUserId,

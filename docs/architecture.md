@@ -53,9 +53,13 @@ activation job transitions it to `SCHEDULING_PHASE`.
 Engagement capacity limits are matchmaking admission controls. The match cap
 gates new Match opportunities, the Visual Advancement Cap gates future
 matchmaking from recent visual-review advancement throughput, and the connection
-cap gates future matchmaking from active downstream commitments. Existing
-engagements continue through later lifecycle phases even if that temporarily
-takes active counts above a configured limit.
+cap gates future matchmaking from active downstream commitments. The neutral
+baselines are 5 active Matches and 4 active Connections. When user reliability
+is enabled, `EngagementCapacityPolicy` derives effective Match and Connection
+caps from the current decayed reliability score; when reliability is disabled,
+effective caps are exactly the configured baselines. Existing engagements
+continue through later lifecycle phases even if that temporarily takes active
+counts above a configured or derived limit.
 
 Chat responsibilities are split conservatively:
 
@@ -277,7 +281,12 @@ outside database transactions and without holding episode locks.
 
 `UserReliabilityEventCleanupJob` deletes expired internal reliability events
 after their scoring window ends. User reliability is feature-flagged off by
-default and recomputed from active events instead of a cache.
+default and recomputed from active events instead of a cache. Reliability-derived
+capacity intentionally creates an observable feedback-loop experiment: good
+behavior can lead to more admission opportunities, and poor behavior can reduce
+opportunities. Aggregate Micrometer metrics under `reals.engagement.capacity.*`
+record evaluation phase, reliability direction and allowed/blocked outcomes
+without user ids or raw-score tags.
 
 Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
 trigger the same job beans manually, plus `/api/local-dev/timeouts/...`

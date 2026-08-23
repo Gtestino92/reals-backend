@@ -1,16 +1,30 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.controller.dev.DevUserReliabilityController
+import com.reals.backend.domain.ActiveEngagementLock
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.EngagementType
+import com.reals.backend.domain.Gender
+import com.reals.backend.domain.UserReliabilityDimension
+import com.reals.backend.domain.UserReliabilityEvent
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.integration.ControllerIT
+import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.matching.MatchmakingAvailabilityService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.OffsetDateTime
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import java.util.UUID
 
 class UserReliabilityDisabledIntegrationTest : ControllerIT() {
+
+    @Autowired
+    private lateinit var matchmakingAvailabilityService: MatchmakingAvailabilityService
 
     @Test
     fun `feature flag disabled records no events`() {
@@ -46,6 +60,53 @@ class UserReliabilityDisabledIntegrationTest : ControllerIT() {
     fun `feature flag disabled has no matchmaking modifier`() {
         assertFalse(userReliabilityScoreService.enabled)
         assertEquals(0.0, userReliabilityScoreService.matchmakingModifierForScores(500.0, -500.0))
+    }
+
+    @Test
+    fun `feature flag disabled preserves neutral connection baseline of four despite stored events`() {
+        val userId = createActiveProfile(
+            email = "disabled-capacity-${UUID.randomUUID()}@example.com",
+            displayName = "Disabled Capacity",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        userReliabilityEventRepository.saveAndFlush(
+            UserReliabilityEvent(
+                userId = userId,
+                eventType = UserReliabilityEventType.SECOND_CHAT_NO_SHOW,
+                dimension = UserReliabilityDimension.SchedulingCommitmentScore,
+                delta = -10,
+                relatedConnectionId = UUID.randomUUID(),
+                occurredAt = OffsetDateTime.now(),
+                expiresAt = OffsetDateTime.now().plusDays(20)
+            )
+        )
+        repeat(3) {
+            lockRepository.save(
+                ActiveEngagementLock(
+                    userId = userId,
+                    engagementId = UUID.randomUUID(),
+                    engagementType = EngagementType.CONNECTION
+                )
+            )
+        }
+        lockRepository.flush()
+
+        val allowed = matchmakingAvailabilityService.availabilityForUserNotInQueue(userId)
+        assertTrue(allowed.canSearch)
+        assertNull(allowed.blockedReason)
+
+        lockRepository.saveAndFlush(
+            ActiveEngagementLock(
+                userId = userId,
+                engagementId = UUID.randomUUID(),
+                engagementType = EngagementType.CONNECTION
+            )
+        )
+
+        val blocked = matchmakingAvailabilityService.availabilityForUserNotInQueue(userId)
+        assertFalse(blocked.canSearch)
+        assertEquals(DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED.name, blocked.blockedReason?.code)
     }
 
     @Test

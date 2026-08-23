@@ -144,7 +144,7 @@ The backend does not infer queue exit from app backgrounding, minimizing or
 process death. Queue exit remains explicit through the existing dequeue and
 domain-lifecycle behavior.
 
-Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, rechecks the rolling Visual Review advancement cap before returning a claimed pair, and removes stale queue entries that became capped after enqueue. `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness and historical cooldowns, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
+Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, rechecks the rolling Visual Review advancement cap before returning a claimed pair, and removes stale queue entries that became capped after enqueue. `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness, historical cooldowns, Visual Advancement capacity and both users' effective Match and Connection admission caps, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
 
 Pair exclusion has three separate meanings:
 
@@ -365,11 +365,14 @@ Matchmaking capacity limits are admission controls for new opportunities. Match
 capacity controls creation of new Match opportunities, the Visual Advancement
 Cap controls future matchmaking admission from recent `VisualReview.createdAt`
 throughput, and connection capacity controls future matchmaking admission from
-downstream active commitments. Once an engagement exists, reaching a limit later
-must not prevent that engagement from progressing through later lifecycle phases.
-Existing engagements can temporarily push active counts above a configured
-limit; the user remains unavailable for new matchmaking until the relevant count
-falls below that limit.
+downstream active commitments. `UserReliabilityScore` can lower or raise the
+effective Match and Connection admission caps, but it does not affect Visual
+Advancement capacity and does not retroactively invalidate engagements that were
+already admitted. Once an engagement exists, reaching a limit later must not
+prevent that engagement from progressing through later lifecycle phases.
+Existing engagements can temporarily push active counts above a configured or
+derived limit; the user remains unavailable for new matchmaking until the
+relevant active lock count falls below the current effective cap.
 
 ## 7. Scheduling
 

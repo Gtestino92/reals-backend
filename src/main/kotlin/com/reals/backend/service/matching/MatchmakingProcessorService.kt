@@ -54,7 +54,16 @@ class MatchmakingProcessorService(
             } catch (ex: MatchmakingPairProcessingException) {
                 if (ex.isVisualAdvancementLimit()) {
                     candidatePairs += 1
-                    matchmakingService.removeVisualAdvancementCappedQueueEntries(
+                    matchmakingService.removeAdmissionCappedQueueEntries(
+                        userAId = ex.userAId,
+                        userBId = ex.userBId
+                    )
+                    continue
+                }
+
+                if (ex.isActiveEngagementCapacityLimit()) {
+                    candidatePairs += 1
+                    matchmakingService.removeAdmissionCappedQueueEntries(
                         userAId = ex.userAId,
                         userBId = ex.userBId
                     )
@@ -118,5 +127,11 @@ class MatchmakingProcessorService(
     private fun MatchmakingPairProcessingException.isVisualAdvancementLimit(): Boolean {
         val conflict = cause as? DomainConflictException ?: return false
         return conflict.code == DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED
+    }
+
+    private fun MatchmakingPairProcessingException.isActiveEngagementCapacityLimit(): Boolean {
+        val conflict = cause as? DomainConflictException ?: return false
+        return conflict.code == DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED ||
+            conflict.code == DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED
     }
 }
