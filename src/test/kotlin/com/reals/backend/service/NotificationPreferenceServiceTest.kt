@@ -5,7 +5,6 @@ import com.reals.backend.domain.PushNotificationType
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.UserNotificationPreferenceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 
@@ -25,6 +24,7 @@ class NotificationPreferenceServiceTest {
                 PushNotificationType.SCHEDULING_PROPOSALS_RECEIVED to NotificationPreferenceCategory.ACTIVITY,
                 PushNotificationType.SCHEDULING_CONFIRMED to NotificationPreferenceCategory.ACTIVITY,
                 PushNotificationType.SECOND_CHAT_STARTED to NotificationPreferenceCategory.ACTIVITY,
+                PushNotificationType.MATCHMAKING_AVAILABLE to NotificationPreferenceCategory.AVAILABILITY,
                 PushNotificationType.VISUAL_REVIEW_REMINDER to NotificationPreferenceCategory.REMINDERS,
                 PushNotificationType.SECOND_CHAT_REMINDER to NotificationPreferenceCategory.REMINDERS,
                 PushNotificationType.MATCH_FOUND_INVALIDATED to NotificationPreferenceCategory.SYSTEM
@@ -34,6 +34,5 @@ class NotificationPreferenceServiceTest {
         expected.forEach { (type, category) ->
             assertEquals(category, service.categoryFor(type), type.name)
         }
-        assertFalse(expected.containsValue(NotificationPreferenceCategory.AVAILABILITY))
     }
 }

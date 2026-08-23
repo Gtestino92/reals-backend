@@ -51,6 +51,10 @@ scheduler:
     fixed-delay: 60000
   visual-review-reminder-job:
     fixed-delay: 1800000
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 100
+    discovery-batch-size: 100
   match-expiration-job:
     fixed-delay: 300000
     max-chat-duration: PT20M

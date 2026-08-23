@@ -78,6 +78,10 @@ scheduler:
   visual-review-reminder-job:
     fixed-delay: 1800000
 
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 100
+    discovery-batch-size: 100
   # Expires matches that have not progressed past CHAT_ACTIVE.
   # Safety net behind ChatTimeoutJob, not the primary first-chat timer.
   match-expiration-job:

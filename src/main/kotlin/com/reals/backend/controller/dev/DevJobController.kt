@@ -4,6 +4,7 @@ import com.reals.backend.scheduler.AccountDeletionFinalizationJob
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.InactivityCheckJob
 import com.reals.backend.scheduler.MatchExpirationJob
+import com.reals.backend.scheduler.MatchmakingAvailabilityNotificationJob
 import com.reals.backend.scheduler.MediaCleanupJob
 import com.reals.backend.scheduler.PenaltyExpirationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
@@ -30,6 +31,7 @@ class DevJobController(
     private val chatTimeoutJob: ObjectProvider<ChatTimeoutJob>,
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
     private val matchExpirationJob: ObjectProvider<MatchExpirationJob>,
+    private val matchmakingAvailabilityNotificationJob: ObjectProvider<MatchmakingAvailabilityNotificationJob>,
     private val mediaCleanupJob: ObjectProvider<MediaCleanupJob>,
     private val penaltyExpirationJob: ObjectProvider<PenaltyExpirationJob>,
     private val schedulingActivationJob: ObjectProvider<SchedulingActivationJob>,
@@ -64,6 +66,15 @@ class DevJobController(
     fun runMatchExpiration(): ResponseEntity<DevJobRunResponse> =
         runJob("MatchExpirationJob") {
             requireJob(matchExpirationJob, "MatchExpirationJob").run()
+        }
+
+    @PostMapping("/matchmaking-availability-notification/run")
+    fun runMatchmakingAvailabilityNotification(): ResponseEntity<DevJobRunResponse> =
+        runJob("MatchmakingAvailabilityNotificationJob") {
+            requireJob(
+                matchmakingAvailabilityNotificationJob,
+                "MatchmakingAvailabilityNotificationJob"
+            ).runNowForDev()
         }
 
     @PostMapping("/media-cleanup/run")

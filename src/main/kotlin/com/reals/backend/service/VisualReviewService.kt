@@ -5,6 +5,7 @@ import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.notification.MatchmakingAvailabilityNotificationService
 import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
@@ -29,6 +30,7 @@ class VisualReviewService(
     private val userBlockService: UserBlockService,
     private val visualResourceAccessPolicy: VisualResourceAccessPolicy,
     private val visualReviewAvailabilityPolicy: VisualReviewAvailabilityPolicy,
+    private val matchmakingAvailabilityNotificationService: MatchmakingAvailabilityNotificationService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
     private val visualPhaseDurationMinutes: Long,
@@ -79,7 +81,7 @@ class VisualReviewService(
             pairReliabilityScore = preResolutionPairReliabilityScore
         )
         val expiresAt = availableAt.plusMinutes(visualPhaseDurationMinutes)
-        val review = visualReviewRepository.save(
+        val review = visualReviewRepository.saveAndFlush(
             VisualReview(
                 matchId = matchId,
                 expiresAt = expiresAt,
@@ -88,6 +90,10 @@ class VisualReviewService(
                 createdAt = now,
                 updatedAt = now
             )
+        )
+        matchmakingAvailabilityNotificationService.reconcileAfterVisualAdvancementCreated(
+            userIds = listOf(match.userAId, match.userBId),
+            now = now
         )
         homeStatusService.scheduleNextRefreshAtForBoth(
             userAId = match.userAId,

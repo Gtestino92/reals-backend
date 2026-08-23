@@ -11,7 +11,7 @@ post {
 }
 
 headers {
-  Authorization: Bearer {{firebase_id_token}}
+  Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjZhYzkwNDdmNjcxMmZjZDVjZjY3YTMzMDc5NDFkOWZhNDIyODM5NTUiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiR2l1bGlhbm8gVGVzdGlubyIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NMWGhHcE1QOTYweWJQa3BscmJNNFdKcno3UkJyaW5Ta1Q2V0VmNF9XUWFNbG1hbkE9czk2LWMiLCJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vcmVhbHMtYmFja2VuZC1maXJlYmFzZSIsImF1ZCI6InJlYWxzLWJhY2tlbmQtZmlyZWJhc2UiLCJhdXRoX3RpbWUiOjE3ODcxOTgxOTUsInVzZXJfaWQiOiJpa1pvZnEzTVE2WVFPbVFncnZuSkx2anFwYksyIiwic3ViIjoiaWtab2ZxM01RNllRT21RZ3J2bkpMdmpxcGJLMiIsImlhdCI6MTc4NzE5ODE5NSwiZXhwIjoxNzg3MjAxNzk1LCJlbWFpbCI6Imd0ZXN0aW5vMTk5MkBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJnb29nbGUuY29tIjpbIjEwMjcyNzY4NjIyOTA5MDc5MjQxNSJdLCJlbWFpbCI6WyJndGVzdGlubzE5OTJAZ21haWwuY29tIl19LCJzaWduX2luX3Byb3ZpZGVyIjoicGFzc3dvcmQifX0.VKcuxrcOvkgVyekOxuWrrb9Ic1Jp9WjMPq6dYaH6rAcZoJ-irpSIptnrbYrJQUGVRyY-lKmKNA0WHZDuCdrVqwAoGmjcsSVyBH8LBDzYRmzxDnjLCmuZILUkxdNyjEe99w_hgDSbVV3WCnWll10S5pCSqrce9lC8PV6I6rZrMf2rdweGXZ5pOeOXoVHhQLJqwtOp3TJMYenvK0g1hOmvMy6OPv2BDYlV2WelE8gm6k9LsVL0qqg89eN6ZMdptGbxWv7wfaJTVCiPo1ZEnGk5KvtsTU9EVQDbQFUlHEZDwetzedAswjStNHgodGp3sncRyk85B0lG4kWZKJJLJ3Whjw
 }
 
 script:post-response {
@@ -19,17 +19,17 @@ script:post-response {
   if (status !== 200 && status !== 201) {
     throw new Error(`Expected 200 OK or 201 Created, got ${status}.`);
   }
-
+  
   const body = res.getBody();
   if (!body || !body.id) {
     throw new Error("Expected provisioned backend user response with id.");
   }
-
+  
   const expectedEmail = bru.getEnvVar("firebase_email");
   if (expectedEmail && !expectedEmail.startsWith("paste-") && body.email !== expectedEmail) {
     throw new Error(`Expected Firebase user email ${expectedEmail}, got ${body.email}.`);
   }
-
+  
   bru.setEnvVar("firebaseUserId", body.id);
   bru.setEnvVar("androidUserId", body.id);
 }

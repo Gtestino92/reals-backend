@@ -45,6 +45,7 @@ abstract class PostgresITBase : BaseIT() {
                 matchmaking_queue,
                 matches,
                 media_cleanup_tasks,
+                matchmaking_availability_notification_episodes,
                 penalties,
                 profile_looking_for_genders,
                 profile_photos,

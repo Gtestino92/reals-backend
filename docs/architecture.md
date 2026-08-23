@@ -252,6 +252,29 @@ pending. Delivery is deduplicated per user, notification type and match id.
 Legacy rows with `reminderEligibleAt = null` are ignored unless manually
 backfilled outside Flyway.
 
+
+`MatchmakingAvailabilityNotificationJob` owns the first `AVAILABILITY` push,
+`MATCHMAKING_AVAILABLE`. The trigger is intentionally narrow: recovery from the
+rolling Visual Advancement Cap, not generic search availability. New
+`VisualReview` creation flushes the review row, then reconciles both
+participants under the same transaction so the current cap query includes the
+new advancement. Replays that return an existing review do not create new
+notification state. The durable episode table stores `PENDING`, `HANDLED` and
+`CANCELLED` states, with a partial unique index enforcing at most one pending
+episode per user. The episode UUID is the push aggregate id.
+
+The job runs in bounded batches and uses ShedLock for cross-instance scheduler
+exclusion. Each due episode is row-locked and revalidated against
+`VisualAdvancementCapService.statusFor(userId, now)`. `nextCheckAt` is only a
+wake-up hint: if the rolling cap still blocks, the episode remains pending and
+is moved to the current authoritative threshold. If the cap is clear, the
+service checks queue state and delegates final eligibility to
+`MatchmakingAvailabilityService`; another blocker cancels this visual-cap
+episode without sending. Push preparation happens transactionally through
+`PushRecipientPreparationService`, including preference and no-token skip
+persistence. Provider calls run afterward through `PreparedPushCommandProcessor`,
+outside database transactions and without holding episode locks.
+
 `UserReliabilityEventCleanupJob` deletes expired internal reliability events
 after their scoring window ends. User reliability is feature-flagged off by
 default and recomputed from active events instead of a cache.
