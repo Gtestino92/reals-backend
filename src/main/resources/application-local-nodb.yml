@@ -92,7 +92,7 @@ chat:
     enabled: true
   first-chat:
     approval:
-      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
-      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:0}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:0}
     audio:
       required-answered-guidance-questions: 1

@@ -140,6 +140,8 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_SECOND_CHAT_CONFLICT_WINDOW_MINUTES` | no | Symmetric inclusive window, in minutes, around another confirmed second-chat start for the same user. Defaults to `60`; `0` means only the exact confirmed instant conflicts. Negative values are rejected at startup. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES` | no | Minimum elapsed first-chat time before `APPROVED` is accepted. Local profiles default to `0`; dev/default profiles default to `1`; prod defaults to `3`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER` | no | Minimum confirmed first-chat messages required from each participant before `APPROVED` is accepted. Local profiles default to `0`; dev/default/prod default to `3`. |
 | `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES` | no | Local Firebase override for repeated same-pair testing. Defaults to `true` in `local-firebase` Docker runs and `false` globally. Keep `false` for production-like active-pair restrictions. |
 | `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
@@ -165,7 +167,7 @@ Non-sensitive runtime configuration:
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX` | no | Maximum reliability-derived Connection admission cap. Default `6`. |
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE` | no | Positive reliability scale for Connection capacity. Default `30`, intentionally more conservative than Match. |
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE` | no | Negative reliability scale for Connection capacity. Default `10`. |
-| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
+| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `true` in `dev` and `local-firebase`, `false` elsewhere. |
 | `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
 | `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
 | `USER_RELIABILITY_HALF_WEIGHT_DAYS` | no | Number of days reliability events count at half weight after the full-weight window. Defaults to `10`. |

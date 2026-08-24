@@ -34,4 +34,6 @@ script:post-response {
 
   bru.setEnvVar("firebase_id_token", body.idToken);
   bru.setEnvVar("firebase_uid", body.localId);
+  bru.setVar("firebase_id_token", body.idToken);
+  bru.setVar("firebase_uid", body.localId);
 }

@@ -170,6 +170,9 @@ engagement:
   max-active-matches: 5
   max-active-connections: 4
 
+user-reliability:
+  enabled: ${USER_RELIABILITY_ENABLED:true}
+
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
