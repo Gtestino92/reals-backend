@@ -6,11 +6,12 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.engagement.EngagementCapacityAdmissionService
+import com.reals.backend.service.engagement.EngagementCapacityEvaluationPhase
 import com.reals.backend.service.matching.MatchmakingPairEligibilityService
 import com.reals.backend.service.matching.VisualAdvancementCapService
 import jakarta.transaction.Transactional
 import org.springframework.security.access.AccessDeniedException
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.*
@@ -26,10 +27,8 @@ class MatchService(
     private val userBlockService: UserBlockService,
     private val matchmakingPairEligibilityService: MatchmakingPairEligibilityService,
     private val visualAdvancementCapService: VisualAdvancementCapService,
-    private val homeStateInvalidationService: HomeStateInvalidationService,
-
-    @param:Value("\${engagement.max-active-matches:5}")
-    private val maxActiveMatches: Int
+    private val engagementCapacityAdmissionService: EngagementCapacityAdmissionService,
+    private val homeStateInvalidationService: HomeStateInvalidationService
 
 ) {
 
@@ -51,13 +50,14 @@ class MatchService(
 
     /**
      * Creates a Match between two users, locks both and removes them from the queue.
-     * Validates that neither user exceeds [maxActiveMatches] before creating.
+     * Validates that neither user exceeds their effective admission capacity before creating.
      * The first ChatSession must be started separately via ChatService.startFirstChat().
      */
     fun createMatch(userAId: UUID, userBId: UUID): Match {
-
         userService.lockActiveUsersOrThrow(listOf(userAId, userBId),
             "Cannot create match: one or more users were not found")
+
+        val now = OffsetDateTime.now()
 
         userBlockService.requirePairNotBlocked(
             userAId = userAId,
@@ -65,12 +65,16 @@ class MatchService(
         )
         matchmakingPairEligibilityService.requirePairCanCreateMatch(
             userAId = userAId,
-            userBId = userBId
+            userBId = userBId,
+            now = now
         )
-        requireVisualAdvancementCapacity(userId = userAId)
-        requireVisualAdvancementCapacity(userId = userBId)
-        checkMatchLimit(userId = userAId)
-        checkMatchLimit(userId = userBId)
+        requireVisualAdvancementCapacity(userId = userAId, now = now)
+        requireVisualAdvancementCapacity(userId = userBId, now = now)
+        engagementCapacityAdmissionService.requireUsersCanReceiveNewMatch(
+            userIds = listOf(userAId, userBId),
+            now = now,
+            phase = EngagementCapacityEvaluationPhase.FINAL_MATCH_ADMISSION
+        )
 
         val match = matchRepository.save(
             Match(
@@ -106,20 +110,8 @@ class MatchService(
         return match
     }
 
-    private fun checkMatchLimit(userId: UUID) {
-
-        val active = lockRepository.countByUserIdAndEngagementType(
-            userId,
-            EngagementType.MATCH
-        )
-
-        check(active < maxActiveMatches) {
-            "User $userId has reached the maximum number of active matches ($maxActiveMatches)"
-        }
-    }
-
-    private fun requireVisualAdvancementCapacity(userId: UUID) {
-        val status = visualAdvancementCapService.statusFor(userId = userId)
+    private fun requireVisualAdvancementCapacity(userId: UUID, now: OffsetDateTime) {
+        val status = visualAdvancementCapService.statusFor(userId = userId, now = now)
         if (status.blocked) {
             throw DomainConflictException(
                 code = DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED,

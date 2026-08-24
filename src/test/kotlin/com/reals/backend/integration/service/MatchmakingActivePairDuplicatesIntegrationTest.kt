@@ -22,7 +22,11 @@ import java.util.UUID
         "matchmaking.allow-active-pair-duplicates=true",
         "matchmaking.exclude-previous-pairing=false",
         "engagement.max-active-matches=100",
-        "engagement.max-active-connections=100"
+        "engagement.max-active-connections=100",
+        "engagement.reliability-capacity.match.min=100",
+        "engagement.reliability-capacity.match.max=100",
+        "engagement.reliability-capacity.connection.min=100",
+        "engagement.reliability-capacity.connection.max=100"
     ]
 )
 class MatchmakingActivePairDuplicatesIntegrationTest : BaseIT() {

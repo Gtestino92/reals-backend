@@ -146,8 +146,13 @@ class ReadMetricsIntegrationTest : BaseIT() {
         meHomeService.getHome(setup.userAId)
 
         val allowedTagKeys = setOf("variant", "outcome", "mode")
+        val readMetricNames = setOf(
+            ReadMetrics.HOME_LOAD,
+            ReadMetrics.CHAT_MESSAGES_READ,
+            ReadMetrics.CHAT_MESSAGES_RETURNED
+        )
         val actualTagKeys = meterRegistry.meters
-            .filter { it.id.name.startsWith("reals.") }
+            .filter { it.id.name in readMetricNames }
             .flatMap { meter -> meter.id.tags.map { it.key } }
             .toSet()
 

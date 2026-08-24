@@ -1,6 +1,7 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ActiveEngagementLock
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.VisualDecision
@@ -86,12 +87,6 @@ class EngagementConcurrencyIntegrationTest {
     fun `concurrent connection creation may exceed active connection limit`() {
         val sharedUserId = createUser("shared-connection")
 
-        val existingMatch = matchService.createMatch(
-            userAId = sharedUserId,
-            userBId = createUser("existing-connection")
-        )
-        connectionService.createFromMatch(existingMatch)
-
         val candidateMatchA = matchService.createMatch(
             userAId = sharedUserId,
             userBId = createUser("concurrent-connection-a")
@@ -100,6 +95,7 @@ class EngagementConcurrencyIntegrationTest {
             userAId = sharedUserId,
             userBId = createUser("concurrent-connection-b")
         )
+        saveConnectionLocks(sharedUserId, count = 4)
 
         val results = runConcurrently(
             { connectionService.createFromMatch(candidateMatchA) },
@@ -109,7 +105,7 @@ class EngagementConcurrencyIntegrationTest {
         assertEquals(2, results.count { it })
         assertEquals(0, results.count { !it })
         assertEquals(
-            3,
+            6,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
         )
     }
@@ -117,14 +113,6 @@ class EngagementConcurrencyIntegrationTest {
     @Test
     fun `mutual visual approval creates connection when participant is at active connection limit`() {
         val sharedUserId = createUser("shared-visual-limit")
-
-        repeat(2) {
-            val existingMatch = matchService.createMatch(
-                userAId = sharedUserId,
-                userBId = createUser("existing-visual-limit-$it")
-            )
-            connectionService.createFromMatch(existingMatch)
-        }
 
         val candidateMatch = matchService.createMatch(
             userAId = sharedUserId,
@@ -134,6 +122,7 @@ class EngagementConcurrencyIntegrationTest {
         chatService.recordChatDecision(candidateMatch.id, candidateMatch.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(candidateMatch.id, candidateMatch.userBId, ChatContinueDecision.APPROVED)
         visualReviewService.makeAvailableNowForTest(candidateMatch.id)
+        saveConnectionLocks(sharedUserId, count = 4)
 
         visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userAId, VisualDecision.APPROVED)
         visualReviewService.recordDecision(candidateMatch.id, candidateMatch.userBId, VisualDecision.APPROVED)
@@ -141,7 +130,7 @@ class EngagementConcurrencyIntegrationTest {
         assertEquals(MatchState.VISUAL_APPROVED, matchService.findByIdOrThrow(candidateMatch.id).state)
         assertNotNull(connectionRepository.findByMatchId(candidateMatch.id))
         assertEquals(
-            3,
+            5,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
         )
     }
@@ -150,18 +139,11 @@ class EngagementConcurrencyIntegrationTest {
     fun `replaying connection creation does not duplicate connection locks above active connection limit`() {
         val sharedUserId = createUser("shared-idempotent-limit")
 
-        repeat(3) {
-            val existingMatch = matchService.createMatch(
-                userAId = sharedUserId,
-                userBId = createUser("existing-idempotent-limit-$it")
-            )
-            connectionService.createFromMatch(existingMatch)
-        }
-
         val candidateMatch = matchService.createMatch(
             userAId = sharedUserId,
             userBId = createUser("candidate-idempotent-limit")
         )
+        saveConnectionLocks(sharedUserId, count = 4)
 
         val first = connectionService.createFromMatch(candidateMatch)
         val second = connectionService.createFromMatch(candidateMatch)
@@ -172,7 +154,7 @@ class EngagementConcurrencyIntegrationTest {
             connectionRepository.findAll().count { it.matchId == candidateMatch.id }
         )
         assertEquals(
-            4,
+            5,
             lockRepository.countByUserIdAndEngagementType(sharedUserId, EngagementType.CONNECTION)
         )
         assertEquals(
@@ -187,6 +169,22 @@ class EngagementConcurrencyIntegrationTest {
 
     private fun createUser(prefix: String): UUID =
         userService.createUser("$prefix-${UUID.randomUUID()}@example.com").id
+
+    private fun saveConnectionLocks(
+        userId: UUID,
+        count: Int
+    ) {
+        repeat(count) {
+            lockRepository.save(
+                ActiveEngagementLock(
+                    userId = userId,
+                    engagementId = UUID.randomUUID(),
+                    engagementType = EngagementType.CONNECTION
+                )
+            )
+        }
+        lockRepository.flush()
+    }
 
     private fun runConcurrently(vararg actions: () -> Unit): List<Boolean> {
         val start = CountDownLatch(1)

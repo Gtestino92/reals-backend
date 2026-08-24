@@ -178,7 +178,7 @@ profile:
 
 engagement:
   max-active-matches: 5
-  max-active-connections: 2
+  max-active-connections: 4
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}

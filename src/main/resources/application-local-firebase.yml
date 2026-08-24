@@ -107,6 +107,17 @@ matchmaking:
 engagement:
   max-active-matches: ${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}
   max-active-connections: ${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}
+  reliability-capacity:
+    match:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MIN:${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MAX:${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_REWARD_SCALE:20}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_PENALTY_SCALE:10}
+    connection:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MIN:${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX:${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE:30}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE:10}
 
 user-reliability:
   enabled: true
@@ -162,8 +173,8 @@ chat:
     enabled: true
   first-chat:
     approval:
-      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
-      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:0}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:0}
     guidance:
       required-participation-score: 60
       direct-question-reply-multiplier: 2

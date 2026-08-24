@@ -140,6 +140,8 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_SECOND_CHAT_CONFLICT_WINDOW_MINUTES` | no | Symmetric inclusive window, in minutes, around another confirmed second-chat start for the same user. Defaults to `60`; `0` means only the exact confirmed instant conflicts. Negative values are rejected at startup. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES` | no | Minimum elapsed first-chat time before `APPROVED` is accepted. Local profiles default to `0`; dev/default profiles default to `1`; prod defaults to `3`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER` | no | Minimum confirmed first-chat messages required from each participant before `APPROVED` is accepted. Local profiles default to `0`; dev/default/prod default to `3`. |
 | `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES` | no | Local Firebase override for repeated same-pair testing. Defaults to `true` in `local-firebase` Docker runs and `false` globally. Keep `false` for production-like active-pair restrictions. |
 | `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
@@ -155,9 +157,17 @@ Non-sensitive runtime configuration:
 | `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS` | no | Shared ranking-enabled question count for full global affinity confidence. Defaults to `12`; must be positive. |
 | `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES` | no | Ranking-evidence category count for full global affinity confidence. Defaults to `4`; must be positive. |
 | `MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS` | no | Per-category ranking-enabled question count for full category confidence. Defaults to `3`; must be positive. |
-| `ENGAGEMENT_MAX_ACTIVE_MATCHES` | no | Local Firebase override for per-user active match capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
-| `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS` | no | Local Firebase override for per-user active connection capacity. Defaults to `100` in `local-firebase` Docker runs and the normal application default elsewhere. |
-| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `false`. |
+| `ENGAGEMENT_MAX_ACTIVE_MATCHES` | no | Local Firebase override for neutral per-user active match admission capacity. Defaults to `100` in `local-firebase` Docker runs and `5` elsewhere. |
+| `ENGAGEMENT_MAX_ACTIVE_CONNECTIONS` | no | Local Firebase override for neutral per-user active connection admission capacity. Defaults to `100` in `local-firebase` Docker runs and `4` elsewhere. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MIN` | no | Minimum reliability-derived Match admission cap. Default `3`. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MAX` | no | Maximum reliability-derived Match admission cap. Default `9`. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_REWARD_SCALE` | no | Positive reliability scale for Match capacity. Default `20`; higher values make extra capacity harder to earn. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_PENALTY_SCALE` | no | Negative reliability scale for Match capacity. Default `10`; lower values make penalties affect capacity faster. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MIN` | no | Minimum reliability-derived Connection admission cap. Default `2`. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX` | no | Maximum reliability-derived Connection admission cap. Default `6`. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE` | no | Positive reliability scale for Connection capacity. Default `30`, intentionally more conservative than Match. |
+| `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE` | no | Negative reliability scale for Connection capacity. Default `10`. |
+| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `true` in `dev` and `local-firebase`, `false` elsewhere. |
 | `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
 | `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
 | `USER_RELIABILITY_HALF_WEIGHT_DAYS` | no | Number of days reliability events count at half weight after the full-weight window. Defaults to `10`. |
@@ -201,7 +211,7 @@ Matchmaking pair eligibility has four separate controls:
 
 - Active-pair duplicate exclusion is controlled by `matchmaking.allow-active-pair-duplicates`. The global default is `false`, so a pair cannot receive a new match while they have an active `CHAT_ACTIVE`/`VISUAL_PHASE` match, a `VISUAL_APPROVED` match without a connection yet, or any non-`CLOSED` connection. `local-firebase` defaults it to `true` for repeated manual testing.
 - Historical previous-pair exclusion is configurable through `matchmaking.exclude-previous-pairing`. It is enabled in `dev` and `prod`, disabled in local repeatable profiles, and is independent from active-pair duplicate handling. General terminal outcomes use `matchmaking.previous-pairing-cooldown-days` (30 by default), first-chat automatic timeout/inactivity uses `matchmaking.first-chat-expiration-cooldown-days` (7 by default), and first-chat `FIRST_CHAT_DECISION_MISMATCH` uses the separate `matchmaking.first-chat-decision-mismatch-cooldown-days` (7 by default).
-- Per-user engagement capacity remains controlled by `engagement.max-active-matches` and `engagement.max-active-connections`. Allowing active duplicate pairs does not bypass these limits.
+- Per-user engagement capacity uses `engagement.max-active-matches` and `engagement.max-active-connections` as neutral baselines. With user reliability enabled, `engagement.reliability-capacity.*` derives effective Match and Connection admission caps from the current decayed reliability score. Startup validation requires each neutral baseline to be within its configured reliability-capacity min/max range, including static-cap overrides such as local-firebase's high manual-testing capacities. Allowing active duplicate pairs does not bypass these limits.
 - User blocks are permanent pair exclusions in either direction until an explicit unblock feature exists. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create `UserBlock` rows.
 
 No cleanup job or derived pairing-exclusion table exists. Cooldown eligibility is calculated from persisted match, chat, visual-review and connection history. Exact cooldown boundary is eligible: a terminal timestamp equal to `now - cooldownDays` is no longer excluded.

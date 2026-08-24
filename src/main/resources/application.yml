@@ -317,9 +317,21 @@ engagement:
   # A match is active while its lock of type MATCH exists
   max-active-matches: 5
 
-  # Maximum number of simultaneous active Connections a user can participate in
+  # Neutral maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
-  max-active-connections: 2
+  max-active-connections: 4
+
+  reliability-capacity:
+    match:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MIN:3}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MAX:9}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_REWARD_SCALE:20}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_PENALTY_SCALE:10}
+    connection:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MIN:2}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX:6}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE:30}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE:10}
 
 user-reliability:
   enabled: ${USER_RELIABILITY_ENABLED:false}

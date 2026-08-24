@@ -881,7 +881,7 @@ class MeControllerIntegrationTest : ControllerIT() {
             lookingForGenders = setOf(Gender.MALE)
         )
 
-        repeat(2) { index ->
+        repeat(4) { index ->
             val userBId = createActiveProfile(
                 email = "home-capacity-b-$index-${UUID.randomUUID()}@example.com",
                 displayName = "Home Capacity B $index",
@@ -898,7 +898,7 @@ class MeControllerIntegrationTest : ControllerIT() {
         }
 
         kotlin.test.assertEquals(
-            2,
+            4,
             lockRepository.countByUserIdAndEngagementType(
                 userAId,
                 EngagementType.CONNECTION

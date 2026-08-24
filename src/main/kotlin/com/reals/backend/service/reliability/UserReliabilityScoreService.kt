@@ -12,16 +12,26 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.math.abs
 
+interface ReliabilityScoreProvider {
+    val enabled: Boolean
+    val baseScore: Int
+
+    fun effectiveScores(
+        userIds: Collection<UUID>,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Map<UUID, Double>
+}
+
 @Service
 @Transactional
 class UserReliabilityScoreService(
     private val eventRepository: UserReliabilityEventRepository,
 
     @param:Value("\${user-reliability.enabled:false}")
-    val enabled: Boolean,
+    override val enabled: Boolean,
 
     @param:Value("\${user-reliability.base-score:100}")
-    private val baseScore: Int,
+    override val baseScore: Int,
 
     @param:Value("\${user-reliability.full-weight-days:10}")
     private val fullWeightDays: Long,
@@ -34,7 +44,7 @@ class UserReliabilityScoreService(
 
     @param:Value("\${user-reliability.matchmaking.max-modifier:0.05}")
     private val maxMatchmakingModifier: Double
-) {
+) : ReliabilityScoreProvider {
 
     data class ScoreBreakdown(
         val userId: UUID,
@@ -147,9 +157,9 @@ class UserReliabilityScoreService(
     }
 
     @Transactional(readOnly = true)
-    fun effectiveScores(
+    override fun effectiveScores(
         userIds: Collection<UUID>,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime
     ): Map<UUID, Double> {
         if (userIds.isEmpty()) {
             return emptyMap()

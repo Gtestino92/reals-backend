@@ -311,12 +311,12 @@ and does not treat every action as legal consent.
 
 ## Active Engagement Locks
 
-Users can have multiple active matches and connections. Configured capacity
-limits are admission controls for new matchmaking opportunities, not hard
-lifecycle ceilings for engagements that already exist:
+Users can have multiple active matches and connections. Capacity limits are
+admission controls for new matchmaking opportunities, not required targets and
+not hard lifecycle ceilings for engagements that already exist:
 
 - `engagement.max-active-matches: 5`
-- `engagement.max-active-connections: 2`
+- `engagement.max-active-connections: 4`
 
 The lock table is the source of truth for active engagement counting.
 
@@ -327,12 +327,51 @@ The lock table is the source of truth for active engagement counting.
 - Visual rejection closes the match and releases remaining match locks only after both users have decided or the visual phase expires.
 - Connection closure deletes connection locks.
 
-Match capacity gates new Match creation. The Visual Advancement Cap gates future
-matchmaking from recent `VisualReview.createdAt` throughput. Connection capacity
-gates future matchmaking from active `CONNECTION` locks. An existing engagement
-can temporarily push counts above a configured limit as it progresses; the user
-stays unavailable for new matchmaking until capacity falls below the relevant
-threshold.
+Match capacity gates new Match creation. Connection capacity gates future
+matchmaking from active `CONNECTION` locks. `UserReliabilityScore`, when
+enabled, derives per-user effective Match and Connection admission caps from the
+current decayed score; the effective score, reliability tier and effective caps
+are not persisted. When reliability is disabled, effective caps are exactly the
+configured neutral baselines. The configured neutral baseline must be inside
+the corresponding reliability-capacity min/max range so the base-score capacity
+equals the configured baseline. The Visual Advancement Cap remains separate and
+static: it gates future matchmaking from recent `VisualReview.createdAt`
+throughput and is not reliability-dependent.
+
+The dynamic capacity curve uses one explicit backend `now` for each decision:
+
+```text
+delta = effectiveScore - reliabilityBaseScore
+saturating(x, scale) = x² / (x² + scale²)
+
+delta >= 0:
+  cap = round(base + (max - base) * saturating(delta, rewardScale))
+
+delta < 0:
+  cap = round(base - (base - min) * saturating(abs(delta), penaltyScale))
+
+cap is coerced to [min, max]
+```
+
+Default Match curve: base `engagement.max-active-matches` (`5`), min `3`, max
+`9`, reward scale `20`, penalty scale `10`. Default Connection curve: base
+`engagement.max-active-connections` (`4`), min `2`, max `6`, reward scale `30`,
+penalty scale `10`. The asymmetry is intentional: poor reliability reduces
+capacity faster than positive reliability increases it, and Connection capacity
+has the more conservative positive curve.
+
+If a user's reliability falls and the new effective cap is below their current
+active count, existing engagements survive. The backend does not close, cancel,
+reorder or invalidate active Matches, Visual Reviews or Connections because a
+derived cap changed. Natural overshoot is valid. The user simply remains
+unavailable for new Match admission until active lock counts fall below the
+effective Match and Connection caps again. A Match admitted earlier may still
+progress through Visual Review into a Connection even if that creates
+`activeConnections > effectiveConnectionCap`.
+
+Availability and final Match admission keep stable blocker codes
+`ACTIVE_MATCH_LIMIT_REACHED` and `ACTIVE_CONNECTION_LIMIT_REACHED`, but user
+responses do not expose numeric effective caps.
 
 Do not infer active engagement counts from match or connection state alone.
 

@@ -63,6 +63,14 @@ from active_engagement_locks
 group by engagement_type;
 ```
 
+Dynamic engagement capacity can be inspected with
+`docs/engagement-capacity-diagnostics.sql`. It derives current/recent
+reliability score, effective Match and Connection caps, active lock counts,
+headroom and natural overshoot from `users`, `user_reliability_events` and
+`active_engagement_locks`. The query is for operational/product analysis only,
+not runtime application logic, and it cannot reconstruct indefinite historical
+score/cap trajectories after expired reliability events have been deleted.
+
 Active/actionable connections:
 
 ```sql

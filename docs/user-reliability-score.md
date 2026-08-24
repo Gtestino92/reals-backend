@@ -10,7 +10,7 @@ The v0 system is controlled by one global flag:
 USER_RELIABILITY_ENABLED=false
 ```
 
-When disabled, the backend does not create reliability events, calculate score effects, or change matchmaking behavior. There is no observe-only mode in v0, but the event-sourced design can support one later.
+When disabled, the backend does not create reliability events, calculate score effects, or change matchmaking behavior. Effective engagement capacities resolve directly to the configured neutral baselines: Match `5` and Connection `4` by default. There is no observe-only mode in v0, but the event-sourced design can support one later.
 
 Local/dev manual testing can inspect the current score breakdown through:
 
@@ -164,6 +164,98 @@ USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER=0.05
 Reliability never bypasses eligibility, safety blocks, active locks, distance, profile filters, or the base compatibility threshold. It does not hard-ban or suspend low-score users.
 
 Future work: replace the deterministic modifier with a probabilistic modifier to avoid overly rigid queue behavior.
+
+## Engagement Capacity Impact
+
+`UserReliabilityScore` also affects admission capacity for new Match
+opportunities. The normal neutral baselines are:
+
+```text
+engagement.max-active-matches=5
+engagement.max-active-connections=4
+```
+
+`EngagementCapacityPolicy` derives effective Match and Connection caps from the
+current decayed score. The derived caps are not persisted, and there is no
+persisted reliability tier. One explicit backend `now` is used for a capacity
+decision; final two-user Match admission captures that `now` after acquiring
+the participant user locks, then evaluates both users with the same timestamp
+and a batched reliability score lookup.
+
+The curve is continuous and then discretized with normal Kotlin nearest-integer
+rounding:
+
+```text
+delta = effectiveScore - reliabilityBaseScore
+saturating(x, scale) = x² / (x² + scale²)
+
+delta >= 0:
+  cap = round(base + (max - base) * saturating(delta, rewardScale))
+
+delta < 0:
+  cap = round(base - (base - min) * saturating(abs(delta), penaltyScale))
+
+cap is coerced to [min, max]
+```
+
+Default Match parameters: base `5`, min `3`, max `9`, reward scale `20`,
+penalty scale `10`. Default Connection parameters: base `4`, min `2`, max `6`,
+reward scale `30`, penalty scale `10`. The asymmetry is intentional: poor
+reliability reduces capacity relatively quickly, positive reliability earns
+extra capacity more gradually, and the Connection positive curve is more
+conservative. With defaults, about `-10` reliability delta gives `4` Matches and
+`3` Connections, while about `+10` gives `6` Matches and `4` Connections.
+Startup validation requires the configured neutral baseline to fit inside its
+dynamic curve range: `match.min <= engagement.max-active-matches <= match.max`
+and
+`connection.min <= engagement.max-active-connections <= connection.max`.
+
+Capacity is an admission cap only. It does not affect already-admitted Matches,
+already-admitted Visual Reviews, already-created Connections or lifecycle
+progression. If a user's derived cap falls below current active locks, the
+backend keeps every existing engagement and blocks only new Match admission
+until counts fall below the current effective caps. `ConnectionService` does not
+check Connection capacity when progressing an already-admitted Match into a
+Connection, so natural overshoot is valid.
+
+Availability and final admission keep stable domain codes
+`ACTIVE_MATCH_LIMIT_REACHED` and `ACTIVE_CONNECTION_LIMIT_REACHED`, but backend
+responses do not expose numeric effective caps to users.
+
+## Capacity Observability
+
+The capacity feedback loop is an explicit product experiment: good behavior can
+increase opportunities, which can create more chances to produce positive
+reliability events; poor behavior can reduce opportunities and reinforce lower
+throughput. This is not treated as a bug by definition, but it must remain
+observable.
+
+Micrometer metrics under `reals.engagement.capacity.*` record low-cardinality
+aggregate signals:
+
+- evaluation phase: `availability`, `final_match_admission` or `queue_reconciliation`
+- reliability direction: `below_base`, `neutral` or `above_base`
+- outcome: `allowed`, `blocked_match_cap` or `blocked_connection_cap`
+- effective Match cap distribution
+- effective Connection cap distribution
+- absolute distance from the reliability base score, tagged only by direction
+
+Metrics do not tag by user id or raw score. The backend emits these Micrometer
+meters and Actuator exposes them in configured runtimes, but this feature does
+not add Prometheus, CloudWatch, OTLP, Grafana or any other durable metrics
+backend. Durable longitudinal retention across process restarts or deployments
+requires an external metrics registry/backend.
+
+The operational diagnostic query in `docs/engagement-capacity-diagnostics.sql`
+can inspect the current/recent population by derived score, effective caps,
+active lock counts, headroom and overshoot.
+
+Reliability events are temporally bounded and expired events are deleted. The
+operational database can reconstruct current or recent reliability-derived
+capacity from retained events, but it cannot provide indefinite historical
+per-user score/cap trajectories after those events are gone. Long-term cohort
+or causal analysis requires a separate analytics/history pipeline, which is
+outside this task.
 
 ## Persistence And Idempotency
 
