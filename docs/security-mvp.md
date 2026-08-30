@@ -219,6 +219,7 @@ guards, accept arbitrary UIDs/emails, issue tokens or add custom claims.
 Rate limiting is in-memory and single-instance only. Buckets are backed by
 Caffeine and are not shared across app replicas. Infrastructure-level WAF,
 gateway or distributed limiting remains a deployment concern.
+The `prod` profile refuses to start when `security.rate-limit.enabled=false`.
 
 The pre-authentication limiter runs before Firebase token verification and keys
 only by endpoint group plus `request.remoteAddr`:

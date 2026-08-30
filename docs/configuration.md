@@ -93,7 +93,7 @@ Non-sensitive runtime configuration:
 | `STORAGE_S3_PUBLIC_BASE_URL` | only with `STORAGE_S3_READ_URL_MODE=PUBLIC` | Public base URL used when objects are intentionally public. Not required for private R2 buckets in `PRESIGNED` mode. Legacy fallback: `S3_PUBLIC_BASE_URL`. |
 | `STORAGE_S3_PATH_STYLE_ACCESS_ENABLED` | no | Keep `true` for MinIO and R2 unless testing proves otherwise. Native Amazon S3 should normally use `false`. Legacy fallback: `S3_PATH_STYLE_ACCESS_ENABLED`. |
 | `STORAGE_S3_READ_URL_MODE` | no | `PRESIGNED` by default for private buckets; `PUBLIC` only for intentionally public media outside `prod`. `prod` refuses to start with `PUBLIC`. Legacy fallback: `S3_READ_URL_MODE`. |
-| `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
+| `STORAGE_S3_SIGNED_URL_DURATION_MINUTES` | no | Presigned read URL validity duration. Defaults to `15`; `prod` startup rejects non-positive values. Legacy fallback: `S3_SIGNED_URL_DURATION_MINUTES`. |
 | `PROFILE_PHOTO_MAX_FILE_SIZE_BYTES` | no | Maximum accepted multipart profile-photo file size. Defaults to `5242880` bytes. Legacy fallback: `PROFILE_PHOTO_MAX_SIZE_BYTES`. |
 | `PROFILE_PHOTO_MAX_INPUT_WIDTH` | no | Maximum decoded input image width. Defaults to `6000`. |
 | `PROFILE_PHOTO_MAX_INPUT_HEIGHT` | no | Maximum decoded input image height. Defaults to `6000`. |
@@ -111,10 +111,10 @@ Non-sensitive runtime configuration:
 | `CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `CHAT_AUDIO_UPLOAD_BUSY`. Defaults to `1`. |
 | `PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE` | no | Servlet multipart parser file-size limit for profile-photo uploads. Defaults to `5MB`; keep aligned with the 5 MiB product limit. |
 | `PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE` | no | Servlet multipart parser request-size limit. Defaults to `6MB` to leave room for multipart headers and the `position` field. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | no | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, `none` returns semantic `PENDING` and moderation `NEEDS_REVIEW`. Set `sightengine` in `prod` to enable one Sightengine multipart request per upload/replacement. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | prod: yes | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, startup requires `sightengine`. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
-| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | no | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`. |
+| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | no | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`; when selected in `prod`, startup requires a valid absolute HTTPS URI. |
 | `PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS` | no | Sightengine connect timeout in milliseconds. Defaults to `3000`; must be positive. |
 | `PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS` | no | Sightengine response/read timeout in milliseconds. Defaults to `10000`; must be positive. |
 | `PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD` | no | Reals sexual-explicit review score threshold. Defaults to `0.50`. |
@@ -126,13 +126,14 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_GORE_REJECT_THRESHOLD` | no | Reals gore reject score threshold. Defaults to `0.80`; must be at least the review threshold. |
 | `PROFILE_PHOTO_HATE_REVIEW_THRESHOLD` | no | Reals hate/extremism review score threshold. Defaults to `0.50`. |
 | `PROFILE_PHOTO_HATE_REJECT_THRESHOLD` | no | Reals hate/extremism reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
-| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | no | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; override with this variable. |
+| `PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION` | prod: yes | If `true`, profile activation requires every required photo to be moderation-approved. Defaults to `false` in shared/local configuration and `true` in `prod`; `prod` refuses to start when this is `false`. |
 | `PROFILE_MIN_FULL_BODY_PHOTOS` | no | Dev/prod override for `profile.photos.min-full-body-photos`. `dev` defaults to `1`; `prod` defaults to `0` temporarily because Reals does not yet have a real full-body detector. Shared/local/test defaults remain unchanged. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER` | no | Profile authenticity verification provider. Defaults to `none`. Outside `prod`, `none` preserves the MVP verified shortcut; in `prod`, authenticity verification is unavailable and returns `409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject profile authenticity verification. Defaults to `false`, which returns `NEEDS_REVIEW`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION` | no | If `true`, profile activation requires `authenticityVerificationStatus=VERIFIED`. Defaults to `false` for MVP/local compatibility. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS` | no | Minimum current candidate person photos that must positively match the accepted live reference for automatic `VERIFIED`. Defaults to `3`; must be positive. This is separate from `profile.photos.min-person-photos`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS` | no | Maximum current candidate person photos with contradictory facial evidence allowed for automatic `VERIFIED`. Defaults to `0`; must not be negative. Contradictions currently produce `NEEDS_REVIEW`, not automatic `REJECTED`. |
+| `RATE_LIMIT_ENABLED` | prod: yes | Enables the in-memory pre-auth and post-auth token-bucket limiters. Defaults to `true`; `prod` refuses to start when this is `false`. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
@@ -411,9 +412,9 @@ STORAGE_S3_READ_URL_MODE=PRESIGNED
 
 Startup validation rejects blank bucket/region, incomplete static credentials,
 session tokens without key and secret, static credential fields in
-`DEFAULT_CHAIN`, `auto` region without an endpoint override, and public read mode
-in `prod`. Error messages identify property names and do not include credential
-values.
+`DEFAULT_CHAIN`, `auto` region without an endpoint override, public read mode in
+`prod`, and non-positive presigned URL durations in `prod`. Error messages
+identify property names and do not include credential values.
 
 For Cloudflare R2, hosted MinIO and other S3-compatible shared/dev/prod-like
 environments, see `docs/storage-r2-configuration.md`. Buckets should stay
@@ -631,6 +632,28 @@ separate age assurance.
 
 `PROFILE_AUTHENTICITY_VERIFICATION_API_KEY` is reserved for a future provider
 and should stay empty until that provider is implemented.
+
+## Production Startup Guardrails
+
+When the `prod` execution profile is active, local startup validation rejects
+configuration that is provably incompatible with the current production Reals
+flow. These checks do not call external providers.
+
+| Requirement | Startup behavior in `prod` |
+| --- | --- |
+| Photo analysis provider | `profile.photos.moderation.provider` must be `sightengine`. |
+| Sightengine structure | `profile.photos.sightengine.endpoint` must be an absolute HTTPS URI; credentials must be nonblank; connect/read timeouts must be positive. |
+| Activation moderation | `profile.photos.require-moderation-approval-for-activation` must be `true`. |
+| App Check | Existing App Check validation requires `ENFORCED`, a numeric project number, at least one allowed Firebase App ID and an absolute JWKS URI. |
+| Rate limiting | `security.rate-limit.enabled` must be `true`; configured token-bucket capacities and refill periods must be positive. |
+| Media storage | S3-compatible storage must have a nonblank bucket and region, valid credential-mode structure, compatible `auto` region usage, `PRESIGNED` read URLs and a positive presigned URL duration. |
+
+After successful production validation, startup logs one safe runtime summary:
+execution profile, photo moderation provider, moderation-approval activation
+requirement, App Check mode, rate-limit enabled flag, storage credential mode,
+storage read URL mode, matchmaking ranking mode and affinity ranking mode.
+Secrets, Firebase tokens, database credentials, S3 secret keys, admin allowlists,
+registration tokens, full URLs and object keys are not logged.
 
 ## Matchmaking Tuning
 
