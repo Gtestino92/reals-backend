@@ -15,6 +15,7 @@ import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
+import com.reals.backend.service.ChatMessageService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
 import org.hamcrest.Matchers.equalTo
@@ -229,7 +230,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 clientMessageId = eqUuid(clientMessageId),
                 contentType = Mockito.eq("audio/mp4"),
                 bytes = anyBytes(),
-                replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
+                replyTarget = Mockito.isNull(ChatMessageService.ChatReplyTarget::class.java)
             )
         ).thenReturn(ChatAudioSendResult.Created(audioMessage))
         Mockito.clearInvocations(legalComplianceService)
@@ -266,7 +267,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
             clientMessageId = eqUuid(clientMessageId),
             contentType = Mockito.eq("audio/mp4"),
             bytes = anyBytes(),
-            replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
+            replyTarget = Mockito.isNull(ChatMessageService.ChatReplyTarget::class.java)
         )
     }
 
@@ -934,7 +935,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
                 contentType = Mockito.eq("audio/mp4"),
                 bytes = anyBytes(),
                 replyTarget = Mockito.eq(
-                    ChatService.ChatReplyTarget(
+                    ChatMessageService.ChatReplyTarget(
                         type = ChatReplyTargetType.MESSAGE,
                         targetId = targetMessage.id,
                     )
@@ -987,7 +988,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
             contentType = Mockito.eq("audio/mp4"),
             bytes = anyBytes(),
             replyTarget = Mockito.eq(
-                ChatService.ChatReplyTarget(
+                ChatMessageService.ChatReplyTarget(
                     type = ChatReplyTargetType.MESSAGE,
                     targetId = targetMessage.id,
                 )

@@ -18,7 +18,7 @@ class ChatAudioServiceTest {
         val fixture = serviceFixture()
         val existing = audioMessage()
         Mockito.`when`(
-            fixture.chatService.findAudioMessageReplayOrThrowOnConflict(
+            fixture.chatMessageService.findAudioMessageReplayOrThrowOnConflict(
                 chatId = CHAT_ID,
                 senderId = SENDER_ID,
                 clientMessageId = CLIENT_MESSAGE_ID,
@@ -35,13 +35,13 @@ class ChatAudioServiceTest {
         )
 
         assertSame(existing, (result as ChatAudioSendResult.Replayed).message)
-        Mockito.verify(fixture.chatService).findAudioMessageReplayOrThrowOnConflict(
+        Mockito.verify(fixture.chatMessageService).findAudioMessageReplayOrThrowOnConflict(
             chatId = CHAT_ID,
             senderId = SENDER_ID,
             clientMessageId = CLIENT_MESSAGE_ID,
             audioSha256 = SHA_256
         )
-        Mockito.verifyNoMoreInteractions(fixture.chatService)
+        Mockito.verifyNoMoreInteractions(fixture.chatMessageService)
         Mockito.verifyNoInteractions(fixture.storageService, fixture.mediaCleanupTaskService)
     }
 
@@ -68,12 +68,12 @@ class ChatAudioServiceTest {
     private fun assertPreflightRejectionDoesNotUpload(code: DomainErrorCode) {
         val fixture = serviceFixture()
         Mockito.doThrow(DomainConflictException(code = code, message = "preflight rejected"))
-            .`when`(fixture.chatService)
+            .`when`(fixture.chatMessageService)
             .preflightNewAudioMessage(
                 chatId = eqValue(CHAT_ID),
                 senderId = eqValue(SENDER_ID),
                 now = anyOffsetDateTime(),
-                replyTarget = Mockito.isNull(ChatService.ChatReplyTarget::class.java)
+                replyTarget = Mockito.isNull(ChatMessageService.ChatReplyTarget::class.java)
             )
 
         val ex = assertThrows<DomainConflictException> {
@@ -94,7 +94,7 @@ class ChatAudioServiceTest {
         val validationService = Mockito.mock(ChatAudioValidationService::class.java)
         val storageService = Mockito.mock(S3StorageService::class.java)
         val mediaCleanupTaskService = Mockito.mock(MediaCleanupTaskService::class.java)
-        val chatService = Mockito.mock(ChatService::class.java)
+        val chatMessageService = Mockito.mock(ChatMessageService::class.java)
 
         Mockito.`when`(
             validationService.inspect(
@@ -114,11 +114,11 @@ class ChatAudioServiceTest {
                 validationService = validationService,
                 storageService = storageService,
                 mediaCleanupTaskService = mediaCleanupTaskService,
-                chatService = chatService
+                chatMessageService = chatMessageService
             ),
             storageService = storageService,
             mediaCleanupTaskService = mediaCleanupTaskService,
-            chatService = chatService
+            chatMessageService = chatMessageService
         )
     }
 
@@ -142,7 +142,7 @@ class ChatAudioServiceTest {
         val service: ChatAudioService,
         val storageService: S3StorageService,
         val mediaCleanupTaskService: MediaCleanupTaskService,
-        val chatService: ChatService
+        val chatMessageService: ChatMessageService
     )
 
     private companion object {

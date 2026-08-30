@@ -63,7 +63,11 @@ counts above a configured or derived limit.
 
 Chat responsibilities are split conservatively:
 
-- `ChatService`: chat creation, messages, first-chat approval decisions and timeout/abandonment endings.
+- `ChatService`: chat session lookup plus first-chat and second-chat creation/materialization compatibility entry points.
+- `ChatAccessService`: shared chat lookup, participant validation and pair-block validation.
+- `ChatMessageService`: text/audio message persistence, client-message idempotency validation, reply-target resolution, reactions and message reads.
+- `FirstChatResolutionService`: first-chat approval/rejection decisions, decision-only resolution, reliability events and transition into visual review.
+- `ChatLifecycleService`: first-chat timeout/inactivity endings, second-chat read-only cleanup helpers, scheduler candidate queries and shared lifecycle-window validation.
 - `SecondChatLifecycleService`: explicit second-chat attendance, join classification, no-show claims and no-show terminal handling.
 - `SecondChatConversationLifecycleService`: second-chat mutual completion, partner inactivity, initial silence and conversation-phase request resolution.
 - `ChatExitService`: first-chat mutual/unilateral cancellation plus safety-report cancellation. Ordinary mutual/unilateral cancellation is rejected for `SECOND_CHAT`.

@@ -6,7 +6,8 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ConnectionRepository
-import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatAccessService
+import com.reals.backend.service.ChatLifecycleService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -17,7 +18,8 @@ import java.util.*
 
 @Component
 class InactivityCheckJob(
-    private val chatService: ChatService,
+    private val chatAccessService: ChatAccessService,
+    private val chatLifecycleService: ChatLifecycleService,
     private val chatMessageRepository: ChatMessageRepository,
     private val connectionRepository: ConnectionRepository,
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
@@ -44,7 +46,7 @@ class InactivityCheckJob(
         val threshold = OffsetDateTime.now().minusMinutes(inactivityThresholdMinutes)
         val batch =
             boundedSchedulerBatch(
-                fetchedCandidates = chatService.findInactiveChatIds(
+                fetchedCandidates = chatLifecycleService.findInactiveChatIds(
                     threshold = threshold,
                     limit = batchSize + 1
                 ),
@@ -57,14 +59,14 @@ class InactivityCheckJob(
 
         batch.items.forEach { chatId ->
             try {
-                val chat: Chat = chatService.findByIdOrThrow(chatId)
+                val chat: Chat = chatAccessService.findByIdOrThrow(chatId)
                 val abandonedUserIds: List<UUID> = if (chat.chatType == ChatType.SECOND_CHAT) {
                     resolveInactiveUsers(chat.id, chat.connectionId, threshold)
                 } else {
                     emptyList()
                 }
 
-                val changed = chatService.endChat(
+                val changed = chatLifecycleService.endChat(
                     chatId = chat.id,
                     finalStatus = ChatStatus.ABANDONED,
                     endedReason = ChatEndReason.INACTIVITY_TIMEOUT,

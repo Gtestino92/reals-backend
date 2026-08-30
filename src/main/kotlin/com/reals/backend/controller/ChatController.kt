@@ -9,6 +9,7 @@ import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
 import com.reals.backend.service.ChatAudioUploadGuard
+import com.reals.backend.service.ChatMessageService
 import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
@@ -32,6 +33,7 @@ import java.util.*
 @Validated
 class ChatController(
     private val chatService: ChatService,
+    private val chatMessageService: ChatMessageService,
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
     private val chatAudioPolicyService: ChatAudioPolicyService,
@@ -71,23 +73,23 @@ class ChatController(
         @RequestBody request: SendMessageRequest
     ): ResponseEntity<ChatMessageResponse> {
         return when (
-            val result = chatService.sendMessageWithResult(
+            val result = chatMessageService.sendMessageWithResult(
                 chatId = chatId,
                 senderId = userId,
                 content = request.content,
                 clientMessageId = request.clientMessageId,
                 replyTarget = request.replyTo?.let {
-                    ChatService.ChatReplyTarget(
+                    ChatMessageService.ChatReplyTarget(
                         type = it.type,
                         targetId = it.targetId
                     )
                 }
             )
         ) {
-            is ChatService.SendMessageResult.Sent ->
+            is ChatMessageService.SendMessageResult.Sent ->
                 ResponseEntity.ok(messageResponse(result.message))
 
-            is ChatService.SendMessageResult.RejectedAfterResolution ->
+            is ChatMessageService.SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
         }
     }
@@ -137,7 +139,7 @@ class ChatController(
             parsedReplyToType == null && parsedReplyToTargetId == null -> null
 
             parsedReplyToType != null && parsedReplyToTargetId != null ->
-                ChatService.ChatReplyTarget(
+                ChatMessageService.ChatReplyTarget(
                     type = parsedReplyToType,
                     targetId = parsedReplyToTargetId,
                 )
@@ -176,7 +178,7 @@ class ChatController(
         @RequestBody request: PutMessageReactionRequest
     ): ResponseEntity<ChatMessageResponse> {
         val message =
-            chatService.putMessageReaction(
+            chatMessageService.putMessageReaction(
                 chatId = chatId,
                 messageId = messageId,
                 userId = userId,
@@ -216,7 +218,7 @@ class ChatController(
         val effectiveAfterMessageId = after ?: afterMessageId
 
         if (effectiveAfterMessageId != null) {
-            val page = chatService.getMessagesAfter(
+            val page = chatMessageService.getMessagesAfter(
                 chatId = chatId,
                 userId = userId,
                 afterMessageId = effectiveAfterMessageId,
@@ -233,7 +235,7 @@ class ChatController(
             )
         }
 
-        val messages = chatService.getMessages(
+        val messages = chatMessageService.getMessages(
             chatId = chatId,
             userId = userId,
             limit = limit

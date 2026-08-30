@@ -3,7 +3,7 @@ package com.reals.backend.service.notification
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.PushNotificationType
-import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatAccessService
 import com.reals.backend.service.FirstChatTerminatedEvent
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.notification.sender.PushNotification
@@ -18,7 +18,7 @@ import java.util.UUID
 @Service
 class MatchFoundInvalidationNotificationService(
     private val matchService: MatchService,
-    private val chatService: ChatService,
+    private val chatAccessService: ChatAccessService,
     private val recipientPreparationService: PushRecipientPreparationService,
     private val preparedPushCommandProcessor: PreparedPushCommandProcessor,
     private val transactionTemplate: TransactionTemplate
@@ -51,7 +51,7 @@ class MatchFoundInvalidationNotificationService(
     ): PreparedPushBatch =
         transactionTemplate.execute {
             val match = matchService.findByIdOrThrow(event.matchId)
-            val chat = chatService.findByIdOrThrow(event.chatId)
+            val chat = chatAccessService.findByIdOrThrow(event.chatId)
 
             if (
                 chat.id != event.chatId ||

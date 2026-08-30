@@ -2,7 +2,7 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
-import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatLifecycleService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -17,7 +17,7 @@ import java.time.OffsetDateTime
  */
 @Component
 class ChatTimeoutJob(
-    private val chatService: ChatService,
+    private val chatLifecycleService: ChatLifecycleService,
     @param:Value("\${scheduler.chat-timeout-job.batch-size:100}")
     private val batchSize: Int = 100
 ) {
@@ -40,7 +40,7 @@ class ChatTimeoutJob(
         val now = OffsetDateTime.now()
         val batch =
             boundedSchedulerBatch(
-                fetchedCandidates = chatService.findTimedOutChatIds(
+                fetchedCandidates = chatLifecycleService.findTimedOutChatIds(
                     now = now,
                     limit = batchSize + 1
                 ),
@@ -52,7 +52,7 @@ class ChatTimeoutJob(
 
         batch.items.forEach { chatId ->
             try {
-                val changed = chatService.endChat(
+                val changed = chatLifecycleService.endChat(
                     chatId = chatId,
                     finalStatus = ChatStatus.EXPIRED,
                     endedReason = ChatEndReason.ABSOLUTE_TIMEOUT

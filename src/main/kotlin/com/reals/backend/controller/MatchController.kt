@@ -20,6 +20,7 @@ import java.util.*
 class MatchController(
     private val matchService: MatchService,
     private val chatService: ChatService,
+    private val firstChatResolutionService: FirstChatResolutionService,
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
     private val profileService: ProfileService,
@@ -90,7 +91,7 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val decisions = chatService.getFirstChatDecisionStatuses(
+        val decisions = firstChatResolutionService.getFirstChatDecisionStatuses(
             matchId = matchId,
             userId = userId
         )
@@ -200,7 +201,7 @@ class MatchController(
             legalComplianceService.requireCurrentRequirementsSatisfied(userId)
         }
 
-        chatService.recordChatDecision(
+        firstChatResolutionService.recordChatDecision(
             matchId = matchId,
             userId = userId,
             decision = request.decision

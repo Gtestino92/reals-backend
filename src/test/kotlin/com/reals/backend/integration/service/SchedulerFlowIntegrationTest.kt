@@ -130,7 +130,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             timeoutAt = OffsetDateTime.now().minusSeconds(1)
         )
 
-        ChatTimeoutJob(chatService).run()
+        ChatTimeoutJob(chatLifecycleService).run()
 
         assertEquals(ChatStatus.EXPIRED, chatService.findByIdOrThrow(setup.firstChatId).status)
         assertEquals(ChatEndReason.ABSOLUTE_TIMEOUT, chatService.findByIdOrThrow(setup.firstChatId).endedReason)
@@ -1442,7 +1442,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
             timeoutAt = OffsetDateTime.now().minusSeconds(1)
         )
 
-        ChatTimeoutJob(chatService).runNowForDev()
+        ChatTimeoutJob(chatLifecycleService).runNowForDev()
 
         assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.secondChatId).orElseThrow().status)
         assertEquals(
@@ -1550,7 +1550,7 @@ class SchedulerFlowIntegrationTest : BaseIT() {
 
     private fun secondChatLifecycleJob(): SecondChatLifecycleJob =
         SecondChatLifecycleJob(
-            chatService = chatService,
+            chatLifecycleService = chatLifecycleService,
             secondChatLifecycleService = secondChatLifecycleService,
             secondChatConversationLifecycleService = secondChatConversationLifecycleService,
             negotiationRepository = negotiationRepository

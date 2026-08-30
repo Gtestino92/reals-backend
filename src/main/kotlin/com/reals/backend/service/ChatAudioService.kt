@@ -22,7 +22,7 @@ class ChatAudioService(
     private val validationService: ChatAudioValidationService,
     private val storageService: S3StorageService,
     private val mediaCleanupTaskService: MediaCleanupTaskService,
-    private val chatService: ChatService
+    private val chatMessageService: ChatMessageService
 ) {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun sendAudioMessage(
@@ -31,12 +31,12 @@ class ChatAudioService(
         clientMessageId: UUID,
         contentType: String?,
         bytes: ByteArray,
-        replyTarget: ChatService.ChatReplyTarget? = null,
+        replyTarget: ChatMessageService.ChatReplyTarget? = null,
     ): ChatAudioSendResult {
         val inspection = validationService.inspect(contentType, bytes)
         val sha256 = sha256Hex(bytes)
 
-        chatService.findAudioMessageReplayOrThrowOnConflict(
+        chatMessageService.findAudioMessageReplayOrThrowOnConflict(
             chatId = chatId,
             senderId = senderId,
             clientMessageId = clientMessageId,
@@ -44,7 +44,7 @@ class ChatAudioService(
             replyTarget = replyTarget,
         )?.let { return ChatAudioSendResult.Replayed(it) }
 
-        chatService.preflightNewAudioMessage(
+        chatMessageService.preflightNewAudioMessage(
             chatId = chatId,
             senderId = senderId,
             replyTarget = replyTarget,
@@ -67,7 +67,7 @@ class ChatAudioService(
 
         return try {
             when (
-                val result = chatService.sendAudioMessageWithResult(
+                val result = chatMessageService.sendAudioMessageWithResult(
                     chatId = chatId,
                     senderId = senderId,
                     clientMessageId = clientMessageId,
@@ -82,15 +82,15 @@ class ChatAudioService(
                     replyTarget = replyTarget,
                 )
             ) {
-                is ChatService.SendAudioMessageResult.Created ->
+                is ChatMessageService.SendAudioMessageResult.Created ->
                     ChatAudioSendResult.Created(result.message)
-                is ChatService.SendAudioMessageResult.Replayed ->
+                is ChatMessageService.SendAudioMessageResult.Replayed ->
                     ChatAudioSendResult.Replayed(result.message)
-                is ChatService.SendAudioMessageResult.RejectedAfterResolution ->
+                is ChatMessageService.SendAudioMessageResult.RejectedAfterResolution ->
                     throw DomainConflictException(code = result.code, message = result.message)
             }
         } catch (ex: DataIntegrityViolationException) {
-            val winner = chatService.findAudioMessageReplayOrThrowOnConflict(
+            val winner = chatMessageService.findAudioMessageReplayOrThrowOnConflict(
                 chatId = chatId,
                 senderId = senderId,
                 clientMessageId = clientMessageId,
