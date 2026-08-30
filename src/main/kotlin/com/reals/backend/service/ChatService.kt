@@ -5,7 +5,6 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatMessageReactionType
-import com.reals.backend.domain.ChatParticipantDecisionStatus
 import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
@@ -67,11 +66,6 @@ class ChatService(
             val message: String
         ) : SendAudioMessageResult
     }
-
-    data class ParticipantDecisionStatuses(
-        val myDecision: ChatParticipantDecisionStatus,
-        val partnerDecision: ChatParticipantDecisionStatus
-    )
 
     data class ChatMessagesPage(
         val messages: List<ChatMessage>,
@@ -367,20 +361,6 @@ class ChatService(
         )
     }
 
-    fun getFirstChatDecisionStatuses(
-        matchId: UUID,
-        userId: UUID
-    ): ParticipantDecisionStatuses {
-        val statuses = firstChatResolutionService.getFirstChatDecisionStatuses(
-            matchId = matchId,
-            userId = userId
-        )
-        return ParticipantDecisionStatuses(
-            myDecision = statuses.myDecision,
-            partnerDecision = statuses.partnerDecision
-        )
-    }
-
     fun findInactiveChats(inactivityMinutes: Long): List<Chat> =
         chatLifecycleService.findInactiveChats(inactivityMinutes)
 
@@ -389,54 +369,6 @@ class ChatService(
         limit: Int
     ): List<UUID> =
         chatLifecycleService.findInactiveChatIds(threshold = threshold, limit = limit)
-
-    fun findTimedOutChats(): List<Chat> =
-        chatLifecycleService.findTimedOutChats()
-
-    fun findTimedOutChatIds(
-        now: OffsetDateTime,
-        limit: Int
-    ): List<UUID> =
-        chatLifecycleService.findTimedOutChatIds(now = now, limit = limit)
-
-    fun findTimedOutActiveSecondChats(): List<Chat> =
-        chatLifecycleService.findTimedOutActiveSecondChats()
-
-    fun findTimedOutActiveSecondChatIds(
-        now: OffsetDateTime,
-        limit: Int
-    ): List<UUID> =
-        chatLifecycleService.findTimedOutActiveSecondChatIds(now = now, limit = limit)
-
-    fun findTimedOutAvailableSecondChats(): List<Chat> =
-        chatLifecycleService.findTimedOutAvailableSecondChats()
-
-    fun findTimedOutAvailableSecondChatIds(
-        now: OffsetDateTime,
-        limit: Int
-    ): List<UUID> =
-        chatLifecycleService.findTimedOutAvailableSecondChatIds(now = now, limit = limit)
-
-    fun findExpiredReadOnlySecondChats(): List<Chat> =
-        chatLifecycleService.findExpiredReadOnlySecondChats()
-
-    fun findExpiredReadOnlySecondChatIds(
-        now: OffsetDateTime,
-        limit: Int
-    ): List<UUID> =
-        chatLifecycleService.findExpiredReadOnlySecondChatIds(now = now, limit = limit)
-
-    fun closeExpiredScheduledSecondChatWindow(
-        connectionId: UUID,
-        confirmedDateTime: OffsetDateTime
-    ): Boolean =
-        chatLifecycleService.closeExpiredScheduledSecondChatWindow(
-            connectionId = connectionId,
-            confirmedDateTime = confirmedDateTime
-        )
-
-    fun closeExpiredUnactivatedSecondChat(chatId: UUID): Boolean =
-        chatLifecycleService.closeExpiredUnactivatedSecondChat(chatId)
 
     fun expireSecondChatToReadOnly(chatId: UUID): Boolean =
         chatLifecycleService.expireSecondChatToReadOnly(chatId)
