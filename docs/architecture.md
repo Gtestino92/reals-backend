@@ -88,6 +88,18 @@ and provider transport:
 - `service.notification.sender`: provider adapters for external push delivery,
   such as Firebase and no-op local/test senders.
 
+Profile responsibilities are split between profile-level state and profile-photo
+lifecycle orchestration:
+
+- `ProfileService`: profile creation, profile text/location/filter updates,
+  activation, profile-level validation and authenticity verification.
+- `service.photo.ProfilePhotoService`: profile-photo reads, read URL
+  resolution, upload, replacement, deletion, reordering, storage coordination,
+  durable cleanup-task coordination and photo-mutation consequences on profile
+  state and authenticity.
+- Focused `service.photo` components continue to own provider-specific analysis,
+  semantic photo policy, moderation policy and admin moderation review behavior.
+
 Affinity-question responsibilities are intentionally isolated:
 
 - `service.affinity`: static catalog loading/validation, private current-profile answer writes, the pure pairwise evidence evaluator and answer-free first-chat/visual snapshot initialization.

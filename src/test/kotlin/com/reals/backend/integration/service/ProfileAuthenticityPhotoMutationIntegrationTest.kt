@@ -42,7 +42,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val profileId = createProfileWithAuthenticity(ProfileAuthenticityVerificationStatus.VERIFIED)
         stubStorageUpload("authenticity/upload/$profileId.jpg")
 
-        profileService.uploadPhoto(
+        profilePhotoService.uploadPhoto(
             profileId = profileId,
             position = 1,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -58,7 +58,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val photo = savePhoto(profileId, position = 1)
         stubStorageUpload("authenticity/replace/$profileId.jpg")
 
-        profileService.replacePhoto(
+        profilePhotoService.replacePhoto(
             profileId = profileId,
             photoId = photo.id,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -73,7 +73,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val profileId = createProfileWithAuthenticity(ProfileAuthenticityVerificationStatus.VERIFIED)
         val photo = savePhoto(profileId, position = 1)
 
-        profileService.deletePhoto(profileId, photo.id)
+        profilePhotoService.deletePhoto(profileId, photo.id)
 
         assertAuthenticity(profileId, ProfileAuthenticityVerificationStatus.STALE, false)
         val event = auditEventRepository.findAll().single {
@@ -96,7 +96,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
             val profileId = createProfileWithAuthenticity(status)
             val photo = savePhoto(profileId, position = 1)
 
-            profileService.deletePhoto(profileId, photo.id)
+            profilePhotoService.deletePhoto(profileId, photo.id)
 
             assertAuthenticity(profileId, ProfileAuthenticityVerificationStatus.STALE, false)
         }
@@ -107,7 +107,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val profileId = createProfileWithAuthenticity(ProfileAuthenticityVerificationStatus.NOT_STARTED)
         val photo = savePhoto(profileId, position = 1)
 
-        profileService.deletePhoto(profileId, photo.id)
+        profilePhotoService.deletePhoto(profileId, photo.id)
 
         assertAuthenticity(profileId, ProfileAuthenticityVerificationStatus.NOT_STARTED, false)
     }
@@ -117,7 +117,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val profileId = createProfileWithAuthenticity(ProfileAuthenticityVerificationStatus.STALE)
         val photo = savePhoto(profileId, position = 1)
 
-        profileService.deletePhoto(profileId, photo.id)
+        profilePhotoService.deletePhoto(profileId, photo.id)
 
         assertAuthenticity(profileId, ProfileAuthenticityVerificationStatus.STALE, false)
     }
@@ -128,7 +128,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val first = savePhoto(profileId, position = 1)
         val second = savePhoto(profileId, position = 2)
 
-        profileService.reorderPhotos(
+        profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(first.id, 2),
@@ -144,7 +144,7 @@ class ProfileAuthenticityPhotoMutationIntegrationTest : BaseIT() {
         val profileId = createProfileWithAuthenticity(ProfileAuthenticityVerificationStatus.VERIFIED)
 
         assertThrows<DomainBadRequestException> {
-            profileService.uploadPhoto(
+            profilePhotoService.uploadPhoto(
                 profileId = profileId,
                 position = 1,
                 contentType = "image/gif",

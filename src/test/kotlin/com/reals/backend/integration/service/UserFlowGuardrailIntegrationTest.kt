@@ -83,7 +83,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         )
 
-        profileService.uploadPhoto(
+        profilePhotoService.uploadPhoto(
             profileId = profile.id,
             position = 5,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -104,7 +104,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
-        val photo = profileService.getPhotos(profile.id).first()
+        val photo = profilePhotoService.getPhotos(profile.id).first()
 
         stubStorageUpload(
             StoredObject(
@@ -115,7 +115,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         )
 
-        profileService.replacePhoto(
+        profilePhotoService.replacePhoto(
             profileId = profile.id,
             photoId = photo.id,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -137,8 +137,8 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
 
-        val photo = profileService.getPhotos(profile.id)[0]
-        profileService.deletePhoto(
+        val photo = profilePhotoService.getPhotos(profile.id)[0]
+        profilePhotoService.deletePhoto(
             profileId = profile.id,
             photoId = photo.id
         )
@@ -165,17 +165,17 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             ?: error("Owner profile was not created")
         val otherProfile = profileService.findByUserId(otherUserId)
             ?: error("Other profile was not created")
-        val ownerPhoto = profileService.getPhotos(ownerProfile.id).first()
+        val ownerPhoto = profilePhotoService.getPhotos(ownerProfile.id).first()
 
         val exception = assertThrows<DomainNotFoundException> {
-            profileService.deletePhoto(
+            profilePhotoService.deletePhoto(
                 profileId = otherProfile.id,
                 photoId = ownerPhoto.id
             )
         }
 
         assertEquals(DomainErrorCode.PROFILE_PHOTO_NOT_FOUND, exception.code)
-        assertTrue(profileService.getPhotos(ownerProfile.id).any { it.id == ownerPhoto.id })
+        assertTrue(profilePhotoService.getPhotos(ownerProfile.id).any { it.id == ownerPhoto.id })
     }
 
     @Test

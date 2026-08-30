@@ -124,13 +124,13 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
-        val photosBeforeDelete = profileService.getPhotos(profile.id)
+        val photosBeforeDelete = profilePhotoService.getPhotos(profile.id)
 
         userService.deleteUser(userId)
 
         val deletedProfile = profileService.findByIdOrThrow(profile.id)
         assertEquals(ProfileStatus.DRAFT, deletedProfile.status)
-        assertEquals(photosBeforeDelete.map { it.id }, profileService.getPhotos(profile.id).map { it.id })
+        assertEquals(photosBeforeDelete.map { it.id }, profilePhotoService.getPhotos(profile.id).map { it.id })
     }
 
     @Test

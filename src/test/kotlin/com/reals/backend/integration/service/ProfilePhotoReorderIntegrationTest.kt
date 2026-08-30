@@ -25,7 +25,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
     fun `valid reorder changes positions`() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
-        profileService.reorderPhotos(
+        profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 3),
@@ -34,7 +34,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             )
         )
 
-        val positionsById = profileService.getPhotos(profileId).associate { it.id to it.position }
+        val positionsById = profilePhotoService.getPhotos(profileId).associate { it.id to it.position }
         assertEquals(3, positionsById.getValue(photos[0].id))
         assertEquals(1, positionsById.getValue(photos[1].id))
         assertEquals(2, positionsById.getValue(photos[2].id))
@@ -44,7 +44,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
     fun `valid reorder with holes preserves holes`() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
-        val reordered = profileService.reorderPhotos(
+        val reordered = profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 9),
@@ -60,7 +60,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
     fun `swapping positions succeeds without unique constraint failure`() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
-        val reordered = profileService.reorderPhotos(
+        val reordered = profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 2),
@@ -79,7 +79,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
         val exception = assertThrows(DomainBadRequestException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -97,7 +97,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
         val exception = assertThrows(DomainBadRequestException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -115,7 +115,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
         val exception = assertThrows(DomainBadRequestException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 10),
@@ -133,7 +133,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
 
         val exception = assertThrows(DomainBadRequestException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -151,7 +151,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val nonexistentPhotoId = UUID.randomUUID()
 
         val exception = assertThrows(DomainNotFoundException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -170,7 +170,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, _, otherPhotos) = createDraftProfileWithPhotos(emailPrefix = "other")
 
         val exception = assertThrows(DomainNotFoundException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -188,7 +188,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
         val before = photos.associateBy { it.id }
 
-        profileService.reorderPhotos(
+        profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 3),
@@ -197,7 +197,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             )
         )
 
-        profileService.getPhotos(profileId).forEach { after ->
+        profilePhotoService.getPhotos(profileId).forEach { after ->
             val original = before.getValue(after.id)
             assertEquals(original.storageProvider, after.storageProvider)
             assertEquals(original.storageBucket, after.storageBucket)
@@ -218,9 +218,9 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId) ?: error("Profile not found")
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profilePhotoService.getPhotos(profile.id)
 
-        profileService.reorderPhotos(
+        profilePhotoService.reorderPhotos(
             profileId = profile.id,
             placements = photos.mapIndexed { index, photo ->
                 PhotoPlacement(photo.id, photos.size - index)
@@ -235,7 +235,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
         val originalIds = photos.map { it.id }.toSet()
 
-        val reordered = profileService.reorderPhotos(
+        val reordered = profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 3),
@@ -250,10 +250,10 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
     @Test
     fun `failed reorder leaves previous positions unchanged`() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
-        val previousPositionsById = profileService.getPhotos(profileId).associate { it.id to it.position }
+        val previousPositionsById = profilePhotoService.getPhotos(profileId).associate { it.id to it.position }
 
         assertThrows(DomainBadRequestException::class.java) {
-            profileService.reorderPhotos(
+            profilePhotoService.reorderPhotos(
                 profileId = profileId,
                 placements = listOf(
                     PhotoPlacement(photos[0].id, 1),
@@ -263,7 +263,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
             )
         }
 
-        assertEquals(previousPositionsById, profileService.getPhotos(profileId).associate { it.id to it.position })
+        assertEquals(previousPositionsById, profilePhotoService.getPhotos(profileId).associate { it.id to it.position })
     }
 
     @Test
@@ -271,7 +271,7 @@ class ProfilePhotoReorderIntegrationTest : BaseIT() {
         val (_, profileId, photos) = createDraftProfileWithPhotos()
         val beforePositions = photos.associate { it.id to it.position }
 
-        val reordered = profileService.reorderPhotos(
+        val reordered = profilePhotoService.reorderPhotos(
             profileId = profileId,
             placements = listOf(
                 PhotoPlacement(photos[0].id, 3),
