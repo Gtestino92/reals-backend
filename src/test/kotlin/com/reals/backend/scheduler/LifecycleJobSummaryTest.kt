@@ -1,9 +1,11 @@
 package com.reals.backend.scheduler
 
+import com.reals.backend.config.s3.MediaCleanupProperties
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.Connection
 import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.MediaCleanupTaskStatus
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PushNotificationType
@@ -11,10 +13,13 @@ import com.reals.backend.domain.ScheduleNegotiation
 import com.reals.backend.domain.User
 import com.reals.backend.domain.VisualReview
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.MediaCleanupTaskRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatLifecycleService
+import com.reals.backend.service.MediaCleanupProcessResult
+import com.reals.backend.service.MediaCleanupProcessor
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
@@ -560,6 +565,51 @@ class LifecycleJobSummaryTest {
         )
     }
 
+    @Test
+    fun `media cleanup job exposes backlog while processing only one bounded batch`() {
+        val repository = Mockito.mock(MediaCleanupTaskRepository::class.java)
+        val processor = Mockito.mock(MediaCleanupProcessor::class.java)
+        val metrics = RecordingSchedulerMetrics()
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val backlog = UUID.randomUUID()
+        val requestedPageSizes = mutableListOf<Int>()
+
+        Mockito.`when`(
+            repository.findEligibleTaskIds(
+                anyOffsetDateTime(),
+                eqValue(MediaCleanupTaskStatus.PENDING),
+                eqValue(MediaCleanupTaskStatus.PROCESSING),
+                anyPageable()
+            )
+        ).thenAnswer { invocation ->
+            requestedPageSizes += (invocation.arguments[3] as Pageable).pageSize
+            listOf(first, second, backlog)
+        }
+        Mockito.`when`(processor.processTask(eqValue(first), anyOffsetDateTime()))
+            .thenReturn(MediaCleanupProcessResult.SUCCEEDED)
+        Mockito.`when`(processor.processTask(eqValue(second), anyOffsetDateTime()))
+            .thenReturn(MediaCleanupProcessResult.SKIPPED)
+
+        val summary =
+            MediaCleanupJob(
+                repository = repository,
+                processor = processor,
+                properties = MediaCleanupProperties(batchSize = 2),
+                schedulerMetrics = metrics
+            ).processMediaCleanup()
+
+        assertEquals(2, summary.processed)
+        assertEquals(1, summary.succeeded)
+        assertEquals(1, summary.skipped)
+        assertEquals(0, summary.failed)
+        assertEquals(listOf(3), requestedPageSizes)
+        assertEquals(listOf(true), metrics.backlogRemaining)
+        Mockito.verify(processor).processTask(eqValue(first), anyOffsetDateTime())
+        Mockito.verify(processor).processTask(eqValue(second), anyOffsetDateTime())
+        Mockito.verify(processor, Mockito.never()).processTask(eqValue(backlog), anyOffsetDateTime())
+    }
+
     private fun expiredPenalty(): Penalty =
         Penalty(
             userId = UUID.randomUUID(),
@@ -626,5 +676,18 @@ class LifecycleJobSummaryTest {
     private fun <T> eqValue(value: T): T {
         Mockito.eq(value)
         return value
+    }
+
+    private class RecordingSchedulerMetrics : SchedulerMetrics {
+        val backlogRemaining = mutableListOf<Boolean?>()
+
+        override fun recordJobRun(
+            jobName: String,
+            summary: JobRunSummary,
+            startedAt: Long,
+            backlogRemaining: Boolean?
+        ) {
+            this.backlogRemaining += backlogRemaining
+        }
     }
 }

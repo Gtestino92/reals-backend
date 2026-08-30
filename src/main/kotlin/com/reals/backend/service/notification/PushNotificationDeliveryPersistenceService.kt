@@ -12,6 +12,8 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -25,7 +27,8 @@ enum class DeliveryPersistenceOutcome {
 class PushNotificationDeliveryPersistenceService(
     private val deliveryRepository: PushNotificationDeliveryRepository,
     private val tokenRepository: PushDeviceTokenRepository,
-    private val transactionTemplate: TransactionTemplate
+    private val transactionTemplate: TransactionTemplate,
+    private val pushNotificationMetrics: PushNotificationMetrics = PushNotificationMetrics.noop()
 ) : PushNotificationResultPersistence {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -63,6 +66,10 @@ class PushNotificationDeliveryPersistenceService(
                 now = now
             )
         )
+        recordDeliveryAfterCommit(
+            notificationType = notificationType,
+            status = PushDeliveryStatus.SKIPPED_NO_ACTIVE_TOKEN
+        )
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -81,6 +88,10 @@ class PushNotificationDeliveryPersistenceService(
                 now = now
             )
         )
+        recordDeliveryAfterCommit(
+            notificationType = notificationType,
+            status = PushDeliveryStatus.SKIPPED_ALREADY_JOINED
+        )
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -98,6 +109,10 @@ class PushNotificationDeliveryPersistenceService(
                 status = PushDeliveryStatus.SKIPPED_USER_PREFERENCE,
                 now = now
             )
+        )
+        recordDeliveryAfterCommit(
+            notificationType = notificationType,
+            status = PushDeliveryStatus.SKIPPED_USER_PREFERENCE
         )
     }
 
@@ -152,7 +167,7 @@ class PushNotificationDeliveryPersistenceService(
         now: OffsetDateTime
     ): DeliveryPersistenceOutcome {
         return try {
-            persistDeliveryResultAttempt(
+            val result = persistDeliveryResultAttempt(
                 command = command,
                 status = status,
                 sentAt = sentAt,
@@ -161,13 +176,32 @@ class PushNotificationDeliveryPersistenceService(
                 invalidTokens = invalidTokens,
                 now = now
             )
+            pushNotificationMetrics.recordInvalidTokensDisabled(
+                notificationType = command.notificationType,
+                count = result.disabledInvalidTokens
+            )
+            pushNotificationMetrics.recordDelivery(
+                notificationType = command.notificationType,
+                status = status,
+                persistenceOutcome = result.outcome
+            )
+            result.outcome
         } catch (ex: DataIntegrityViolationException) {
-            disableInvalidTokensInNewTransaction(invalidTokens)
+            val disabledInvalidTokens = disableInvalidTokensInNewTransaction(invalidTokens)
             log.info(
                 "Push delivery already exists after provider call user={} type={} aggregate={}",
                 command.userId,
                 command.notificationType,
                 command.aggregateId
+            )
+            pushNotificationMetrics.recordInvalidTokensDisabled(
+                notificationType = command.notificationType,
+                count = disabledInvalidTokens
+            )
+            pushNotificationMetrics.recordDelivery(
+                notificationType = command.notificationType,
+                status = status,
+                persistenceOutcome = DeliveryPersistenceOutcome.DUPLICATE
             )
             DeliveryPersistenceOutcome.DUPLICATE
         }
@@ -181,9 +215,9 @@ class PushNotificationDeliveryPersistenceService(
         errorMessage: String?,
         invalidTokens: List<String>,
         now: OffsetDateTime
-    ): DeliveryPersistenceOutcome =
+    ): DeliveryPersistenceAttemptResult =
         transactionTemplate.execute {
-            disableInvalidTokens(invalidTokens)
+            val disabledInvalidTokens = disableInvalidTokens(invalidTokens)
 
             val existingDelivery =
                 deliveryRepository.findByUserIdAndNotificationTypeAndAggregateId(
@@ -192,7 +226,10 @@ class PushNotificationDeliveryPersistenceService(
                     aggregateId = command.aggregateId
                 )
             if (existingDelivery != null) {
-                return@execute DeliveryPersistenceOutcome.DUPLICATE
+                return@execute DeliveryPersistenceAttemptResult(
+                    outcome = DeliveryPersistenceOutcome.DUPLICATE,
+                    disabledInvalidTokens = disabledInvalidTokens
+                )
             }
 
             deliveryRepository.saveAndFlush(
@@ -207,27 +244,59 @@ class PushNotificationDeliveryPersistenceService(
                     now = now
                 )
             )
-            DeliveryPersistenceOutcome.SAVED
+            DeliveryPersistenceAttemptResult(
+                outcome = DeliveryPersistenceOutcome.SAVED,
+                disabledInvalidTokens = disabledInvalidTokens
+            )
         }
 
-    private fun disableInvalidTokensInNewTransaction(tokens: List<String>) {
+    private fun disableInvalidTokensInNewTransaction(tokens: List<String>): Int {
         if (tokens.isEmpty()) {
-            return
+            return 0
         }
 
-        transactionTemplate.executeWithoutResult {
+        return transactionTemplate.execute {
             disableInvalidTokens(tokens)
         }
     }
 
-    private fun disableInvalidTokens(tokens: List<String>) {
+    private fun disableInvalidTokens(tokens: List<String>): Int {
         val updatedAt = OffsetDateTime.now()
-        tokens.forEach { token ->
+        val normalizedTokens = tokens
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        return normalizedTokens.sumOf { token ->
             tokenRepository.disableByToken(
-                token = token.trim(),
+                token = token,
                 updatedAt = updatedAt
             )
         }
+    }
+
+    private fun recordDeliveryAfterCommit(
+        notificationType: PushNotificationType,
+        status: PushDeliveryStatus
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            pushNotificationMetrics.recordDelivery(
+                notificationType = notificationType,
+                status = status,
+                persistenceOutcome = DeliveryPersistenceOutcome.SAVED
+            )
+            return
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() {
+                    pushNotificationMetrics.recordDelivery(
+                        notificationType = notificationType,
+                        status = status,
+                        persistenceOutcome = DeliveryPersistenceOutcome.SAVED
+                    )
+                }
+            }
+        )
     }
 
     private fun delivery(
@@ -252,6 +321,11 @@ class PushNotificationDeliveryPersistenceService(
             updatedAt = now
         )
 }
+
+private data class DeliveryPersistenceAttemptResult(
+    val outcome: DeliveryPersistenceOutcome,
+    val disabledInvalidTokens: Int
+)
 
 interface PushNotificationResultPersistence {
     fun persistSendResult(

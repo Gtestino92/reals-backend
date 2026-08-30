@@ -13,7 +13,8 @@ enum class PreparedPushCommandOutcome {
 @Service
 class PreparedPushCommandProcessor(
     private val notificationProviderDispatcher: PushNotificationProviderDispatcher,
-    private val deliveryPersistenceService: PushNotificationResultPersistence
+    private val deliveryPersistenceService: PushNotificationResultPersistence,
+    private val pushNotificationMetrics: PushNotificationMetrics = PushNotificationMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -35,6 +36,10 @@ class PreparedPushCommandProcessor(
                     ex
                 )
                 persistProviderFailureBestEffort(command, ex, now)
+                pushNotificationMetrics.recordProviderCommand(
+                    notificationType = command.notificationType,
+                    outcome = PreparedPushCommandOutcome.PROVIDER_EXCEPTION
+                )
                 return PreparedPushCommandOutcome.PROVIDER_EXCEPTION
             }
 
@@ -53,13 +58,22 @@ class PreparedPushCommandProcessor(
                 ex.message,
                 ex
             )
+            pushNotificationMetrics.recordPersistenceFailure(
+                notificationType = command.notificationType,
+                phase = RESULT_PHASE
+            )
         }
 
-        return if (sendResult.sent) {
+        val outcome = if (sendResult.sent) {
             PreparedPushCommandOutcome.SENT
         } else {
             PreparedPushCommandOutcome.NOT_SENT
         }
+        pushNotificationMetrics.recordProviderCommand(
+            notificationType = command.notificationType,
+            outcome = outcome
+        )
+        return outcome
     }
 
     private fun persistProviderFailureBestEffort(
@@ -82,6 +96,15 @@ class PreparedPushCommandProcessor(
                 persistenceEx.message,
                 persistenceEx
             )
+            pushNotificationMetrics.recordPersistenceFailure(
+                notificationType = command.notificationType,
+                phase = PROVIDER_FAILURE_PHASE
+            )
         }
+    }
+
+    private companion object {
+        const val RESULT_PHASE = "send_result"
+        const val PROVIDER_FAILURE_PHASE = "provider_failure"
     }
 }

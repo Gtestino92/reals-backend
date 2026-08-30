@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component
 
 @Component
 class UserReliabilityEventCleanupJob(
-    private val userReliabilityScoreService: UserReliabilityScoreService
+    private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -40,7 +41,8 @@ class UserReliabilityEventCleanupJob(
         log.logJobSummary(
             jobName = "UserReliabilityEventCleanupJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
 
         return summary

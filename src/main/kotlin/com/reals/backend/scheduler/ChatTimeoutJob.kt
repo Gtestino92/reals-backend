@@ -19,7 +19,8 @@ import java.time.OffsetDateTime
 class ChatTimeoutJob(
     private val chatLifecycleService: ChatLifecycleService,
     @param:Value("\${scheduler.chat-timeout-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -88,7 +89,9 @@ class ChatTimeoutJob(
         log.logJobSummary(
             jobName = "ChatTimeoutJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = batch.backlogRemaining
         )
         return summary
     }

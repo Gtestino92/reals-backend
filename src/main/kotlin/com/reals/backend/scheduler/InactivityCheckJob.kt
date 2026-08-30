@@ -25,7 +25,8 @@ class InactivityCheckJob(
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val inactivityThresholdMinutes: Long,
     @param:Value("\${scheduler.inactivity-check-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -103,7 +104,9 @@ class InactivityCheckJob(
         log.logJobSummary(
             jobName = "InactivityCheckJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = batch.backlogRemaining
         )
         return summary
     }

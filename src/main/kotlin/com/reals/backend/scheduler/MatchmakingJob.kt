@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component
 @Component
 class MatchmakingJob(
     private val matchmakingProcessorService: MatchmakingProcessorService,
-    private val properties: MatchmakingJobProperties
+    private val properties: MatchmakingJobProperties,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -46,7 +47,8 @@ class MatchmakingJob(
                         skipped = 0,
                         failed = 1
                     ),
-                    startedAt = startedAt
+                    startedAt = startedAt,
+                    schedulerMetrics = schedulerMetrics
                 )
                 throw ex
             }
@@ -60,7 +62,8 @@ class MatchmakingJob(
                     .coerceAtLeast(0),
                 failed = result.failedPairs
             ),
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
     }
 }

@@ -21,7 +21,8 @@ class SchedulingActivationJob(
     private val schedulingService: SchedulingService,
     private val schedulingAvailableNotificationService: SchedulingAvailableNotificationService,
     @param:Value("\${scheduler.scheduling-activation-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -103,7 +104,9 @@ class SchedulingActivationJob(
         log.logJobSummary(
             jobName = "SchedulingActivationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = batch.backlogRemaining
         )
         return summary
     }

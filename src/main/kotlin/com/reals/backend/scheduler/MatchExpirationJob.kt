@@ -33,7 +33,8 @@ class MatchExpirationJob(
     private val maxChatDuration: Duration,
 
     @param:Value("\${scheduler.match-expiration-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 
 ) {
 
@@ -179,7 +180,9 @@ class MatchExpirationJob(
         log.logJobSummary(
             jobName = "MatchExpirationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = backlogRemaining
         )
         return summary
     }
