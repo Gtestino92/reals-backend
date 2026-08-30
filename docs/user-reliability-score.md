@@ -120,7 +120,7 @@ Submitting scheduling slots before the scheduling deadline records `SCHEDULING_S
 
 If scheduling expires, users who never submitted proposals on that connection receive `SCHEDULING_EXPIRED_NO_PROPOSAL`.
 
-Second-chat attendance is message-based in v0:
+Second-chat attendance is explicit-join-based in v0:
 
 ```text
 CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES=10
