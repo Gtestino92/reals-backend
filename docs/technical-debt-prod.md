@@ -52,9 +52,9 @@ read as an architecture document or changelog.
 ### Production photo analysis and activation
 
 - Configure and smoke-test the production photo-analysis provider before users
-  can activate profiles. In `prod`, provider `none` leaves uploads
-  `PENDING`/`NEEDS_REVIEW` and does not establish person-photo semantics, while
-  activation still requires the configured count of validated person photos.
+  can activate profiles. Startup now rejects `prod` unless the configured
+  provider is `sightengine`; operators still need an environment-level smoke
+  test with real media before opening traffic.
 - Verify Sightengine credentials, account plan and model access for
   `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
   `offensive-2.0` in the actual production environment.

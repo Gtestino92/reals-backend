@@ -28,7 +28,7 @@ class SightenginePhotoAnalysisProvider(
     override fun analyze(request: ProfilePhotoAnalysisRequest): ProfilePhotoAnalysisProviderResult =
         try {
             val response = restClient.post()
-                .uri(properties.endpoint)
+                .uri(properties.normalizedEndpoint())
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(multipartBody(request))
                 .retrieve()

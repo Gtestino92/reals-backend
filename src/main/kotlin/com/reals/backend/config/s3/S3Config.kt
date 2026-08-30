@@ -332,6 +332,9 @@ class S3ReadUrlModeStartupValidator(
                 "storage.s3.read-url-mode=PUBLIC is not allowed in prod; use PRESIGNED"
             )
         }
+        if (environmentExposurePolicy.isProduction() && properties.signedUrlDurationMinutes <= 0) {
+            throw IllegalStateException("storage.s3.signed-url-duration-minutes must be positive in prod")
+        }
     }
 }
 

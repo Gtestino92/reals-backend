@@ -28,6 +28,22 @@ class S3ReadUrlModeStartupValidatorTest {
     }
 
     @Test
+    fun `prod non positive signed URL duration is rejected`() {
+        val exception = assertThrows<IllegalStateException> {
+            validator(
+                readUrlMode = S3ReadUrlMode.PRESIGNED,
+                signedUrlDurationMinutes = 0,
+                environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("prod")
+            ).afterPropertiesSet()
+        }
+
+        kotlin.test.assertEquals(
+            "storage.s3.signed-url-duration-minutes must be positive in prod",
+            exception.message
+        )
+    }
+
+    @Test
     fun `local public read mode is accepted`() {
         assertDoesNotThrow {
             validator(
@@ -37,8 +53,20 @@ class S3ReadUrlModeStartupValidatorTest {
         }
     }
 
+    @Test
+    fun `local non positive signed URL duration is not rejected at startup`() {
+        assertDoesNotThrow {
+            validator(
+                readUrlMode = S3ReadUrlMode.PRESIGNED,
+                signedUrlDurationMinutes = 0,
+                environmentExposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("local-nodb")
+            ).afterPropertiesSet()
+        }
+    }
+
     private fun validator(
         readUrlMode: S3ReadUrlMode,
+        signedUrlDurationMinutes: Long = 15,
         environmentExposurePolicy: EnvironmentExposurePolicy
     ): S3ReadUrlModeStartupValidator =
         S3ReadUrlModeStartupValidator(
@@ -48,6 +76,7 @@ class S3ReadUrlModeStartupValidatorTest {
                 bucket = "profile-photos",
                 accessKeyId = "access",
                 secretAccessKey = "secret",
+                signedUrlDurationMinutes = signedUrlDurationMinutes,
                 readUrlMode = readUrlMode
             ),
             environmentExposurePolicy = environmentExposurePolicy

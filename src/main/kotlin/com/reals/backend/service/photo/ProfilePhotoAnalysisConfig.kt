@@ -12,7 +12,21 @@ import org.springframework.core.env.Environment
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestClient
+import java.net.URI
 import java.time.Duration
+
+@ConfigurationProperties(prefix = "profile.photos")
+data class ProfilePhotoRuntimeProperties(
+    val requireModerationApprovalForActivation: Boolean = false,
+    val moderation: ProfilePhotoModerationRuntimeProperties = ProfilePhotoModerationRuntimeProperties()
+) {
+    fun normalizedModerationProvider(): String =
+        moderation.provider.trim().lowercase()
+}
+
+data class ProfilePhotoModerationRuntimeProperties(
+    val provider: String = NOOP_PROVIDER
+)
 
 @ConfigurationProperties(prefix = "profile.photos.sightengine")
 data class SightenginePhotoAnalysisProperties(
@@ -39,6 +53,22 @@ data class SightenginePhotoAnalysisProperties(
             "profile.photos.sightengine.api-secret must be configured when provider=sightengine"
         }
     }
+
+    fun requireValidProductionEndpoint() {
+        val uri = runCatching { URI(endpoint.trim()) }
+            .getOrElse {
+                throw IllegalStateException(
+                    "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI in prod"
+                )
+            }
+
+        require(uri.isAbsolute && uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
+            "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI in prod"
+        }
+    }
+
+    fun normalizedEndpoint(): String =
+        endpoint.trim()
 }
 
 @ConfigurationProperties(prefix = "profile.photos.moderation.policy")
@@ -101,6 +131,7 @@ data class ReviewScoreThreshold(
 
 @Configuration
 @EnableConfigurationProperties(
+    ProfilePhotoRuntimeProperties::class,
     SightenginePhotoAnalysisProperties::class,
     ProfilePhotoModerationPolicyProperties::class
 )
@@ -146,6 +177,6 @@ private fun isProductionExecutionProfile(environment: Environment): Boolean {
     return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
 }
 
-private const val PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY = "profile.photos.moderation.provider"
-private const val NOOP_PROVIDER = "none"
-private const val SIGHTENGINE_PROVIDER = "sightengine"
+internal const val PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY = "profile.photos.moderation.provider"
+internal const val NOOP_PROVIDER = "none"
+internal const val SIGHTENGINE_PROVIDER = "sightengine"
