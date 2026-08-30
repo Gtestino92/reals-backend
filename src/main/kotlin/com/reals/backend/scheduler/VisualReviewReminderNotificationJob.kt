@@ -15,7 +15,8 @@ class VisualReviewReminderNotificationJob(
     private val visualReviewReminderNotificationService: VisualReviewReminderNotificationService,
 
     @param:Value("\${scheduler.visual-review-reminder-job.fixed-delay:1800000}")
-    private val fixedDelayMs: Long = 1800000
+    private val fixedDelayMs: Long = 1800000,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -76,7 +77,8 @@ class VisualReviewReminderNotificationJob(
         log.logJobSummary(
             jobName = "VisualReviewReminderNotificationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
 
         return summary

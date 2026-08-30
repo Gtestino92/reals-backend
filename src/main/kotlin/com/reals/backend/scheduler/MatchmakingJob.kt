@@ -2,6 +2,7 @@ package com.reals.backend.scheduler
 
 import com.reals.backend.config.MatchmakingJobProperties
 import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingRunMetrics
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -16,7 +17,9 @@ import org.springframework.stereotype.Component
 @Component
 class MatchmakingJob(
     private val matchmakingProcessorService: MatchmakingProcessorService,
-    private val properties: MatchmakingJobProperties
+    private val properties: MatchmakingJobProperties,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop(),
+    private val matchmakingRunMetrics: MatchmakingRunMetrics = MatchmakingRunMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -46,10 +49,12 @@ class MatchmakingJob(
                         skipped = 0,
                         failed = 1
                     ),
-                    startedAt = startedAt
+                    startedAt = startedAt,
+                    schedulerMetrics = schedulerMetrics
                 )
                 throw ex
             }
+        matchmakingRunMetrics.recordLimitExhausted(result.limitExhausted)
 
         log.logJobSummary(
             jobName = "MatchmakingJob",
@@ -60,7 +65,8 @@ class MatchmakingJob(
                     .coerceAtLeast(0),
                 failed = result.failedPairs
             ),
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
     }
 }

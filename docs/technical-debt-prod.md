@@ -122,7 +122,8 @@ read as an architecture document or changelog.
 
 - Select and configure the production metrics/logging backend. The application
   currently exposes request IDs, secured Actuator metrics and custom Micrometer
-  meters, but it does not configure Prometheus, Grafana, OTLP export,
+  meters for reads, App Check, scheduler runs/backlog and push delivery
+  outcomes, but it does not configure Prometheus, Grafana, OTLP export,
   distributed tracing or alert routing.
 - Add alerts for job failures, matchmaking backlog, stale active locks, failed
   media cleanup, failed notification delivery, DB connection saturation,
@@ -137,12 +138,15 @@ read as an architecture document or changelog.
 
 - Smoke-test FCM delivery in the production-like remote environment with the
   pinned Firebase Admin SDK and the production Android sender configuration.
+  Unit tests pin local invalid-token mapping, but they do not replace this
+  production-like smoke.
 - Verify that Firebase `UNREGISTERED` and relevant invalid-registration errors
   are mapped to `invalidTokens` and disabled in PostgreSQL. The implementation
   exists, but the pinned SDK/environment behavior still needs production-like
   validation.
-- Add delivery observability for `SENT`, `FAILED`, `SKIPPED_NO_ACTIVE_TOKEN`,
-  `SKIPPED_USER_PREFERENCE`, invalid-token cleanup and provider exceptions.
+- Configure dashboards/alerts for the existing push delivery meters covering
+  `SENT`, `FAILED`, skipped delivery statuses, invalid-token cleanup and
+  provider exceptions.
 - Define retry/backoff and operator response for transient provider failures.
   Current provider calls happen after preparation and before result
   persistence, so exact outbox semantics remain unresolved.

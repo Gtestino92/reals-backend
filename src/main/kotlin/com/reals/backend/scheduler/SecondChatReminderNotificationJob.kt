@@ -28,7 +28,8 @@ class SecondChatReminderNotificationJob(
     private val reminderLeadMinutes: List<String> = listOf("10"),
 
     @param:Value("\${scheduler.second-chat-reminder-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -159,7 +160,9 @@ class SecondChatReminderNotificationJob(
         log.logJobSummary(
             jobName = "SecondChatReminderNotificationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = backlogRemaining
         )
         return summary
     }

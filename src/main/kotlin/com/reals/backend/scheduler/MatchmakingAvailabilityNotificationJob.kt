@@ -21,7 +21,8 @@ class MatchmakingAvailabilityNotificationJob(
     private val batchSize: Int = 100,
 
     @param:Value("\${scheduler.matchmaking-availability-notification-job.discovery-batch-size:100}")
-    private val discoveryBatchSize: Int = 100
+    private val discoveryBatchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -101,7 +102,8 @@ class MatchmakingAvailabilityNotificationJob(
         log.logJobSummary(
             jobName = "MatchmakingAvailabilityNotificationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
         return summary
     }

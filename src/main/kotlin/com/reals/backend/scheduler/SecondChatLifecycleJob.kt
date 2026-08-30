@@ -29,7 +29,8 @@ class SecondChatLifecycleJob(
     private val secondChatDurationMinutes: Long = 120,
 
     @param:Value("\${scheduler.second-chat-lifecycle-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -369,7 +370,9 @@ class SecondChatLifecycleJob(
         log.logJobSummary(
             jobName = "SecondChatLifecycleJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = backlogRemaining
         )
         return summary
     }

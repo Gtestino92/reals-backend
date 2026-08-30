@@ -296,7 +296,10 @@ service checks queue state and delegates final eligibility to
 episode without sending. Push preparation happens transactionally through
 `PushRecipientPreparationService`, including preference and no-token skip
 persistence. Provider calls run afterward through `PreparedPushCommandProcessor`,
-outside database transactions and without holding episode locks.
+outside database transactions and without holding episode locks. Push delivery
+Micrometer metrics record provider outcomes, persisted statuses, best-effort
+persistence failures and invalid-token cleanup without user, aggregate, token or
+provider-message-id tags.
 
 `UserReliabilityEventCleanupJob` deletes expired internal reliability events
 after their scoring window ends. User reliability is feature-flagged off by
@@ -307,8 +310,11 @@ opportunities. Aggregate Micrometer metrics under `reals.engagement.capacity.*`
 record evaluation phase, reliability direction and allowed/blocked outcomes
 without user ids or raw-score tags. Capacity evaluation phases are
 `availability`, `final_match_admission` and internal `queue_reconciliation`.
-Actuator exposes Micrometer meters in configured runtimes, but durable metrics
-retention requires an external registry/backend that is not introduced here.
+Scheduler Micrometer metrics under `reals.scheduler.job.*` record run outcomes,
+duration, item counts and bounded-batch backlog indicators without aggregate
+ids. Actuator exposes Micrometer meters in configured runtimes, but durable
+metrics retention requires an external registry/backend that is not introduced
+here.
 
 Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
 trigger the same job beans manually, plus `/api/local-dev/timeouts/...`

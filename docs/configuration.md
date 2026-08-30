@@ -744,7 +744,7 @@ Public unauthenticated Actuator access is limited to `/actuator/health` and
 `/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
 `/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
 
-Current custom read meters:
+Current custom application meters:
 
 - `reals.home.load`: timer for full service execution of Home reads. Tags:
   `variant=full|pending`, `outcome=success|error`.
@@ -752,12 +752,65 @@ Current custom read meters:
   `mode=initial|incremental`, `outcome=success|error`.
 - `reals.chat.messages.returned`: distribution summary for successful returned
   message counts. Tags: `mode=initial|incremental`.
+- `reals.scheduler.job.runs`: counter for scheduler run outcomes. Tags:
+  `job=<bounded job class name>`, `outcome=success|partial_failure`.
+- `reals.scheduler.job.duration`: timer for scheduler run duration. Tags:
+  `job=<bounded job class name>`, `outcome=success|partial_failure`.
+- `reals.scheduler.job.items`: distribution summary for scheduler work counts.
+  Tags: `job=<bounded job class name>`,
+  `result=processed|succeeded|skipped|failed`.
+- `reals.scheduler.job.backlog_remaining`: gauge set to `1` when a bounded
+  scheduler run fetched more eligible work than it processed and `0` otherwise.
+  Tags: `job=<bounded job class name>`.
+- `reals.matchmaking.run.limit_exhausted`: gauge set by `MatchmakingJob` to `1`
+  when the latest instrumented `MatchmakingProcessorService` invocation consumed
+  all configured `scheduler.matchmaking-job.max-pairs-per-run` attempts and `0`
+  when it returned before exhausting that allowance. This is a bounded-run
+  saturation signal, not an exact queue backlog count.
+- `reals.matchmaking.affinity.evaluations`: counter for affinity-ranking
+  candidate evaluations when affinity ranking is not `OFF`. Tags:
+  `mode=shadow|active`, `evidence=present|none`,
+  `direction=positive|negative|neutral`.
+- `reals.matchmaking.affinity.shared_questions`,
+  `reals.matchmaking.affinity.evidence_confidence`,
+  `reals.matchmaking.affinity.factor` and
+  `reals.matchmaking.affinity.absolute_rank_delta`: distribution summaries for
+  bounded affinity-ranking diagnostics. Tags: `mode=shadow|active`,
+  `evidence=present|none`, `direction=positive|negative|neutral`.
+- `reals.engagement.capacity.evaluations`: counter for engagement-capacity
+  admission decisions. Tags:
+  `phase=availability|final_match_admission|queue_reconciliation`,
+  `direction=below_base|above_base|neutral`,
+  `outcome=allowed|blocked_match_cap|blocked_connection_cap`.
+- `reals.engagement.capacity.effective_match_cap`,
+  `reals.engagement.capacity.effective_connection_cap`: distribution summaries
+  for effective caps. Tags:
+  `phase=availability|final_match_admission|queue_reconciliation`,
+  `direction=below_base|above_base|neutral`.
+- `reals.engagement.capacity.absolute_score_distance`: distribution summary for
+  effective-score distance from the reliability base score. Tags:
+  `direction=below_base|above_base|neutral`.
+- `reals.push.provider.commands`: counter for provider command outcomes. Tags:
+  `type=<push notification type>`, `outcome=sent|not_sent|provider_exception`.
+- `reals.push.deliveries`: counter for persisted push delivery outcomes. Tags:
+  `type=<push notification type>`,
+  `status=sent|failed|skipped_no_active_token|skipped_already_joined|skipped_user_preference`,
+  `persistence=saved|duplicate`.
+- `reals.push.persistence.failures`: counter for best-effort persistence
+  failures after provider calls. Tags: `type=<push notification type>`,
+  `phase=send_result|provider_failure`.
+- `reals.push.invalid_tokens_disabled`: counter for invalid FCM tokens disabled
+  after provider results. Tags: `type=<push notification type>`.
+- `reals.media_cleanup.failed_tasks`: gauge for the durable
+  `media_cleanup_tasks` rows currently in `FAILED` status, sampled during the
+  latest `MediaCleanupJob` execution. This value is stored in memory for
+  scraping; `/actuator/metrics` does not query PostgreSQL live.
 - `reals.app_check.requests`: counter for App Check decisions when the filter
   runs. Tags: `mode=monitor|enforced`, `outcome=missing|valid|invalid|unavailable`,
   `endpoint_group=api|admin|legal|profile-photo|provision`, and bounded
   `exception` class or `none`.
 
-These meters intentionally avoid user ids, chat ids, match ids, cursor ids,
-raw paths, tokens, JWT claims, HTTP status and message count as tags. No
-Prometheus registry, OTLP exporter, distributed tracing or production Hibernate
-statistics are configured in this block.
+These meters intentionally avoid user ids, chat ids, match ids, aggregate ids,
+cursor ids, raw paths, object keys, tokens, JWT claims, HTTP status and raw
+message count as tags. No Prometheus registry, OTLP exporter, distributed
+tracing or production Hibernate statistics are configured in this block.

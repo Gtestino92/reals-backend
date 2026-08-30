@@ -30,7 +30,8 @@ class SecondChatStartNotificationJob(
     private val batchSize: Int = 100,
 
     @param:Value("\${notifications.second-chat-start.latest-send-after-start-minutes:5}")
-    private val latestSendAfterStartMinutes: Long = 5
+    private val latestSendAfterStartMinutes: Long = 5,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -115,7 +116,9 @@ class SecondChatStartNotificationJob(
         log.logJobSummary(
             jobName = "SecondChatStartNotificationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = candidates.backlogRemaining
         )
         return summary
     }

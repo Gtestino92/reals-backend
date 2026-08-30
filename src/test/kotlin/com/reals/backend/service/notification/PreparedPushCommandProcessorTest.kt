@@ -14,7 +14,8 @@ class PreparedPushCommandProcessorTest {
 
     private val dispatcher = RecordingProviderDispatcher()
     private val persistence = RecordingResultPersistence()
-    private val processor = PreparedPushCommandProcessor(dispatcher, persistence)
+    private val metrics = RecordingPushNotificationMetrics()
+    private val processor = PreparedPushCommandProcessor(dispatcher, persistence, metrics)
 
     @Test
     fun `successful provider result stays successful when result persistence fails`() {
@@ -33,6 +34,14 @@ class PreparedPushCommandProcessorTest {
         assertEquals(listOf(command, nextCommand), dispatcher.commands)
         assertEquals(1, persistence.persistSendResultCalls.count { it.command == command })
         assertEquals(0, persistence.persistFailureCalls.count { it.command == command })
+        assertEquals(
+            listOf(
+                ProviderMetric(command.notificationType, PreparedPushCommandOutcome.SENT),
+                ProviderMetric(nextCommand.notificationType, PreparedPushCommandOutcome.SENT)
+            ),
+            metrics.providerCommands
+        )
+        assertEquals(listOf(command.notificationType to "send_result"), metrics.persistenceFailures)
     }
 
     @Test
@@ -109,7 +118,17 @@ class PreparedPushCommandProcessorTest {
         assertEquals(listOf(command), dispatcher.commands)
         assertEquals(0, persistence.persistSendResultCalls.size)
         assertEquals(1, persistence.persistFailureCalls.size)
+        assertEquals(
+            listOf(ProviderMetric(command.notificationType, PreparedPushCommandOutcome.PROVIDER_EXCEPTION)),
+            metrics.providerCommands
+        )
+        assertEquals(listOf(command.notificationType to "provider_failure"), metrics.persistenceFailures)
     }
+
+    private data class ProviderMetric(
+        val notificationType: PushNotificationType,
+        val outcome: PreparedPushCommandOutcome
+    )
 
     private fun command(): PreparedPushCommand =
         PreparedPushCommand(
@@ -172,6 +191,36 @@ class PreparedPushCommandProcessorTest {
             persistFailureException?.let { throw it }
             return DeliveryPersistenceOutcome.SAVED
         }
+    }
+
+    private class RecordingPushNotificationMetrics : PushNotificationMetrics {
+        val providerCommands = mutableListOf<ProviderMetric>()
+        val persistenceFailures = mutableListOf<Pair<PushNotificationType, String>>()
+
+        override fun recordProviderCommand(
+            notificationType: PushNotificationType,
+            outcome: PreparedPushCommandOutcome
+        ) {
+            providerCommands += ProviderMetric(notificationType, outcome)
+        }
+
+        override fun recordDelivery(
+            notificationType: PushNotificationType,
+            status: com.reals.backend.domain.PushDeliveryStatus,
+            persistenceOutcome: DeliveryPersistenceOutcome
+        ) = Unit
+
+        override fun recordPersistenceFailure(
+            notificationType: PushNotificationType,
+            phase: String
+        ) {
+            persistenceFailures += notificationType to phase
+        }
+
+        override fun recordInvalidTokensDisabled(
+            notificationType: PushNotificationType,
+            count: Int
+        ) = Unit
     }
 
     private companion object {

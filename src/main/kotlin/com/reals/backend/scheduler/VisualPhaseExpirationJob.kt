@@ -21,7 +21,8 @@ class VisualPhaseExpirationJob(
     private val visualReviewRepository: VisualReviewRepository,
     private val visualReviewService: VisualReviewService,
     @param:Value("\${scheduler.visual-phase-expiration-job.batch-size:100}")
-    private val batchSize: Int = 100
+    private val batchSize: Int = 100,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -97,7 +98,9 @@ class VisualPhaseExpirationJob(
         log.logJobSummary(
             jobName = "VisualPhaseExpirationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics,
+            backlogRemaining = batch.backlogRemaining
         )
         return summary
     }
