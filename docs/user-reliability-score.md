@@ -155,15 +155,21 @@ Ordinary dismissal and confirmed reports do not create reliability events.
 
 When disabled, matchmaking remains unchanged.
 
-When enabled, `MatchmakingService` applies a small bounded deterministic modifier after hard filters and compatibility scoring. The modifier is capped by:
+When enabled in `LEGACY_EARLY_ACCEPT` ranking mode, `MatchmakingService`
+applies a small bounded deterministic modifier after hard filters and
+compatibility scoring. The modifier is capped by:
 
 ```text
 USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER=0.05
 ```
 
-Reliability never bypasses eligibility, safety blocks, active locks, distance, profile filters, or the base compatibility threshold. It does not hard-ban or suspend low-score users.
+In `PROBABILISTIC_WEIGHTED` ranking mode, reliability contributes through
+pairwise reliability similarity and waiting-time relaxation instead of the
+legacy deterministic modifier.
 
-Future work: replace the deterministic modifier with a probabilistic modifier to avoid overly rigid queue behavior.
+Reliability never bypasses eligibility, safety blocks, active locks, distance,
+profile filters, or the base compatibility threshold. It does not hard-ban or
+suspend low-score users.
 
 ## Engagement Capacity Impact
 
@@ -293,6 +299,6 @@ Manual validation flow:
 - no score in API responses
 - no Android UI blocking for early close
 - no second-chat early cancellation
-- no probabilistic matchmaking modifier
+- no hard reliability tier or reliability-only rejection
 - no admin dashboard redesign beyond the minimal abusive/unjustified report resolution
 - no direct change to safety sanction semantics

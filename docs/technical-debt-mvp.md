@@ -1,144 +1,47 @@
-# TECH_DEBT_MVP
+# MVP technical debt
 
-This file lists technical debt, cleanup tasks and product decisions that should be resolved for a first usable MVP/beta version of Reals.
+This file tracks backend work that still blocks a controlled MVP/beta. Current
+architecture, configuration, security, data-retention and deployment behavior
+live in the canonical docs; production hardening lives in
+`docs/technical-debt-prod.md`.
 
-MVP scope here means: enough to run the core product flow end-to-end with controlled users, a dev/staging backend, Android APK distribution, and known temporary shortcuts clearly documented.
+Do not use this file as a changelog. Delete completed setup notes once a
+canonical current-state document covers the implemented behavior.
 
-Do not implement these implicitly while working on unrelated tasks.
+## Current MVP status
 
+- The first external dev backend has been selected and implemented on AWS.
+  Current behavior is documented in `docs/dev-deployment.md` and
+  `docs/aws-dev-deployment.md`.
+- The core backend flow is implemented with Firebase auth, PostgreSQL/Flyway,
+  S3-compatible media storage, profile photos, profile activation, matchmaking,
+  Home reads, first chat, visual review, scheduling, second chat, safety
+  reports, user blocks, account deletion and local/dev operational tooling.
+- Backend profile-photo reordering is implemented at
+  `PUT /api/me/profile/photos/reorder`.
+- The shared push notification preparation, delivery-result persistence and
+  sender workflow is implemented under `service.notification`.
+- Google-origin Firebase authentication is implemented at the backend boundary
+  through Firebase ID tokens and immutable backend-owned `authOrigin`.
 
-## 5. MVP infrastructure/dev environment
+## Remaining MVP backend debt
 
-### 5.1 First external dev deploy target
+- Keep Bruno/local smoke flows aligned with the current API when they are used
+  as controlled MVP manual QA.
+- Add new entries here only for concrete backend work that blocks controlled
+  MVP/beta usage and is not already covered by canonical docs.
 
-MVP need:
-- A backend environment reachable from a physical Android device and installable APK.
+## Deferred beyond MVP
 
-Decision pending:
-- Choose first external development deploy target.
+These are tracked as production or future-product work, not MVP blockers:
 
-Candidates:
-- Render.
-- Fly.io.
-- Railway.
-- Google Cloud Run.
-- AWS App Runner.
-- ECS Fargate.
-- Managed PostgreSQL provider such as Neon, Supabase, Render PostgreSQL, Railway PostgreSQL or AWS RDS.
-
-MVP recommendation:
-- Prefer simple container platform + managed PostgreSQL before Kubernetes.
-
-### 5.2 Dev deployment model
-
-Before distributing APKs beyond local machine:
-- Define runtime platform.
-- Define managed PostgreSQL instance.
-- Define Firebase service-account secret.
-- Define environment variables.
-- Define health check path.
-- Define rollback strategy.
-- Define which GHCR tag dev tracks.
-
-### 5.3 Smoke check workflow
-
-MVP task:
-- Wire the manual `Smoke check` GitHub Actions workflow into the eventual dev deploy pipeline once the dev runtime platform exists.
-
-Acceptance criteria:
-- Smoke check runs against the deployed backend.
-- Public smoke checks cover readiness and ping. `/actuator/info` remains administrator-only and can be used for manual image metadata inspection with a fresh admin token.
-
----
-
-## 6. Explicitly deferred from MVP
-
-The following are intentionally not MVP blockers:
-
-- Real-time chat via WebSocket or SSE.
-- Additional push notification event coverage beyond currently implemented MVP events.
-- Google Sign-In / social auth providers.
-- Reveal quotas.
-- Advanced compatibility scoring.
-- ML-based matching.
-- Popularity, attractiveness or ELO-style ranking.
-- Gamified reputation badges.
-- Production trust score based on real behavior.
-- Full manual moderation workflow.
-- Profile authenticity verification provider integration.
-- Canonical city/locality reference dataset.
-- Geohash/spatial indexing.
-- CDN/cache strategy for media.
-- Application-level message encryption.
-- Firebase App Check replay protection or limited-use tokens.
-- Parallel matchmaking workers.
-- Kubernetes/Helm/Terraform unless the chosen platform requires them.
-
-Backend concurrency hardening status:
-- Message sends are serialized per `Chat` row with a pessimistic database lock.
-- Firebase provisioning retries one concurrent UID/email unique-conflict attempt in a fresh transaction.
-- Durable profile-photo DB/object-storage consistency is implemented with `media_cleanup_tasks`.
-- PostgreSQL remains authoritative for profile-photo references; new objects are protected by delayed cleanup guards until DB finalization commits.
-- Old profile-photo objects are deleted only after the referencing DB transaction commits; deletion is idempotent, durable and retryable.
-- Completed cleanup tasks are removed. `FAILED` cleanup tasks require operational inspection.
-- Targeted PostgreSQL/Testcontainers coverage exists for Home query-count shape, bounded message reads, one first-chat write race, one second-chat activation race and concurrent Firebase provisioning.
-- The first-chat `ChatDecision` race is intentionally unchanged because Android only supports manual retry after request completion and `actionLoading` reset.
-- Exact notification delivery claiming/outbox/retries, broad observability, rate limiting, presigned direct-to-S3 uploads, CDN behavior and PostgreSQL/Testcontainers media-concurrency coverage remain out of scope.
-
-Implemented scheduler hardening:
-
-- frequent lifecycle jobs now load bounded deterministic batches and leave backlog for later scheduled runs;
-- batch sizes are configurable per frequent job, with a default of `100`;
-- one candidate failure is isolated and does not abort the rest of the batch;
-- backlog is logged as a cheap `batchSize + 1` signal, not exposed as a public API;
-- matchmaking now checks the queue every `15000` ms by default while preserving `maxPairsPerRun`, candidate-pair limits and scalable queue claiming;
-- no scheduler drains an entire backlog in one run, and no parallel workers, queues or generic job framework were introduced.
-
-### 6.1 Push notification delivery workflow cleanup
-
-Implemented notification transaction-boundary cleanup:
-
-- Firebase Cloud Messaging sender integration is active in `local-firebase`,
-  `dev` and `prod` profiles;
-- authenticated users can register or refresh Android FCM tokens through
-  `PUT /api/me/push-tokens`;
-- token registration is an upsert by registration token: the row is associated
-  with the current user, re-enabled and `lastSeenAt` is refreshed;
-- multiple active tokens per user are supported so multiple legitimate devices
-  can receive the same logical user-level reminder;
-- provider calls now run outside active database transactions;
-- event preparation and delivery-result persistence use short database transactions;
-- aggregate locks, including the `VisualReview` reminder lock, are released before FCM transport;
-- product-transaction notification call sites were inspected; current provider-call paths are scheduler/dev-job driven after product transitions have committed.
-
-Current notification event services intentionally keep their event-specific behavior explicit, but they still repeat related workflow shape:
-
-- check existing `PushNotificationDelivery` by user, notification type and aggregate id;
-- load active device tokens;
-- send through `PushNotificationSender` after commit;
-- disable invalid tokens after provider response;
-- save `SENT`, `FAILED` or `SKIPPED_NO_ACTIVE_TOKEN`;
-- catch per-user failures without failing the owning product transition.
-
-Remaining deferred cleanup:
-
-- Extract a shared `PushNotificationDeliveryService` under `service.notification`.
-- Keep event services responsible for eligibility, recipients and payload shape.
-- Keep provider transport under `service.notification.sender`.
-- Preserve existing idempotency semantics and delivery statuses.
-- Avoid changing notification payload contents during the extraction.
-- Delivery deduplication remains best effort through the existing `(userId, notificationType, aggregateId)` unique key. A duplicate push remains theoretically possible if two workers prepare before either persists a delivery row.
-- A prepared push can become stale if the user completes the action immediately after preparation and before transport. Exact delivery claiming, outbox, retries and backoff remain deferred.
-- Exhaustive PostgreSQL/Testcontainers lock verification remains deferred beyond the targeted production-readiness suite.
-
-Observed local smoke gap to investigate:
-
-- During the July 21, 2026 `local-firebase` smoke, two provider attempts returned
-  textual `NotRegistered` results.
-- After the run, the corresponding database rows were still observed as
-  enabled.
-- Current code is intended to disable provider-declared invalid tokens, but this
-  observation means the provider exception mapping or cleanup path needs focused
-  investigation.
-- Do not collapse this into one-token-per-user behavior; multiple legitimate
-  devices per user must remain possible.
+- Production deployment boundary, secrets, backup/restore and rollback policy.
+- Production photo-analysis provider smoke validation and moderation operations.
+- Production backoffice access model, child-safety operations and appeals.
+- Final account-deletion purge/anonymization and backup-retention policy.
+- Production observability backend, dashboards and alerting.
+- Notification retry/backoff/outbox semantics and production FCM validation.
+- Capacity, reliability and ranking calibration from real traffic.
+- Distributed/gateway rate limiting for multi-instance scale.
+- WebSocket/SSE, Redis, projections, direct-to-storage uploads, CDN, PostGIS,
+  Kubernetes, Terraform/CDK, ML-based matching and public reputation features.

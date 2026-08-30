@@ -492,7 +492,10 @@ not block first-chat messages, first-chat `APPROVED`, mutual approval, Visual
 Review creation for an existing Match, Visual decisions, scheduling or second
 chat.
 
-Advanced criteria such as affinity tags or probabilistic scoring are not implemented.
+Ranking can remain in legacy mode or use the implemented probabilistic weighted
+mode. Private affinity evidence can be `OFF`, `SHADOW` or `ACTIVE` for
+probabilistic ranking, but affinity is never a hard eligibility filter and
+production defaults keep it disabled.
 
 The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.
 
