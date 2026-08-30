@@ -59,7 +59,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         val storedObject = storedObject("new-upload.jpg")
         stubStorageUpload(storedObject)
 
-        val photo = profileService.uploadPhoto(
+        val photo = profilePhotoService.uploadPhoto(
             profileId = profileId,
             position = 1,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -101,7 +101,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         }
 
         assertThrows<DomainConflictException> {
-            profileService.uploadPhoto(
+            profilePhotoService.uploadPhoto(
                 profileId = profileId,
                 position = 1,
                 contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -135,7 +135,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         Mockito.doThrow(ObjectStorageException("delete failed"))
             .`when`(storageService).deleteObject("test-bucket", oldPhoto.storageKey)
 
-        val replaced = profileService.replacePhoto(
+        val replaced = profilePhotoService.replacePhoto(
             profileId = profileId,
             photoId = oldPhoto.id,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -172,7 +172,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         Mockito.doThrow(RuntimeException("unexpected cleanup failure"))
             .`when`(mediaCleanupProcessor).processTask(anyUuid(), anyOffsetDateTime())
 
-        val replaced = profileService.replacePhoto(
+        val replaced = profilePhotoService.replacePhoto(
             profileId = profileId,
             photoId = oldPhoto.id,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -208,7 +208,7 @@ class ProfilePhotoMediaConsistencyIntegrationTest : BaseIT() {
         Mockito.doThrow(ObjectStorageException("delete failed"))
             .`when`(storageService).deleteObject("test-bucket", photo.storageKey)
 
-        profileService.deletePhoto(profileId, photo.id)
+        profilePhotoService.deletePhoto(profileId, photo.id)
 
         assertFalse(profilePhotoRepository.existsById(photo.id))
         val task = mediaCleanupTaskRepository.findAll().single()

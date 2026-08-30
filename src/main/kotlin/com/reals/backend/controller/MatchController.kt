@@ -8,6 +8,7 @@ import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
+import com.reals.backend.service.photo.ProfilePhotoService
 import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
@@ -24,6 +25,7 @@ class MatchController(
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
     private val profileService: ProfileService,
+    private val profilePhotoService: ProfilePhotoService,
     private val userBlockCommandService: UserBlockCommandService,
     private val legalComplianceService: LegalComplianceService,
     private val chatAudioPolicyService: ChatAudioPolicyService,
@@ -150,9 +152,14 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val photos = profileService.getPhotoResponses(
+        val photos = profilePhotoService.getPhotoViews(
             profileId = partnerProfile.id
-        )
+        ).map {
+            PhotoResponse.from(
+                photo = it.photo,
+                url = it.readUrl
+            )
+        }
         val profileQuestions =
             profileQuestionAnswerService.getPublicSelectedAnswers(partnerProfile.id)
                 .map(PublicProfileQuestionResponse::from)

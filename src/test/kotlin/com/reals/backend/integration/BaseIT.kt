@@ -63,6 +63,7 @@ import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.photo.ProfilePhotoService
 import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
@@ -106,6 +107,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var profileService: ProfileService
+
+    @Autowired
+    protected lateinit var profilePhotoService: ProfilePhotoService
 
     @Autowired
     protected lateinit var matchmakingService: MatchmakingService

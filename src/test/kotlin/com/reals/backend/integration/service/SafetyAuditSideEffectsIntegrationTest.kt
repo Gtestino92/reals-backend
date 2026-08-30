@@ -102,7 +102,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
         val profile = profileService.findByUserId(userId)!!
         val photo = profilePhotoRepository.findByProfileId(profile.id).first()
 
-        profileService.deletePhoto(profile.id, photo.id)
+        profilePhotoService.deletePhoto(profile.id, photo.id)
 
         val event = auditEventRepository.findAll()
             .single {

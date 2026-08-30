@@ -16,6 +16,8 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.photo.PhotoPlacement
+import com.reals.backend.service.photo.ProfilePhotoService
+import com.reals.backend.service.photo.ProfilePhotoView
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
@@ -41,6 +43,7 @@ import java.util.UUID
 @Validated
 class ProfileController(
     private val profileService: ProfileService,
+    private val profilePhotoService: ProfilePhotoService,
     private val legalComplianceService: LegalComplianceService,
     private val profilePhotoUploadGuard: ProfilePhotoUploadGuard
 ) {
@@ -72,7 +75,7 @@ class ProfileController(
             maxDistanceKm = request.maxDistanceKm
         )
 
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profilePhotoService.getPhotos(profile.id)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             ProfileResponse.from(profile, photos.size)
@@ -85,7 +88,7 @@ class ProfileController(
     ): ResponseEntity<ProfileResponse> {
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profilePhotoService.getPhotos(profile.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -113,7 +116,7 @@ class ProfileController(
             countryCode = request.countryCode,
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -142,7 +145,7 @@ class ProfileController(
             profileId = profile.id
         )
 
-        val photos = profileService.getPhotos(activated.id)
+        val photos = profilePhotoService.getPhotos(activated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -171,7 +174,7 @@ class ProfileController(
             maxDistanceKm = request.maxDistanceKm
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -193,7 +196,7 @@ class ProfileController(
             profileId = profile.id
         )
 
-        val photos = profileService.getPhotos(verified.id)
+        val photos = profilePhotoService.getPhotos(verified.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -229,7 +232,7 @@ class ProfileController(
         val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val photo = profilePhotoUploadGuard.withPermit {
-            profileService.uploadPhoto(
+            profilePhotoService.uploadPhoto(
                 profileId = profile.id,
                 position = position,
                 contentType = file.contentType,
@@ -240,7 +243,7 @@ class ProfileController(
         return ResponseEntity.status(HttpStatus.CREATED).body(
             PhotoResponse.from(
                 photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
+                url = profilePhotoService.resolvePhotoReadUrl(photo)
             )
         )
     }
@@ -258,7 +261,8 @@ class ProfileController(
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         return ResponseEntity.ok(
-            profileService.getPhotoResponses(profileId = profile.id)
+            profilePhotoService.getPhotoViews(profileId = profile.id)
+                .map(::toPhotoResponse)
         )
     }
 
@@ -272,7 +276,7 @@ class ProfileController(
 
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val photos = profileService.reorderPhotos(
+        val photos = profilePhotoService.reorderPhotos(
             profileId = profile.id,
             placements = request.placements.map {
                 PhotoPlacement(
@@ -286,7 +290,7 @@ class ProfileController(
             photos.map {
                 PhotoResponse.from(
                     photo = it,
-                    url = profileService.resolvePhotoReadUrlForResponse(it)
+                    url = profilePhotoService.resolvePhotoReadUrl(it)
                 )
             }
         )
@@ -305,12 +309,12 @@ class ProfileController(
     ): ResponseEntity<ProfileResponse> {
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val updated = profileService.deletePhoto(
+        val updated = profilePhotoService.deletePhoto(
             profileId = profile.id,
             photoId = photoId
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -344,7 +348,7 @@ class ProfileController(
         val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val photo = profilePhotoUploadGuard.withPermit {
-            profileService.replacePhoto(
+            profilePhotoService.replacePhoto(
                 profileId = profile.id,
                 photoId = photoId,
                 contentType = file.contentType,
@@ -355,7 +359,7 @@ class ProfileController(
         return ResponseEntity.ok(
             PhotoResponse.from(
                 photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
+                url = profilePhotoService.resolvePhotoReadUrl(photo)
             )
         )
     }
@@ -375,4 +379,10 @@ class ProfileController(
             )
         }
     }
+
+    private fun toPhotoResponse(view: ProfilePhotoView): PhotoResponse =
+        PhotoResponse.from(
+            photo = view.photo,
+            url = view.readUrl
+        )
 }
