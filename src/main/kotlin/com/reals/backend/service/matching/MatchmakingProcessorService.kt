@@ -46,7 +46,8 @@ class MatchmakingProcessorService(
                         candidatePairs = candidatePairs,
                         matchesCreated = createdMatches.size,
                         failedPairs = failedPairs,
-                        matches = createdMatches
+                        matches = createdMatches,
+                        limitExhausted = false
                     )
 
                 candidatePairs += 1
@@ -78,7 +79,13 @@ class MatchmakingProcessorService(
                     ex.userBId,
                     ex.cause
                 )
-                break
+                return MatchmakingProcessResult(
+                    candidatePairs = candidatePairs,
+                    matchesCreated = createdMatches.size,
+                    failedPairs = failedPairs,
+                    matches = createdMatches,
+                    limitExhausted = false
+                )
             }
         }
 
@@ -86,7 +93,8 @@ class MatchmakingProcessorService(
             candidatePairs = candidatePairs,
             matchesCreated = createdMatches.size,
             failedPairs = failedPairs,
-            matches = createdMatches
+            matches = createdMatches,
+            limitExhausted = true
         )
     }
 

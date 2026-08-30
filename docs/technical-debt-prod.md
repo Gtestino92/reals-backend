@@ -138,6 +138,8 @@ read as an architecture document or changelog.
 
 - Smoke-test FCM delivery in the production-like remote environment with the
   pinned Firebase Admin SDK and the production Android sender configuration.
+  Unit tests pin local invalid-token mapping, but they do not replace this
+  production-like smoke.
 - Verify that Firebase `UNREGISTERED` and relevant invalid-registration errors
   are mapped to `invalidTokens` and disabled in PostgreSQL. The implementation
   exists, but the pinned SDK/environment behavior still needs production-like

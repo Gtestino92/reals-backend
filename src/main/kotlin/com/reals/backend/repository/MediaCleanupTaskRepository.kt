@@ -15,6 +15,8 @@ import java.util.UUID
 
 interface MediaCleanupTaskRepository : JpaRepository<MediaCleanupTask, UUID> {
 
+    fun countByStatus(status: MediaCleanupTaskStatus): Long
+
     @Query(
         """
         select t.id

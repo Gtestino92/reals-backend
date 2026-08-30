@@ -762,6 +762,11 @@ Current custom application meters:
 - `reals.scheduler.job.backlog_remaining`: gauge set to `1` when a bounded
   scheduler run fetched more eligible work than it processed and `0` otherwise.
   Tags: `job=<bounded job class name>`.
+- `reals.matchmaking.run.limit_exhausted`: gauge set by `MatchmakingJob` to `1`
+  when the latest instrumented `MatchmakingProcessorService` invocation consumed
+  all configured `scheduler.matchmaking-job.max-pairs-per-run` attempts and `0`
+  when it returned before exhausting that allowance. This is a bounded-run
+  saturation signal, not an exact queue backlog count.
 - `reals.matchmaking.affinity.evaluations`: counter for affinity-ranking
   candidate evaluations when affinity ranking is not `OFF`. Tags:
   `mode=shadow|active`, `evidence=present|none`,
@@ -796,6 +801,10 @@ Current custom application meters:
   `phase=send_result|provider_failure`.
 - `reals.push.invalid_tokens_disabled`: counter for invalid FCM tokens disabled
   after provider results. Tags: `type=<push notification type>`.
+- `reals.media_cleanup.failed_tasks`: gauge for the durable
+  `media_cleanup_tasks` rows currently in `FAILED` status, sampled during the
+  latest `MediaCleanupJob` execution. This value is stored in memory for
+  scraping; `/actuator/metrics` does not query PostgreSQL live.
 - `reals.app_check.requests`: counter for App Check decisions when the filter
   runs. Tags: `mode=monitor|enforced`, `outcome=missing|valid|invalid|unavailable`,
   `endpoint_group=api|admin|legal|profile-photo|provision`, and bounded

@@ -18,6 +18,7 @@ import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.ChatLifecycleService
+import com.reals.backend.service.MicrometerMediaCleanupMetrics
 import com.reals.backend.service.MediaCleanupProcessResult
 import com.reals.backend.service.MediaCleanupProcessor
 import com.reals.backend.service.PenaltyService
@@ -29,6 +30,7 @@ import com.reals.backend.service.notification.SecondChatStartNotificationService
 import com.reals.backend.service.notification.SchedulingAvailableNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderNotificationService
 import com.reals.backend.service.notification.VisualReviewReminderProcessingResult
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.springframework.data.domain.Pageable
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -608,6 +610,42 @@ class LifecycleJobSummaryTest {
         Mockito.verify(processor).processTask(eqValue(first), anyOffsetDateTime())
         Mockito.verify(processor).processTask(eqValue(second), anyOffsetDateTime())
         Mockito.verify(processor, Mockito.never()).processTask(eqValue(backlog), anyOffsetDateTime())
+    }
+
+    @Test
+    fun `media cleanup job samples durable failed task count after each run`() {
+        val repository = Mockito.mock(MediaCleanupTaskRepository::class.java)
+        val processor = Mockito.mock(MediaCleanupProcessor::class.java)
+        val registry = SimpleMeterRegistry()
+        val mediaCleanupMetrics = MicrometerMediaCleanupMetrics(registry)
+
+        Mockito.`when`(
+            repository.findEligibleTaskIds(
+                anyOffsetDateTime(),
+                eqValue(MediaCleanupTaskStatus.PENDING),
+                eqValue(MediaCleanupTaskStatus.PROCESSING),
+                anyPageable()
+            )
+        ).thenReturn(emptyList())
+        Mockito.`when`(repository.countByStatus(MediaCleanupTaskStatus.FAILED))
+            .thenReturn(7L)
+
+        val summary =
+            MediaCleanupJob(
+                repository = repository,
+                processor = processor,
+                properties = MediaCleanupProperties(batchSize = 2),
+                mediaCleanupMetrics = mediaCleanupMetrics
+            ).processMediaCleanup()
+
+        assertEquals(0, summary.processed)
+        assertEquals(
+            7.0,
+            registry.get(MicrometerMediaCleanupMetrics.FAILED_TASKS)
+                .gauge()
+                .value()
+        )
+        Mockito.verifyNoInteractions(processor)
     }
 
     private fun expiredPenalty(): Penalty =

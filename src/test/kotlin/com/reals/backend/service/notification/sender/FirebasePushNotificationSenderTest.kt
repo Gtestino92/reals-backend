@@ -1,18 +1,80 @@
 package com.reals.backend.service.notification.sender
 
+import com.google.firebase.ErrorCode
+import com.google.firebase.FirebaseException
 import com.google.firebase.messaging.AndroidConfig
 import com.google.firebase.messaging.AndroidNotification
+import com.google.firebase.messaging.FirebaseMessagingException
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.Message
+import com.google.firebase.messaging.MessagingErrorCode
 import com.google.firebase.messaging.Notification
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.util.UUID
 
 class FirebasePushNotificationSenderTest {
+
+    @Test
+    fun `unregistered Firebase messaging error marks the registration token invalid`() {
+        val firebaseMessaging = Mockito.mock(FirebaseMessaging::class.java)
+        Mockito.`when`(firebaseMessaging.send(anyMessage()))
+            .thenThrow(firebaseMessagingException(MessagingErrorCode.UNREGISTERED))
+
+        val result = FirebasePushNotificationSender(firebaseMessaging).sendToTokens(
+            tokens = listOf(PushNotificationToken(id = UUID.randomUUID(), token = "raw-unregistered-token")),
+            notification = notification()
+        )
+
+        assertFalse(result.sent)
+        assertEquals(listOf("raw-unregistered-token"), result.invalidTokens)
+    }
+
+    @Test
+    fun `messaging level invalid argument marks the registration token invalid`() {
+        val firebaseMessaging = Mockito.mock(FirebaseMessaging::class.java)
+        Mockito.`when`(firebaseMessaging.send(anyMessage()))
+            .thenThrow(firebaseMessagingException(MessagingErrorCode.INVALID_ARGUMENT))
+
+        val result = FirebasePushNotificationSender(firebaseMessaging).sendToTokens(
+            tokens = listOf(PushNotificationToken(id = UUID.randomUUID(), token = "raw-invalid-argument-token")),
+            notification = notification()
+        )
+
+        assertFalse(result.sent)
+        assertEquals(listOf("raw-invalid-argument-token"), result.invalidTokens)
+    }
+
+    @Test
+    fun `invalid Firebase token does not prevent another device token from succeeding`() {
+        val firebaseMessaging = Mockito.mock(FirebaseMessaging::class.java)
+        Mockito.`when`(firebaseMessaging.send(anyMessage())).thenAnswer { invocation ->
+            val message = invocation.arguments[0] as Message
+            val token = message.fieldValue<String>("token")
+                ?: error("Expected token")
+            if (token == "raw-invalid-token-a") {
+                throw firebaseMessagingException(MessagingErrorCode.UNREGISTERED)
+            }
+            "message-for-$token"
+        }
+
+        val result = FirebasePushNotificationSender(firebaseMessaging).sendToTokens(
+            tokens = listOf(
+                PushNotificationToken(id = UUID.randomUUID(), token = "raw-invalid-token-a"),
+                PushNotificationToken(id = UUID.randomUUID(), token = "raw-valid-token-b")
+            ),
+            notification = notification()
+        )
+
+        assertTrue(result.sent)
+        assertEquals(listOf("raw-invalid-token-a"), result.invalidTokens)
+        assertEquals(listOf("message-for-raw-valid-token-b"), result.providerMessageIds)
+    }
 
     @Test
     fun `messages without Android metadata do not include Android config`() {
@@ -110,6 +172,29 @@ class FirebasePushNotificationSenderTest {
         return Message.builder()
             .setToken("placeholder-token")
             .build()
+    }
+
+    private fun notification(): PushNotification =
+        PushNotification(
+            title = "Title",
+            body = "Body",
+            data = mapOf("type" to "TEST")
+        )
+
+    private fun firebaseMessagingException(errorCode: MessagingErrorCode): FirebaseMessagingException {
+        val baseException =
+            FirebaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Firebase messaging test error $errorCode",
+                null
+            )
+        val factory = FirebaseMessagingException::class.java.getDeclaredMethod(
+            "withMessagingErrorCode",
+            FirebaseException::class.java,
+            MessagingErrorCode::class.java
+        )
+        factory.isAccessible = true
+        return factory.invoke(null, baseException, errorCode) as FirebaseMessagingException
     }
 
     private inline fun <reified T> Any.fieldValue(fieldName: String): T? {

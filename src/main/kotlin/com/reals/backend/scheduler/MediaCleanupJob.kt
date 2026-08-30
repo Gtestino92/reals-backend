@@ -3,6 +3,7 @@ package com.reals.backend.scheduler
 import com.reals.backend.config.s3.MediaCleanupProperties
 import com.reals.backend.domain.MediaCleanupTaskStatus
 import com.reals.backend.repository.MediaCleanupTaskRepository
+import com.reals.backend.service.MediaCleanupMetrics
 import com.reals.backend.service.MediaCleanupProcessResult
 import com.reals.backend.service.MediaCleanupProcessor
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -17,7 +18,8 @@ class MediaCleanupJob(
     private val repository: MediaCleanupTaskRepository,
     private val processor: MediaCleanupProcessor,
     private val properties: MediaCleanupProperties,
-    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop(),
+    private val mediaCleanupMetrics: MediaCleanupMetrics = MediaCleanupMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -66,6 +68,7 @@ class MediaCleanupJob(
             skipped = skipped,
             failed = failed
         )
+        sampleFailedTaskCount()
         log.logBatchComplete(
             jobName = "MediaCleanupJob",
             batchSize = properties.batchSize,
@@ -80,5 +83,15 @@ class MediaCleanupJob(
             backlogRemaining = batch.backlogRemaining
         )
         return summary
+    }
+
+    private fun sampleFailedTaskCount() {
+        try {
+            mediaCleanupMetrics.recordFailedTaskCount(
+                repository.countByStatus(MediaCleanupTaskStatus.FAILED)
+            )
+        } catch (ex: Exception) {
+            log.warn("MediaCleanupJob - failed to sample durable failed cleanup task count", ex)
+        }
     }
 }
