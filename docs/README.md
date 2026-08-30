@@ -1,6 +1,9 @@
 # Reals Backend Documentation
 
-This directory is the canonical documentation set for the project.
+This directory is the canonical documentation set for the project. Architecture,
+configuration, security, data-retention and commons files describe current
+behavior. Technical-debt files describe remaining known work and decisions; they
+should not preserve completed work as history.
 
 ## Files
 
@@ -15,8 +18,8 @@ This directory is the canonical documentation set for the project.
 - `operational-state-model.md`: persisted operational state and lifecycle notes.
 - `security-mvp.md`: MVP security posture and explicit limitations.
 - `storage-r2-configuration.md`: S3-compatible setup for shared/dev/prod-like application media storage, including R2 and hosted MinIO.
-- `technical-debt-mvp.md`: known pending decisions and intentionally unimplemented behavior for MVP.
-- `technical-debt-prod.md`: known pending decisions and intentionally unimplemented behavior for production hardening.
+- `technical-debt-mvp.md`: remaining known backend work that blocks controlled MVP/beta usage.
+- `technical-debt-prod.md`: remaining production-readiness work and production/future-product decisions.
 - `testing.md`: automated test strategy and commands.
 - `user-reliability-score.md`: reliability-score model and disabled-by-default status.
 

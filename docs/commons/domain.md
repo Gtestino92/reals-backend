@@ -163,7 +163,7 @@ Push notifications:
 - `ScheduleProposal` belongs to a connection and user.
 - `ActiveEngagementLock` logically belongs to a user and either a match or connection.
 - `PushDeviceToken` belongs to a user and stores an enabled FCM device token.
-- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `MATCH_FOUND` and `MATCH_FOUND_INVALIDATED`, the aggregate id is the match id. For `VISUAL_REVIEW_REMINDER`, the aggregate id is the match id; historical `VISUAL_REVIEW_AVAILABLE` rows also use match id and remain readable. For grouped `SCHEDULING_AVAILABLE`, the aggregate id is deterministic from notification type, user id and the sorted activated connection ids from one activation job execution. For `SCHEDULING_PROPOSALS_RECEIVED`, the aggregate id is deterministic from notification type, connection id and round number, allowing one partner notification per round. For `SCHEDULING_CONFIRMED`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each. For `SECOND_CHAT_STARTED`, the aggregate id is deterministic from `second-chat-started:<connectionId>`.
+- `PushNotificationDelivery` deduplicates external push attempts per user, notification type and aggregate id. For `MATCH_FOUND` and `MATCH_FOUND_INVALIDATED`, the aggregate id is the match id. For `VISUAL_REVIEW_REMINDER`, the aggregate id is the match id; historical `VISUAL_REVIEW_AVAILABLE` rows also use match id and remain readable. For `MATCHMAKING_AVAILABLE`, the aggregate id is the matchmaking availability notification episode id. For grouped `SCHEDULING_AVAILABLE`, the aggregate id is deterministic from notification type, user id and the sorted activated connection ids from one activation job execution. For `SCHEDULING_PROPOSALS_RECEIVED`, the aggregate id is deterministic from notification type, connection id and round number, allowing one partner notification per round. For `SCHEDULING_CONFIRMED`, the aggregate id is the connection id. For `SECOND_CHAT_REMINDER`, the aggregate id is a deterministic reminder key derived from connection id and `minutesBefore`, so multiple configured reminder lead times can be sent once each. For `SECOND_CHAT_STARTED`, the aggregate id is deterministic from `second-chat-started:<connectionId>`. Delivery status includes sent, skipped-token, `SKIPPED_USER_PREFERENCE` and provider failure outcomes.
 - `UserLegalDocumentAction` is an append-oriented factual record that a user performed a configured action for a legal document type/version/content SHA-256 at a backend-generated timestamp. It stores `userId`, `documentType`, `documentVersion`, nullable `documentContentSha256`, `action` and `actedAt`; it does not store document text or document URLs.
 
 Matchmaking pair eligibility distinguishes active interactions, temporary history cooldowns and permanent blocks:
@@ -492,7 +492,10 @@ not block first-chat messages, first-chat `APPROVED`, mutual approval, Visual
 Review creation for an existing Match, Visual decisions, scheduling or second
 chat.
 
-Advanced criteria such as affinity tags or probabilistic scoring are not implemented.
+Ranking can remain in legacy mode or use the implemented probabilistic weighted
+mode. Private affinity evidence can be `OFF`, `SHADOW` or `ACTIVE` for
+probabilistic ranking, but affinity is never a hard eligibility filter and
+production defaults keep it disabled.
 
 The current matching selector expects scores normalized from `0.0` to `1.0`. Environment properties define the number of SQL-filtered candidate pairs to score, the minimum accepted score and the early-accept score that stops further scoring.
 
