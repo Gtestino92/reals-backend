@@ -47,6 +47,8 @@ import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
 import com.reals.backend.service.affinity.AffinityAnswerPatch
 import com.reals.backend.service.affinity.AffinityQuestionAnswerService
 import com.reals.backend.service.ChatExitService
+import com.reals.backend.service.ChatAccessService
+import com.reals.backend.service.ChatLifecycleService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
 import com.reals.backend.service.FirstChatGuidanceService
@@ -125,6 +127,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var chatService: ChatService
+
+    @Autowired
+    protected lateinit var chatAccessService: ChatAccessService
+
+    @Autowired
+    protected lateinit var chatLifecycleService: ChatLifecycleService
 
     @Autowired
     protected lateinit var chatExitService: ChatExitService

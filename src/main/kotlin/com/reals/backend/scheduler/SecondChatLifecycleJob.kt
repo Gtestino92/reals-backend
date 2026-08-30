@@ -1,7 +1,7 @@
 package com.reals.backend.scheduler
 
 import com.reals.backend.repository.ScheduleNegotiationRepository
-import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatLifecycleService
 import com.reals.backend.service.SecondChatConversationLifecycleService
 import com.reals.backend.service.SecondChatLifecycleService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -20,7 +20,7 @@ import java.time.OffsetDateTime
  */
 @Component
 class SecondChatLifecycleJob(
-    private val chatService: ChatService,
+    private val chatLifecycleService: ChatLifecycleService,
     private val secondChatLifecycleService: SecondChatLifecycleService,
     private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
     private val negotiationRepository: ScheduleNegotiationRepository,
@@ -112,7 +112,7 @@ class SecondChatLifecycleJob(
             )
         val timedOutAvailable =
             boundedSchedulerBatch(
-                fetchedCandidates = chatService.findTimedOutAvailableSecondChatIds(
+                fetchedCandidates = chatLifecycleService.findTimedOutAvailableSecondChatIds(
                     now = now,
                     limit = batchSize + 1
                 ),
@@ -120,7 +120,7 @@ class SecondChatLifecycleJob(
             )
         val timedOutActive =
             boundedSchedulerBatch(
-                fetchedCandidates = chatService.findTimedOutActiveSecondChatIds(
+                fetchedCandidates = chatLifecycleService.findTimedOutActiveSecondChatIds(
                     now = now,
                     limit = batchSize + 1
                 ),
@@ -128,7 +128,7 @@ class SecondChatLifecycleJob(
             )
         val expiredReadOnly =
             boundedSchedulerBatch(
-                fetchedCandidates = chatService.findExpiredReadOnlySecondChatIds(
+                fetchedCandidates = chatLifecycleService.findExpiredReadOnlySecondChatIds(
                     now = now,
                     limit = batchSize + 1
                 ),
@@ -250,7 +250,7 @@ class SecondChatLifecycleJob(
                 val confirmedDateTime = negotiation?.confirmedDateTime
                 if (
                     confirmedDateTime != null &&
-                    chatService.closeExpiredScheduledSecondChatWindow(
+                    chatLifecycleService.closeExpiredScheduledSecondChatWindow(
                         connectionId = connectionId,
                         confirmedDateTime = confirmedDateTime
                     )
@@ -271,7 +271,7 @@ class SecondChatLifecycleJob(
 
         timedOutAvailable.items.forEach { chatId ->
             try {
-                if (chatService.closeExpiredUnactivatedSecondChat(chatId)) {
+                if (chatLifecycleService.closeExpiredUnactivatedSecondChat(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1
@@ -288,7 +288,7 @@ class SecondChatLifecycleJob(
 
         timedOutActive.items.forEach { chatId ->
             try {
-                if (chatService.expireSecondChatToReadOnly(chatId)) {
+                if (chatLifecycleService.expireSecondChatToReadOnly(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1
@@ -305,7 +305,7 @@ class SecondChatLifecycleJob(
 
         expiredReadOnly.items.forEach { chatId ->
             try {
-                if (chatService.closeExpiredReadOnlySecondChat(chatId)) {
+                if (chatLifecycleService.closeExpiredReadOnlySecondChat(chatId)) {
                     succeeded += 1
                 } else {
                     skipped += 1

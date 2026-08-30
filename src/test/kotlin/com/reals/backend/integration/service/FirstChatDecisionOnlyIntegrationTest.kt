@@ -145,7 +145,8 @@ class FirstChatDecisionOnlyIntegrationTest : BaseIT() {
 
         val summary =
             InactivityCheckJob(
-                chatService = chatService,
+                chatAccessService = chatAccessService,
+                chatLifecycleService = chatLifecycleService,
                 chatMessageRepository = chatMessageRepository,
                 connectionRepository = connectionRepository,
                 inactivityThresholdMinutes = 5,

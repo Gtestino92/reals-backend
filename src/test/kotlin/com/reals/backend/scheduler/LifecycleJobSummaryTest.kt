@@ -14,7 +14,7 @@ import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.VisualReviewRepository
-import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatLifecycleService
 import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.SchedulingService
 import com.reals.backend.service.UserService
@@ -37,15 +37,15 @@ class LifecycleJobSummaryTest {
 
     @Test
     fun `chat timeout job processes only one bounded batch`() {
-        val chatService = Mockito.mock(ChatService::class.java)
+        val chatLifecycleService = Mockito.mock(ChatLifecycleService::class.java)
         val first = UUID.randomUUID()
         val second = UUID.randomUUID()
         val backlog = UUID.randomUUID()
 
-        Mockito.`when`(chatService.findTimedOutChatIds(anyOffsetDateTime(), eqValue(3)))
+        Mockito.`when`(chatLifecycleService.findTimedOutChatIds(anyOffsetDateTime(), eqValue(3)))
             .thenReturn(listOf(first, second, backlog))
         Mockito.`when`(
-            chatService.endChat(
+            chatLifecycleService.endChat(
                 eqValue(first),
                 eqValue(ChatStatus.EXPIRED),
                 eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
@@ -53,7 +53,7 @@ class LifecycleJobSummaryTest {
             )
         ).thenReturn(true)
         Mockito.`when`(
-            chatService.endChat(
+            chatLifecycleService.endChat(
                 eqValue(second),
                 eqValue(ChatStatus.EXPIRED),
                 eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
@@ -61,13 +61,13 @@ class LifecycleJobSummaryTest {
             )
         ).thenReturn(false)
 
-        val summary = ChatTimeoutJob(chatService, batchSize = 2).processTimedOutChats()
+        val summary = ChatTimeoutJob(chatLifecycleService, batchSize = 2).processTimedOutChats()
 
         assertEquals(2, summary.processed)
         assertEquals(1, summary.succeeded)
         assertEquals(1, summary.skipped)
         assertEquals(0, summary.failed)
-        Mockito.verify(chatService, Mockito.never()).endChat(
+        Mockito.verify(chatLifecycleService, Mockito.never()).endChat(
             eqValue(backlog),
             eqValue(ChatStatus.EXPIRED),
             eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
