@@ -291,14 +291,12 @@ class ChatService(
     fun endChat(
         chatId: UUID,
         finalStatus: ChatStatus,
-        endedReason: ChatEndReason,
-        abandonedUserIds: List<UUID> = emptyList()
+        endedReason: ChatEndReason
     ): Boolean =
         chatLifecycleService.endChat(
             chatId = chatId,
             finalStatus = finalStatus,
-            endedReason = endedReason,
-            abandonedUserIds = abandonedUserIds
+            endedReason = endedReason
         )
 
     fun getMessages(

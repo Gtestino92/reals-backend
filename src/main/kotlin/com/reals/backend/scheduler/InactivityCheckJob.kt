@@ -3,9 +3,6 @@ package com.reals.backend.scheduler
 import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
-import com.reals.backend.domain.ChatType
-import com.reals.backend.repository.ChatMessageRepository
-import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.service.ChatAccessService
 import com.reals.backend.service.ChatLifecycleService
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
@@ -14,14 +11,11 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
-import java.util.*
 
 @Component
 class InactivityCheckJob(
     private val chatAccessService: ChatAccessService,
     private val chatLifecycleService: ChatLifecycleService,
-    private val chatMessageRepository: ChatMessageRepository,
-    private val connectionRepository: ConnectionRepository,
     @param:Value("\${chat.first-chat.inactivity-threshold-minutes:5}")
     private val inactivityThresholdMinutes: Long,
     @param:Value("\${scheduler.inactivity-check-job.batch-size:100}")
@@ -61,17 +55,11 @@ class InactivityCheckJob(
         batch.items.forEach { chatId ->
             try {
                 val chat: Chat = chatAccessService.findByIdOrThrow(chatId)
-                val abandonedUserIds: List<UUID> = if (chat.chatType == ChatType.SECOND_CHAT) {
-                    resolveInactiveUsers(chat.id, chat.connectionId, threshold)
-                } else {
-                    emptyList()
-                }
 
                 val changed = chatLifecycleService.endChat(
                     chatId = chat.id,
                     finalStatus = ChatStatus.ABANDONED,
-                    endedReason = ChatEndReason.INACTIVITY_TIMEOUT,
-                    abandonedUserIds = abandonedUserIds
+                    endedReason = ChatEndReason.INACTIVITY_TIMEOUT
                 )
                 if (changed) {
                     succeeded += 1
@@ -109,15 +97,5 @@ class InactivityCheckJob(
             backlogRemaining = batch.backlogRemaining
         )
         return summary
-    }
-
-    private fun resolveInactiveUsers(chatId: UUID, connectionId: UUID?, threshold: OffsetDateTime): List<UUID> {
-        if (connectionId == null) return emptyList()
-        val connection = connectionRepository.findById(connectionId).orElse(null) ?: return emptyList()
-        val userIds = listOf(connection.userAId, connection.userBId)
-        val recentSenders = chatMessageRepository.findByChatSessionIdAndSentAtAfter(chatId, threshold)
-            .map { it.senderId }
-            .toSet()
-        return userIds.filter { it !in recentSenders }
     }
 }

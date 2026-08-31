@@ -55,16 +55,14 @@ class LifecycleJobSummaryTest {
             chatLifecycleService.endChat(
                 eqValue(first),
                 eqValue(ChatStatus.EXPIRED),
-                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
-                Mockito.anyList()
+                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT)
             )
         ).thenReturn(true)
         Mockito.`when`(
             chatLifecycleService.endChat(
                 eqValue(second),
                 eqValue(ChatStatus.EXPIRED),
-                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
-                Mockito.anyList()
+                eqValue(ChatEndReason.ABSOLUTE_TIMEOUT)
             )
         ).thenReturn(false)
 
@@ -77,8 +75,7 @@ class LifecycleJobSummaryTest {
         Mockito.verify(chatLifecycleService, Mockito.never()).endChat(
             eqValue(backlog),
             eqValue(ChatStatus.EXPIRED),
-            eqValue(ChatEndReason.ABSOLUTE_TIMEOUT),
-            Mockito.anyList()
+            eqValue(ChatEndReason.ABSOLUTE_TIMEOUT)
         )
     }
 

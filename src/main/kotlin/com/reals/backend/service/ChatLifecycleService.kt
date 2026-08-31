@@ -65,8 +65,7 @@ class ChatLifecycleService(
     fun endChat(
         chatId: UUID,
         finalStatus: ChatStatus,
-        endedReason: ChatEndReason,
-        abandonedUserIds: List<UUID> = emptyList()
+        endedReason: ChatEndReason
     ): Boolean {
         require(finalStatus == ChatStatus.EXPIRED || finalStatus == ChatStatus.ABANDONED) {
             "endChat only accepts EXPIRED or ABANDONED, got $finalStatus"

@@ -147,8 +147,6 @@ class FirstChatDecisionOnlyIntegrationTest : BaseIT() {
             InactivityCheckJob(
                 chatAccessService = chatAccessService,
                 chatLifecycleService = chatLifecycleService,
-                chatMessageRepository = chatMessageRepository,
-                connectionRepository = connectionRepository,
                 inactivityThresholdMinutes = 5,
                 batchSize = 10
             ).processInactiveChats()
