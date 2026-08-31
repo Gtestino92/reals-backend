@@ -117,8 +117,8 @@ class FirebaseAppCheckStartupValidator(
                 throw IllegalStateException("security.app-check.jwks-uri must be a valid URI in $scope")
             }
 
-        require(uri.isAbsolute && !uri.scheme.isNullOrBlank() && !uri.host.isNullOrBlank()) {
-            "security.app-check.jwks-uri must be an absolute URI with host in $scope"
+        require(uri.isAbsolute && !uri.host.isNullOrBlank() && uri.scheme.equals("https", ignoreCase = true)) {
+            "security.app-check.jwks-uri must be an absolute HTTPS URI with host in $scope"
         }
     }
 

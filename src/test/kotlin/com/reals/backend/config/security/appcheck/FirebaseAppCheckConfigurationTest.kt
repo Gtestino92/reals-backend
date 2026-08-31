@@ -79,6 +79,22 @@ class FirebaseAppCheckConfigurationTest {
     }
 
     @Test
+    fun `dev rejects enabled app check with http jwks uri`() {
+        contextRunner
+            .withPropertyValues(
+                "spring.profiles.active=dev",
+                "security.app-check.mode=ENFORCED",
+                "security.app-check.project-number=123456789",
+                "security.app-check.allowed-app-ids[0]=1:123456789:android:app",
+                "security.app-check.jwks-uri=http://example.com/jwks"
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure).hasMessageContaining("HTTPS URI")
+            }
+    }
+
+    @Test
     fun `prod rejects missing app check configuration`() {
         contextRunner
             .withPropertyValues(
@@ -104,6 +120,22 @@ class FirebaseAppCheckConfigurationTest {
             .run { context ->
                 assertThat(context).hasFailed()
                 assertThat(context.startupFailure).hasMessageContaining("ENFORCED")
+            }
+    }
+
+    @Test
+    fun `prod rejects enabled app check with http jwks uri`() {
+        contextRunner
+            .withPropertyValues(
+                "spring.profiles.active=prod",
+                "security.app-check.mode=ENFORCED",
+                "security.app-check.project-number=123456789",
+                "security.app-check.allowed-app-ids[0]=1:123456789:android:app",
+                "security.app-check.jwks-uri=http://example.com/jwks"
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure).hasMessageContaining("HTTPS URI")
             }
     }
 

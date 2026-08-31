@@ -89,7 +89,7 @@ Non-sensitive runtime configuration:
 | `FIREBASE_APP_CHECK_MODE` | prod: yes, dev/local: no | `DISABLED`, `MONITOR` or `ENFORCED`. Defaults to `DISABLED` in `local-firebase`/`dev` and `ENFORCED` in `prod`; prod rejects any non-`ENFORCED` value. |
 | `FIREBASE_PROJECT_NUMBER` | prod and enabled App Check | Numeric Firebase project number used for App Check issuer and audience checks. This is not the Firebase project ID. |
 | `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | prod and enabled App Check | Comma-separated Firebase App IDs accepted from the App Check token subject. These are not Android package names. |
-| `FIREBASE_APP_CHECK_JWKS_URI` | no | App Check JWKS URI. Defaults to `https://firebaseappcheck.googleapis.com/v1/jwks`; override only for controlled testing. |
+| `FIREBASE_APP_CHECK_JWKS_URI` | no | App Check JWKS URI. Defaults to `https://firebaseappcheck.googleapis.com/v1/jwks`; when App Check is enabled it must be an absolute HTTPS URI with a host. Override only for controlled testing. |
 | `FIREBASE_AUTH_REVOCATION_CACHE_TTL` | no | Successful Firebase ID-token revocation/disabled-user checks are cached for this duration. Defaults to `PT60S`; token signature and expiry are still validated on every request. |
 | `FIREBASE_WEB_API_KEY` | password reset delivery | Firebase Web API key used only for Identity Toolkit `accounts:sendOobCode` password-reset delivery. Do not commit real keys. If blank, public reset responses remain generic and no reset email is sent. |
 | `FIREBASE_AUTH_REST_BASE_URL` | no | Identity Toolkit base URL. Defaults to `https://identitytoolkit.googleapis.com/v1`; override only for controlled tests or local stubs. |
@@ -657,7 +657,7 @@ flow. These checks do not call external providers.
 | Photo analysis provider | `profile.photos.moderation.provider` must be `sightengine`. |
 | Sightengine structure | `profile.photos.sightengine.endpoint` must be an absolute HTTPS URI; credentials must be nonblank; connect/read timeouts must be positive. |
 | Activation moderation | `profile.photos.require-moderation-approval-for-activation` must be `true`. |
-| App Check | Existing App Check validation requires `ENFORCED`, a numeric project number, at least one allowed Firebase App ID and an absolute JWKS URI. Non-production Firebase profiles validate the same provider fields when mode is `MONITOR` or `ENFORCED`. |
+| App Check | Existing App Check validation requires `ENFORCED`, a numeric project number, at least one allowed Firebase App ID and an absolute HTTPS JWKS URI with a host. Non-production Firebase profiles validate the same provider fields when mode is `MONITOR` or `ENFORCED`. |
 | Rate limiting | `security.rate-limit.enabled` must be `true`; configured token-bucket capacities and refill periods must be positive. |
 | Media storage | S3-compatible storage must have a nonblank bucket and region, valid credential-mode structure, compatible `auto` region usage, `PRESIGNED` read URLs and a positive presigned URL duration. |
 
