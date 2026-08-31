@@ -75,17 +75,13 @@ class SafetyReportService(
         reason: ChatExitReason,
         details: String
     ): SafetyReport {
-        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
-            source = SafetyReportSource.USER,
+        lockReportUsersForUpdate(reporterUserId, reportedUserId)
+        rejectExistingUserReport(
             reporterUserId = reporterUserId,
             reportedUserId = reportedUserId,
             contextType = SafetyReportContextType.CHAT,
             contextId = chat.id
         )
-
-        if (existing != null) {
-            return existing
-        }
 
         val report = safetyReportRepository.save(
             SafetyReport(
@@ -107,6 +103,26 @@ class SafetyReportService(
         return report
     }
 
+    private fun rejectExistingUserReport(
+        reporterUserId: UUID,
+        reportedUserId: UUID,
+        contextType: SafetyReportContextType,
+        contextId: UUID
+    ) {
+        safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+            source = SafetyReportSource.USER,
+            reporterUserId = reporterUserId,
+            reportedUserId = reportedUserId,
+            contextType = contextType,
+            contextId = contextId
+        )?.let {
+            throw DomainConflictException(
+                code = DomainErrorCode.SAFETY_REPORT_ALREADY_EXISTS,
+                message = "Safety report already exists"
+            )
+        }
+    }
+
     fun createUserReport(
         reporterUserId: UUID,
         request: CreateSafetyReportRequest
@@ -117,26 +133,13 @@ class SafetyReportService(
         )
         val details = normalizeReportDetails(request.details)
 
-        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
-            source = SafetyReportSource.USER,
+        lockReportUsersForUpdate(reporterUserId, context.reportedUserId)
+        rejectExistingUserReport(
             reporterUserId = reporterUserId,
             reportedUserId = context.reportedUserId,
             contextType = context.contextType,
             contextId = context.contextId
         )
-
-        if (existing != null) {
-            userBlockCommandService.blockUserAndContain(
-                blockerUserId = reporterUserId,
-                blockedUserId = context.reportedUserId,
-                source = UserBlockSource.SAFETY_REPORT,
-                sourceReportId = existing.id
-            )
-            return SafetyReportCreationResult(
-                report = existing,
-                created = false
-            )
-        }
 
         val report = safetyReportRepository.save(
             SafetyReport(
@@ -167,6 +170,16 @@ class SafetyReportService(
             report = report,
             created = true
         )
+    }
+
+    private fun lockReportUsersForUpdate(
+        reporterUserId: UUID,
+        reportedUserId: UUID
+    ) {
+        val orderedIds = listOf(reporterUserId, reportedUserId).sortedBy(UUID::toString)
+        check(userRepository.findAllByIdForUpdate(orderedIds).size == 2) {
+            "Cannot create safety report: one or more users were not found"
+        }
     }
 
     fun createAdminReport(

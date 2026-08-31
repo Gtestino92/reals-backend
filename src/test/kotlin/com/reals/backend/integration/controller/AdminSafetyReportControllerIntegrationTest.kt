@@ -173,6 +173,63 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `admin report can coexist with user report for same reporter reported and context`() {
+        val setup = createMatchInVisualPhase()
+        val admin = userService.createUser("admin-user-coexist-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "reportedUserId" to setup.userBId,
+                            "contextType" to "VISUAL_PROFILE",
+                            "matchId" to setup.matchId,
+                            "reason" to "INAPPROPRIATE_BEHAVIOR",
+                            "details" to "User-created report"
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+
+        mockMvc.perform(
+            post("/api/admin/safety-reports")
+                .with(authenticatedAsAdmin(admin.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "reportedUserId" to setup.userBId,
+                            "reporterUserId" to setup.userAId,
+                            "contextType" to "VISUAL_PROFILE",
+                            "matchId" to setup.matchId,
+                            "reason" to "OTHER",
+                            "details" to "Admin-created report for same context"
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.report.source", equalTo("ADMIN")))
+            .andExpect(jsonPath("$.report.reporter.userId", equalTo(setup.userAId.toString())))
+            .andExpect(jsonPath("$.report.reported.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.report.contextId", equalTo(setup.matchId.toString())))
+
+        val reports = safetyReportRepository.findAll()
+        assertEquals(2, reports.size)
+        assertEquals(
+            setOf(SafetyReportSource.USER, SafetyReportSource.ADMIN),
+            reports.map { it.source }.toSet()
+        )
+        assertEquals(1, userBlockRepository.count())
+        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertEquals(0, userReliabilityEventRepository.count())
+    }
+
+    @Test
     fun `admin can create contextual report without reporter when reported user belongs to context`() {
         val setup = createMatchInVisualPhase()
         val admin = userService.createUser("admin-context-no-reporter-${UUID.randomUUID()}@example.com")
@@ -228,6 +285,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
         assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.firstChatId).orElseThrow().status)
         assertEquals(0, userBlockRepository.count())
         assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertEquals(0, userReliabilityEventRepository.count())
 
         val report = safetyReportRepository.findAll().single()
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)

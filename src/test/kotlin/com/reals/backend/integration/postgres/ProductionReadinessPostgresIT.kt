@@ -148,7 +148,7 @@ class ProductionReadinessPostgresIT : PostgresITBase() {
                 "flywayVersion=$migrationVersion, index=$indexName, plan=$plan"
         )
 
-        assertEquals("30", migrationVersion)
+        assertEquals("46", migrationVersion)
         assertEquals("idx_chat_messages_session_sent_at_id", indexName)
         assertEquals(200, initial.size)
         assertTrue(initial.zipWithNext().all { (left, right) -> left.sentAt <= right.sentAt })
