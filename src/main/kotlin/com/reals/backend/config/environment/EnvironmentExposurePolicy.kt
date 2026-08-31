@@ -51,19 +51,21 @@ class EnvironmentExposurePolicy private constructor(
 
     companion object {
         const val LOCAL_NODB_PROFILE = "local-nodb"
+        const val LOCAL_FIREBASE_PROFILE = "local-firebase"
         const val DEV_PROFILE = "dev"
         const val PROD_PROFILE = "prod"
+        const val TEST_PROFILE = "test"
 
         val LOCAL_EXECUTION_PROFILES = setOf(
             LOCAL_NODB_PROFILE,
             "local-postgres",
-            "local-firebase"
+            LOCAL_FIREBASE_PROFILE
         )
 
         val EXECUTION_PROFILES = LOCAL_EXECUTION_PROFILES + setOf(
             DEV_PROFILE,
             PROD_PROFILE,
-            "test"
+            TEST_PROFILE
         )
 
         fun forActiveProfiles(vararg profiles: String): EnvironmentExposurePolicy =

@@ -455,13 +455,14 @@ dimension and JPEG quality `0.88`.
 Successful technical image validation is not semantic person/full-body
 validation. Outside `prod`, the temporary MVP shortcut still returns
 `isPersonPhoto=true`, `isFullBody=true` and `validationStatus=VALIDATED`. In
-`prod`, technical validation alone returns `isPersonPhoto=false`,
-`isFullBody=false` and `validationStatus=PENDING` when provider `none` is used.
-With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod`, the backend
-makes one Sightengine multipart request after technical validation and uses real
-face presence only as an MVP person-photo signal. In non-production execution
-profiles, Sightengine is disabled even if the variable is set and the backend
-uses the provider `none` compatibility path. At least one `faces` entry sets
+`prod`, startup guardrails reject provider `none`; if those guardrails are
+bypassed, the defensive no-provider path leaves technically valid photos as
+`isPersonPhoto=false`, `isFullBody=false` and `validationStatus=PENDING`.
+With `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod`, the
+backend makes one Sightengine multipart request after technical validation and
+uses real face presence only as an MVP person-photo signal. DEV defaults to the
+provider `none` compatibility path and calls Sightengine only when explicitly
+opted in with usable credentials and endpoint. At least one `faces` entry sets
 `isPersonPhoto=true`; zero real faces sets `isPersonPhoto=false`.
 `artificial_faces` do not count. Successful Sightengine analysis always persists
 `validationStatus=VALIDATED` and `isFullBody=false`. This is not facial

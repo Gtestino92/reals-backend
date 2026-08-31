@@ -45,12 +45,12 @@ class FirebaseAppCheckConfig {
         }
 
     @Bean
-    @Profile("prod")
-    fun firebaseAppCheckProductionStartupValidator(
+    @Profile("local-firebase", "dev", "prod")
+    fun firebaseAppCheckStartupValidator(
         properties: FirebaseAppCheckProperties,
         environmentExposurePolicy: EnvironmentExposurePolicy
-    ): FirebaseAppCheckProductionStartupValidator =
-        FirebaseAppCheckProductionStartupValidator(properties, environmentExposurePolicy)
+    ): FirebaseAppCheckStartupValidator =
+        FirebaseAppCheckStartupValidator(properties, environmentExposurePolicy)
 }
 
 private class LazyRemoteJwksJwtDecoderFactory(
@@ -74,7 +74,7 @@ private class LazyRemoteJwksJwtDecoderFactory(
             .build()
 }
 
-class FirebaseAppCheckProductionStartupValidator(
+class FirebaseAppCheckStartupValidator(
     private val properties: FirebaseAppCheckProperties,
     private val environmentExposurePolicy: EnvironmentExposurePolicy
 ) {
@@ -85,6 +85,10 @@ class FirebaseAppCheckProductionStartupValidator(
 
     private fun validate() {
         if (!environmentExposurePolicy.isProduction()) {
+            if (properties.mode == FirebaseAppCheckMode.DISABLED) {
+                return
+            }
+            validateEnabledNonProduction()
             return
         }
 
@@ -92,21 +96,29 @@ class FirebaseAppCheckProductionStartupValidator(
             "security.app-check.mode must be ENFORCED in prod"
         }
 
+        validateProviderConfiguration("prod")
+    }
+
+    private fun validateEnabledNonProduction() {
+        validateProviderConfiguration("when security.app-check.mode is not DISABLED")
+    }
+
+    private fun validateProviderConfiguration(scope: String) {
         require(PROJECT_NUMBER.matches(properties.normalizedProjectNumber())) {
-            "security.app-check.project-number must be a numeric Firebase project number in prod"
+            "security.app-check.project-number must be a numeric Firebase project number in $scope"
         }
 
         require(properties.normalizedAllowedAppIds().isNotEmpty()) {
-            "security.app-check.allowed-app-ids must contain at least one Firebase App ID in prod"
+            "security.app-check.allowed-app-ids must contain at least one Firebase App ID in $scope"
         }
 
         val uri = runCatching { properties.parsedJwksUri() }
             .getOrElse {
-                throw IllegalStateException("security.app-check.jwks-uri must be a valid URI in prod")
+                throw IllegalStateException("security.app-check.jwks-uri must be a valid URI in $scope")
             }
 
-        require(uri.isAbsolute && !uri.scheme.isNullOrBlank() && !uri.host.isNullOrBlank()) {
-            "security.app-check.jwks-uri must be an absolute URI with host in prod"
+        require(uri.isAbsolute && !uri.host.isNullOrBlank() && uri.scheme.equals("https", ignoreCase = true)) {
+            "security.app-check.jwks-uri must be an absolute HTTPS URI with host in $scope"
         }
     }
 
