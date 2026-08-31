@@ -22,5 +22,7 @@ The signed-in Firebase user must be active in the backend, have a verified Fireb
 - `20` through `32`: trigger scheduler-equivalent jobs manually.
 - `40` through `51`: move specific deadlines into the past for deterministic timeout checks.
 - `60 Get User Reliability`: inspect reliability score details for `{{devUserId}}`.
+- `70 List Profile Photo Review Queue`: list `/api/admin/profile-photos/review` and save the first review item.
+- `71 Approve Profile Photo Review` / `72 Reject Profile Photo Review`: resolve the saved review item using its `photoVersion`.
 
 Do not commit real passwords, ID tokens, refresh tokens or copied dev environment files.

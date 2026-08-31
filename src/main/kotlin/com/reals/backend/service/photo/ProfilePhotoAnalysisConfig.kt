@@ -89,7 +89,7 @@ data class ProfilePhotoModerationPolicyProperties(
         rejectThreshold = 0.80
     ),
     val sexualSuggestive: ReviewScoreThreshold = ReviewScoreThreshold(
-        reviewThreshold = 0.80
+        reviewThreshold = 0.50
     ),
     val violence: ReviewRejectScoreThresholds = ReviewRejectScoreThresholds(
         reviewThreshold = 0.50,

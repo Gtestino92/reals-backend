@@ -152,7 +152,7 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val photos = profilePhotoService.getPhotoViews(
+        val photos = profilePhotoService.getExternallyVisiblePhotoViews(
             profileId = partnerProfile.id
         ).map {
             PhotoResponse.from(

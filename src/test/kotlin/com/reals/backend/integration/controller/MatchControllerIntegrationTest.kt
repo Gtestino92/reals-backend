@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
@@ -296,6 +297,38 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 )
             )
             .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))
+    }
+
+    @Test
+    fun `visual profile exposes only approved partner photos and resolves only included urls`() {
+        val setup = createMatchInVisualPhase()
+        val partnerProfile = profileService.findByUserId(setup.userBId)!!
+        val photos = profilePhotoRepository.findByProfileId(partnerProfile.id)
+            .sortedBy { it.position }
+        val approvedFirst = photos[0]
+        val needsReview = photos[1]
+        val rejected = photos[2]
+        val approvedSecond = photos[3]
+        needsReview.moderationStatus = PhotoModerationStatus.NEEDS_REVIEW
+        rejected.moderationStatus = PhotoModerationStatus.REJECTED
+        profilePhotoRepository.saveAllAndFlush(listOf(needsReview, rejected))
+        Mockito.clearInvocations(storageService)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.photos.length()", equalTo(2)))
+            .andExpect(jsonPath("$.photos[0].id", equalTo(approvedFirst.id.toString())))
+            .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))
+            .andExpect(jsonPath("$.photos[1].id", equalTo(approvedSecond.id.toString())))
+            .andExpect(jsonPath("$.photos[1].moderationStatus", equalTo("APPROVED")))
+
+        Mockito.verify(storageService).getReadUrl(approvedFirst.storageBucket!!, approvedFirst.storageKey)
+        Mockito.verify(storageService).getReadUrl(approvedSecond.storageBucket!!, approvedSecond.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl(needsReview.storageBucket!!, needsReview.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl(rejected.storageBucket!!, rejected.storageKey)
     }
 
     @Test

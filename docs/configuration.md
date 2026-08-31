@@ -130,7 +130,7 @@ Non-sensitive runtime configuration:
 | `PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS` | no | Sightengine response/read timeout in milliseconds. Defaults to `10000`; must be positive. |
 | `PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD` | no | Reals sexual-explicit review score threshold. Defaults to `0.50`. |
 | `PROFILE_PHOTO_SEXUAL_EXPLICIT_REJECT_THRESHOLD` | no | Reals sexual-explicit reject score threshold. Defaults to `0.80`; must be at least the review threshold. |
-| `PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD` | no | Reals sexual-suggestive review score threshold. Defaults to `0.80`; suggestive content alone does not auto-reject in this slice. |
+| `PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD` | no | Reals sexual-suggestive review score threshold. Defaults to `0.50`; suggestive content alone does not auto-reject in this slice. |
 | `PROFILE_PHOTO_VIOLENCE_REVIEW_THRESHOLD` | no | Reals violence/threat review score threshold. Defaults to `0.50`. |
 | `PROFILE_PHOTO_VIOLENCE_REJECT_THRESHOLD` | no | Reals violence/threat reject score threshold. Defaults to `0.85`; must be at least the review threshold. |
 | `PROFILE_PHOTO_GORE_REVIEW_THRESHOLD` | no | Reals gore review score threshold. Defaults to `0.40`. |

@@ -286,7 +286,7 @@ profile:
           review-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD:0.50}
           reject-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REJECT_THRESHOLD:0.80}
         sexual-suggestive:
-          review-threshold: ${PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD:0.80}
+          review-threshold: ${PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD:0.50}
         violence:
           review-threshold: ${PROFILE_PHOTO_VIOLENCE_REVIEW_THRESHOLD:0.50}
           reject-threshold: ${PROFILE_PHOTO_VIOLENCE_REJECT_THRESHOLD:0.85}

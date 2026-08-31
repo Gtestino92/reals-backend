@@ -25,6 +25,7 @@ import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -259,7 +260,7 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         stubStorageUploads(storedObject)
         stubAnalysis(
             realFaceCount = 1,
-            moderation = moderationSignals(sexualSuggestive = 0.80)
+            moderation = moderationSignals(sexualSuggestive = 0.50)
         )
 
         mockMvc.perform(
@@ -280,6 +281,15 @@ class ProfilePhotoModerationIntegrationTest : ControllerIT() {
         assertEquals(true, photo.isPersonPhoto)
         assertEquals(false, photo.isFullBody)
         assertEquals(PhotoModerationStatus.NEEDS_REVIEW, photo.moderationStatus)
+
+        mockMvc.perform(
+            get("/api/me/profile/photos")
+                .with(authenticatedAs(userId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id", equalTo(photo.id.toString())))
+            .andExpect(jsonPath("$[0].moderationStatus", equalTo("NEEDS_REVIEW")))
+
         Mockito.verify(analysisProvider, Mockito.times(1)).analyze(anyAnalysisRequest())
     }
 
