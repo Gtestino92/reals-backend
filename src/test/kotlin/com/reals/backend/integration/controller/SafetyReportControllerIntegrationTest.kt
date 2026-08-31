@@ -170,7 +170,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `deduplicates same reporter reported and context`() {
+    fun `rejects duplicate user report for same reporter reported and context`() {
         val setup = createMatchInVisualPhase()
         val body = reportJson(
             reportedUserId = setup.userBId,
@@ -187,16 +187,14 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isCreated)
 
-        val firstReport = safetyReportRepository.findAll().single()
-
         mockMvc.perform(
             post("/api/safety/reports")
                 .with(authenticatedAs(setup.userAId))
                 .contentType(jsonContentType)
                 .content(body)
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.id", equalTo(firstReport.id.toString())))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SAFETY_REPORT_ALREADY_EXISTS")))
 
         assertEquals(1, safetyReportRepository.findAll().size)
         assertEquals(1, userBlockRepository.findAll().size)
