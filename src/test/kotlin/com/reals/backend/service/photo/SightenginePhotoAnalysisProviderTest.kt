@@ -89,7 +89,15 @@ class SightenginePhotoAnalysisProviderTest {
                       "erotica": 0.40,
                       "very_suggestive": 0.10,
                       "suggestive": 0.20,
-                      "mildly_suggestive": 1.0
+                      "mildly_suggestive": 1.0,
+                      "suggestive_classes": {
+                        "visibly_undressed": 0.10,
+                        "lingerie": 0.10,
+                        "suggestive_pose": 0.10,
+                        "suggestive_focus": 0.10,
+                        "sextoy": 0.10,
+                        "nudity_art": 0.10
+                      }
                     }
                 """.trimIndent()
             )
@@ -100,7 +108,7 @@ class SightenginePhotoAnalysisProviderTest {
     }
 
     @Test
-    fun `sexual suggestive uses max of very suggestive and suggestive and ignores mildly suggestive`() {
+    fun `sexual suggestive uses aggregate and concerning class scores and ignores mildly suggestive`() {
         val result = analyze(
             successResponse(
                 nudity = """
@@ -110,14 +118,109 @@ class SightenginePhotoAnalysisProviderTest {
                       "erotica": 0.30,
                       "very_suggestive": 0.20,
                       "suggestive": 0.60,
-                      "mildly_suggestive": 1.0
+                      "mildly_suggestive": 1.0,
+                      "suggestive_classes": {
+                        "visibly_undressed": 0.10,
+                        "lingerie": 0.70,
+                        "suggestive_pose": 0.30,
+                        "suggestive_focus": 0.40,
+                        "sextoy": 0.20,
+                        "nudity_art": 0.50
+                      }
                     }
                 """.trimIndent()
             )
         )
 
         val success = result as ProfilePhotoAnalysisProviderResult.Success
-        assertEquals(0.60, success.signals.moderation.sexualSuggestive)
+        assertEquals(0.70, success.signals.moderation.sexualSuggestive)
+    }
+
+    @Test
+    fun `concerning suggestive class can trigger semantic signal when aggregates are weak`() {
+        val result = analyze(
+            successResponse(
+                nudity = """
+                    {
+                      "sexual_activity": 0.01,
+                      "sexual_display": 0.01,
+                      "erotica": 0.01,
+                      "very_suggestive": 0.10,
+                      "suggestive": 0.20,
+                      "mildly_suggestive": 0.10,
+                      "suggestive_classes": {
+                        "visibly_undressed": 0.55,
+                        "lingerie": 0.10,
+                        "suggestive_pose": 0.10,
+                        "suggestive_focus": 0.10,
+                        "sextoy": 0.10,
+                        "nudity_art": 0.10
+                      }
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val success = result as ProfilePhotoAnalysisProviderResult.Success
+        assertEquals(0.55, success.signals.moderation.sexualSuggestive)
+    }
+
+    @Test
+    fun `normal bikini swimwear smoke response keeps semantic suggestive signal below review threshold`() {
+        val result = analyze(
+            successResponse(
+                nudity = """
+                    {
+                      "sexual_activity": 0.001,
+                      "sexual_display": 0.001,
+                      "erotica": 0.001,
+                      "very_suggestive": 0.05,
+                      "suggestive": 0.05,
+                      "mildly_suggestive": 0.96,
+                      "suggestive_classes": {
+                        "visibly_undressed": 0.001,
+                        "lingerie": 0.001,
+                        "suggestive_pose": 0.001,
+                        "suggestive_focus": 0.001,
+                        "sextoy": 0.001,
+                        "nudity_art": 0.001,
+                        "bikini": 0.96,
+                        "swimwear_one_piece": 0.90,
+                        "swimwear_male": 0.90,
+                        "male_chest": 0.90,
+                        "cleavage": 0.90,
+                        "miniskirt": 0.90,
+                        "minishort": 0.90,
+                        "male_underwear": 0.90
+                      }
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val success = result as ProfilePhotoAnalysisProviderResult.Success
+        assertEquals(0.05, success.signals.moderation.sexualSuggestive)
+    }
+
+    @Test
+    fun `missing suggestive classes block becomes provider failure`() {
+        assertInstanceOf(
+            ProfilePhotoAnalysisProviderResult.ProviderFailure::class.java,
+            analyze(
+                successResponse(
+                    nudity = """
+                        {
+                          "sexual_activity": 0.10,
+                          "sexual_display": 0.20,
+                          "erotica": 0.30,
+                          "very_suggestive": 0.20,
+                          "suggestive": 0.60,
+                          "mildly_suggestive": 1.0
+                        }
+                    """.trimIndent()
+                )
+            )
+        )
     }
 
     @Test
@@ -268,7 +371,23 @@ class SightenginePhotoAnalysisProviderTest {
               "erotica": 0.20,
               "very_suggestive": 0.70,
               "suggestive": 0.60,
-              "mildly_suggestive": 1.0
+              "mildly_suggestive": 1.0,
+              "suggestive_classes": {
+                "visibly_undressed": 0.10,
+                "lingerie": 0.20,
+                "suggestive_pose": 0.30,
+                "suggestive_focus": 0.40,
+                "sextoy": 0.10,
+                "nudity_art": 0.20,
+                "bikini": 1.0,
+                "swimwear_one_piece": 1.0,
+                "swimwear_male": 1.0,
+                "male_chest": 1.0,
+                "cleavage": 1.0,
+                "miniskirt": 1.0,
+                "minishort": 1.0,
+                "male_underwear": 1.0
+              }
             }
         """.trimIndent(),
         violence: String = """

@@ -33,7 +33,46 @@ class ProfilePhotoModerationPolicyTest {
     fun `suggestive exact review threshold needs review`() {
         assertEquals(
             PhotoModerationStatus.NEEDS_REVIEW,
-            policy.evaluate(signals(sexualSuggestive = 0.80)).status
+            policy.evaluate(signals(sexualSuggestive = 0.50)).status
+        )
+    }
+
+    @Test
+    fun `normal swimwear smoke signals are approved`() {
+        assertEquals(
+            PhotoModerationStatus.APPROVED,
+            policy.evaluate(
+                signals(
+                    sexualExplicit = 0.001,
+                    sexualSuggestive = 0.05
+                )
+            ).status
+        )
+    }
+
+    @Test
+    fun `sexualized but non explicit smoke signals need review`() {
+        assertEquals(
+            PhotoModerationStatus.NEEDS_REVIEW,
+            policy.evaluate(
+                signals(
+                    sexualExplicit = 0.01,
+                    sexualSuggestive = 0.99
+                )
+            ).status
+        )
+    }
+
+    @Test
+    fun `explicit smoke signals are rejected`() {
+        assertEquals(
+            PhotoModerationStatus.REJECTED,
+            policy.evaluate(
+                signals(
+                    sexualExplicit = 0.99,
+                    sexualSuggestive = 0.99
+                )
+            ).status
         )
     }
 

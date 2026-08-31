@@ -3124,7 +3124,7 @@ components:
           description: Technical and semantic photo-validation status. Outside prod, provider none is used even if sightengine is configured, and the MVP shortcut may return VALIDATED after technical validation. In prod with provider none, technical validation alone returns PENDING and does not establish person/full-body semantics. With provider sightengine in prod, real face presence is used only as an MVP isPersonPhoto signal; at least one real face validates person-photo semantics, artificial faces do not count, and successful analysis still leaves isFullBody=false.
         moderationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
-          description: Content moderation status. With provider none outside prod, including when sightengine is configured outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine in prod, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
+          description: Content moderation status. With provider none outside prod, including when sightengine is configured outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine in dev or prod, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Sexual suggestive includes concerning suggestive_classes such as lingerie and visibly_undressed, excludes ordinary swimwear-like classes such as bikini, and defaults to a 0.50 review threshold with no reject threshold. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
     VisualProfileResponse:
       type: object
       required:
@@ -3145,6 +3145,7 @@ components:
         bio: { type: string, nullable: true }
         photos:
           type: array
+          description: Partner profile photos visible to this external match context. Includes only photos whose moderationStatus is APPROVED; excluded NEEDS_REVIEW or REJECTED photos do not have read URLs generated for this response.
           items: { $ref: '#/components/schemas/PhotoResponse' }
         profileQuestions:
           type: array

@@ -87,6 +87,8 @@ class SightenginePhotoAnalysisProvider(
         val violence = response.violence ?: return providerFailure("Sightengine violence block missing")
         val gore = response.gore ?: return providerFailure("Sightengine gore block missing")
         val offensive = response.offensive ?: return providerFailure("Sightengine offensive block missing")
+        val suggestiveClasses = nudity.suggestiveClasses
+            ?: return providerFailure("Sightengine nudity suggestive_classes block missing")
         val violenceClasses = violence.classes ?: return providerFailure("Sightengine violence classes missing")
 
         val signals = ProfilePhotoAnalysisSignals(
@@ -100,7 +102,13 @@ class SightenginePhotoAnalysisProvider(
                 ),
                 sexualSuggestive = maxScore(
                     nudity.verySuggestive,
-                    nudity.suggestive
+                    nudity.suggestive,
+                    suggestiveClasses.visiblyUndressed,
+                    suggestiveClasses.lingerie,
+                    suggestiveClasses.suggestivePose,
+                    suggestiveClasses.suggestiveFocus,
+                    suggestiveClasses.sextoy,
+                    suggestiveClasses.nudityArt
                 ),
                 violenceOrThreat = maxScore(
                     violenceClasses.physicalViolence,
@@ -173,7 +181,34 @@ data class SightengineNudity(
     val verySuggestive: Double? = null,
     val suggestive: Double? = null,
     @param:JsonProperty("mildly_suggestive")
-    val mildlySuggestive: Double? = null
+    val mildlySuggestive: Double? = null,
+    @param:JsonProperty("suggestive_classes")
+    val suggestiveClasses: SightengineSuggestiveClasses? = null
+)
+
+data class SightengineSuggestiveClasses(
+    @param:JsonProperty("visibly_undressed")
+    val visiblyUndressed: Double? = null,
+    val lingerie: Double? = null,
+    @param:JsonProperty("suggestive_pose")
+    val suggestivePose: Double? = null,
+    @param:JsonProperty("suggestive_focus")
+    val suggestiveFocus: Double? = null,
+    val sextoy: Double? = null,
+    @param:JsonProperty("nudity_art")
+    val nudityArt: Double? = null,
+    val bikini: Double? = null,
+    @param:JsonProperty("swimwear_one_piece")
+    val swimwearOnePiece: Double? = null,
+    @param:JsonProperty("swimwear_male")
+    val swimwearMale: Double? = null,
+    @param:JsonProperty("male_chest")
+    val maleChest: Double? = null,
+    val cleavage: Double? = null,
+    val miniskirt: Double? = null,
+    val minishort: Double? = null,
+    @param:JsonProperty("male_underwear")
+    val maleUnderwear: Double? = null
 )
 
 data class SightengineViolence(

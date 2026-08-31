@@ -70,6 +70,47 @@ class ProfilePhotoServiceTest {
     }
 
     @Test
+    fun `external photo views include only approved photos and resolve only included urls`() {
+        val profile = Profile(
+            id = UUID.randomUUID(),
+            userId = UUID.randomUUID(),
+            displayName = "External Visibility",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = mutableSetOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR"
+        )
+        val approved = photo(profile.id, position = 2, status = PhotoModerationStatus.APPROVED, key = "approved.jpg")
+        val needsReview = photo(profile.id, position = 1, status = PhotoModerationStatus.NEEDS_REVIEW, key = "review.jpg")
+        val rejected = photo(profile.id, position = 3, status = PhotoModerationStatus.REJECTED, key = "rejected.jpg")
+        val profileRepository = Mockito.mock(ProfileRepository::class.java)
+        val profilePhotoRepository = Mockito.mock(ProfilePhotoRepository::class.java)
+        val storageService = Mockito.mock(S3StorageService::class.java)
+        Mockito.`when`(profileRepository.findById(profile.id))
+            .thenReturn(Optional.of(profile))
+        Mockito.`when`(profilePhotoRepository.findByProfileId(profile.id))
+            .thenReturn(listOf(needsReview, approved, rejected))
+        Mockito.`when`(storageService.getReadUrl("test-bucket", approved.storageKey))
+            .thenReturn("https://media.example.test/approved.jpg")
+        val service = profilePhotoService(
+            profileRepository = profileRepository,
+            profilePhotoRepository = profilePhotoRepository,
+            auditEventService = Mockito.mock(AuditEventService::class.java),
+            storageService = storageService
+        )
+
+        val views = service.getExternallyVisiblePhotoViews(profile.id)
+
+        assertEquals(listOf(approved.id), views.map { it.photo.id })
+        assertEquals(listOf("https://media.example.test/approved.jpg"), views.map { it.readUrl })
+        Mockito.verify(storageService).getReadUrl("test-bucket", approved.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl("test-bucket", needsReview.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl("test-bucket", rejected.storageKey)
+    }
+
+    @Test
     fun `successful photo mutation resynchronizes invalid not-started authenticity boolean without stale audit`() {
         val profile = Profile(
             id = UUID.randomUUID(),
@@ -165,6 +206,23 @@ class ProfilePhotoServiceTest {
             minFullBodyPhotos = 1,
             persistRejectedPhotos = false,
             requireModerationApprovalForActivation = true
+        )
+
+    private fun photo(
+        profileId: UUID,
+        position: Int,
+        status: PhotoModerationStatus,
+        key: String
+    ): ProfilePhoto =
+        ProfilePhoto(
+            id = UUID.randomUUID(),
+            profileId = profileId,
+            storageProvider = PhotoStorageProvider.S3,
+            storageBucket = "test-bucket",
+            storageKey = key,
+            position = position,
+            validationStatus = PhotoValidationStatus.VALIDATED,
+            moderationStatus = status
         )
 
     private fun anyProfile(): Profile {

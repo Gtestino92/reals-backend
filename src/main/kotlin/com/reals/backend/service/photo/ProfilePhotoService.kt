@@ -92,6 +92,21 @@ class ProfilePhotoService(
             }
     }
 
+    fun getExternallyVisiblePhotoViews(profileId: UUID): List<ProfilePhotoView> {
+        findProfileByIdOrThrow(profileId)
+        return profilePhotoRepository.findByProfileId(profileId)
+            .asSequence()
+            .filter { it.moderationStatus == PhotoModerationStatus.APPROVED }
+            .sortedBy { it.position }
+            .map { photo ->
+                ProfilePhotoView(
+                    photo = photo,
+                    readUrl = resolvePhotoReadUrl(photo)
+                )
+            }
+            .toList()
+    }
+
     fun resolvePhotoReadUrl(photo: ProfilePhoto): String {
         return storageService.getReadUrl(
             bucket = requireNotNull(photo.storageBucket) {

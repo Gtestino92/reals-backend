@@ -238,7 +238,7 @@ class ProfilePhotoAnalysisConfigurationTest {
 
             assertEquals(0.50, properties.sexualExplicit.reviewThreshold)
             assertEquals(0.80, properties.sexualExplicit.rejectThreshold)
-            assertEquals(0.80, properties.sexualSuggestive.reviewThreshold)
+            assertEquals(0.50, properties.sexualSuggestive.reviewThreshold)
             assertEquals(0.50, properties.violence.reviewThreshold)
             assertEquals(0.85, properties.violence.rejectThreshold)
             assertEquals(0.40, properties.gore.reviewThreshold)

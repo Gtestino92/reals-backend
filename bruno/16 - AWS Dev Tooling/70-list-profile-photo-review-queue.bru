@@ -1,0 +1,64 @@
+meta {
+  name: 70 List Profile Photo Review Queue
+  type: http
+  seq: 70
+}
+
+get {
+  url: {{baseUrl}}/api/admin/profile-photos/review
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 401) {
+    throw new Error("Expected admin Firebase bearer token. Run 00 Admin Firebase Sign In first.");
+  }
+  if (status === 403) {
+    throw new Error("Expected allowlisted active admin user. Run 01 Provision Admin User and verify BACKOFFICE_ADMIN_EMAILS.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (!Array.isArray(body)) {
+    throw new Error("Expected profile photo review queue array.");
+  }
+
+  if (body.length === 0) {
+    console.log("No profile photos currently require admin moderation review.");
+    return;
+  }
+
+  const item = body[0];
+  if (!item.photoId || typeof item.photoVersion !== "number") {
+    throw new Error("Expected review item with photoId and numeric photoVersion.");
+  }
+  if (item.moderationStatus !== "NEEDS_REVIEW") {
+    throw new Error(`Expected NEEDS_REVIEW item, got ${item.moderationStatus}.`);
+  }
+
+  bru.setEnvVar("profilePhotoReviewPhotoId", item.photoId);
+  bru.setEnvVar("profilePhotoReviewVersion", String(item.photoVersion));
+  if (item.profileId) {
+    bru.setEnvVar("profilePhotoReviewProfileId", item.profileId);
+  }
+  if (item.userId) {
+    bru.setEnvVar("profilePhotoReviewUserId", item.userId);
+  }
+  if (item.readUrl) {
+    bru.setEnvVar("profilePhotoReviewReadUrl", item.readUrl);
+  }
+}
+
+docs {
+  Lists admin profile photos waiting for moderation review in hosted dev.
+
+  The first NEEDS_REVIEW item is saved into profilePhotoReviewPhotoId and profilePhotoReviewVersion for requests 71 or 72.
+}
