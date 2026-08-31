@@ -3664,7 +3664,7 @@ components:
         sentAt: { type: string, format: date-time }
     AdminPenaltyResponse:
       type: object
-      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt.
+      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt. Confirmed ban creation operationally contains existing active engagements and temporary-ban expiry does not reopen them.
       required: [id, userId, reason, type, createdAt, active]
       properties:
         id: { type: string, format: uuid }

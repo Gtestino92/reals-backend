@@ -67,7 +67,7 @@ Matching and chat:
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
 - `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `CANCELLED`, `EXPIRED`, `ABANDONED`, `CLOSED`
-- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `USER_BLOCK`, `FIRST_CHAT_DECISION_MISMATCH`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `SYSTEM_CLOSED`
+- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `USER_BLOCK`, `FIRST_CHAT_DECISION_MISMATCH`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `USER_BANNED`, `SYSTEM_CLOSED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatReplyTargetType`: `MESSAGE`, `GUIDANCE_QUESTION`
@@ -407,6 +407,9 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are effective while `active=true`.
 - Multiple effective penalties resolve to one account ban: any permanent ban wins; otherwise the temporary ban with the latest `expiresAt` wins.
 - Effective account bans reject normal authenticated Reals access after Firebase identity resolves to an active backend user. Creating a penalty removes the penalized user from the matchmaking queue if present, and matchmaking uses the same effective-ban rule as defense in depth.
+- Confirmed administrative bans also operationally contain existing engagements in the same transaction as penalty creation. Active first-chat matches move to `CHAT_REJECTED`, active visual matches move to `VISUAL_REJECTED`, visible chats become `CANCELLED / USER_BANNED`, active connections become `CLOSED`, pending scheduling negotiations for contained connections become `FAILED`, and affected engagement locks are released. Account deletion uses the same containment mechanics but records `USER_DELETED`.
+- Ban containment is reliability-neutral: it does not record ordinary cancellation, abandonment, inactivity, no-show, rejection or responsible-close reliability events for either participant.
+- Temporary-ban expiry does not restore contained engagements. At `now >= expiresAt`, the account may authenticate and enter new matchmaking if otherwise eligible, but old matches, chats, connections and negotiations remain terminal.
 - The penalty expiration job deactivates expired temporary penalties as eventual persistence cleanup and Home invalidation support; authorization does not wait for it.
 
 ## Audit And Evidence

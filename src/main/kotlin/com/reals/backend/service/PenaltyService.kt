@@ -18,7 +18,8 @@ class PenaltyService(
     private val penaltyRepository: PenaltyRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val auditEventService: AuditEventService,
-    private val homeStateInvalidationService: HomeStateInvalidationService
+    private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userOperationalContainmentService: UserOperationalContainmentService
 ) {
 
     @Transactional(readOnly = true)
@@ -127,6 +128,11 @@ class PenaltyService(
         homeStateInvalidationService.bump(
             userId = saved.userId,
             reason = "penalty_applied"
+        )
+        userOperationalContainmentService.containUser(
+            userId = saved.userId,
+            reason = UserOperationalContainmentReason.ACCOUNT_BAN,
+            actorUserId = saved.appliedByUserId
         )
         return saved
     }
