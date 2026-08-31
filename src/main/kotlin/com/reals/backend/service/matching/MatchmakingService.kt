@@ -65,7 +65,7 @@ class MatchmakingService(
      * Preconditions:
      *  - active match count < effective active match admission cap
      *  - active connection count < effective active connection admission cap
-     *  - no active penalty
+     *  - no effective account ban
      *  - profile is ACTIVE (photo validation already happened at profile activation)
      *  - current search location is present and valid
      */
@@ -141,6 +141,7 @@ class MatchmakingService(
                     userId = userId,
                     now = now
                 ).blockedReason?.code in setOf(
+                    DomainErrorCode.ACTIVE_PENALTY.name,
                     DomainErrorCode.ACTIVE_MATCH_LIMIT_REACHED.name,
                     DomainErrorCode.ACTIVE_CONNECTION_LIMIT_REACHED.name,
                     DomainErrorCode.VISUAL_ADVANCEMENT_LIMIT_REACHED.name
@@ -191,6 +192,7 @@ class MatchmakingService(
         val anchor =
             candidateRepository.claimNextEligibleAnchorForUpdate(
                 today = today,
+                now = now,
                 exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
                 firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,
@@ -211,6 +213,7 @@ class MatchmakingService(
                 anchorQueueEntryId = anchor.queueEntryId,
                 limit = candidatePairLimit,
                 today = today,
+                now = now,
                 exclusionPolicy = exclusionPolicy,
                 previousPairingCutoff = cutoffs.previousPairingCutoff,
                 firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,
@@ -229,6 +232,7 @@ class MatchmakingService(
                     anchorQueueEntryId = anchor.queueEntryId,
                     partnerQueueEntryId = claimAttempt.candidate.partnerQueueEntryId,
                     today = today,
+                    now = now,
                     exclusionPolicy = exclusionPolicy,
                     previousPairingCutoff = cutoffs.previousPairingCutoff,
                     firstChatExpirationCutoff = cutoffs.firstChatExpirationCutoff,

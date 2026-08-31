@@ -240,7 +240,7 @@ class AdminProfilePhotoModerationControllerIntegrationTest : ControllerIT() {
         assertEquals(1L, profilePhotoRepository.countByProfileId(fixture.profileId))
         assertEquals(0L, safetyReportRepository.count())
         assertEquals(0L, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(fixture.userId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == fixture.userId })
     }
 
     @Test

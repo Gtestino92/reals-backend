@@ -32,7 +32,6 @@ class ChatLifecycleService(
     private val chatDecisionRepository: ChatDecisionRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val matchService: MatchService,
-    private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val auditEventService: AuditEventService,
@@ -66,8 +65,7 @@ class ChatLifecycleService(
     fun endChat(
         chatId: UUID,
         finalStatus: ChatStatus,
-        endedReason: ChatEndReason,
-        abandonedUserIds: List<UUID> = emptyList()
+        endedReason: ChatEndReason
     ): Boolean {
         require(finalStatus == ChatStatus.EXPIRED || finalStatus == ChatStatus.ABANDONED) {
             "endChat only accepts EXPIRED or ABANDONED, got $finalStatus"
@@ -105,12 +103,6 @@ class ChatLifecycleService(
             }
 
             ChatType.SECOND_CHAT -> {
-                if (finalStatus == ChatStatus.ABANDONED) {
-                    abandonedUserIds.forEach {
-                        penaltyService.createAbandonmentPenalty(userId = it)
-                    }
-                }
-
                 chat.connectionId?.let {
                     connectionService.closeConnection(connectionId = it)
                 }

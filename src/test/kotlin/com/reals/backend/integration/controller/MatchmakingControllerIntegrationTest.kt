@@ -173,7 +173,7 @@ class MatchmakingControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `enqueue with active penalty returns stable error code`() {
+    fun `enqueue with effective penalty returns stable error code`() {
         val userId = createActiveProfile(
             email = "queue-active-penalty-${UUID.randomUUID()}@example.com",
             displayName = "Queue Active Penalty",

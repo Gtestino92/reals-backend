@@ -67,7 +67,7 @@ Matching and chat:
 - `MatchState`: `CHAT_ACTIVE`, `VISUAL_PHASE`, `VISUAL_APPROVED`, `CHAT_REJECTED`, `VISUAL_REJECTED`, `EXPIRED`
 - `ChatType`: `FIRST_CHAT`, `SECOND_CHAT`
 - `ChatStatus`: `AVAILABLE`, `ACTIVE`, `FINISHED`, `CANCELLED`, `EXPIRED`, `ABANDONED`, `CLOSED`
-- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `USER_BLOCK`, `FIRST_CHAT_DECISION_MISMATCH`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `SYSTEM_CLOSED`
+- `ChatEndReason`: `MUTUAL_CANCEL`, `UNILATERAL_CANCEL`, `SAFETY_REPORT`, `USER_BLOCK`, `FIRST_CHAT_DECISION_MISMATCH`, `ABSOLUTE_TIMEOUT`, `INACTIVITY_TIMEOUT`, `SECOND_CHAT_NO_SHOW`, `SECOND_CHAT_MUTUAL_COMPLETION`, `SECOND_CHAT_PARTNER_INACTIVITY`, `SECOND_CHAT_NO_CONVERSATION_STARTED`, `SECOND_CHAT_READ_ONLY_EXPIRED`, `USER_DELETED`, `USER_BANNED`, `SYSTEM_CLOSED`
 - `ChatContinueDecision`: `APPROVED`, `REJECTED`
 - `ChatParticipantDecisionStatus`: `PENDING`, `APPROVED`, `REJECTED`, `ABANDONED` (API-facing status derived from chat decisions and terminal chat outcomes)
 - `ChatReplyTargetType`: `MESSAGE`, `GUIDANCE_QUESTION`
@@ -384,7 +384,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Rejected mutual cancellation currently has no penalty.
 - Timed-out mutual cancellation currently has no penalty. It is not a unilateral cancellation; if the requester resolves the timeout because the responder did not answer in time, the requester must not be penalized.
 - When a first-chat mutual cancellation request is accepted, rejected or timed out, a requester who has at least one confirmed first-chat message receives `FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED` once for that chat when user reliability is enabled. Creating the request alone is not rewarded.
-- Unilateral cancellation closes the chat as `CANCELLED` and applies a penalty when the cancelling user has not reached the configured minimum messages for penalty-free cancellation.
+- Unilateral cancellation closes the chat as `CANCELLED` and records first-chat unilateral-close reliability when applicable. Ordinary cancellation does not create an account ban.
 - First-chat unilateral-cancellation reliability uses three bands when user reliability is enabled: below the lower threshold (`user-reliability.first-chat.early-engagement-minutes`, default 2, and `early-engagement-messages-per-user`, default 1 from each participant) records `FIRST_CHAT_EARLY_UNILATERAL_CLOSE` with delta `-3`; lower threshold met but sufficient interaction not met records `FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE` with delta `-1`; sufficient interaction (`min-participation-minutes`, default 5, and `min-participation-messages-per-user`, default 2 from each participant) records no unilateral-close reliability event. Equality belongs to the met side: `now >= startedAt + threshold`.
 - Safety cancellation closes the chat as `CANCELLED`, records `ChatEndReason.SAFETY_REPORT`, exempts the reporting user and creates a `SafetyReport` in `PENDING` status. It also records an accepted `SAFETY_REPORT` exit request as operational chat-closure history. The reported participant is penalized only if an admin confirms the report.
 - Chat safety cancellation maps `ChatExitReason.CHILD_SAFETY_CONCERN` to `SafetyReportReason.CHILD_SAFETY_CONCERN`. The reason does not itself apply an automatic penalty or ban.
@@ -402,9 +402,15 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Dismissing a report as `DISMISSED_ABUSIVE_OR_UNJUSTIFIED` creates no safety penalty. If user reliability is enabled and the report has a user reporter, it records the internal `SAFETY_REPORT_DETERMINED_ABUSIVE` reliability event against the reporter.
 - A successful optional visual-review personal-message submission records the internal `VISUAL_PERSONAL_MESSAGE_SUBMITTED` reliability participation event once per user per match when user reliability is enabled. Visual approval/rejection and partner-message reading remain reliability-neutral.
 - `ChatStatus` remains the operational state; `ChatEndReason` records why a chat ended.
-- Temporary penalties have `PenaltyType.TEMPORARY_BAN` and a non-null `expiresAt`; the penalty expiration job deactivates them after expiry.
-- Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are never expired by the job.
-- Active penalties block matchmaking. Creating a penalty removes the penalized user from the matchmaking queue if present.
+- Reliability measures normal Reals usage behavior: early cancellation, abandonment, inactivity, no-show, participation quality and abusive or unjustified reporting where modeled. Penalties are administrative account bans only.
+- Temporary penalties have `PenaltyType.TEMPORARY_BAN` and a non-null `expiresAt`. They are effective only while `active=true` and `now < expiresAt`; equality belongs to the expired side, so `now >= expiresAt` means not banned even if scheduler cleanup has not run.
+- Permanent penalties have `PenaltyType.PERMANENT_BAN`, `expiresAt = null` and are effective while `active=true`.
+- Multiple effective penalties resolve to one account ban: any permanent ban wins; otherwise the temporary ban with the latest `expiresAt` wins.
+- Effective account bans reject normal authenticated Reals access after Firebase identity resolves to an active backend user. Creating a penalty removes the penalized user from the matchmaking queue if present, and matchmaking uses the same effective-ban rule as defense in depth.
+- Confirmed administrative bans also operationally contain existing engagements in the same transaction as penalty creation. Active first-chat matches move to `CHAT_REJECTED`, active visual matches move to `VISUAL_REJECTED`, visible chats become `CANCELLED / USER_BANNED`, active connections become `CLOSED`, pending scheduling negotiations for contained connections become `FAILED`, and affected engagement locks are released. Account deletion uses the same containment mechanics but records `USER_DELETED`.
+- Ban containment is reliability-neutral: it does not record ordinary cancellation, abandonment, inactivity, no-show, rejection or responsible-close reliability events for either participant.
+- Temporary-ban expiry does not restore contained engagements. At `now >= expiresAt`, the account may authenticate and enter new matchmaking if otherwise eligible, but old matches, chats, connections and negotiations remain terminal.
+- The penalty expiration job deactivates expired temporary penalties as eventual persistence cleanup and Home invalidation support; authorization does not wait for it.
 
 ## Audit And Evidence
 
@@ -474,7 +480,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 
 Hard filtering is first applied in the matchmaking queue query. The query filters:
 
-- active penalties for both queued users
+- effective account bans for both queued users
 - mutual gender preference
 - same intention
 - mutual dynamic preferred age range

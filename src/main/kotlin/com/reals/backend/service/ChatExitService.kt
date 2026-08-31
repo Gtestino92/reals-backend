@@ -41,16 +41,12 @@ class ChatExitService(
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val matchService: MatchService,
-    private val penaltyService: PenaltyService,
     private val safetyReportService: SafetyReportService,
     private val userBlockCommandService: UserBlockCommandService,
     private val connectionService: ConnectionService,
     private val auditEventService: AuditEventService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val eventPublisher: ApplicationEventPublisher,
-
-    @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
-    private val firstChatMinMessagesBeforeFreeCancel: Int,
 
     @param:Value("\${chat.exit-request.mutual-timeout-seconds:20}")
     private val mutualCancellationTimeoutSeconds: Long,
@@ -303,11 +299,6 @@ class ChatExitService(
         val responderUserId = resolvePartnerUserId(chat, userId)
         val normalizedDetails = normalizeDetails(details)
 
-        val shouldPenalize = shouldPenalizeCancellation(chat, userId)
-        if (shouldPenalize) {
-            penaltyService.createCancellationPenalty(userId = userId)
-        }
-
         val exitRequest = chatExitRequestRepository.save(
             ChatExitRequest(
                 chatId = chat.id,
@@ -336,8 +327,8 @@ class ChatExitService(
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
-            penaltyApplied = shouldPenalize,
-            penalizedUserId = if (shouldPenalize) userId else null
+            penaltyApplied = false,
+            penalizedUserId = null
         )
     }
 
@@ -568,27 +559,6 @@ class ChatExitService(
                 }
             }
         }
-    }
-
-    private fun shouldPenalizeCancellation(
-        chat: Chat,
-        userId: UUID
-    ): Boolean {
-        val minimum =
-            when (chat.chatType) {
-                ChatType.FIRST_CHAT -> firstChatMinMessagesBeforeFreeCancel
-                ChatType.SECOND_CHAT -> 0
-            }
-
-        if (minimum <= 0) return false
-
-        val sent =
-            chatMessageRepository.countByChatSessionIdAndSenderId(
-                chatSessionId = chat.id,
-                senderId = userId
-            )
-
-        return sent < minimum
     }
 
     private fun finishCancelledChat(

@@ -17,12 +17,7 @@ internal object MatchmakingSqlFragments {
         WHERE qa.status = 'WAITING'
             AND ua.status = 'ACTIVE'
             AND pa.status = 'ACTIVE'
-            AND NOT EXISTS (
-                SELECT 1
-                FROM penalties p
-                WHERE p.user_id = qa.user_id
-                    AND p.active = true
-            )
+            ${effectiveBanExclusion("qa.user_id")}
     """
 
     val PARTNER_LATERAL_JOIN: String
@@ -189,12 +184,7 @@ internal object MatchmakingSqlFragments {
             AND qa.status = 'WAITING'
             AND ua.status = 'ACTIVE'
             AND pa.status = 'ACTIVE'
-            AND NOT EXISTS (
-                SELECT 1
-                FROM penalties p
-                WHERE p.user_id = qa.user_id
-                    AND p.active = true
-            )
+            ${effectiveBanExclusion("qa.user_id")}
             AND ${PARTNER_AFTER_ANCHOR_CONDITION}
     """
 
@@ -205,12 +195,7 @@ internal object MatchmakingSqlFragments {
             AND qa.status = 'WAITING'
             AND ua.status = 'ACTIVE'
             AND pa.status = 'ACTIVE'
-            AND NOT EXISTS (
-                SELECT 1
-                FROM penalties p
-                WHERE p.user_id = qa.user_id
-                    AND p.active = true
-            )
+            ${effectiveBanExclusion("qa.user_id")}
             AND ${PARTNER_AFTER_ANCHOR_CONDITION}
     """
 
@@ -227,12 +212,7 @@ internal object MatchmakingSqlFragments {
     val PARTNER_BASE_FILTERS = """
             AND ub.status = 'ACTIVE'
             AND pb.status = 'ACTIVE'
-            AND NOT EXISTS (
-                SELECT 1
-                FROM penalties p
-                WHERE p.user_id = qb.user_id
-                    AND p.active = true
-            )
+            ${effectiveBanExclusion("qb.user_id")}
     """
 
     val PAIR_BLOCK_EXCLUSION = """
@@ -738,6 +718,24 @@ internal object MatchmakingSqlFragments {
                 ELSE 0
             END
         )
+        """.trimIndent()
+
+    private fun effectiveBanExclusion(userIdExpression: String): String =
+        """
+            AND NOT EXISTS (
+                SELECT 1
+                FROM penalties p
+                WHERE p.user_id = $userIdExpression
+                    AND p.active = true
+                    AND (
+                        p.type = 'PERMANENT_BAN'
+                        OR (
+                            p.type = 'TEMPORARY_BAN'
+                            AND p.expires_at IS NOT NULL
+                            AND p.expires_at > :now
+                        )
+                    )
+            )
         """.trimIndent()
 }
 

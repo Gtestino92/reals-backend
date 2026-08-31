@@ -174,8 +174,7 @@ class FirstChatTerminatedEventIntegrationTest : BaseIT() {
             chatService.endChat(
                 chatId = abandoned.firstChatId,
                 finalStatus = ChatStatus.ABANDONED,
-                endedReason = ChatEndReason.INACTIVITY_TIMEOUT,
-                abandonedUserIds = listOf(abandoned.userAId)
+                endedReason = ChatEndReason.INACTIVITY_TIMEOUT
             )
         }
 
@@ -184,8 +183,7 @@ class FirstChatTerminatedEventIntegrationTest : BaseIT() {
             chatService.endChat(
                 chatId = secondChat.secondChatId,
                 finalStatus = ChatStatus.ABANDONED,
-                endedReason = ChatEndReason.INACTIVITY_TIMEOUT,
-                abandonedUserIds = listOf(secondChat.userAId)
+                endedReason = ChatEndReason.INACTIVITY_TIMEOUT
             )
         }
     }

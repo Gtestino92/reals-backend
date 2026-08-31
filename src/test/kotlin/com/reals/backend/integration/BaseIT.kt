@@ -633,8 +633,8 @@ abstract class BaseIT {
         userAId: UUID,
         userBId: UUID
     ) {
-        Assertions.assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(userAId))
-        Assertions.assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(userBId))
+        Assertions.assertFalse(penaltyService.hasEffectiveBan(userAId))
+        Assertions.assertFalse(penaltyService.hasEffectiveBan(userBId))
     }
 
     protected fun matchExistsForUsers(

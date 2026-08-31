@@ -10,6 +10,7 @@ import com.reals.backend.config.security.authentication.FirebaseTokenAuthenticat
 import com.reals.backend.config.security.authentication.FirebaseTokenFilter
 import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -82,17 +83,22 @@ class FirebaseAppCheckFilterOrderTest {
         fun firebaseTokenFilter(
             environmentExposurePolicy: EnvironmentExposurePolicy,
             userService: UserService,
+            penaltyService: PenaltyService,
             firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier
         ): FirebaseTokenFilter =
             FirebaseTokenFilter(
                 environmentExposurePolicy,
                 userService,
+                penaltyService,
                 firebaseTokenAuthenticationVerifier
             )
 
         @Bean
         fun firebaseTokenAuthenticationVerifier(): FirebaseTokenAuthenticationVerifier =
             mock(FirebaseTokenAuthenticationVerifier::class.java)
+
+        @Bean
+        fun penaltyService(): PenaltyService = mock(PenaltyService::class.java)
 
         @Bean
         fun firebaseAppCheckFilter(): FirebaseAppCheckFilter =

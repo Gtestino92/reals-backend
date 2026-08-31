@@ -316,6 +316,17 @@ ids. Actuator exposes Micrometer meters in configured runtimes, but durable
 metrics retention requires an external registry/backend that is not introduced
 here.
 
+`Penalty` rows represent administrative account bans only. Temporary bans are
+effective while `active=true` and `now < expiresAt`; permanent bans are
+effective while `active=true` with `expiresAt=null`. If multiple rows are
+effective, a permanent ban wins over temporary bans and otherwise the latest
+temporary expiry wins. The expiration scheduler normalizes expired temporary
+rows but is not the authorization boundary. Penalty creation also invokes the
+shared user operational containment service, which reuses account-deletion
+containment mechanics while recording ban-specific chat end reasons. Ban
+containment closes existing active engagements and releases locks; temporary
+ban expiry does not restore those historical engagements.
+
 Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
 trigger the same job beans manually, plus `/api/local-dev/timeouts/...`
 endpoints to move selected deadlines into the past for deterministic manual

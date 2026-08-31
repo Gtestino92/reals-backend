@@ -7,7 +7,10 @@ import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.AuthOriginPolicy
+import com.reals.backend.service.EffectiveAccountBan
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -26,6 +29,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 class FirebaseTokenFilter(
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val userService: UserService,
+    private val penaltyService: PenaltyService,
     private val firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier,
     @param:Value("\${backoffice.admin-emails:}")
     private val adminEmailsProperty: String = ""
@@ -114,6 +118,18 @@ class FirebaseTokenFilter(
                     message = "Authentication method is not allowed for this account"
                 )
                 return
+            }
+
+            if (user?.status == UserStatus.ACTIVE) {
+                val effectiveBan = penaltyService.resolveEffectiveBan(userId = user.id)
+                if (effectiveBan != null) {
+                    SecurityContextHolder.clearContext()
+                    writeBanned(
+                        response = response,
+                        ban = effectiveBan
+                    )
+                    return
+                }
             }
 
             if (user?.status == UserStatus.DELETED) {
@@ -245,6 +261,23 @@ class FirebaseTokenFilter(
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(
             """{"code":"$code","error":"Unauthorized","message":"$message"}"""
+        )
+    }
+
+    private fun writeBanned(
+        response: HttpServletResponse,
+        ban: EffectiveAccountBan
+    ) {
+        response.status = HttpServletResponse.SC_FORBIDDEN
+        response.contentType = MediaType.APPLICATION_JSON_VALUE
+        response.characterEncoding = Charsets.UTF_8.name()
+        response.writer.write(
+            when (ban.expiresAt) {
+                null ->
+                    """{"code":"${DomainErrorCode.ACCOUNT_PERMANENTLY_BANNED.name}","error":"Forbidden","message":"Account is permanently banned"}"""
+                else ->
+                    """{"code":"${DomainErrorCode.ACCOUNT_TEMPORARILY_BANNED.name}","error":"Forbidden","message":"Account is temporarily banned","expiresAt":"${ban.expiresAt}"}"""
+            }
         )
     }
 }

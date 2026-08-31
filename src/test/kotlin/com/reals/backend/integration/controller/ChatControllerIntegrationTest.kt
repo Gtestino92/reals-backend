@@ -71,7 +71,7 @@ class ChatControllerIntegrationTest : ControllerIT() {
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
         assertEquals(SafetyReportStatus.PENDING, report.status)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
     }
 
     @Test

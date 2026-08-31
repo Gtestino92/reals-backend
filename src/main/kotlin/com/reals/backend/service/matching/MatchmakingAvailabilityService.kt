@@ -83,10 +83,10 @@ class MatchmakingAvailabilityService(
             )
         }
 
-        if (penaltyService.hasActivePenalty(userId)) {
+        if (penaltyService.hasEffectiveBan(userId = userId, now = now)) {
             return blocked(
                 code = DomainErrorCode.ACTIVE_PENALTY,
-                message = "User has an active penalty"
+                message = "User has an effective account ban"
             )
         }
 

@@ -12,6 +12,9 @@ import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.domain.PenaltyType
+import com.reals.backend.service.EffectiveAccountBan
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.UserService
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -22,6 +25,7 @@ import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
+import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -30,20 +34,24 @@ import kotlin.test.assertTrue
 class FirebaseTokenFilterTest {
 
     private val userService = mock(UserService::class.java)
+    private val penaltyService = mock(PenaltyService::class.java)
     private val firebaseTokenAuthenticationVerifier = mock(FirebaseTokenAuthenticationVerifier::class.java)
     private val localFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("local-firebase"),
         userService,
+        penaltyService,
         firebaseTokenAuthenticationVerifier
     )
     private val prodFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("prod"),
         userService,
+        penaltyService,
         firebaseTokenAuthenticationVerifier
     )
     private val adminFilter = FirebaseTokenFilter(
         EnvironmentExposurePolicy.forActiveProfiles("prod"),
         userService,
+        penaltyService,
         firebaseTokenAuthenticationVerifier,
         "admin@example.com"
     )
@@ -480,6 +488,102 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
+    fun `effective temporary ban rejects active linked user with expiresAt`() {
+        val expiresAt = OffsetDateTime.parse("2026-09-01T12:00:00Z")
+        val decodedToken = decodedToken(
+            uid = "firebase-temporary-ban",
+            email = "temporary-ban@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-temporary-ban",
+            email = "temporary-ban@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-temporary-ban")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.TEMPORARY_BAN,
+                expiresAt = expiresAt
+            )
+        )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(403, response.status)
+        assertTrue(response.contentAsString.contains("ACCOUNT_TEMPORARILY_BANNED"))
+        assertTrue(response.contentAsString.contains("\"expiresAt\":\"$expiresAt\""))
+        assertEquals(null, SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `effective permanent ban rejects active linked user without expiresAt`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-permanent-ban",
+            email = "permanent-ban@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-permanent-ban",
+            email = "permanent-ban@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-permanent-ban")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null
+            )
+        )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(403, response.status)
+        assertTrue(response.contentAsString.contains("ACCOUNT_PERMANENTLY_BANNED"))
+        assertFalse(response.contentAsString.contains("expiresAt"))
+        assertEquals(null, SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `expired temporary ban resolved as none allows active linked user`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-expired-ban",
+            email = "expired-ban@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-expired-ban",
+            email = "expired-ban@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-expired-ban")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(null)
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+        assertTrue(SecurityContextHolder.getContext().authentication!!.principal is CurrentUserAuthContext)
+    }
+
+    @Test
     fun `deleted backend user remains rejected while revocation result is cached`() {
         val firebaseAuth = mock(FirebaseAuth::class.java)
         val decodedToken = mock(FirebaseToken::class.java)
@@ -491,6 +595,7 @@ class FirebaseTokenFilterTest {
         val filter = FirebaseTokenFilter(
             EnvironmentExposurePolicy.forActiveProfiles("prod"),
             userService,
+            penaltyService,
             cachedVerifier
         )
         val activeUser = user(
@@ -561,6 +666,16 @@ class FirebaseTokenFilterTest {
         `when`(decodedToken.isEmailVerified).thenReturn(emailVerified)
         `when`(decodedToken.claims).thenReturn(firebaseClaims(providerValue))
         return decodedToken
+    }
+
+    private fun anyOffsetDateTime(): OffsetDateTime {
+        Mockito.any(OffsetDateTime::class.java)
+        return OffsetDateTime.now()
+    }
+
+    private fun eqUuid(value: UUID): UUID {
+        Mockito.eq(value)
+        return value
     }
 
     private fun firebaseClaims(providerValue: String?): Map<String, Any> =
