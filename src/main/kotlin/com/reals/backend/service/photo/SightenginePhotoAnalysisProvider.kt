@@ -1,6 +1,7 @@
 package com.reals.backend.service.photo
 
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpEntity
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 @Component
 @Conditional(SightengineProfilePhotoAnalysisCondition::class)
 class SightenginePhotoAnalysisProvider(
+    @param:Qualifier("sightengineRestClient")
     private val restClient: RestClient,
     private val properties: SightenginePhotoAnalysisProperties
 ) : ProfilePhotoAnalysisProvider {

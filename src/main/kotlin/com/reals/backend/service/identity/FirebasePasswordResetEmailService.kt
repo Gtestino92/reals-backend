@@ -3,6 +3,7 @@ package com.reals.backend.service.identity
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.reals.backend.service.PasswordResetEmailDeliveryService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -16,6 +17,7 @@ import java.time.Duration
 
 @Service
 class FirebasePasswordResetEmailService(
+    @param:Qualifier("firebaseAuthRestClient")
     private val firebaseAuthRestClient: RestClient,
     private val properties: FirebaseAuthRestProperties
 ) : PasswordResetEmailDeliveryService {

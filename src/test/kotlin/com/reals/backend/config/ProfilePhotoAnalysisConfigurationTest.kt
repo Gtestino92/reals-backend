@@ -1,5 +1,6 @@
 package com.reals.backend.config
 
+import com.reals.backend.service.identity.FirebaseAuthRestConfig
 import com.reals.backend.service.photo.NoopProfilePhotoAnalysisProvider
 import com.reals.backend.service.photo.NoopProfilePhotoAnalysisCondition
 import com.reals.backend.service.photo.ProfilePhotoAnalysisConfig
@@ -24,6 +25,9 @@ class ProfilePhotoAnalysisConfigurationTest {
             NoopProfilePhotoAnalysisProvider::class.java,
             SightenginePhotoAnalysisProvider::class.java
         )
+
+    private val contextRunnerWithFirebaseAuthRest = contextRunner
+        .withUserConfiguration(FirebaseAuthRestConfig::class.java)
 
     @Test
     fun `provider none remains default and requires no Sightengine credentials`() {
@@ -68,6 +72,54 @@ class ProfilePhotoAnalysisConfigurationTest {
             .run { context ->
                 assertThat(context).hasSingleBean(SightenginePhotoAnalysisProvider::class.java)
                 assertThat(context).hasSingleBean(RestClient::class.java)
+            }
+    }
+
+    @Test
+    fun `dev Sightengine opt-in uses Sightengine RestClient when Firebase Auth RestClient also exists`() {
+        contextRunnerWithFirebaseAuthRest
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
+            .withPropertyValues(
+                "profile.photos.moderation.provider=sightengine",
+                "profile.photos.sightengine.api-user=test-user",
+                "profile.photos.sightengine.api-secret=test-secret"
+            )
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                assertThat(context).hasBean("firebaseAuthRestClient")
+                assertThat(context).hasBean("sightengineRestClient")
+                val provider = context.getBean(SightenginePhotoAnalysisProvider::class.java)
+                val restClientField = SightenginePhotoAnalysisProvider::class.java
+                    .getDeclaredField("restClient")
+                    .apply { isAccessible = true }
+
+                assertThat(restClientField.get(provider))
+                    .isSameAs(context.getBean("sightengineRestClient"))
+                    .isNotSameAs(context.getBean("firebaseAuthRestClient"))
+            }
+    }
+
+    @Test
+    fun `prod Sightengine uses Sightengine RestClient when Firebase Auth RestClient also exists`() {
+        contextRunnerWithFirebaseAuthRest
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
+            .withPropertyValues(
+                "profile.photos.moderation.provider=sightengine",
+                "profile.photos.sightengine.api-user=test-user",
+                "profile.photos.sightengine.api-secret=test-secret"
+            )
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                assertThat(context).hasBean("firebaseAuthRestClient")
+                assertThat(context).hasBean("sightengineRestClient")
+                val provider = context.getBean(SightenginePhotoAnalysisProvider::class.java)
+                val restClientField = SightenginePhotoAnalysisProvider::class.java
+                    .getDeclaredField("restClient")
+                    .apply { isAccessible = true }
+
+                assertThat(restClientField.get(provider))
+                    .isSameAs(context.getBean("sightengineRestClient"))
+                    .isNotSameAs(context.getBean("firebaseAuthRestClient"))
             }
     }
 
