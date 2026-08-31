@@ -33,7 +33,7 @@ class UserFlowAlternateOutcomeIntegrationTest : BaseIT() {
 
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNoMatchLocks(setup.userAId, setup.userBId)
-        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
         val chat = chatService.findByIdOrThrow(setup.firstChatId)
         assertEquals(ChatStatus.CANCELLED, chat.status)
         assertEquals(ChatEndReason.UNILATERAL_CANCEL, chat.endedReason)

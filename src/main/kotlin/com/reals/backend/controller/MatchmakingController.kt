@@ -21,7 +21,7 @@ class MatchmakingController(
 
     /**
      * Add user to matchmaking queue
-     * Preconditions: profile ACTIVE, no active penalty, match limit not reached
+     * Preconditions: profile ACTIVE, no effective account ban, match limit not reached
      */
     @PostMapping("/queue")
     fun enqueue(

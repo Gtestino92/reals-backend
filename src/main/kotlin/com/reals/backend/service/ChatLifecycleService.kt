@@ -32,7 +32,6 @@ class ChatLifecycleService(
     private val chatDecisionRepository: ChatDecisionRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
     private val matchService: MatchService,
-    private val penaltyService: PenaltyService,
     private val connectionService: ConnectionService,
     private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val auditEventService: AuditEventService,
@@ -105,12 +104,6 @@ class ChatLifecycleService(
             }
 
             ChatType.SECOND_CHAT -> {
-                if (finalStatus == ChatStatus.ABANDONED) {
-                    abandonedUserIds.forEach {
-                        penaltyService.createAbandonmentPenalty(userId = it)
-                    }
-                }
-
                 chat.connectionId?.let {
                     connectionService.closeConnection(connectionId = it)
                 }

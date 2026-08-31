@@ -163,7 +163,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
                 blockedUserId = setup.userBId
             )
         )
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
 
         val match = matchRepository.findById(setup.matchId).orElseThrow()
         assertEquals(MatchState.CHAT_REJECTED, match.state)

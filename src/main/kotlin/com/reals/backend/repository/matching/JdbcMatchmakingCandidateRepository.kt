@@ -26,6 +26,7 @@ class JdbcMatchmakingCandidateRepository(
 
     override fun claimNextEligibleAnchorForUpdate(
         today: LocalDate,
+        now: OffsetDateTime,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?,
@@ -39,6 +40,7 @@ class JdbcMatchmakingCandidateRepository(
         )
         val parameters = baseParameters(
             today = today,
+            now = now,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff,
@@ -60,6 +62,7 @@ class JdbcMatchmakingCandidateRepository(
         anchorQueueEntryId: UUID,
         limit: Int,
         today: LocalDate,
+        now: OffsetDateTime,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?,
@@ -73,6 +76,7 @@ class JdbcMatchmakingCandidateRepository(
         )
         val parameters = baseParameters(
             today = today,
+            now = now,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff,
@@ -91,6 +95,7 @@ class JdbcMatchmakingCandidateRepository(
         anchorQueueEntryId: UUID,
         partnerQueueEntryId: UUID,
         today: LocalDate,
+        now: OffsetDateTime,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?,
@@ -104,6 +109,7 @@ class JdbcMatchmakingCandidateRepository(
         )
         val parameters = baseParameters(
             today = today,
+            now = now,
             exclusionPolicy = exclusionPolicy,
             previousPairingCutoff = previousPairingCutoff,
             firstChatExpirationCutoff = firstChatExpirationCutoff,
@@ -120,6 +126,7 @@ class JdbcMatchmakingCandidateRepository(
 
     private fun baseParameters(
         today: LocalDate,
+        now: OffsetDateTime,
         exclusionPolicy: MatchmakingPairExclusionPolicy,
         previousPairingCutoff: OffsetDateTime?,
         firstChatExpirationCutoff: OffsetDateTime?,
@@ -128,6 +135,7 @@ class JdbcMatchmakingCandidateRepository(
         val parameters =
             MapSqlParameterSource()
                 .addValue("today", today)
+                .addValue("now", now)
 
         if (exclusionPolicy.excludeHistoricalPairings) {
             parameters

@@ -285,6 +285,11 @@ read as an architecture document or changelog.
 - Add automated child-safety detection, CSAM/CSAE tooling, age estimation,
   richer content policy, system-created safety reports or automatic penalties
   only after legal, privacy, safety and operator workflows are defined.
+- Account-ban active-engagement containment remains follow-up work. The backend
+  rejects effectively banned users from normal authenticated Reals access and
+  removes them from matchmaking, but it does not yet close or contain existing
+  matches, chats, visual reviews, connections, scheduling, or second-chat
+  engagements when an admin applies a ban.
 - Add unblock/correction flows for manual blocks if product support requires
   reversing durable pair exclusions.
 

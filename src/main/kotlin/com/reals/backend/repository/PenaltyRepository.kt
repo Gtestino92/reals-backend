@@ -9,9 +9,27 @@ import java.util.UUID
 interface PenaltyRepository :
     JpaRepository<Penalty, UUID> {
 
-    fun existsByUserIdAndActiveTrue(
-        userId: UUID
-    ): Boolean
+    @Query(
+        """
+        SELECT p FROM Penalty p
+        WHERE p.userId = :userId
+          AND p.active = true
+          AND (
+            p.type = com.reals.backend.domain.PenaltyType.PERMANENT_BAN
+            OR (
+              p.type = com.reals.backend.domain.PenaltyType.TEMPORARY_BAN
+              AND p.expiresAt IS NOT NULL
+              AND p.expiresAt > :now
+            )
+          )
+        """
+    )
+    fun findEffectiveBans(
+        @Param("userId")
+        userId: UUID,
+        @Param("now")
+        now: OffsetDateTime
+    ): List<Penalty>
 
     @Query(
         """

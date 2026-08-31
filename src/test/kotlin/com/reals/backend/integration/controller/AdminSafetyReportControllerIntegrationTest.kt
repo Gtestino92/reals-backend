@@ -118,7 +118,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
         assertEquals(SafetyReportContextType.USER, report.contextType)
         assertEquals(reported, report.contextId)
         assertEquals(0, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(reported))
+        assertFalse(penaltyRepository.findAll().any { it.userId == reported })
 
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
             ?: error("Expected evidence snapshot")
@@ -225,7 +225,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             reports.map { it.source }.toSet()
         )
         assertEquals(1, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
         assertEquals(0, userReliabilityEventRepository.count())
     }
 
@@ -284,7 +284,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
 
         assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.firstChatId).orElseThrow().status)
         assertEquals(0, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
         assertEquals(0, userReliabilityEventRepository.count())
 
         val report = safetyReportRepository.findAll().single()
@@ -432,7 +432,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
 
         val updated = safetyReportRepository.findById(report.id).orElseThrow()
         assertEquals(SafetyReportStatus.DISMISSED, updated.status)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
 
         val audit = auditEventRepository.findAll()
             .single {

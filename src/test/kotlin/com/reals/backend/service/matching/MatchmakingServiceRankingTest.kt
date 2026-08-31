@@ -776,6 +776,7 @@ class MatchmakingServiceRankingTest {
 
         override fun claimNextEligibleAnchorForUpdate(
             today: LocalDate,
+            now: OffsetDateTime,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
             firstChatExpirationCutoff: OffsetDateTime?,
@@ -790,6 +791,7 @@ class MatchmakingServiceRankingTest {
             anchorQueueEntryId: UUID,
             limit: Int,
             today: LocalDate,
+            now: OffsetDateTime,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
             firstChatExpirationCutoff: OffsetDateTime?,
@@ -801,6 +803,7 @@ class MatchmakingServiceRankingTest {
             anchorQueueEntryId: UUID,
             partnerQueueEntryId: UUID,
             today: LocalDate,
+            now: OffsetDateTime,
             exclusionPolicy: MatchmakingPairExclusionPolicy,
             previousPairingCutoff: OffsetDateTime?,
             firstChatExpirationCutoff: OffsetDateTime?,

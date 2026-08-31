@@ -316,6 +316,13 @@ ids. Actuator exposes Micrometer meters in configured runtimes, but durable
 metrics retention requires an external registry/backend that is not introduced
 here.
 
+`Penalty` rows represent administrative account bans only. Temporary bans are
+effective while `active=true` and `now < expiresAt`; permanent bans are
+effective while `active=true` with `expiresAt=null`. If multiple rows are
+effective, a permanent ban wins over temporary bans and otherwise the latest
+temporary expiry wins. The expiration scheduler normalizes expired temporary
+rows but is not the authorization boundary.
+
 Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
 trigger the same job beans manually, plus `/api/local-dev/timeouts/...`
 endpoints to move selected deadlines into the past for deterministic manual

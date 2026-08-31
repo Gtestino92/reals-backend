@@ -1975,6 +1975,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            temporarilyBanned:
+              value:
+                code: ACCOUNT_TEMPORARILY_BANNED
+                error: Forbidden
+                message: Account is temporarily banned
+                expiresAt: '2026-09-01T12:00:00Z'
+            permanentlyBanned:
+              value:
+                code: ACCOUNT_PERMANENTLY_BANNED
+                error: Forbidden
+                message: Account is permanently banned
     NotFound:
       description: Resource not found
       content:
@@ -2391,6 +2403,11 @@ components:
         code: { type: string, example: PROFILE_NOT_ACTIVE }
         error: { type: string, example: Conflict }
         message: { type: string, nullable: true }
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Present only for `ACCOUNT_TEMPORARILY_BANNED`.
     UserResponse:
       type: object
       required: [id, status, createdAt, passwordManagementAllowed]
@@ -3647,6 +3664,7 @@ components:
         sentAt: { type: string, format: date-time }
     AdminPenaltyResponse:
       type: object
+      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt.
       required: [id, userId, reason, type, createdAt, active]
       properties:
         id: { type: string, format: uuid }

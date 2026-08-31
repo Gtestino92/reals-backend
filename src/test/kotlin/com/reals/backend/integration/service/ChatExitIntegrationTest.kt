@@ -410,7 +410,7 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `unilateral first chat cancellation before minimum messages applies penalty`() {
+    fun `unilateral first chat cancellation before minimum messages records reliability without penalty`() {
         val setup = createMatchWithFirstChat()
 
         val outcome =
@@ -423,9 +423,9 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.UNILATERAL_CANCEL, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
-        assertTrue(outcome.penaltyApplied)
-        assertEquals(setup.userAId, outcome.penalizedUserId)
-        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
+        assertFalse(outcome.penaltyApplied)
+        assertNull(outcome.penalizedUserId)
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
         assertNoMatchLocks(setup.userAId, setup.userBId)
     }
 
@@ -472,8 +472,8 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(ChatExitReason.CHILD_SAFETY_CONCERN, outcome.exitRequest.reason)
         assertFalse(outcome.penaltyApplied)
         assertNull(outcome.penalizedUserId)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
 
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportStatus.PENDING, report.status)
@@ -666,7 +666,7 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, exception.code)
         assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.secondChatId).status)
         assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(setup.connectionId).state)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
     }
 
     @Test

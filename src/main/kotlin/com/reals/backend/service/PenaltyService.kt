@@ -6,7 +6,6 @@ import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
-import com.reals.backend.service.reputation.TrustScoreEvaluator
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -18,39 +17,48 @@ import java.util.*
 class PenaltyService(
     private val penaltyRepository: PenaltyRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
-    private val trustScoreEvaluator: TrustScoreEvaluator,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService
 ) {
 
-    fun hasActivePenalty(userId: UUID): Boolean {
-        return penaltyRepository.existsByUserIdAndActiveTrue(userId)
+    @Transactional(readOnly = true)
+    fun hasEffectiveBan(
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        resolveEffectiveBan(userId = userId, now = now) != null
+
+    @Transactional(readOnly = true)
+    fun resolveEffectiveBan(
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): EffectiveAccountBan? {
+        val effectiveBans = penaltyRepository.findEffectiveBans(
+            userId = userId,
+            now = now
+        )
+
+        if (effectiveBans.any { it.type == PenaltyType.PERMANENT_BAN }) {
+            return EffectiveAccountBan(
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null
+            )
+        }
+
+        val latestTemporaryExpiry =
+            effectiveBans
+                .asSequence()
+                .filter { it.type == PenaltyType.TEMPORARY_BAN }
+                .mapNotNull { it.expiresAt }
+                .maxOrNull()
+
+        return latestTemporaryExpiry?.let {
+            EffectiveAccountBan(
+                type = PenaltyType.TEMPORARY_BAN,
+                expiresAt = it
+            )
+        }
     }
-
-    /**
-     * Creates a penalty for abandoning the second chat.
-     * Base duration is [baseDurationHours]. Effective duration is scaled by the user's
-     * trust score: lower score -> longer penalty (progressive enforcement).
-     */
-    fun createAbandonmentPenalty(
-        userId: UUID,
-        baseDurationHours: Long = 24
-    ): Penalty =
-        createPenalty(
-            userId = userId,
-            reason = "Abandoned second chat",
-            baseDurationHours = baseDurationHours
-        )
-
-    fun createCancellationPenalty(
-        userId: UUID,
-        baseDurationHours: Long = 24
-    ): Penalty =
-        createPenalty(
-            userId = userId,
-            reason = "Cancelled chat before minimum engagement",
-            baseDurationHours = baseDurationHours
-        )
 
     fun createTemporaryPenalty(
         userId: UUID,
@@ -98,26 +106,6 @@ class PenaltyService(
                 appliedByUserId = appliedByUserId
             )
         )
-    }
-
-    private fun createPenalty(
-        userId: UUID,
-        reason: String,
-        baseDurationHours: Long
-    ): Penalty {
-
-        val score = trustScoreEvaluator.evaluate(userId)
-        val effectiveHours =
-            (baseDurationHours * score.penaltyMultiplier()).toLong()
-
-        val penalty = Penalty(
-            userId = userId,
-            reason = reason,
-            type = PenaltyType.TEMPORARY_BAN,
-            expiresAt = OffsetDateTime.now().plusHours(effectiveHours)
-        )
-
-        return savePenalty(penalty)
     }
 
     private fun savePenalty(penalty: Penalty): Penalty {
@@ -181,3 +169,8 @@ class PenaltyService(
         return expired
     }
 }
+
+data class EffectiveAccountBan(
+    val type: PenaltyType,
+    val expiresAt: OffsetDateTime?
+)
