@@ -86,6 +86,9 @@ public path before deciding whether to run an explicit image rollback.
 
 The `dev` Spring profile uses managed PostgreSQL, Firebase auth, Flyway,
 Hibernate schema validation, S3-compatible storage, and automatic schedulers.
+Profile-photo moderation defaults to the no-op compatibility provider in DEV.
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` plus Sightengine credentials
+only for an explicit real-provider smoke run.
 
 Minimum backend runtime environment in `/etc/reals/backend.env`:
 
@@ -159,6 +162,23 @@ Do not point shared dev at a developer-machine MinIO instance. See
 `docs/storage-r2-configuration.md` for S3-compatible provider behavior and
 non-AWS options.
 
+## Sightengine For Dev Smoke
+
+Normal DEV deployments do not require Sightengine credentials and do not call
+Sightengine. To smoke the real provider before production, explicitly configure:
+
+```text
+PROFILE_PHOTO_MODERATION_PROVIDER=sightengine
+SIGHTENGINE_API_USER=<dev-sightengine-api-user>
+SIGHTENGINE_API_SECRET=<dev-sightengine-api-secret>
+PROFILE_PHOTO_SIGHTENGINE_ENDPOINT=https://api.sightengine.com/1.0/check.json
+```
+
+Startup fails if the provider is explicitly selected without nonblank
+credentials, a valid absolute HTTPS endpoint or positive timeouts. The smoke
+must use normal profile-photo upload/replacement endpoints; do not add
+provider-only debug endpoints for this purpose.
+
 ## Firebase For Dev
 
 The `dev` profile uses Firebase token verification, not local auto-auth.
@@ -224,3 +244,6 @@ Expected responses:
 `/actuator/info` and `/actuator/metrics/**` are administrator-protected in
 hosted environments. Inspect `/actuator/info` manually with a fresh
 administrator bearer token only when needed.
+
+Run the full external-provider checklist in `docs/dev-smoke-checklist.md`
+before using DEV results as production-readiness evidence.

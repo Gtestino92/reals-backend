@@ -4,7 +4,7 @@ import com.reals.backend.service.photo.NoopProfilePhotoAnalysisProvider
 import com.reals.backend.service.photo.NoopProfilePhotoAnalysisCondition
 import com.reals.backend.service.photo.ProfilePhotoAnalysisConfig
 import com.reals.backend.service.photo.ProfilePhotoModerationPolicyProperties
-import com.reals.backend.service.photo.ProductionSightenginePhotoAnalysisCondition
+import com.reals.backend.service.photo.SightengineProfilePhotoAnalysisCondition
 import com.reals.backend.service.photo.SightenginePhotoAnalysisProvider
 import com.reals.backend.service.photo.SightenginePhotoAnalysisProperties
 import org.assertj.core.api.Assertions.assertThat
@@ -35,7 +35,44 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `Sightengine provider bean is conditional on sightengine provider in prod`() {
+    fun `local default selects noop and requires no Sightengine credentials`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("local-postgres") }
+            .run { context ->
+                assertThat(context).hasSingleBean(NoopProfilePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(SightenginePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(RestClient::class.java)
+            }
+    }
+
+    @Test
+    fun `dev default selects noop and requires no Sightengine credentials`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
+            .run { context ->
+                assertThat(context).hasSingleBean(NoopProfilePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(SightenginePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(RestClient::class.java)
+            }
+    }
+
+    @Test
+    fun `dev Sightengine opt-in selects Sightengine provider`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
+            .withPropertyValues(
+                "profile.photos.moderation.provider=sightengine",
+                "profile.photos.sightengine.api-user=test-user",
+                "profile.photos.sightengine.api-secret=test-secret"
+            )
+            .run { context ->
+                assertThat(context).hasSingleBean(SightenginePhotoAnalysisProvider::class.java)
+                assertThat(context).hasSingleBean(RestClient::class.java)
+            }
+    }
+
+    @Test
+    fun `prod Sightengine selects Sightengine provider`() {
         contextRunner
             .withInitializer { context -> context.environment.setActiveProfiles("prod") }
             .withPropertyValues(
@@ -50,21 +87,25 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `selecting Sightengine outside prod uses noop provider and requires no credentials`() {
+    fun `local explicit Sightengine fails instead of silently falling back to noop`() {
         contextRunner
-            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
-            .withPropertyValues("profile.photos.moderation.provider=sightengine")
+            .withInitializer { context -> context.environment.setActiveProfiles("local-postgres") }
+            .withPropertyValues(
+                "profile.photos.moderation.provider=sightengine",
+                "profile.photos.sightengine.api-user=test-user",
+                "profile.photos.sightengine.api-secret=test-secret"
+            )
             .run { context ->
-                assertThat(context).hasSingleBean(NoopProfilePhotoAnalysisProvider::class.java)
-                assertThat(context).doesNotHaveBean(SightenginePhotoAnalysisProvider::class.java)
-                assertThat(context).doesNotHaveBean(RestClient::class.java)
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("provider=sightengine is supported only in dev or prod")
             }
     }
 
     @Test
-    fun `selecting Sightengine without api user fails startup`() {
+    fun `dev selecting Sightengine without api user fails startup`() {
         contextRunner
-            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
                 "profile.photos.moderation.provider=sightengine",
                 "profile.photos.sightengine.api-secret=test-secret"
@@ -75,15 +116,66 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `selecting Sightengine without api secret fails startup`() {
+    fun `dev selecting Sightengine without api secret fails startup`() {
         contextRunner
-            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
                 "profile.photos.moderation.provider=sightengine",
                 "profile.photos.sightengine.api-user=test-user"
             )
             .run { context ->
                 assertThat(context.startupFailure).isNotNull()
+            }
+    }
+
+    @Test
+    fun `dev selecting Sightengine with invalid endpoint fails startup`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("dev") }
+            .withPropertyValues(
+                "profile.photos.moderation.provider=sightengine",
+                "profile.photos.sightengine.api-user=test-user",
+                "profile.photos.sightengine.api-secret=test-secret",
+                "profile.photos.sightengine.endpoint=http://api.sightengine.com/1.0/check.json"
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("valid absolute HTTPS URI when provider=sightengine")
+            }
+    }
+
+    @Test
+    fun `prod selecting Sightengine without credentials fails startup`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
+            .withPropertyValues("profile.photos.moderation.provider=sightengine")
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure).rootCause()
+                    .hasMessageContaining("api-user")
+            }
+    }
+
+    @Test
+    fun `prod explicit noop fails without selecting Sightengine`() {
+        contextRunner
+            .withInitializer { context -> context.environment.setActiveProfiles("prod") }
+            .withPropertyValues("profile.photos.moderation.provider=none")
+            .run { context ->
+                assertThat(context).hasSingleBean(NoopProfilePhotoAnalysisProvider::class.java)
+                assertThat(context).doesNotHaveBean(SightenginePhotoAnalysisProvider::class.java)
+            }
+    }
+
+    @Test
+    fun `unknown provider fails startup`() {
+        contextRunner
+            .withPropertyValues("profile.photos.moderation.provider=unknown")
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("profile.photos.moderation.provider must be one of")
             }
     }
 
@@ -142,7 +234,7 @@ class ProfilePhotoAnalysisConfigurationTest {
             .getAnnotation(Conditional::class.java)
 
         assertEquals(
-            listOf(ProductionSightenginePhotoAnalysisCondition::class),
+            listOf(SightengineProfilePhotoAnalysisCondition::class),
             providerCondition.value.toList()
         )
         assertEquals(

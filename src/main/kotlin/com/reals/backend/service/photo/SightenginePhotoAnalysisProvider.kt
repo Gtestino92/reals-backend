@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClient
 import com.fasterxml.jackson.annotation.JsonProperty
 
 @Component
-@Conditional(ProductionSightenginePhotoAnalysisCondition::class)
+@Conditional(SightengineProfilePhotoAnalysisCondition::class)
 class SightenginePhotoAnalysisProvider(
     private val restClient: RestClient,
     private val properties: SightenginePhotoAnalysisProperties

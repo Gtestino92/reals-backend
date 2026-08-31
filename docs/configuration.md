@@ -53,6 +53,17 @@ Firebase App Check mode defaults are profile-specific:
   project number is blank or nonnumeric, the Firebase App ID allowlist is empty,
   or the JWKS URI is blank/invalid.
 
+External-provider defaults are intentionally different by profile:
+
+| Integration | Local | Dev default | Dev smoke | Prod |
+| --- | --- | --- | --- | --- |
+| Sightengine | no-op `none` provider | no-op `none` provider | real opt-in with `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | required real Sightengine |
+| Firebase Auth | `local-firebase` real Admin SDK; non-Firebase local profiles use local auto-auth | real Firebase Admin verification | real Firebase Admin verification | real Firebase Admin verification |
+| App Check | disabled by default in `local-firebase` | disabled by default | `MONITOR` or `ENFORCED` with project/app config | `ENFORCED` required |
+| FCM | no-op outside Firebase profiles; Firebase sender in `local-firebase` | real Firebase Admin Messaging | real device delivery through normal flows | real Firebase Admin Messaging |
+| Storage | local MinIO for `local-firebase` | configured DEV S3-compatible bucket | real DEV bucket upload/read/replace/delete | private PROD S3-compatible bucket |
+| Firebase account deletion | no-op only when Firebase Admin is not configured | real Firebase Auth deletion during finalization | disposable DEV Firebase user | real Firebase Auth deletion during finalization |
+
 ## Placeholder Reference
 
 `deploy/helm/values-dev.yaml` and `deploy/helm/values-prod.yaml` are temporary Helm-style values references. Their exact role is still undecided because the final Helm chart may live in a separate infrastructure repository.
@@ -111,10 +122,10 @@ Non-sensitive runtime configuration:
 | `CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `CHAT_AUDIO_UPLOAD_BUSY`. Defaults to `1`. |
 | `PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE` | no | Servlet multipart parser file-size limit for profile-photo uploads. Defaults to `5MB`; keep aligned with the 5 MiB product limit. |
 | `PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE` | no | Servlet multipart parser request-size limit. Defaults to `6MB` to leave room for multipart headers and the `position` field. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | prod: yes | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. Outside `prod`, Sightengine is disabled even if this is set to `sightengine`, and the backend uses the provider `none` compatibility path. In `prod`, startup requires `sightengine`. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | prod: yes; dev Sightengine smoke: yes | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. DEV starts with no-op moderation unless explicitly set to `sightengine`. In `dev` and `prod`, selecting `sightengine` enables the real Sightengine provider and requires usable Sightengine configuration. In `prod`, startup requires `sightengine`; it cannot fall back to `none`. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
-| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | no | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`; when selected in `prod`, startup requires a valid absolute HTTPS URI. |
+| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | when Sightengine selected | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`; when selected in `dev` or `prod`, startup requires a valid absolute HTTPS URI. |
 | `PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS` | no | Sightengine connect timeout in milliseconds. Defaults to `3000`; must be positive. |
 | `PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS` | no | Sightengine response/read timeout in milliseconds. Defaults to `10000`; must be positive. |
 | `PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD` | no | Reals sexual-explicit review score threshold. Defaults to `0.50`. |
@@ -308,8 +319,8 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
-| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API user. Required only when the production provider is selected. Do not commit real values. |
-| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API secret. Required only when the production provider is selected. Do not commit or log it. |
+| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod` | Sightengine API user. DEV default `none` does not require it. Do not commit real values. |
+| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod` | Sightengine API secret. DEV default `none` does not require it. Do not commit or log it. |
 | `STORAGE_S3_ACCESS_KEY_ID` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible access key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible secret key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `STORAGE_S3_SESSION_TOKEN` | only for explicit temporary credentials in `STATIC` mode | Optional AWS session token used with `STORAGE_S3_ACCESS_KEY_ID` and `STORAGE_S3_SECRET_ACCESS_KEY`. Must not be configured alone or in `DEFAULT_CHAIN`. Legacy fallback: `S3_SESSION_TOKEN`. |
@@ -576,10 +587,11 @@ Delete, list and reorder do not consume that bucket; the broad pre-auth IP
 limiter is unchanged. Current rate-limit buckets are in-memory and
 single-instance.
 
-Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` to use Sightengine
-for profile-photo analysis. Non-production execution profiles ignore this
-provider selection and use the provider `none` compatibility path. In `prod`,
-the backend sends one synchronous multipart request to
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` only for explicit
+real-provider smoke testing and in `prod` for production. DEV defaults to
+`none`, requires no Sightengine credentials and makes no Sightengine calls.
+When `dev` or `prod` selects `sightengine`, the backend sends one synchronous
+multipart request to
 `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` per technically valid upload or
 replacement. The request uses the server-normalized JPEG bytes as the `media`
 part before object storage and includes the fixed MVP model list:
@@ -589,9 +601,10 @@ production deployment; account plan/model restrictions are treated as provider
 failures, not silently downgraded requests.
 
 Sightengine credentials are `SIGHTENGINE_API_USER` and
-`SIGHTENGINE_API_SECRET`. They are required only when provider `sightengine` is
-selected in `prod`. Do not commit credentials, log them, or expose raw provider
-responses to clients.
+`SIGHTENGINE_API_SECRET`. They are required when provider `sightengine` is
+selected in `dev` or `prod`. Startup also requires a valid absolute HTTPS
+endpoint and positive connect/read timeouts. Do not commit credentials, log
+them, or expose raw provider responses to clients.
 
 Sightengine `faces` entries are used only for the MVP `isPersonPhoto` signal.
 Any real face makes `isPersonPhoto=true`; zero real faces makes it false.
@@ -644,16 +657,17 @@ flow. These checks do not call external providers.
 | Photo analysis provider | `profile.photos.moderation.provider` must be `sightengine`. |
 | Sightengine structure | `profile.photos.sightengine.endpoint` must be an absolute HTTPS URI; credentials must be nonblank; connect/read timeouts must be positive. |
 | Activation moderation | `profile.photos.require-moderation-approval-for-activation` must be `true`. |
-| App Check | Existing App Check validation requires `ENFORCED`, a numeric project number, at least one allowed Firebase App ID and an absolute JWKS URI. |
+| App Check | Existing App Check validation requires `ENFORCED`, a numeric project number, at least one allowed Firebase App ID and an absolute JWKS URI. Non-production Firebase profiles validate the same provider fields when mode is `MONITOR` or `ENFORCED`. |
 | Rate limiting | `security.rate-limit.enabled` must be `true`; configured token-bucket capacities and refill periods must be positive. |
 | Media storage | S3-compatible storage must have a nonblank bucket and region, valid credential-mode structure, compatible `auto` region usage, `PRESIGNED` read URLs and a positive presigned URL duration. |
 
-After successful production validation, startup logs one safe runtime summary:
-execution profile, photo moderation provider, moderation-approval activation
-requirement, App Check mode, rate-limit enabled flag, storage credential mode,
-storage read URL mode, matchmaking ranking mode and affinity ranking mode.
-Secrets, Firebase tokens, database credentials, S3 secret keys, admin allowlists,
-registration tokens, full URLs and object keys are not logged.
+After successful `dev` or `prod` startup, the backend logs one safe runtime
+summary: execution profile, photo moderation provider, moderation-approval
+activation requirement, App Check mode, rate-limit enabled flag, push provider,
+storage provider, storage credential mode, storage read URL mode, matchmaking
+ranking mode and affinity ranking mode. Secrets, Firebase tokens, database
+credentials, S3 secret keys, admin allowlists, registration tokens, full URLs
+and object keys are not logged.
 
 ## Matchmaking Tuning
 

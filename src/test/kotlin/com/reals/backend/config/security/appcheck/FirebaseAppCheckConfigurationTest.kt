@@ -42,8 +42,39 @@ class FirebaseAppCheckConfigurationTest {
             .withPropertyValues("spring.profiles.active=dev")
             .run { context ->
                 assertThat(context).hasSingleBean(FirebaseAppCheckFilter::class.java)
+                assertThat(context).hasSingleBean(FirebaseAppCheckStartupValidator::class.java)
                 assertThat(context.getBean(FirebaseAppCheckProperties::class.java).mode)
                     .isEqualTo(FirebaseAppCheckMode.DISABLED)
+            }
+    }
+
+    @Test
+    fun `dev rejects enabled app check without provider configuration`() {
+        contextRunner
+            .withPropertyValues(
+                "spring.profiles.active=dev",
+                "security.app-check.mode=ENFORCED"
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure).hasMessageContaining("project-number")
+            }
+    }
+
+    @Test
+    fun `dev accepts enabled app check with provider configuration`() {
+        contextRunner
+            .withPropertyValues(
+                "spring.profiles.active=dev",
+                "security.app-check.mode=ENFORCED",
+                "security.app-check.project-number=123456789",
+                "security.app-check.allowed-app-ids[0]=1:123456789:android:app",
+                "security.app-check.jwks-uri=https://firebaseappcheck.googleapis.com/v1/jwks"
+            )
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                assertThat(context).hasSingleBean(FirebaseAppCheckFilter::class.java)
+                assertThat(context).hasSingleBean(FirebaseAppCheckStartupValidator::class.java)
             }
     }
 
@@ -89,7 +120,7 @@ class FirebaseAppCheckConfigurationTest {
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context).hasSingleBean(FirebaseAppCheckFilter::class.java)
-                assertThat(context).hasSingleBean(FirebaseAppCheckProductionStartupValidator::class.java)
+                assertThat(context).hasSingleBean(FirebaseAppCheckStartupValidator::class.java)
             }
     }
 }

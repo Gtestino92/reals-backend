@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Condition
 import org.springframework.context.annotation.ConditionContext
 import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
+import org.springframework.beans.factory.InitializingBean
 import org.springframework.core.env.Environment
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.http.client.SimpleClientHttpRequestFactory
@@ -55,15 +56,25 @@ data class SightenginePhotoAnalysisProperties(
     }
 
     fun requireValidProductionEndpoint() {
+        requireValidHttpsEndpoint(
+            message = "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI in prod"
+        )
+    }
+
+    fun requireValidSelectedProviderEndpoint() {
+        requireValidHttpsEndpoint(
+            message = "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI when provider=sightengine"
+        )
+    }
+
+    private fun requireValidHttpsEndpoint(message: String) {
         val uri = runCatching { URI(endpoint.trim()) }
             .getOrElse {
-                throw IllegalStateException(
-                    "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI in prod"
-                )
+                throw IllegalStateException(message)
             }
 
         require(uri.isAbsolute && uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
-            "profile.photos.sightengine.endpoint must be a valid absolute HTTPS URI in prod"
+            message
         }
     }
 
@@ -138,7 +149,7 @@ data class ReviewScoreThreshold(
 class ProfilePhotoAnalysisConfig {
 
     @Bean
-    @Conditional(ProductionSightenginePhotoAnalysisCondition::class)
+    @Conditional(SightengineProfilePhotoAnalysisCondition::class)
     fun sightengineRestClient(properties: SightenginePhotoAnalysisProperties): RestClient {
         val requestFactory = SimpleClientHttpRequestFactory().apply {
             setConnectTimeout(Duration.ofMillis(properties.connectTimeoutMs))
@@ -149,19 +160,55 @@ class ProfilePhotoAnalysisConfig {
             .requestFactory(requestFactory)
             .build()
     }
+
+    @Bean
+    fun profilePhotoAnalysisProviderStartupValidator(
+        environment: Environment,
+        profilePhotoProperties: ProfilePhotoRuntimeProperties,
+        sightengineProperties: SightenginePhotoAnalysisProperties
+    ): ProfilePhotoAnalysisProviderStartupValidator =
+        ProfilePhotoAnalysisProviderStartupValidator(
+            environment = environment,
+            profilePhotoProperties = profilePhotoProperties,
+            sightengineProperties = sightengineProperties
+        )
 }
 
-class ProductionSightenginePhotoAnalysisCondition : Condition {
+class SightengineProfilePhotoAnalysisCondition : Condition {
     override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean =
         profilePhotoModerationProvider(context.environment) == SIGHTENGINE_PROVIDER &&
-            isProductionExecutionProfile(context.environment)
+            sightengineProviderSupported(context.environment)
 }
 
 class NoopProfilePhotoAnalysisCondition : Condition {
     override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean {
         val provider = profilePhotoModerationProvider(context.environment)
-        return provider == NOOP_PROVIDER ||
-            (provider == SIGHTENGINE_PROVIDER && !isProductionExecutionProfile(context.environment))
+        return provider == NOOP_PROVIDER
+    }
+}
+
+class ProfilePhotoAnalysisProviderStartupValidator(
+    private val environment: Environment,
+    private val profilePhotoProperties: ProfilePhotoRuntimeProperties,
+    private val sightengineProperties: SightenginePhotoAnalysisProperties
+) : InitializingBean {
+
+    override fun afterPropertiesSet() {
+        when (val provider = profilePhotoProperties.normalizedModerationProvider()) {
+            NOOP_PROVIDER -> return
+            SIGHTENGINE_PROVIDER -> validateSightengineProvider()
+            else -> throw IllegalStateException(
+                "profile.photos.moderation.provider must be one of: $NOOP_PROVIDER, $SIGHTENGINE_PROVIDER"
+            )
+        }
+    }
+
+    private fun validateSightengineProvider() {
+        require(sightengineProviderSupported(environment)) {
+            "profile.photos.moderation.provider=sightengine is supported only in dev or prod"
+        }
+        sightengineProperties.requireCredentials()
+        sightengineProperties.requireValidSelectedProviderEndpoint()
     }
 }
 
@@ -170,11 +217,12 @@ private fun profilePhotoModerationProvider(environment: Environment): String =
         .trim()
         .lowercase()
 
-private fun isProductionExecutionProfile(environment: Environment): Boolean {
+private fun sightengineProviderSupported(environment: Environment): Boolean {
     val activeExecutionProfiles = environment.activeProfiles
         .toSet()
         .intersect(EnvironmentExposurePolicy.EXECUTION_PROFILES)
-    return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
+    return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.DEV_PROFILE) ||
+        activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
 }
 
 internal const val PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY = "profile.photos.moderation.provider"

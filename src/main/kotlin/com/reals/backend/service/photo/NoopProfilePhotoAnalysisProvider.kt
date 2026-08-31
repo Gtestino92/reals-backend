@@ -7,5 +7,5 @@ import org.springframework.stereotype.Component
 @Conditional(NoopProfilePhotoAnalysisCondition::class)
 class NoopProfilePhotoAnalysisProvider : ProfilePhotoAnalysisProvider {
     override fun analyze(request: ProfilePhotoAnalysisRequest): ProfilePhotoAnalysisProviderResult =
-        ProfilePhotoAnalysisProviderResult.NotConfigured(provider = "none")
+        ProfilePhotoAnalysisProviderResult.NotConfigured(provider = NOOP_PROVIDER)
 }

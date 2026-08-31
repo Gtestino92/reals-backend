@@ -11,6 +11,7 @@ should not preserve completed work as history.
 - `configuration.md`: profile and environment variable reference.
 - `data-retention.md`: account, media and safety-data retention behavior.
 - `dev-deployment.md`: current AWS dev deployment shape, GHCR image, PostgreSQL, Firebase and runtime checks.
+- `dev-smoke-checklist.md`: manual DEV smoke checklist for external providers and admin/safety readiness.
 - `aws-dev-deployment.md`: manual AWS dev deployment workflow, OIDC/SSM setup, rollback behavior and future production design.
 - `lifecycle-job-manual-test-plan.md`: manual checks for lifecycle jobs.
 - `local-development.md`: local profiles, H2/PostgreSQL, auth and run notes.
