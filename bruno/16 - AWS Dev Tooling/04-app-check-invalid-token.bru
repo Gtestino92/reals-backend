@@ -1,0 +1,28 @@
+meta {
+  name: 04 App Check Invalid Token
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: basura
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 401) {
+    throw new Error(`Expected 401 for invalid App Check token, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (!body || body.code !== "INVALID_APP_CHECK_TOKEN") {
+    throw new Error("Expected INVALID_APP_CHECK_TOKEN response body.");
+  }
+}

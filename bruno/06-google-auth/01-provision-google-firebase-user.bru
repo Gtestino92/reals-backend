@@ -12,6 +12,7 @@ post {
 
 headers {
   Authorization: Bearer {{firebase_google_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
 }
 
 script:post-response {

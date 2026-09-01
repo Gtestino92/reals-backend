@@ -12,6 +12,7 @@ delete {
 
 headers {
   Authorization: Bearer {{affinity_user_b_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
 }
 
 script:post-response {

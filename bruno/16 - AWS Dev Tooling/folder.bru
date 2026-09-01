@@ -4,9 +4,9 @@ meta {
 }
 
 docs {
-  AWS dev manual tooling for /api/local-dev/** endpoints.
+  AWS dev manual setup, /api/local-dev/** tooling endpoints, and admin moderation helpers.
 
-  Hosted dev requires Authorization: Bearer {{firebase_admin_id_token}} from an active Firebase-backed backend user whose verified Firebase email is allowlisted in BACKOFFICE_ADMIN_EMAILS.
+  Hosted dev requires Authorization: Bearer {{firebase_admin_id_token}} from an active Firebase-backed backend user whose verified Firebase email is allowlisted in BACKOFFICE_ADMIN_EMAILS. Protected /api/** requests also require X-Firebase-AppCheck: {{firebase_app_check_token}} when App Check is ENFORCED.
 
-  Copy bruno/environments/dev.template.bru to an ignored env such as bruno/environments/dev.local.bru, fill firebase_api_key and firebase_admin_password, select it in Bruno, then run 00 through 02 before triggering jobs, timeouts or admin moderation requests.
+  Copy bruno/environments/dev.template.bru to an ignored env such as bruno/environments/dev.local.bru, fill Firebase Auth and App Check values, select it in Bruno, run 00b to store firebase_app_check_token, then run the Firebase Auth sign-in/provision requests before protected backend requests. Rerun 00b when the App Check JWT expires.
 }
