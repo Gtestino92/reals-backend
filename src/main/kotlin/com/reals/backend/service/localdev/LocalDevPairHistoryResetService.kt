@@ -162,11 +162,6 @@ class LocalDevPairHistoryResetService(
             connectionIds
         )
         updateWhenAny("DELETE FROM first_chat_guidance WHERE chat_id IN (:chatIds)", params("chatIds", chatIds), chatIds)
-        updateWhenAny(
-            "DELETE FROM conversation_prompt_snapshots WHERE chat_id IN (:chatIds)",
-            params("chatIds", chatIds),
-            chatIds
-        )
         updateWhenAny("DELETE FROM chat_exit_requests WHERE chat_id IN (:chatIds)", params("chatIds", chatIds), chatIds)
         updateWhenAny(
             """
@@ -181,6 +176,11 @@ class LocalDevPairHistoryResetService(
             matchIds
         )
         updateWhenAny("DELETE FROM chat_messages WHERE chat_session_id IN (:chatIds)", params("chatIds", chatIds), chatIds)
+        updateWhenAny(
+            "DELETE FROM conversation_prompt_snapshots WHERE chat_id IN (:chatIds)",
+            params("chatIds", chatIds),
+            chatIds
+        )
         val chatsDeleted = updateWhenAny(
             "DELETE FROM chats WHERE id IN (:chatIds)",
             params("chatIds", chatIds),
