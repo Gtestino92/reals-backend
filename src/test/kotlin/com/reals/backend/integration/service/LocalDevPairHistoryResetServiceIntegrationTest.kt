@@ -84,6 +84,15 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
                 content = "second chat message"
             )
         )
+        val promptSnapshot = conversationPromptSnapshotRepository.findByChatIdOrderByOrdinal(firstChat.id).first()
+        val promptReplyMessage = chatMessageRepository.saveAndFlush(
+            ChatMessage(
+                chatSessionId = firstChat.id,
+                senderId = affected.userAId,
+                content = "reply to prompt snapshot",
+                replyToPromptSnapshotId = promptSnapshot.id
+            )
+        )
         chatMessageRepository.saveAndFlush(
             ChatMessage(
                 chatSessionId = unrelatedChat.id,
@@ -231,6 +240,8 @@ class LocalDevPairHistoryResetServiceIntegrationTest : BaseIT() {
         assertTrue(chatRepository.existsById(unrelatedChat.id))
         assertTrue(pushNotificationDeliveryRepository.existsById(unrelatedUserPushOnAffectedAggregate.id))
         assertTrue(pushNotificationDeliveryRepository.existsById(unrelatedPush.id))
+        assertFalse(chatMessageRepository.existsById(promptReplyMessage.id))
+        assertEquals(0, countRowsById("conversation_prompt_snapshots", "id", promptSnapshot.id))
         assertEquals(0, countRowsById("first_chat_guidance", "chat_id", firstChat.id))
         assertEquals(0, countRowsById("conversation_prompt_snapshots", "chat_id", firstChat.id))
         assertEquals(0, countRowsById("visual_review_affinity_indicators", "match_id", affected.matchId))
