@@ -23,6 +23,7 @@ The signed-in Firebase user must be active in the backend, have a verified Fireb
 
 ## Common Requests
 
+- `03 App Check Missing Token` / `04 App Check Invalid Token`: manual negative checks that use the admin Firebase ID token but intentionally omit or corrupt `X-Firebase-AppCheck`.
 - `10 Process Matchmaking`: `POST /api/local-dev/matchmaking/process?maxPairsPerRun={{maxPairsPerRun}}`.
 - `11 Reset Pair History`: `POST /api/local-dev/pair-history/reset`.
 - `20` through `32`: trigger scheduler-equivalent jobs manually.

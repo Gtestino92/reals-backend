@@ -1,7 +1,7 @@
 meta {
   name: 03 App Check Missing Token
   type: http
-  seq: 4
+  seq: 3
 }
 
 get {
@@ -11,7 +11,7 @@ get {
 }
 
 headers {
-  Authorization: Bearer {{firebaseIdToken}}
+  Authorization: Bearer {{firebase_admin_id_token}}
 }
 
 script:post-response {
