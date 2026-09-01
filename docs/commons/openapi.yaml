@@ -1197,7 +1197,7 @@ paths:
     post:
       tags: [Chats]
       summary: Safety/report chat cancellation
-      description: Closes the chat and creates a pending internal safety report. Reporting does not automatically penalize the reported participant; the response keeps penaltyApplied=false until an admin confirms the report separately.
+      description: Closes the chat with safety-report semantics and creates a pending internal safety report. Optional blockUser=true additionally creates or reuses a directional safety-report user block. Reporting does not automatically penalize the reported participant; the response keeps penaltyApplied=false until an admin confirms the report separately.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -1215,7 +1215,7 @@ paths:
     post:
       tags: [Safety]
       summary: Create a user safety report
-      description: Creates a user report for chat, visual profile, personal message or profile photo context without necessarily closing a chat. The backend validates the reporter/reported relationship from the referenced aggregate, creates or reuses a directional user block, and treats duplicates for the same reporter, reported user, context type and context id idempotently.
+      description: Creates a user report for chat, visual profile, personal message or profile photo context and contains the current pair interaction with safety-report semantics. Optional blockUser=true additionally creates or reuses a directional safety-report user block. Duplicates for the same reporter, reported user, context type and context id remain conflicts.
       requestBody:
         $ref: '#/components/requestBodies/CreateSafetyReport'
       responses:
@@ -3505,6 +3505,10 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
         details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
+        blockUser:
+          type: boolean
+          default: false
+          description: When true, also creates or reuses a permanent directional user block from reporter to reported with source SAFETY_REPORT. Omitted or false only creates the report and safety-report containment.
     CreateSafetyReportRequest:
       type: object
       required: [reportedUserId, contextType, reason, details]
@@ -3517,6 +3521,10 @@ components:
         profilePhotoId: { type: string, format: uuid, nullable: true }
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
+        blockUser:
+          type: boolean
+          default: false
+          description: When true, also creates or reuses a permanent directional user block from reporter to reported with source SAFETY_REPORT. Omitted or false only creates the report and safety-report containment.
     SafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, status, createdAt]

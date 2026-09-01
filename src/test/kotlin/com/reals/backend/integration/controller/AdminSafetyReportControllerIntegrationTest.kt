@@ -224,7 +224,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             setOf(SafetyReportSource.USER, SafetyReportSource.ADMIN),
             reports.map { it.source }.toSet()
         )
-        assertEquals(1, userBlockRepository.count())
+        assertEquals(0, userBlockRepository.count())
         assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
         assertEquals(0, userReliabilityEventRepository.count())
     }

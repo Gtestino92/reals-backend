@@ -1,0 +1,44 @@
+meta {
+  name: 02 User A Safety Report With Block
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/safety/reports
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+body:json {
+  {
+    "reportedUserId": "{{userBId}}",
+    "contextType": "VISUAL_PROFILE",
+    "matchId": "{{matchId}}",
+    "reason": "INAPPROPRIATE_BEHAVIOR",
+    "details": "Manual Bruno safety report with explicit permanent block.",
+    "blockUser": true
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 201) {
+    throw new Error(`Expected 201 Created for safety report with block, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (!body || !body.id || body.contextType !== "VISUAL_PROFILE") {
+    throw new Error(`Expected SafetyReportResponse for VISUAL_PROFILE. Got: ${JSON.stringify(body)}`);
+  }
+  if (body.reportedUserId !== bru.getEnvVar("userBId")) {
+    throw new Error(`Expected reportedUserId ${bru.getEnvVar("userBId")}, got ${body.reportedUserId}.`);
+  }
+
+  bru.setEnvVar("safetyReportWithBlockId", body.id);
+}

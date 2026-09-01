@@ -12,7 +12,7 @@ import java.util.UUID
 
 @Service
 @Transactional
-class UserBlockContainmentService(
+class PairInteractionContainmentService(
     private val matchRepository: MatchRepository,
     private val connectionRepository: ConnectionRepository,
     private val chatRepository: ChatRepository,
@@ -21,7 +21,11 @@ class UserBlockContainmentService(
     private val auditEventService: AuditEventService,
     private val eventPublisher: ApplicationEventPublisher
 ) {
-    fun containPair(userAId: UUID, userBId: UUID) {
+    fun containPair(
+        userAId: UUID,
+        userBId: UUID,
+        cause: PairInteractionContainmentCause
+    ) {
         matchRepository.findBetweenUsersAndStateIn(
             userAId, userBId, listOf(MatchState.CHAT_ACTIVE, MatchState.VISUAL_PHASE)
         ).forEach { match ->
@@ -29,7 +33,7 @@ class UserBlockContainmentService(
                 MatchState.CHAT_ACTIVE -> {
                     chatRepository.findByMatchIdAndChatType(match.id, ChatType.FIRST_CHAT)
                         ?.takeIf { it.status == ChatStatus.ACTIVE }
-                        ?.let { cancelChat(it) }
+                        ?.let { cancelChat(it, cause.chatEndReason) }
                     matchService.rejectChatPhase(match.id)
                 }
                 MatchState.VISUAL_PHASE -> matchService.rejectVisualPhase(match.id)
@@ -46,14 +50,17 @@ class UserBlockContainmentService(
         ).forEach { connection ->
             chatRepository.findByConnectionIdAndChatType(connection.id, ChatType.SECOND_CHAT)
                 ?.takeIf { it.status == ChatStatus.AVAILABLE || it.status == ChatStatus.ACTIVE }
-                ?.let { cancelChat(it) }
+                ?.let { cancelChat(it, cause.chatEndReason) }
             connectionService.closeConnection(connection.id)
         }
     }
 
-    private fun cancelChat(chat: Chat) {
+    private fun cancelChat(
+        chat: Chat,
+        endedReason: ChatEndReason
+    ) {
         chat.status = ChatStatus.CANCELLED
-        chat.endedReason = ChatEndReason.USER_BLOCK
+        chat.endedReason = endedReason
         chat.endedAt = OffsetDateTime.now()
         chatRepository.save(chat)
         auditEventService.record(
@@ -62,7 +69,7 @@ class UserBlockContainmentService(
             aggregateId = chat.id,
             metadata = mapOf(
                 "chatType" to chat.chatType.name,
-                "endedReason" to ChatEndReason.USER_BLOCK.name,
+                "endedReason" to endedReason.name,
                 "status" to ChatStatus.CANCELLED.name
             )
         )
@@ -72,9 +79,16 @@ class UserBlockContainmentService(
                     matchId = chat.matchId,
                     chatId = chat.id,
                     finalStatus = chat.status,
-                    endedReason = ChatEndReason.USER_BLOCK
+                    endedReason = endedReason
                 )
             )
         }
     }
+}
+
+enum class PairInteractionContainmentCause(
+    val chatEndReason: ChatEndReason
+) {
+    SAFETY_REPORT(ChatEndReason.SAFETY_REPORT),
+    USER_BLOCK(ChatEndReason.USER_BLOCK)
 }

@@ -12,6 +12,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
@@ -22,6 +23,7 @@ import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -72,6 +74,40 @@ class ChatControllerIntegrationTest : ControllerIT() {
         assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
         assertEquals(SafetyReportStatus.PENDING, report.status)
         assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
+        assertFalse(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+    }
+
+    @Test
+    fun `safety cancellation creates requested block over http`() {
+        val setup = createMatchWithFirstChat("http-safety-block")
+
+        mockMvc.perform(
+            post("/api/chats/${setup.firstChatId}/safety-cancellations")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(
+                    """
+                    {
+                      "reason": "INAPPROPRIATE_BEHAVIOR",
+                      "details": "Unsafe chat content",
+                      "blockUser": true
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.chat.status", equalTo(ChatStatus.CANCELLED.name)))
+            .andExpect(jsonPath("$.penaltyApplied", equalTo(false)))
+
+        val report = safetyReportRepository.findAll().single()
+        assertEquals(
+            com.reals.backend.domain.ChatEndReason.SAFETY_REPORT,
+            chatRepository.findById(setup.firstChatId).orElseThrow().endedReason
+        )
+        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(setup.userAId, setup.userBId)
+        assertNotNull(block)
+        assertEquals(UserBlockSource.SAFETY_REPORT, block?.source)
+        assertEquals(report.id, block?.sourceReportId)
     }
 
     @Test

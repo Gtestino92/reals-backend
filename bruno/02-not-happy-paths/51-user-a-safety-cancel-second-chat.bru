@@ -17,7 +17,8 @@ headers {
 body:json {
   {
     "reason": "INAPPROPRIATE_BEHAVIOR",
-    "details": "Manual Bruno safety cancellation check."
+    "details": "Manual Bruno safety cancellation check.",
+    "blockUser": false
   }
 }
 
@@ -29,10 +30,10 @@ script:post-response {
   if (body.exitRequest.type !== "SAFETY_REPORT") {
     throw new Error(`Expected SAFETY_REPORT exit request, got ${body.exitRequest.type}`);
   }
-  if (body.penaltyApplied !== true) {
-    throw new Error("Safety cancellation should apply a penalty.");
+  if (body.penaltyApplied !== false) {
+    throw new Error("Safety cancellation should not apply a penalty before admin confirmation.");
   }
-  if (body.penalizedUserId !== bru.getEnvVar("negativeUserBId")) {
-    throw new Error("Safety cancellation should penalize the reported partner.");
+  if (body.penalizedUserId !== null) {
+    throw new Error("Safety cancellation should not return a penalized user before admin confirmation.");
   }
 }

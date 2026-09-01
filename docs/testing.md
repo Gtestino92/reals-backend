@@ -71,7 +71,7 @@ For those cases, service-level integration tests catch more realistic regression
 - mutual cancellation rejection and timeout closing the chat without penalties
 - pending mutual cancellation blocking requester/responder message sends without creating messages or changing `lastMessageAt`
 - pending mutual cancellation preserving message reads, exit-request reads and same-requester idempotency
-- safety cancellation and reported-user penalty
+- safety cancellation without an automatic permanent block, plus explicit report/manual block behavior
 - unilateral second-chat cancellation penalty behavior
 
 `FirstChatGuidanceIntegrationTest` covers:

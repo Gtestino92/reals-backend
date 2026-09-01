@@ -489,27 +489,14 @@ class ChatExitIntegrationTest : BaseIT() {
         assertNull(report.connectionId)
         assertNull(report.penaltyId)
 
-        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
-            blockerUserId = setup.userAId,
-            blockedUserId = setup.userBId
-        ) ?: error("Expected safety report to create a user block")
-        assertEquals(UserBlockSource.SAFETY_REPORT, block.source)
-        assertEquals(report.id, block.sourceReportId)
-        assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
-        assertTrue(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
-
-        val repeatedBlock = userBlockService.blockUser(
-            blockerUserId = setup.userAId,
-            blockedUserId = setup.userBId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
+        assertNull(
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+                blockerUserId = setup.userAId,
+                blockedUserId = setup.userBId
+            )
         )
-        assertEquals(block.id, repeatedBlock.id)
-        assertEquals(
-            1,
-            userBlockRepository.findAll()
-                .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
-        )
+        assertFalse(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+        assertFalse(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
 
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
             ?: error("Expected safety report evidence snapshot")
@@ -541,6 +528,48 @@ class ChatExitIntegrationTest : BaseIT() {
             }
         assertEquals(setup.userAId, chatEndedAudit.actorUserId)
         assertTrue(chatEndedAudit.metadataJson!!.contains("SAFETY_REPORT"))
+
+        assertEquals(
+            0,
+            auditEventRepository.findAll()
+                .count { it.eventType == AuditEventType.USER_BLOCK_CREATED }
+        )
+    }
+
+    @Test
+    fun `safety cancellation creates requested safety report block idempotently`() {
+        val setup = createMatchWithFirstChat()
+
+        chatExitService.cancelChatForSafety(
+            chatId = setup.firstChatId,
+            reporterUserId = setup.userAId,
+            reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
+            details = "Unsafe chat content",
+            blockUser = true
+        )
+
+        val report = safetyReportRepository.findAll().single()
+        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId
+        ) ?: error("Expected requested safety report block")
+        assertEquals(UserBlockSource.SAFETY_REPORT, block.source)
+        assertEquals(report.id, block.sourceReportId)
+        assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+        assertTrue(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
+
+        val repeatedBlock = userBlockService.blockUser(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId,
+            source = UserBlockSource.SAFETY_REPORT,
+            sourceReportId = report.id
+        )
+        assertEquals(block.id, repeatedBlock.id)
+        assertEquals(
+            1,
+            userBlockRepository.findAll()
+                .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
+        )
 
         assertEquals(
             1,

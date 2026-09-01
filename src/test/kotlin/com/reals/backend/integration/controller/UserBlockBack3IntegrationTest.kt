@@ -225,7 +225,8 @@ class UserBlockBack3IntegrationTest : ControllerIT() {
             chatId = setup.firstChatId,
             reporterUserId = setup.userAId,
             reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-            details = "Unsafe chat content"
+            details = "Unsafe chat content",
+            blockUser = true
         )
 
         val chat = chatRepository.findById(setup.firstChatId).orElseThrow()

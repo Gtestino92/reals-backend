@@ -9,7 +9,7 @@ import java.util.UUID
 @Transactional
 class UserBlockCommandService(
     private val userBlockService: UserBlockService,
-    private val containmentService: UserBlockContainmentService
+    private val containmentService: PairInteractionContainmentService
 ) {
     fun blockUserAndContain(
         blockerUserId: UUID,
@@ -20,7 +20,11 @@ class UserBlockCommandService(
         val result = userBlockService.blockUserWithResult(
             blockerUserId, blockedUserId, source, sourceReportId
         )
-        containmentService.containPair(blockerUserId, blockedUserId)
+        containmentService.containPair(
+            userAId = blockerUserId,
+            userBId = blockedUserId,
+            cause = PairInteractionContainmentCause.USER_BLOCK
+        )
         return result
     }
 }
