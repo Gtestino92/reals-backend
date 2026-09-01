@@ -42,7 +42,7 @@ class ChatExitService(
     private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val matchService: MatchService,
     private val safetyReportService: SafetyReportService,
-    private val userBlockCommandService: UserBlockCommandService,
+    private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
     private val auditEventService: AuditEventService,
     private val userReliabilityScoreService: UserReliabilityScoreService,
@@ -336,7 +336,8 @@ class ChatExitService(
         chatId: UUID,
         reporterUserId: UUID,
         reason: ChatExitReason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-        details: String? = null
+        details: String? = null,
+        blockUser: Boolean = false
     ): ChatExitOutcome {
         val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
@@ -375,12 +376,14 @@ class ChatExitService(
             actorUserId = reporterUserId
         )
 
-        userBlockCommandService.blockUserAndContain(
-            blockerUserId = reporterUserId,
-            blockedUserId = reportedUserId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
-        )
+        if (blockUser) {
+            userBlockService.blockUserWithResult(
+                blockerUserId = reporterUserId,
+                blockedUserId = reportedUserId,
+                source = UserBlockSource.SAFETY_REPORT,
+                sourceReportId = report.id
+            )
+        }
 
         return ChatExitOutcome(
             chat = chat,

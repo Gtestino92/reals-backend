@@ -28,7 +28,9 @@ import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.PenaltyService
-import com.reals.backend.service.UserBlockCommandService
+import com.reals.backend.service.PairInteractionContainmentCause
+import com.reals.backend.service.PairInteractionContainmentService
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
@@ -55,7 +57,8 @@ class SafetyReportService(
     private val visualReviewRepository: VisualReviewRepository,
     private val penaltyRepository: PenaltyRepository,
     private val userRepository: UserRepository,
-    private val userBlockCommandService: UserBlockCommandService,
+    private val userBlockService: UserBlockService,
+    private val pairInteractionContainmentService: PairInteractionContainmentService,
     private val auditEventService: AuditEventService,
     private val evidenceSnapshotService: SafetyReportEvidenceSnapshotService,
     private val penaltyService: PenaltyService,
@@ -159,12 +162,20 @@ class SafetyReportService(
 
         captureEvidenceAndAuditReportCreated(report, actorUserId = reporterUserId)
 
-        userBlockCommandService.blockUserAndContain(
-            blockerUserId = reporterUserId,
-            blockedUserId = context.reportedUserId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
+        pairInteractionContainmentService.containPair(
+            userAId = reporterUserId,
+            userBId = context.reportedUserId,
+            cause = PairInteractionContainmentCause.SAFETY_REPORT
         )
+
+        if (request.blockUser) {
+            userBlockService.blockUserWithResult(
+                blockerUserId = reporterUserId,
+                blockedUserId = context.reportedUserId,
+                source = UserBlockSource.SAFETY_REPORT,
+                sourceReportId = report.id
+            )
+        }
 
         return SafetyReportCreationResult(
             report = report,

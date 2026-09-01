@@ -361,7 +361,8 @@ class ChatController(
                         chatId = chatId,
                         reporterUserId = userId,
                         reason = request.reason,
-                        details = request.details
+                        details = request.details,
+                        blockUser = request.blockUser
                     )
                 )
             )

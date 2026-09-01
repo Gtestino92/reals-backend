@@ -271,9 +271,10 @@ Actions:
 
 1. Confirm admin authentication by calling
    `GET /api/admin/safety-reports/pending`.
-2. From a normal user, create a report through `POST /api/safety/reports` or
-   block through `POST /api/matches/{matchId}/block`; verify USER report/block
-   behavior and engagement containment where applicable.
+2. From a normal user, create a non-blocking report through
+   `POST /api/safety/reports`, then separately verify either `blockUser: true`
+   or `POST /api/matches/{matchId}/block`; confirm report containment and
+   permanent block behavior independently.
 3. As admin, create an ADMIN report through `POST /api/admin/safety-reports`
    and verify it remains `PENDING`.
 4. Dismiss a pending report through

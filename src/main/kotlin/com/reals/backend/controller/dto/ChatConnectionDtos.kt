@@ -238,7 +238,9 @@ data class ChatSafetyCancellationRequest(
     @field:NotBlank
     @field:Size(max = 1000)
     @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
-    val details: String
+    val details: String,
+
+    val blockUser: Boolean = false
 )
 
 data class ChatMessageResponse(
