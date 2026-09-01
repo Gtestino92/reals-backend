@@ -1,7 +1,7 @@
 meta {
   name: 71 Approve Profile Photo Review
   type: http
-  seq: 71
+  seq: 40
 }
 
 post {
@@ -38,7 +38,7 @@ script:post-response {
   if (status !== 200) {
     throw new Error(`Expected 200 OK, got ${status}.`);
   }
-
+  
   const body = res.getBody();
   if (!body || body.photoId !== bru.getEnvVar("profilePhotoReviewPhotoId")) {
     throw new Error("Expected moderation response for profilePhotoReviewPhotoId.");
@@ -46,13 +46,13 @@ script:post-response {
   if (body.moderationStatus !== "APPROVED") {
     throw new Error(`Expected APPROVED moderationStatus, got ${body.moderationStatus}.`);
   }
-
+  
   bru.setEnvVar("profilePhotoReviewVersion", String(body.photoVersion));
   bru.setEnvVar("profilePhotoReviewModerationStatus", body.moderationStatus);
 }
 
 docs {
   Approves the profile photo saved by request 70.
-
+  
   Run either 71 or 72 for a queue item, not both. If this returns 409, refresh the queue and review the current item again.
 }

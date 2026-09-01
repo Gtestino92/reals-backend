@@ -12,7 +12,7 @@ post {
 
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
-  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  X-Firebase-AppCheck: asdasd
 }
 
 script:post-response {
@@ -20,16 +20,16 @@ script:post-response {
   if (status !== 200 && status !== 201) {
     throw new Error(`Expected 200 OK or 201 Created, got ${status}.`);
   }
-
+  
   const body = res.getBody();
   if (!body || !body.id) {
     throw new Error("Expected provisioned backend admin user response with id.");
   }
-
+  
   const expectedEmail = bru.getEnvVar("firebase_admin_email");
   if (expectedEmail && body.email !== expectedEmail) {
     throw new Error(`Expected backend admin email ${expectedEmail}, got ${body.email}.`);
   }
-
+  
   bru.setEnvVar("adminUserId", body.id);
 }

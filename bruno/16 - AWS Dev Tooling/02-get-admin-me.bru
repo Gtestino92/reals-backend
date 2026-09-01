@@ -5,14 +5,18 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/me
+  url: {{baseUrl}}/actuator/metrics/reals.app_check.requests?tag=mode:monitor&tag=outcome:valid
   body: none
   auth: none
 }
 
+params:query {
+  tag: mode:monitor
+  tag: outcome:valid
+}
+
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
-  X-Firebase-AppCheck: {{firebase_app_check_token}}
 }
 
 script:post-response {
@@ -20,6 +24,6 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error("Expected authenticated admin user response with id.");
   }
-
+  
   bru.setEnvVar("adminUserId", body.id);
 }
