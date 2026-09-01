@@ -1,0 +1,55 @@
+meta {
+  name: 00b Exchange Firebase App Check Debug Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://firebaseappcheck.googleapis.com/v1/projects/{{firebase_project_number}}/apps/{{firebase_app_id}}:exchangeDebugToken?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "debugToken": "{{firebase_app_check_debug_token}}",
+    "limitedUse": false
+  }
+}
+
+tests {
+  test("exchange returns 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returned App Check token is present", function () {
+    const body = res.getBody();
+    expect(body).to.have.property("token").that.is.a("string").and.not.empty;
+    expect(body.token.trim()).to.not.equal("");
+  });
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected Firebase App Check exchange 200, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  const token = body && typeof body.token === "string" ? body.token.trim() : "";
+  if (!token) {
+    throw new Error("Expected Firebase App Check exchange response with nonblank token.");
+  }
+
+  bru.setEnvVar("firebase_app_check_token", token);
+
+  if (body.ttl) {
+    console.log(`Stored firebase_app_check_token for AWS DEV tooling. TTL: ${body.ttl}.`);
+  } else {
+    console.log("Stored firebase_app_check_token for AWS DEV tooling.");
+  }
+}

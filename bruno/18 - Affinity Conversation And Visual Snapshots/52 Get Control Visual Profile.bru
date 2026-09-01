@@ -12,6 +12,7 @@ get {
 
 headers {
   Authorization: Bearer {{affinity_control_user_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
 }
 
 script:post-response {
