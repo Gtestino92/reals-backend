@@ -1,7 +1,7 @@
 meta {
   name: 70 List Profile Photo Review Queue
   type: http
-  seq: 39
+  seq: 70
 }
 
 get {
@@ -26,17 +26,17 @@ script:post-response {
   if (status !== 200) {
     throw new Error(`Expected 200 OK, got ${status}.`);
   }
-  
+
   const body = res.getBody();
   if (!Array.isArray(body)) {
     throw new Error("Expected profile photo review queue array.");
   }
-  
+
   if (body.length === 0) {
     console.log("No profile photos currently require admin moderation review.");
     return;
   }
-  
+
   const item = body[0];
   if (!item.photoId || typeof item.photoVersion !== "number") {
     throw new Error("Expected review item with photoId and numeric photoVersion.");
@@ -44,7 +44,7 @@ script:post-response {
   if (item.moderationStatus !== "NEEDS_REVIEW") {
     throw new Error(`Expected NEEDS_REVIEW item, got ${item.moderationStatus}.`);
   }
-  
+
   bru.setEnvVar("profilePhotoReviewPhotoId", item.photoId);
   bru.setEnvVar("profilePhotoReviewVersion", String(item.photoVersion));
   if (item.profileId) {
@@ -60,6 +60,6 @@ script:post-response {
 
 docs {
   Lists admin profile photos waiting for moderation review in hosted dev.
-  
+
   The first NEEDS_REVIEW item is saved into profilePhotoReviewPhotoId and profilePhotoReviewVersion for requests 71 or 72.
 }

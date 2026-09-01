@@ -1,7 +1,7 @@
 meta {
   name: 00 Admin Firebase Sign In
   type: http
-  seq: 6
+  seq: 0
 }
 
 post {
@@ -27,15 +27,15 @@ script:post-response {
   if (!body || !body.idToken || !body.localId || !body.email) {
     throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
   }
-  
+
   const expectedEmail = bru.getEnvVar("firebase_admin_email");
   if (expectedEmail && body.email !== expectedEmail) {
     throw new Error(`Expected admin Firebase email ${expectedEmail}, got ${body.email}.`);
   }
-  
+
   bru.setEnvVar("firebase_admin_id_token", body.idToken);
   bru.setEnvVar("firebase_admin_uid", body.localId);
-  
+
   if (body.refreshToken) {
     bru.setEnvVar("firebase_admin_refresh_token", body.refreshToken);
   }
