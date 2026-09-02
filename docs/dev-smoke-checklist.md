@@ -292,8 +292,9 @@ Expected backend result:
 
 - `/api/admin/**` is available in DEV and requires `ROLE_ADMIN`.
 - ADMIN report creation and dismissal do not ban or contain the reported user.
-- Confirmed temporary/permanent penalties deny account access and use shared
-  operational containment for active engagements.
+- Confirmed temporary/permanent penalties deny account access. Permanent bans
+  fully contain active engagements; temporary bans remove matchmaking queue
+  entries and selectively contain only non-viable active engagements.
 
 Pass evidence:
 

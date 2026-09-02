@@ -1,7 +1,7 @@
 meta {
   name: 10 Process Matchmaking
   type: http
-  seq: 10
+  seq: 7
 }
 
 post {
@@ -25,12 +25,12 @@ script:post-response {
   if (status !== 200) {
     throw new Error(`Expected 200 OK, got ${status}.`);
   }
-
+  
   const body = res.getBody();
   if (!body || typeof body.matchesCreated !== "number" || !Array.isArray(body.pairs)) {
     throw new Error("Expected matchmaking process response with matchesCreated and pairs.");
   }
-
+  
   if (body.pairs.length > 0) {
     const match = body.pairs[0];
     bru.setEnvVar("devMatchId", match.id);

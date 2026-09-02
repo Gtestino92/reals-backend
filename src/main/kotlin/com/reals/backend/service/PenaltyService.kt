@@ -19,7 +19,8 @@ class PenaltyService(
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
-    private val userOperationalContainmentService: UserOperationalContainmentService
+    private val userOperationalContainmentService: UserOperationalContainmentService,
+    private val accountBanPolicyService: AccountBanPolicyService
 ) {
 
     @Transactional(readOnly = true)
@@ -33,40 +34,16 @@ class PenaltyService(
     fun resolveEffectiveBan(
         userId: UUID,
         now: OffsetDateTime = OffsetDateTime.now()
-    ): EffectiveAccountBan? {
-        val effectiveBans = penaltyRepository.findEffectiveBans(
-            userId = userId,
-            now = now
-        )
-
-        if (effectiveBans.any { it.type == PenaltyType.PERMANENT_BAN }) {
-            return EffectiveAccountBan(
-                type = PenaltyType.PERMANENT_BAN,
-                expiresAt = null
-            )
-        }
-
-        val latestTemporaryExpiry =
-            effectiveBans
-                .asSequence()
-                .filter { it.type == PenaltyType.TEMPORARY_BAN }
-                .mapNotNull { it.expiresAt }
-                .maxOrNull()
-
-        return latestTemporaryExpiry?.let {
-            EffectiveAccountBan(
-                type = PenaltyType.TEMPORARY_BAN,
-                expiresAt = it
-            )
-        }
-    }
+    ): EffectiveAccountBan? =
+        accountBanPolicyService.resolveEffectiveBan(userId = userId, now = now)
 
     fun createTemporaryPenalty(
         userId: UUID,
         reason: String,
         duration: Duration,
         sourceReportId: UUID? = null,
-        appliedByUserId: UUID? = null
+        appliedByUserId: UUID? = null,
+        now: OffsetDateTime = OffsetDateTime.now()
     ): Penalty {
         require(!duration.isZero && !duration.isNegative) {
             "Temporary penalty duration must be positive"
@@ -80,10 +57,11 @@ class PenaltyService(
                 userId = userId,
                 reason = reason.trim(),
                 type = PenaltyType.TEMPORARY_BAN,
-                expiresAt = OffsetDateTime.now().plus(duration),
+                expiresAt = now.plus(duration),
                 sourceReportId = sourceReportId,
                 appliedByUserId = appliedByUserId
-            )
+            ),
+            now = now
         )
     }
 
@@ -91,7 +69,8 @@ class PenaltyService(
         userId: UUID,
         reason: String,
         sourceReportId: UUID? = null,
-        appliedByUserId: UUID? = null
+        appliedByUserId: UUID? = null,
+        now: OffsetDateTime = OffsetDateTime.now()
     ): Penalty {
         require(reason.isNotBlank()) {
             "Penalty reason is required"
@@ -105,11 +84,15 @@ class PenaltyService(
                 expiresAt = null,
                 sourceReportId = sourceReportId,
                 appliedByUserId = appliedByUserId
-            )
+            ),
+            now = now
         )
     }
 
-    private fun savePenalty(penalty: Penalty): Penalty {
+    private fun savePenalty(
+        penalty: Penalty,
+        now: OffsetDateTime
+    ): Penalty {
         validatePenaltyShape(penalty)
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
         val saved = penaltyRepository.save(penalty)
@@ -129,11 +112,27 @@ class PenaltyService(
             userId = saved.userId,
             reason = "penalty_applied"
         )
-        userOperationalContainmentService.containUser(
-            userId = saved.userId,
-            reason = UserOperationalContainmentReason.ACCOUNT_BAN,
-            actorUserId = saved.appliedByUserId
-        )
+        when (val effectiveBan = resolveEffectiveBan(userId = saved.userId, now = now)) {
+            null -> Unit
+            else ->
+                when (effectiveBan.type) {
+                    PenaltyType.PERMANENT_BAN ->
+                        userOperationalContainmentService.containUser(
+                            userId = saved.userId,
+                            reason = UserOperationalContainmentReason.ACCOUNT_BAN,
+                            now = now,
+                            actorUserId = saved.appliedByUserId
+                        )
+
+                    PenaltyType.TEMPORARY_BAN ->
+                        userOperationalContainmentService.containTemporarilyBannedUser(
+                            userId = saved.userId,
+                            effectiveBanExpiresAt = requireNotNull(effectiveBan.expiresAt),
+                            now = now,
+                            actorUserId = saved.appliedByUserId
+                        )
+                }
+        }
         return saved
     }
 

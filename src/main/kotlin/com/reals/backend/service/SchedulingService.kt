@@ -126,11 +126,13 @@ class SchedulingService(
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
-        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+        val now = OffsetDateTime.now()
+
+        if (!now.isBefore(connection.schedulingExpiresAt)) {
             throw schedulingExpired()
         }
 
-        validateProposalSlots(proposedDateTimes)
+        validateProposalSlots(proposedDateTimes, now)
         schedulingConflictService.requireSlotsAvailableForUser(
             userId = userId,
             excludedConnectionId = connectionId,
@@ -172,7 +174,8 @@ class SchedulingService(
         val autoConfirmed = tryAutoConfirmOverlap(
             connection = connection,
             negotiation = negotiation,
-            triggeringUserId = userId
+            triggeringUserId = userId,
+            now = now
         )
 
         if (!autoConfirmed) {
@@ -214,11 +217,11 @@ class SchedulingService(
     private fun tryAutoConfirmOverlap(
         connection: Connection,
         negotiation: ScheduleNegotiation,
-        triggeringUserId: UUID
+        triggeringUserId: UUID,
+        now: OffsetDateTime
     ): Boolean {
         if (negotiation.status != NegotiationStatus.PENDING) return false
 
-        val now = OffsetDateTime.now()
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
                 connection.id,
@@ -243,7 +246,8 @@ class SchedulingService(
         val selectedDateTime = schedulingConflictService.selectFirstAvailableSlotForUsers(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connection.id,
-            candidateDateTimes = candidates.map { it.proposalA.proposedDateTime }
+            candidateDateTimes = candidates.map { it.proposalA.proposedDateTime },
+            now = now
         )
 
         val overlap = candidates.first {
@@ -376,7 +380,8 @@ class SchedulingService(
         schedulingConflictService.requireSlotAvailableForUsers(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connectionId,
-            candidateDateTime = proposal.proposedDateTime
+            candidateDateTime = proposal.proposedDateTime,
+            now = now
         )
 
         val pending =
@@ -644,7 +649,10 @@ class SchedulingService(
         }
     }
 
-    private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {
+    private fun validateProposalSlots(
+        proposedDateTimes: List<OffsetDateTime>,
+        now: OffsetDateTime
+    ) {
         if (proposedDateTimes.size !in 1..maxProposalsPerRound) {
             throw invalidProposals()
         }
@@ -656,7 +664,7 @@ class SchedulingService(
         }
 
         proposedDateTimes.forEach { proposedDateTime ->
-            if (!proposedDateTime.isAfter(OffsetDateTime.now())) {
+            if (!proposedDateTime.isAfter(now)) {
                 throw invalidProposals()
             }
 

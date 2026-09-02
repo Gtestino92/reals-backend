@@ -20,6 +20,6 @@ script:post-response {
   if (!body || !body.id) {
     throw new Error("Expected authenticated admin user response with id.");
   }
-
+  
   bru.setEnvVar("adminUserId", body.id);
 }

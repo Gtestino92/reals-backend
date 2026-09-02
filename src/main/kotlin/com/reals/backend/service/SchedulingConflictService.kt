@@ -15,6 +15,7 @@ import java.util.UUID
 class SchedulingConflictService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val userRepository: UserRepository,
+    private val accountBanPolicyService: AccountBanPolicyService,
     @param:Value("\${scheduling.second-chat-conflict-window-minutes:60}")
     val conflictWindowMinutes: Long
 ) {
@@ -68,12 +69,14 @@ class SchedulingConflictService(
     fun requireSlotAvailableForUsers(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
-        candidateDateTime: OffsetDateTime
+        candidateDateTime: OffsetDateTime,
+        now: OffsetDateTime = OffsetDateTime.now()
     ) {
         selectFirstAvailableSlotForUsers(
             userIds = userIds,
             excludedConnectionId = excludedConnectionId,
-            candidateDateTimes = listOf(candidateDateTime)
+            candidateDateTimes = listOf(candidateDateTime),
+            now = now
         )
     }
 
@@ -81,7 +84,8 @@ class SchedulingConflictService(
     fun selectFirstAvailableSlotForUsers(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
-        candidateDateTimes: Collection<OffsetDateTime>
+        candidateDateTimes: Collection<OffsetDateTime>,
+        now: OffsetDateTime = OffsetDateTime.now()
     ): OffsetDateTime {
         lockUsers(userIds)
 
@@ -92,7 +96,12 @@ class SchedulingConflictService(
             )
 
         return candidateDateTimes.firstOrNull { candidate ->
-            confirmedDateTimes.none { confirmed -> conflicts(candidate, confirmed) }
+            confirmedDateTimes.none { confirmed -> conflicts(candidate, confirmed) } &&
+                accountBanPolicyService.canConfirmSecondChatSlotForUsers(
+                    userIds = userIds,
+                    confirmedDateTime = candidate,
+                    now = now
+                )
         } ?: throw slotConflict()
     }
 
@@ -143,7 +152,7 @@ class SchedulingConflictService(
     private fun slotConflict(): DomainConflictException =
         DomainConflictException(
             code = DomainErrorCode.SCHEDULING_SLOT_CONFLICT,
-            message = "The selected time conflicts with another confirmed second chat"
+            message = "The selected time is not available for scheduling"
         )
 
     data class SchedulingAvailabilitySnapshot(

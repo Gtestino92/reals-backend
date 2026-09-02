@@ -141,6 +141,8 @@ scheduler:
 account:
   deletion:
     recovery-window-days: 30
+  ban:
+    temporary-resume-margin-minutes: 30
 
 matchmaking:
   allow-active-pair-duplicates: false
