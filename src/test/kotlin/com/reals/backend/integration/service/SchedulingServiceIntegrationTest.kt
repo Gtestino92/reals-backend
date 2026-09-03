@@ -624,6 +624,34 @@ class SchedulingServiceIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `explicit proposal acceptance rejects slot made impossible by permanent ban without ban metadata`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+        saveActivePermanentBan(setup.userAId)
+
+        val exception = assertThrows<DomainException> {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SCHEDULING_SLOT_CONFLICT, exception.code)
+        assertFalse(exception.message.orEmpty().contains("ban", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("penalty", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("permanent", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("expires", ignoreCase = true))
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
     fun `second chat slot remains confirmable at exact temporary ban resume margin`() {
         val setup = createConnectionInSchedulingPhase()
         val slot = futureHalfHourSlot()
@@ -820,6 +848,18 @@ class SchedulingServiceIntegrationTest : BaseIT() {
                 reason = "Scheduling temporary ban",
                 type = PenaltyType.TEMPORARY_BAN,
                 expiresAt = expiresAt,
+                active = true
+            )
+        )
+    }
+
+    private fun saveActivePermanentBan(userId: UUID) {
+        penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = userId,
+                reason = "Scheduling permanent ban",
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null,
                 active = true
             )
         )

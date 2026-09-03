@@ -6,6 +6,7 @@ import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
+import com.reals.backend.repository.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -20,7 +21,8 @@ class PenaltyService(
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userOperationalContainmentService: UserOperationalContainmentService,
-    private val accountBanPolicyService: AccountBanPolicyService
+    private val accountBanPolicyService: AccountBanPolicyService,
+    private val userRepository: UserRepository
 ) {
 
     @Transactional(readOnly = true)
@@ -94,6 +96,7 @@ class PenaltyService(
         now: OffsetDateTime
     ): Penalty {
         validatePenaltyShape(penalty)
+        lockPenalizedUser(penalty.userId)
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
         val saved = penaltyRepository.save(penalty)
         auditEventService.record(
@@ -134,6 +137,12 @@ class PenaltyService(
                 }
         }
         return saved
+    }
+
+    private fun lockPenalizedUser(userId: UUID) {
+        check(userRepository.findAllByIdForUpdate(listOf(userId)).size == 1) {
+            "Cannot apply penalty to missing user $userId"
+        }
     }
 
     private fun validatePenaltyShape(penalty: Penalty) {

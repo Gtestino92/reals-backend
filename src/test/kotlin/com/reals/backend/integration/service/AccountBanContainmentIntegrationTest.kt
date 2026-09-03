@@ -213,6 +213,24 @@ class AccountBanContainmentIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `temporary ban contains pending visual decision when review expiry is missing`() {
+        val setup = createMatchInVisualPhase()
+        val now = fixedDecisionTime()
+        val banExpiresAt = now.plusHours(1)
+        val reliabilityEventsBefore = reliabilityEventCountFor(setup.userAId, setup.userBId)
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Visual review was not created")
+        review.expiresAt = null
+        visualReviewRepository.saveAndFlush(review)
+
+        createTemporaryPenalty(setup.userBId, now, banExpiresAt)
+
+        assertEquals(MatchState.VISUAL_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
+        assertNoMatchLocks(setup.userAId, setup.userBId)
+        assertEquals(reliabilityEventsBefore, reliabilityEventCountFor(setup.userAId, setup.userBId))
+    }
+
+    @Test
     fun `temporary ban preserves visual phase when banned participant already decided`() {
         val setup = createMatchInVisualPhase()
         val now = fixedDecisionTime()

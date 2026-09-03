@@ -185,6 +185,9 @@ any more-specific nested `AGENTS.md` files first.
 
 - When behavior or contracts change, inspect affected canonical docs and local
   tooling.
+- Treat pre-existing Bruno and local-tooling modifications as user-owned local
+  state. Do not include, normalize, reorder, or rewrite them in unrelated
+  features; modify Bruno only when the task explicitly requires it.
 - Update architecture, configuration, API, OpenAPI, domain, state-machine,
   user-flow, reliability, lifecycle/manual test, local-development, and Bruno
   sources as applicable.
