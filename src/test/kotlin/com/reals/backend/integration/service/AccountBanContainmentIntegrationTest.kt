@@ -13,6 +13,7 @@ import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.MeHomeService
@@ -45,7 +46,7 @@ class AccountBanContainmentIntegrationTest : BaseIT() {
     private var secondChatEntryWindowMinutes: Long = 0
 
     @Test
-    fun `temporary ban during first chat contains engagement without reliability events`() {
+    fun `temporary ban during first chat contains engagement and records safety reliability event`() {
         val setup = createMatchWithFirstChat("ban-first-chat")
         val admin = userService.createUser("ban-first-chat-admin-${UUID.randomUUID()}@example.com")
         enqueueForMatchmaking(setup.userBId)
@@ -89,7 +90,15 @@ class AccountBanContainmentIntegrationTest : BaseIT() {
         assertEquals(MatchState.CHAT_REJECTED, matchService.findByIdOrThrow(setup.matchId).state)
         assertNoMatchLocks(setup.userAId, setup.userBId)
         assertTrue(homeStatusRepository.findById(setup.userAId).orElseThrow().version > counterpartHomeVersion)
-        assertEquals(reliabilityEventsBefore, reliabilityEventCountFor(setup.userAId, setup.userBId))
+        assertEquals(reliabilityEventsBefore + 1, reliabilityEventCountFor(setup.userAId, setup.userBId))
+        assertEquals(
+            1,
+            userReliabilityEventRepository.findAll().count {
+                it.userId == setup.userBId &&
+                    it.eventType == UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER &&
+                    it.relatedSafetyReportId == report.id
+            }
+        )
     }
 
     @Test
