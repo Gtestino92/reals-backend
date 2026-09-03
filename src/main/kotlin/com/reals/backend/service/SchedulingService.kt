@@ -12,6 +12,7 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.reliability.UserReliabilityScoreService
+import jakarta.persistence.EntityManager
 import org.springframework.context.ApplicationEventPublisher
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
@@ -35,6 +36,7 @@ class SchedulingService(
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
     private val eventPublisher: ApplicationEventPublisher,
+    private val entityManager: EntityManager,
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
@@ -110,17 +112,17 @@ class SchedulingService(
         proposedDateTimes: List<OffsetDateTime>
     ): List<ScheduleProposal> {
 
+        val connection = loadConnectionAndLockParticipants(connectionId)
         val negotiation = lockNegotiationOrThrow(connectionId)
+        entityManager.refresh(connection)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+        requireSchedulingPhase(connection.state)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
             throw schedulingNotAvailable()
         }
 
         requireExpectedRound(negotiation, expectedRoundNumber)
-
-        val connection = connectionService.findByIdOrThrow(connectionId)
-        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
-        requireSchedulingPhase(connection.state)
 
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
@@ -175,7 +177,8 @@ class SchedulingService(
             connection = connection,
             negotiation = negotiation,
             triggeringUserId = userId,
-            now = now
+            now = now,
+            usersAlreadyLocked = true
         )
 
         if (!autoConfirmed) {
@@ -218,7 +221,8 @@ class SchedulingService(
         connection: Connection,
         negotiation: ScheduleNegotiation,
         triggeringUserId: UUID,
-        now: OffsetDateTime
+        now: OffsetDateTime,
+        usersAlreadyLocked: Boolean = false
     ): Boolean {
         if (negotiation.status != NegotiationStatus.PENDING) return false
 
@@ -247,7 +251,8 @@ class SchedulingService(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connection.id,
             candidateDateTimes = candidates.map { it.proposalA.proposedDateTime },
-            now = now
+            now = now,
+            usersAlreadyLocked = usersAlreadyLocked
         )
 
         val overlap = candidates.first {
@@ -324,8 +329,9 @@ class SchedulingService(
         acceptorUserId: UUID
     ): ScheduleNegotiation {
 
+        val connection = loadConnectionAndLockParticipants(connectionId)
         val negotiation = lockNegotiationOrThrow(connectionId)
-
+        entityManager.refresh(connection)
         val proposal = proposalRepository.findById(proposalId)
             .orElseThrow {
                 DomainNotFoundException(
@@ -342,7 +348,6 @@ class SchedulingService(
             throw proposalNotAvailable()
         }
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
         userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
 
@@ -381,7 +386,8 @@ class SchedulingService(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connectionId,
             candidateDateTime = proposal.proposedDateTime,
-            now = now
+            now = now,
+            usersAlreadyLocked = true
         )
 
         val pending =
@@ -579,6 +585,14 @@ class SchedulingService(
                 code = DomainErrorCode.SCHEDULING_NEGOTIATION_NOT_FOUND,
                 message = "Scheduling negotiation was not found"
             )
+    }
+
+    private fun loadConnectionAndLockParticipants(connectionId: UUID): Connection {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        schedulingConflictService.lockUsersForScheduling(
+            listOf(connection.userAId, connection.userBId)
+        )
+        return connection
     }
 
     private fun requireExpectedRound(

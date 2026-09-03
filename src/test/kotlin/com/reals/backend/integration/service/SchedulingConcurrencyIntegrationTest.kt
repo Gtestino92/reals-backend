@@ -215,7 +215,7 @@ class SchedulingConcurrencyIntegrationTest : BaseIT() {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    fun `penalty application waits for scheduling participant locks before containing invalid confirmed slot`() {
+    fun `concurrent explicit acceptance and temporary penalty cannot deadlock or leave invalid active scheduled slot`() {
         val setup = TransactionTemplate(transactionManager).execute {
             val created = createConnectionInSchedulingPhase()
             val slot = futureHalfHourSlot()
@@ -231,71 +231,63 @@ class SchedulingConcurrencyIntegrationTest : BaseIT() {
                 slot = slot
             )
         }
-        val penaltyAttemptStarted = CountDownLatch(1)
-        val penaltyCompleted = CountDownLatch(1)
-        val executor = Executors.newSingleThreadExecutor()
-
-        try {
-            val penaltyFuture = executor.submit(
-                Callable<Throwable?> {
-                    penaltyAttemptStarted.countDown()
-                    try {
-                        val penaltyNow = OffsetDateTime.now()
-                        val invalidBanExpiresAt =
-                            setup.slot
-                                .plusMinutes(secondChatEntryWindowMinutes)
-                                .minusMinutes(temporaryResumeMarginMinutes)
-                                .plusSeconds(1)
-                        penaltyService.createTemporaryPenalty(
-                            userId = setup.connection.userAId,
-                            reason = "Temporary ban racing with scheduling confirmation",
-                            duration = Duration.between(penaltyNow, invalidBanExpiresAt),
-                            now = penaltyNow
-                        )
-                        null
-                    } catch (ex: Throwable) {
-                        ex
-                    } finally {
-                        penaltyCompleted.countDown()
-                    }
-                }
-            )
-
-            TransactionTemplate(transactionManager).executeWithoutResult {
-                userRepository.findAllByIdForUpdate(
-                    listOf(setup.connection.userAId, setup.connection.userBId)
-                        .sortedBy { it.toString() }
-                )
-                penaltyAttemptStarted.awaitOrFail("penalty attempt to start")
-                assertFalse(
-                    penaltyCompleted.await(500, TimeUnit.MILLISECONDS),
-                    "Penalty application must wait while scheduling holds participant user locks"
-                )
-
+        val outcomes = runConcurrentlyCapturing(
+            {
                 schedulingService.acceptProposal(
                     connectionId = setup.connection.connectionId,
                     proposalId = setup.proposalId,
                     acceptorUserId = setup.connection.userBId
                 )
+            },
+            {
+                createIncompatibleTemporaryPenalty(
+                    userId = setup.connection.userAId,
+                    slot = setup.slot
+                )
             }
-
-            penaltyFuture.get(15, TimeUnit.SECONDS)?.let { throw it }
-        } finally {
-            executor.shutdownNow()
-        }
-
-        val effectiveBan = penaltyService.resolveEffectiveBan(setup.connection.userAId)
-            ?: error("Expected effective temporary ban")
-        val connection = connectionService.findByIdOrThrow(setup.connection.connectionId)
-
-        assertEquals(PenaltyType.TEMPORARY_BAN, effectiveBan.type)
-        assertTrue(
-            requireNotNull(effectiveBan.expiresAt)
-                .plusMinutes(temporaryResumeMarginMinutes)
-                .isAfter(setup.slot.plusMinutes(secondChatEntryWindowMinutes))
         )
-        assertEquals(ConnectionState.CLOSED, connection.state)
-        assertNoConnectionLocks(setup.connection.userAId, setup.connection.userBId)
+
+        assertNoUnexpectedRaceFailures(outcomes)
+        assertInvalidBanExistsAndNoActiveInvalidScheduledSlot(setup)
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun `concurrent auto confirmation and temporary penalty cannot deadlock or leave invalid active scheduled slot`() {
+        val setup = TransactionTemplate(transactionManager).execute {
+            val created = createConnectionInSchedulingPhase()
+            val slot = futureHalfHourSlot()
+            schedulingService.addProposals(
+                connectionId = created.connectionId,
+                userId = created.userAId,
+                expectedRoundNumber = 1,
+                proposedDateTimes = listOf(slot)
+            )
+            PenaltyRaceFixture(
+                connection = created,
+                proposalId = UUID.randomUUID(),
+                slot = slot
+            )
+        }
+        val outcomes = runConcurrentlyCapturing(
+            {
+                schedulingService.addProposals(
+                    connectionId = setup.connection.connectionId,
+                    userId = setup.connection.userBId,
+                    expectedRoundNumber = 1,
+                    proposedDateTimes = listOf(setup.slot)
+                )
+            },
+            {
+                createIncompatibleTemporaryPenalty(
+                    userId = setup.connection.userAId,
+                    slot = setup.slot
+                )
+            }
+        )
+
+        assertNoUnexpectedRaceFailures(outcomes)
+        assertInvalidBanExistsAndNoActiveInvalidScheduledSlot(setup)
     }
 
     private fun runConcurrently(
@@ -336,8 +328,53 @@ class SchedulingConcurrencyIntegrationTest : BaseIT() {
         }
     }
 
-    private fun CountDownLatch.awaitOrFail(description: String) {
-        assertTrue(await(10, TimeUnit.SECONDS), "Timed out waiting for $description")
+    private fun createIncompatibleTemporaryPenalty(
+        userId: UUID,
+        slot: OffsetDateTime
+    ) {
+        val penaltyNow = OffsetDateTime.now()
+        val invalidBanExpiresAt =
+            slot
+                .plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+                .plusSeconds(1)
+        penaltyService.createTemporaryPenalty(
+            userId = userId,
+            reason = "Temporary ban racing with scheduling confirmation",
+            duration = Duration.between(penaltyNow, invalidBanExpiresAt),
+            now = penaltyNow
+        )
+    }
+
+    private fun assertNoUnexpectedRaceFailures(outcomes: List<Throwable?>) {
+        outcomes.filterNotNull().forEach { failure ->
+            assertTrue(
+                failure is DomainConflictException &&
+                    failure.code == DomainErrorCode.SCHEDULING_SLOT_CONFLICT,
+                "Unexpected concurrent scheduling failure: ${failure::class.qualifiedName} ${failure.message}"
+            )
+        }
+    }
+
+    private fun assertInvalidBanExistsAndNoActiveInvalidScheduledSlot(setup: PenaltyRaceFixture) {
+        val effectiveBan = penaltyService.resolveEffectiveBan(setup.connection.userAId)
+            ?: error("Expected effective temporary ban")
+        val connection = connectionService.findByIdOrThrow(setup.connection.connectionId)
+
+        assertEquals(PenaltyType.TEMPORARY_BAN, effectiveBan.type)
+        assertTrue(
+            requireNotNull(effectiveBan.expiresAt)
+                .plusMinutes(temporaryResumeMarginMinutes)
+                .isAfter(setup.slot.plusMinutes(secondChatEntryWindowMinutes))
+        )
+        assertFalse(
+            connection.state in setOf(
+                ConnectionState.SECOND_CHAT_SCHEDULED,
+                ConnectionState.SECOND_CHAT_AVAILABLE,
+                ConnectionState.SECOND_CHAT
+            ),
+            "Connection must not remain in an active confirmed second-chat state"
+        )
     }
 
     private data class PenaltyRaceFixture(

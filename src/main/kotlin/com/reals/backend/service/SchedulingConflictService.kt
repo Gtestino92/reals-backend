@@ -70,13 +70,15 @@ class SchedulingConflictService(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
         candidateDateTime: OffsetDateTime,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime = OffsetDateTime.now(),
+        usersAlreadyLocked: Boolean = false
     ) {
         selectFirstAvailableSlotForUsers(
             userIds = userIds,
             excludedConnectionId = excludedConnectionId,
             candidateDateTimes = listOf(candidateDateTime),
-            now = now
+            now = now,
+            usersAlreadyLocked = usersAlreadyLocked
         )
     }
 
@@ -85,9 +87,12 @@ class SchedulingConflictService(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
         candidateDateTimes: Collection<OffsetDateTime>,
-        now: OffsetDateTime = OffsetDateTime.now()
+        now: OffsetDateTime = OffsetDateTime.now(),
+        usersAlreadyLocked: Boolean = false
     ): OffsetDateTime {
-        lockUsers(userIds)
+        if (!usersAlreadyLocked) {
+            lockUsersForScheduling(userIds)
+        }
 
         val confirmedDateTimes =
             confirmedDateTimesForUsers(
@@ -105,7 +110,8 @@ class SchedulingConflictService(
         } ?: throw slotConflict()
     }
 
-    private fun lockUsers(userIds: Collection<UUID>) {
+    @Transactional
+    fun lockUsersForScheduling(userIds: Collection<UUID>) {
         val orderedUserIds = userIds.distinct().sortedBy(UUID::toString)
         val lockedUsers = userRepository.findAllByIdForUpdate(orderedUserIds)
         check(lockedUsers.size == orderedUserIds.size) {
