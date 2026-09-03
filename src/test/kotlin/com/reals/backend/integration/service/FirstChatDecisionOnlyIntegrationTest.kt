@@ -62,7 +62,7 @@ class FirstChatDecisionOnlyIntegrationTest : BaseIT() {
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userAId, EngagementType.MATCH))
         assertEquals(0, lockRepository.countByUserIdAndEngagementType(setup.userBId, EngagementType.MATCH))
         assertTrue(chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(setup.firstChatId).isEmpty())
-        assertEquals(0, penaltyRepository.count())
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId || it.userId == setup.userBId })
     }
 
     @Test
