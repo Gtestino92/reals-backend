@@ -546,7 +546,7 @@ Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Creating or dismiss
 
 Pending reports with reason `CHILD_SAFETY_CONCERN` receive derived priority review: admin lists order them before other reports, then order by creation time descending. Priority is not persisted and becomes false after review. Direct user reports retain the existing directional block and active-interaction containment behavior; no penalty or ban is automatic from this reason.
 
-Admins can also dismiss a report as abusive or unjustified. That resolution creates no safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter. Pending reports, ordinary insufficient-evidence dismissals and confirmed reports against the reported user do not create reliability events.
+Admins can also dismiss a report as abusive or unjustified. That resolution creates no safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter. Pending reports and ordinary insufficient-evidence dismissals do not create reliability events. Confirmed reports record `SAFETY_REPORT_CONFIRMED_AGAINST_USER` against the reported user only when the sanction is `TEMPORARY_BAN`; `PERMANENT_BAN` remains reliability-neutral.
 
 ## 10. Completion
 

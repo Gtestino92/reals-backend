@@ -1,21 +1,26 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.controller.dto.CreateAdminSafetyReportRequest
 import com.reals.backend.controller.dto.CreateSafetyReportRequest
 import com.reals.backend.controller.dev.DevUserReliabilityController
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.UserReliabilityDimension
 import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.UserReliabilityEventCleanupJob
+import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.test.context.TestPropertySource
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -509,6 +514,154 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `confirmed user safety report with temporary ban penalizes reported user reliability`() {
+        val report = createUserChatSafetyReport("confirmed-user-temporary")
+        val admin = userService.createUser("admin-reliability-${UUID.randomUUID()}@example.com")
+
+        val reviewed = safetyReportService.confirmReportWithPenalty(
+            reportId = report.reportId,
+            adminUserId = admin.id,
+            penaltyType = PenaltyType.TEMPORARY_BAN,
+            durationHours = 24,
+            reason = "Confirmed temporary safety violation",
+            notes = "Confirmed by moderator"
+        )
+
+        val penalty = penaltyRepository.findById(reviewed.penaltyId ?: error("Expected penalty")).orElseThrow()
+        assertEquals(SafetyReportStatus.CONFIRMED, reviewed.status)
+        assertEquals(PenaltyType.TEMPORARY_BAN, penalty.type)
+        assertEquals(report.reportedUserId, penalty.userId)
+        assertSingleSafetyReportEvent(
+            userId = report.reportedUserId,
+            eventType = UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER,
+            delta = -8,
+            dimension = UserReliabilityDimension.ResolutionQualityScore,
+            reportId = report.reportId
+        )
+        assertNoEvents(requireNotNull(report.reporterUserId))
+    }
+
+    @Test
+    fun `confirmed admin safety report with temporary ban penalizes reported user reliability`() {
+        val admin = userService.createUser("admin-report-temporary-admin-${UUID.randomUUID()}@example.com")
+        val reported = userService.createUser("admin-report-temporary-reported-${UUID.randomUUID()}@example.com")
+        val report = createAdminUserSafetyReport(admin.id, reported.id)
+
+        val reviewed = safetyReportService.confirmReportWithPenalty(
+            reportId = report.reportId,
+            adminUserId = admin.id,
+            penaltyType = PenaltyType.TEMPORARY_BAN,
+            durationHours = 24,
+            reason = "Confirmed temporary safety violation",
+            notes = "Confirmed by moderator"
+        )
+
+        val penalty = penaltyRepository.findById(reviewed.penaltyId ?: error("Expected penalty")).orElseThrow()
+        assertEquals(SafetyReportStatus.CONFIRMED, reviewed.status)
+        assertEquals(PenaltyType.TEMPORARY_BAN, penalty.type)
+        assertEquals(reported.id, penalty.userId)
+        assertSingleSafetyReportEvent(
+            userId = reported.id,
+            eventType = UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER,
+            delta = -8,
+            dimension = UserReliabilityDimension.ResolutionQualityScore,
+            reportId = report.reportId
+        )
+    }
+
+    @Test
+    fun `confirmed safety report with permanent ban does not create confirmed-report reliability event`() {
+        val admin = userService.createUser("admin-report-permanent-admin-${UUID.randomUUID()}@example.com")
+        val reported = userService.createUser("admin-report-permanent-reported-${UUID.randomUUID()}@example.com")
+        val report = createAdminUserSafetyReport(admin.id, reported.id)
+
+        val reviewed = safetyReportService.confirmReportWithPenalty(
+            reportId = report.reportId,
+            adminUserId = admin.id,
+            penaltyType = PenaltyType.PERMANENT_BAN,
+            durationHours = null,
+            reason = "Confirmed permanent safety violation",
+            notes = "Confirmed by moderator"
+        )
+
+        val penalty = penaltyRepository.findById(reviewed.penaltyId ?: error("Expected penalty")).orElseThrow()
+        assertEquals(SafetyReportStatus.CONFIRMED, reviewed.status)
+        assertEquals(PenaltyType.PERMANENT_BAN, penalty.type)
+        assertNoEvent(reported.id, UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER)
+    }
+
+    @Test
+    fun `ordinary safety report dismissal creates no reliability event`() {
+        val report = createUserChatSafetyReport("neutral-report")
+        val admin = userService.createUser("neutral-report-admin-${UUID.randomUUID()}@example.com")
+
+        val reviewed = safetyReportService.dismissReport(
+            reportId = report.reportId,
+            adminUserId = admin.id,
+            notes = "Insufficient evidence"
+        )
+
+        assertEquals(SafetyReportStatus.DISMISSED, reviewed.status)
+        assertNoEvents(requireNotNull(report.reporterUserId))
+        assertNoEvents(report.reportedUserId)
+    }
+
+    @Test
+    fun `abusive safety report dismissal keeps existing reporter reliability penalty`() {
+        val abusive = createUserChatSafetyReport("abusive-report")
+        val admin = userService.createUser("abusive-report-admin-${UUID.randomUUID()}@example.com")
+
+        safetyReportService.dismissAbusiveOrUnjustifiedReport(
+            reportId = abusive.reportId,
+            adminUserId = admin.id,
+            notes = "Reporter acknowledged fabricated report"
+        )
+
+        assertSingleSafetyReportEvent(
+            userId = requireNotNull(abusive.reporterUserId),
+            eventType = UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE,
+            delta = -8,
+            dimension = UserReliabilityDimension.ResolutionQualityScore,
+            reportId = abusive.reportId
+        )
+        assertNoEvents(abusive.reportedUserId)
+    }
+
+    @Test
+    fun `already reviewed safety report does not duplicate confirmed-report reliability event`() {
+        val admin = userService.createUser("reviewed-report-admin-${UUID.randomUUID()}@example.com")
+        val reported = userService.createUser("reviewed-report-reported-${UUID.randomUUID()}@example.com")
+        val report = createAdminUserSafetyReport(admin.id, reported.id)
+
+        safetyReportService.confirmReportWithPenalty(
+            reportId = report.reportId,
+            adminUserId = admin.id,
+            penaltyType = PenaltyType.TEMPORARY_BAN,
+            durationHours = 24,
+            reason = "Confirmed temporary safety violation",
+            notes = "Confirmed by moderator"
+        )
+        assertThrows<DomainConflictException> {
+            safetyReportService.confirmReportWithPenalty(
+                reportId = report.reportId,
+                adminUserId = admin.id,
+                penaltyType = PenaltyType.TEMPORARY_BAN,
+                durationHours = 24,
+                reason = "Repeated moderation attempt",
+                notes = "Already reviewed"
+            )
+        }
+
+        assertSingleSafetyReportEvent(
+            userId = reported.id,
+            eventType = UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER,
+            delta = -8,
+            dimension = UserReliabilityDimension.ResolutionQualityScore,
+            reportId = report.reportId
+        )
+    }
+
+    @Test
     fun `abusive safety report resolution creates event and ordinary dismissal does not`() {
         val abusive = createUserSafetyReport("abusive-report")
         val neutral = createUserSafetyReport("neutral-report")
@@ -525,8 +678,15 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
             notes = "Insufficient evidence"
         )
 
-        assertSingleEvent(abusive.reporterUserId, UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE, -8)
-        assertNoEvent(neutral.reporterUserId, UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE)
+        assertSingleEvent(
+            requireNotNull(abusive.reporterUserId),
+            UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE,
+            -8
+        )
+        assertNoEvent(
+            requireNotNull(neutral.reporterUserId),
+            UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE
+        )
     }
 
     @Test
@@ -652,7 +812,51 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
         return SafetyReportFixture(
             reportId = report.id,
-            reporterUserId = setup.userAId
+            reporterUserId = setup.userAId,
+            reportedUserId = setup.userBId
+        )
+    }
+
+    private fun createUserChatSafetyReport(prefix: String): SafetyReportFixture {
+        val setup = createMatchWithFirstChat(prefix)
+        val report =
+            safetyReportService.createUserReport(
+                reporterUserId = setup.userAId,
+                request = CreateSafetyReportRequest(
+                    reportedUserId = setup.userBId,
+                    contextType = SafetyReportContextType.CHAT,
+                    chatId = setup.firstChatId,
+                    reason = SafetyReportReason.OTHER,
+                    details = "$prefix details"
+                )
+            ).report
+
+        return SafetyReportFixture(
+            reportId = report.id,
+            reporterUserId = setup.userAId,
+            reportedUserId = setup.userBId
+        )
+    }
+
+    private fun createAdminUserSafetyReport(
+        adminUserId: UUID,
+        reportedUserId: UUID
+    ): SafetyReportFixture {
+        val report =
+            safetyReportService.createAdminReport(
+                adminUserId = adminUserId,
+                request = CreateAdminSafetyReportRequest(
+                    reportedUserId = reportedUserId,
+                    contextType = SafetyReportContextType.USER,
+                    reason = SafetyReportReason.OTHER,
+                    details = "Admin-created moderation report"
+                )
+            )
+
+        return SafetyReportFixture(
+            reportId = report.id,
+            reporterUserId = report.reporterUserId,
+            reportedUserId = report.reportedUserId
         )
     }
 
@@ -677,6 +881,21 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
         assertEquals(0, userReliabilityEventRepository.findAll().count { it.userId == userId })
     }
 
+    private fun assertSingleSafetyReportEvent(
+        userId: UUID,
+        eventType: UserReliabilityEventType,
+        delta: Int,
+        dimension: UserReliabilityDimension,
+        reportId: UUID
+    ) {
+        val events = events(userId, eventType)
+        assertEquals(1, events.size)
+        val event = events.single()
+        assertEquals(delta, event.delta)
+        assertEquals(dimension, event.dimension)
+        assertEquals(reportId, event.relatedSafetyReportId)
+    }
+
     private fun events(
         userId: UUID,
         eventType: UserReliabilityEventType
@@ -686,6 +905,7 @@ class UserReliabilityScoreIntegrationTest : BaseIT() {
 
     private data class SafetyReportFixture(
         val reportId: UUID,
-        val reporterUserId: UUID
+        val reporterUserId: UUID?,
+        val reportedUserId: UUID
     )
 }

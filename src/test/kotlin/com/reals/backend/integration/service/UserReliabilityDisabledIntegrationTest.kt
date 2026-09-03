@@ -1,10 +1,15 @@
 package com.reals.backend.integration.service
 
+import com.reals.backend.controller.dto.CreateAdminSafetyReportRequest
 import com.reals.backend.controller.dev.DevUserReliabilityController
 import com.reals.backend.domain.ActiveEngagementLock
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
+import com.reals.backend.domain.PenaltyType
+import com.reals.backend.domain.SafetyReportContextType
+import com.reals.backend.domain.SafetyReportReason
+import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.UserReliabilityDimension
 import com.reals.backend.domain.UserReliabilityEvent
 import com.reals.backend.domain.UserReliabilityEventType
@@ -52,6 +57,40 @@ class UserReliabilityDisabledIntegrationTest : ControllerIT() {
             0,
             userReliabilityEventRepository.findAll().count {
                 it.eventType == UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED
+            }
+        )
+    }
+
+    @Test
+    fun `feature flag disabled allows temporary safety penalty without reliability event`() {
+        val admin = userService.createUser("disabled-safety-admin-${UUID.randomUUID()}@example.com")
+        val reported = userService.createUser("disabled-safety-reported-${UUID.randomUUID()}@example.com")
+        val report = safetyReportService.createAdminReport(
+            adminUserId = admin.id,
+            request = CreateAdminSafetyReportRequest(
+                reportedUserId = reported.id,
+                contextType = SafetyReportContextType.USER,
+                reason = SafetyReportReason.OTHER,
+                details = "Admin-created moderation report"
+            )
+        )
+
+        val reviewed = safetyReportService.confirmReportWithPenalty(
+            reportId = report.id,
+            adminUserId = admin.id,
+            penaltyType = PenaltyType.TEMPORARY_BAN,
+            durationHours = 24,
+            reason = "Confirmed temporary safety violation",
+            notes = "Confirmed by moderator"
+        )
+
+        assertEquals(SafetyReportStatus.CONFIRMED, reviewed.status)
+        assertEquals(PenaltyType.TEMPORARY_BAN, penaltyRepository.findById(reviewed.penaltyId!!).orElseThrow().type)
+        assertFalse(userReliabilityScoreService.enabled)
+        assertEquals(
+            0,
+            userReliabilityEventRepository.findAll().count {
+                it.eventType == UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER
             }
         )
     }

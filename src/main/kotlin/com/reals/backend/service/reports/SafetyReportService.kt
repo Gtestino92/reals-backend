@@ -398,6 +398,13 @@ class SafetyReportService(
         report.penaltyId = penalty.id
 
         val saved = safetyReportRepository.save(report)
+        if (penalty.type == PenaltyType.TEMPORARY_BAN) {
+            userReliabilityScoreService.recordEvent(
+                userId = saved.reportedUserId,
+                eventType = UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER,
+                relatedSafetyReportId = saved.id
+            )
+        }
         auditEventService.record(
             eventType = AuditEventType.SAFETY_REPORT_CONFIRMED,
             aggregateType = AuditAggregateType.SAFETY_REPORT,

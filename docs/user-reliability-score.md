@@ -74,8 +74,9 @@ Dimensional scores are not exposed to users.
 | `SECOND_CHAT_ABANDONED_AFTER_JOIN` | participant failed to answer after conversation started | `ConversationParticipationScore` | `-5` |
 | `SECOND_CHAT_NO_CONVERSATION_STARTED` | both joined but neither sent a message before initial-silence closure | `ConversationParticipationScore` | `-5` |
 | `SAFETY_REPORT_DETERMINED_ABUSIVE` | abusive/unjustified reporter | `ResolutionQualityScore` | `-8` |
+| `SAFETY_REPORT_CONFIRMED_AGAINST_USER` | reported user on confirmed report with temporary ban | `ResolutionQualityScore` | `-8` |
 
-No reliability events are created for visual approval, visual rejection, visual decisions made on time, reading a partner personal message, creating a safety report, pending safety reports, ordinary insufficient-evidence dismissals, or confirmed safety reports against the reported user.
+No reliability events are created for visual approval, visual rejection, visual decisions made on time, reading a partner personal message, creating a safety report, pending safety reports, ordinary insufficient-evidence dismissals, or confirmed safety reports that apply a permanent ban.
 
 ## First Chat Mapping
 
@@ -149,7 +150,7 @@ POST /api/admin/safety-reports/{reportId}/abusive-dismissal
 
 This sets `SafetyReportStatus.DISMISSED_ABUSIVE_OR_UNJUSTIFIED`, creates no safety sanction, and records `SAFETY_REPORT_DETERMINED_ABUSIVE` against the reporter when a user reporter exists and `USER_RELIABILITY_ENABLED=true`.
 
-Ordinary dismissal and confirmed reports do not create reliability events.
+Ordinary dismissal does not create reliability events. Confirming a report with `TEMPORARY_BAN` records `SAFETY_REPORT_CONFIRMED_AGAINST_USER` against the reported user with `relatedSafetyReportId`; confirming with `PERMANENT_BAN` remains reliability-neutral.
 
 ## Matchmaking Impact
 
