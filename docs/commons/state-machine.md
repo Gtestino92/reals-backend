@@ -190,8 +190,12 @@ Scheduling slot conflict checks compare instants against a symmetric inclusive
 window around confirmed second-chat starts on other connections for the same
 users. Only `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` reserve slots.
 Confirmation paths lock both participant user rows in deterministic UUID order
-before checking other confirmed negotiations and before mutating proposal or
-negotiation status.
+before checking other confirmed negotiations, effective account-ban viability
+for both participants and before mutating proposal or negotiation status. An
+effective permanent ban makes a second-chat slot non-confirmable. An effective
+temporary ban requires the candidate start plus the configured entry window to
+be at least the configured temporary-ban resume margin after the effective
+expiry; equality remains confirmable.
 
 
 ## Second Chat

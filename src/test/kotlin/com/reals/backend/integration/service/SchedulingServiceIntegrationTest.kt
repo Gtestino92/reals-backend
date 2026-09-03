@@ -2,6 +2,8 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.integration.BaseIT
@@ -12,10 +14,17 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.beans.factory.annotation.Value
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class SchedulingServiceIntegrationTest : BaseIT() {
+
+    @Value("\${account.ban.temporary-resume-margin-minutes:30}")
+    private var temporaryResumeMarginMinutes: Long = 0
+
+    @Value("\${chat.second-chat.entry-window-minutes:20}")
+    private var secondChatEntryWindowMinutes: Long = 0
 
     @Test
     fun `add proposals rejects duplicate submission in same round`() {
@@ -554,6 +563,124 @@ class SchedulingServiceIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `automatic overlap confirmation rejects slot made impossible by effective temporary ban`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+                .plusNanos(1)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_SLOT_CONFLICT) {
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                expectedRoundNumber = 1,
+                proposedDateTimes = listOf(slot)
+            )
+        }
+
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `explicit proposal acceptance rejects slot made impossible by partner temporary ban without ban metadata`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+                .plusNanos(1)
+        )
+
+        val exception = assertThrows<DomainException> {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SCHEDULING_SLOT_CONFLICT, exception.code)
+        assertFalse(exception.message.orEmpty().contains("ban", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("penalty", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("expires", ignoreCase = true))
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `explicit proposal acceptance rejects slot made impossible by permanent ban without ban metadata`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+        saveActivePermanentBan(setup.userAId)
+
+        val exception = assertThrows<DomainException> {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SCHEDULING_SLOT_CONFLICT, exception.code)
+        assertFalse(exception.message.orEmpty().contains("ban", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("penalty", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("permanent", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("expires", ignoreCase = true))
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `second chat slot remains confirmable at exact temporary ban resume margin`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(slot.toInstant(), negotiation.confirmedDateTime?.toInstant())
+        assertEquals(ConnectionState.SECOND_CHAT_SCHEDULED, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
+
+    @Test
     fun `auto confirm preserves future overlap score and earliest tie break`() {
         val now = OffsetDateTime.now()
         val early = now.plusHours(1).withMinute(0).withSecond(0).withNano(0)
@@ -710,4 +837,31 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             preferenceOrder = preferenceOrder,
             proposedDateTime = proposedDateTime
         )
+
+    private fun saveActiveTemporaryBan(
+        userId: UUID,
+        expiresAt: OffsetDateTime
+    ) {
+        penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = userId,
+                reason = "Scheduling temporary ban",
+                type = PenaltyType.TEMPORARY_BAN,
+                expiresAt = expiresAt,
+                active = true
+            )
+        )
+    }
+
+    private fun saveActivePermanentBan(userId: UUID) {
+        penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = userId,
+                reason = "Scheduling permanent ban",
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null,
+                active = true
+            )
+        )
+    }
 }

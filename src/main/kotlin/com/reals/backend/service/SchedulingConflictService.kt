@@ -15,6 +15,7 @@ import java.util.UUID
 class SchedulingConflictService(
     private val negotiationRepository: ScheduleNegotiationRepository,
     private val userRepository: UserRepository,
+    private val accountBanPolicyService: AccountBanPolicyService,
     @param:Value("\${scheduling.second-chat-conflict-window-minutes:60}")
     val conflictWindowMinutes: Long
 ) {
@@ -68,12 +69,16 @@ class SchedulingConflictService(
     fun requireSlotAvailableForUsers(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
-        candidateDateTime: OffsetDateTime
+        candidateDateTime: OffsetDateTime,
+        now: OffsetDateTime = OffsetDateTime.now(),
+        usersAlreadyLocked: Boolean = false
     ) {
         selectFirstAvailableSlotForUsers(
             userIds = userIds,
             excludedConnectionId = excludedConnectionId,
-            candidateDateTimes = listOf(candidateDateTime)
+            candidateDateTimes = listOf(candidateDateTime),
+            now = now,
+            usersAlreadyLocked = usersAlreadyLocked
         )
     }
 
@@ -81,9 +86,13 @@ class SchedulingConflictService(
     fun selectFirstAvailableSlotForUsers(
         userIds: Collection<UUID>,
         excludedConnectionId: UUID,
-        candidateDateTimes: Collection<OffsetDateTime>
+        candidateDateTimes: Collection<OffsetDateTime>,
+        now: OffsetDateTime = OffsetDateTime.now(),
+        usersAlreadyLocked: Boolean = false
     ): OffsetDateTime {
-        lockUsers(userIds)
+        if (!usersAlreadyLocked) {
+            lockUsersForScheduling(userIds)
+        }
 
         val confirmedDateTimes =
             confirmedDateTimesForUsers(
@@ -92,11 +101,17 @@ class SchedulingConflictService(
             )
 
         return candidateDateTimes.firstOrNull { candidate ->
-            confirmedDateTimes.none { confirmed -> conflicts(candidate, confirmed) }
+            confirmedDateTimes.none { confirmed -> conflicts(candidate, confirmed) } &&
+                accountBanPolicyService.canConfirmSecondChatSlotForUsers(
+                    userIds = userIds,
+                    confirmedDateTime = candidate,
+                    now = now
+                )
         } ?: throw slotConflict()
     }
 
-    private fun lockUsers(userIds: Collection<UUID>) {
+    @Transactional
+    fun lockUsersForScheduling(userIds: Collection<UUID>) {
         val orderedUserIds = userIds.distinct().sortedBy(UUID::toString)
         val lockedUsers = userRepository.findAllByIdForUpdate(orderedUserIds)
         check(lockedUsers.size == orderedUserIds.size) {
@@ -143,7 +158,7 @@ class SchedulingConflictService(
     private fun slotConflict(): DomainConflictException =
         DomainConflictException(
             code = DomainErrorCode.SCHEDULING_SLOT_CONFLICT,
-            message = "The selected time conflicts with another confirmed second chat"
+            message = "The selected time is not available for scheduling"
         )
 
     data class SchedulingAvailabilitySnapshot(

@@ -97,6 +97,8 @@ scheduler:
 account:
   deletion:
     recovery-window-days: ${ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS:30}
+  ban:
+    temporary-resume-margin-minutes: ${ACCOUNT_BAN_TEMPORARY_RESUME_MARGIN_MINUTES:30}
 
 matchmaking:
   candidate-pair-limit: 100

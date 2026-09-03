@@ -12,6 +12,7 @@ import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.service.reliability.UserReliabilityScoreService
+import jakarta.persistence.EntityManager
 import org.springframework.context.ApplicationEventPublisher
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
@@ -35,6 +36,7 @@ class SchedulingService(
     private val userReliabilityScoreService: UserReliabilityScoreService,
     private val userBlockService: UserBlockService,
     private val eventPublisher: ApplicationEventPublisher,
+    private val entityManager: EntityManager,
     /**
      * Maximum number of negotiation rounds before marking as FAILED.
      */
@@ -110,7 +112,11 @@ class SchedulingService(
         proposedDateTimes: List<OffsetDateTime>
     ): List<ScheduleProposal> {
 
+        val connection = loadConnectionAndLockParticipants(connectionId)
         val negotiation = lockNegotiationOrThrow(connectionId)
+        entityManager.refresh(connection)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+        requireSchedulingPhase(connection.state)
 
         if (negotiation.status != NegotiationStatus.PENDING) {
             throw schedulingNotAvailable()
@@ -118,19 +124,17 @@ class SchedulingService(
 
         requireExpectedRound(negotiation, expectedRoundNumber)
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
-        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
-        requireSchedulingPhase(connection.state)
-
         if (userId != connection.userAId && userId != connection.userBId) {
             throw AccessDeniedException("User $userId does not belong to connection $connectionId")
         }
 
-        if (!OffsetDateTime.now().isBefore(connection.schedulingExpiresAt)) {
+        val now = OffsetDateTime.now()
+
+        if (!now.isBefore(connection.schedulingExpiresAt)) {
             throw schedulingExpired()
         }
 
-        validateProposalSlots(proposedDateTimes)
+        validateProposalSlots(proposedDateTimes, now)
         schedulingConflictService.requireSlotsAvailableForUser(
             userId = userId,
             excludedConnectionId = connectionId,
@@ -172,7 +176,9 @@ class SchedulingService(
         val autoConfirmed = tryAutoConfirmOverlap(
             connection = connection,
             negotiation = negotiation,
-            triggeringUserId = userId
+            triggeringUserId = userId,
+            now = now,
+            usersAlreadyLocked = true
         )
 
         if (!autoConfirmed) {
@@ -214,11 +220,12 @@ class SchedulingService(
     private fun tryAutoConfirmOverlap(
         connection: Connection,
         negotiation: ScheduleNegotiation,
-        triggeringUserId: UUID
+        triggeringUserId: UUID,
+        now: OffsetDateTime,
+        usersAlreadyLocked: Boolean = false
     ): Boolean {
         if (negotiation.status != NegotiationStatus.PENDING) return false
 
-        val now = OffsetDateTime.now()
         val pending =
             proposalRepository.findByConnectionIdAndRoundNumber(
                 connection.id,
@@ -243,7 +250,9 @@ class SchedulingService(
         val selectedDateTime = schedulingConflictService.selectFirstAvailableSlotForUsers(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connection.id,
-            candidateDateTimes = candidates.map { it.proposalA.proposedDateTime }
+            candidateDateTimes = candidates.map { it.proposalA.proposedDateTime },
+            now = now,
+            usersAlreadyLocked = usersAlreadyLocked
         )
 
         val overlap = candidates.first {
@@ -320,8 +329,9 @@ class SchedulingService(
         acceptorUserId: UUID
     ): ScheduleNegotiation {
 
+        val connection = loadConnectionAndLockParticipants(connectionId)
         val negotiation = lockNegotiationOrThrow(connectionId)
-
+        entityManager.refresh(connection)
         val proposal = proposalRepository.findById(proposalId)
             .orElseThrow {
                 DomainNotFoundException(
@@ -338,7 +348,6 @@ class SchedulingService(
             throw proposalNotAvailable()
         }
 
-        val connection = connectionService.findByIdOrThrow(connectionId)
         userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
         requireSchedulingPhase(connection.state)
 
@@ -376,7 +385,9 @@ class SchedulingService(
         schedulingConflictService.requireSlotAvailableForUsers(
             userIds = listOf(connection.userAId, connection.userBId),
             excludedConnectionId = connectionId,
-            candidateDateTime = proposal.proposedDateTime
+            candidateDateTime = proposal.proposedDateTime,
+            now = now,
+            usersAlreadyLocked = true
         )
 
         val pending =
@@ -576,6 +587,14 @@ class SchedulingService(
             )
     }
 
+    private fun loadConnectionAndLockParticipants(connectionId: UUID): Connection {
+        val connection = connectionService.findByIdOrThrow(connectionId)
+        schedulingConflictService.lockUsersForScheduling(
+            listOf(connection.userAId, connection.userBId)
+        )
+        return connection
+    }
+
     private fun requireExpectedRound(
         negotiation: ScheduleNegotiation,
         expectedRoundNumber: Int
@@ -644,7 +663,10 @@ class SchedulingService(
         }
     }
 
-    private fun validateProposalSlots(proposedDateTimes: List<OffsetDateTime>) {
+    private fun validateProposalSlots(
+        proposedDateTimes: List<OffsetDateTime>,
+        now: OffsetDateTime
+    ) {
         if (proposedDateTimes.size !in 1..maxProposalsPerRound) {
             throw invalidProposals()
         }
@@ -656,7 +678,7 @@ class SchedulingService(
         }
 
         proposedDateTimes.forEach { proposedDateTime ->
-            if (!proposedDateTime.isAfter(OffsetDateTime.now())) {
+            if (!proposedDateTime.isAfter(now)) {
                 throw invalidProposals()
             }
 

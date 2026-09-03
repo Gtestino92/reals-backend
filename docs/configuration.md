@@ -188,6 +188,7 @@ Non-sensitive runtime configuration:
 | `FIRST_CHAT_MIN_PARTICIPATION_MINUTES` | no | Reliability-only first-chat minimum participation elapsed-time threshold. Defaults to `5`. |
 | `CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES` | no | On-time join window after confirmed second-chat start. Defaults to `10`. |
 | `CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES` | no | Total second-chat entry window before hard no-show cutoff. Defaults to `20`. |
+| `ACCOUNT_BAN_TEMPORARY_RESUME_MARGIN_MINUTES` | no | Minimum usable window required after an effective temporary ban expires before preserving deadline-bound interactions. Defaults to `30`. |
 | `CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS` | no | Manual partner no-show claim countdown, capped at hard cutoff. Defaults to `60`. |
 | `CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES` | no | Minimum elapsed second-chat conversation time before mutual completion can be requested. Defaults to `10`. |
 | `CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS` | no | Mutual-completion responder countdown, capped by absolute timeout. Defaults to `60`. |

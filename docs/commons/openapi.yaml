@@ -1576,7 +1576,7 @@ paths:
     post:
       tags: [Connections]
       summary: Submit ordered scheduling proposal list for expected current round
-      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round. Any proposed instant inside the configured inclusive conflict window around another confirmed second-chat start for the submitting user returns `SCHEDULING_SLOT_CONFLICT`.
+      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round. Any proposed instant inside the configured inclusive conflict window around another confirmed second-chat start for the submitting user returns `SCHEDULING_SLOT_CONFLICT`. Automatic overlap confirmation also returns opaque `SCHEDULING_SLOT_CONFLICT` when the selected second-chat commitment is not viable for either participant under an effective account ban.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       requestBody:
@@ -2306,9 +2306,9 @@ components:
               value:
                 code: SCHEDULING_SLOT_CONFLICT
                 error: Conflict
-                message: The selected time conflicts with another confirmed second chat
+                message: The selected time is not available for scheduling
     SchedulingProposalAcceptanceConflict:
-      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, proposals whose own proposed instant is no longer strictly in the future, and proposal instants that conflict with another confirmed second chat for either participant. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
+      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, proposals whose own proposed instant is no longer strictly in the future, proposal instants that conflict with another confirmed second chat for either participant, and slots that are not viable for either participant under an effective account ban. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
@@ -2343,7 +2343,7 @@ components:
               value:
                 code: SCHEDULING_SLOT_CONFLICT
                 error: Conflict
-                message: The selected time conflicts with another confirmed second chat
+                message: The selected time is not available for scheduling
     SchedulingPartnerProposalRejectionConflict:
       description: Partner scheduling proposals cannot be rejected in the current flow state. Rejecting partner scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
@@ -3673,7 +3673,7 @@ components:
         sentAt: { type: string, format: date-time }
     AdminPenaltyResponse:
       type: object
-      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt. Confirmed ban creation operationally contains existing active engagements and temporary-ban expiry does not reopen them.
+      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt. Confirmed permanent-ban creation fully contains existing active engagements. Confirmed temporary-ban creation removes matchmaking queue entries and selectively contains engagements whose useful window is not viable after expiry plus the configured resume margin; expiry does not reopen closed history.
       required: [id, userId, reason, type, createdAt, active]
       properties:
         id: { type: string, format: uuid }
