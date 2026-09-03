@@ -67,8 +67,8 @@ assert_line_before() {
 
 create_stub_environment() {
   TEST_ROOT="$(mktemp -d)"
-  export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID SIMULATED_APP_LOG
-  unset DOCKER_PULL_FAIL DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL CURL_MODE ROLLBACK_CURL_MODE
+  export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID PREVIOUS_IMAGE_REF SIMULATED_APP_LOG
+  unset DOCKER_PULL_FAIL DOCKER_PULL_OUTPUT DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL DOCKER_RMI_FAIL CURL_MODE ROLLBACK_CURL_MODE
   mkdir -p "$TEST_ROOT/bin"
   printf 'SPRING_PROFILES_ACTIVE=dev\n' > "$TEST_ROOT/backend.env"
   : > "$TEST_ROOT/docker.log"
@@ -97,6 +97,37 @@ read_state() {
   fi
 }
 
+image_state_file() {
+  printf '%s/docker_images.tsv\n' "$TEST_ROOT"
+}
+
+ensure_image_state() {
+  if [[ ! -f "$(image_state_file)" ]]; then
+    {
+      printf '%s\t%s\n' "ghcr.io/gtestino92/reals-backend:sha-abcdef0" "$PREVIOUS_IMAGE_ID"
+      printf '%s\t%s\n' "$IMAGE" "sha256:cached-target"
+      printf '%s\t%s\n' "ghcr.io/gtestino92/reals-backend:sha-old111" "sha256:old-backend"
+      printf '%s\t%s\n' "postgres:16" "sha256:postgres"
+      printf '%s\t%s\n' "other.example/reals-backend:sha-old111" "sha256:old-backend"
+    } > "$(image_state_file)"
+  fi
+}
+
+image_id_for_ref() {
+  local requested_ref="$1"
+  ensure_image_state
+  awk -F '\t' -v ref="$requested_ref" '$1 == ref { print $2; found = 1; exit } END { if (!found) exit 1 }' "$(image_state_file)"
+}
+
+remove_image_ref() {
+  local requested_ref="$1"
+  local next_file
+  ensure_image_state
+  next_file="$(image_state_file).next"
+  awk -F '\t' -v ref="$requested_ref" '$1 != ref' "$(image_state_file)" > "$next_file"
+  mv "$next_file" "$(image_state_file)"
+}
+
 write_state() {
   local key="$1"
   local value="$2"
@@ -111,17 +142,31 @@ case "${1:-}" in
   pull)
     log "$@"
     if [[ "${DOCKER_PULL_FAIL:-false}" == "true" ]]; then
-      echo "$SIMULATED_APP_LOG" >&2
+      echo "${DOCKER_PULL_OUTPUT:-$SIMULATED_APP_LOG}" >&2
       exit 1
     fi
     exit 0
     ;;
   image)
     log "$@"
-    if [[ "${2:-}" == "inspect" ]]; then
-      printf '%s\n' "${DOCKER_LABEL_REVISION:-0123456789abcdef0123456789abcdef01234567}"
-      exit 0
-    fi
+    case "${2:-}" in
+      ls)
+        ensure_image_state
+        repository="${3:-}"
+        awk -F '\t' -v repository="$repository" '
+          index($1, repository ":") == 1 { print $1 }
+        ' "$(image_state_file)"
+        exit 0
+        ;;
+      inspect)
+        if [[ "${3:-}" == "--format" ]]; then
+          case "${4:-}" in
+            *".Id"*) image_id_for_ref "${5:-}"; exit 0 ;;
+            *"org.opencontainers.image.revision"*) printf '%s\n' "${DOCKER_LABEL_REVISION:-0123456789abcdef0123456789abcdef01234567}"; exit 0 ;;
+          esac
+        fi
+        ;;
+    esac
     ;;
   container)
     log "$@"
@@ -157,6 +202,15 @@ case "${1:-}" in
     fi
     write_state exists false
     write_state running false
+    exit 0
+    ;;
+  rmi)
+    log "$@"
+    if [[ "${DOCKER_RMI_FAIL:-}" == "${2:-}" || "${DOCKER_RMI_FAIL:-}" == "true" ]]; then
+      echo "$SIMULATED_APP_LOG" >&2
+      exit 1
+    fi
+    remove_image_ref "${2:-}"
     exit 0
     ;;
   run)
@@ -302,8 +356,104 @@ pull_failure_leaves_current_container() {
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_PULL_FAILED"
-  assert_not_contains "$TEST_ROOT/docker.log" "docker stop"
-  assert_not_contains "$TEST_ROOT/docker.log" "docker rm"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker stop reals-backend"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rm reals-backend"
+}
+
+capture_current_occurs_before_cleanup() {
+  seed_previous_container
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_line_before "$TEST_ROOT/out" "DEPLOY_STAGE=CAPTURE_CURRENT" "DEPLOY_STAGE=CLEANUP_OLD_BACKEND_IMAGES"
+  assert_line_before "$TEST_ROOT/docker.log" "docker container inspect reals-backend" "docker image ls ghcr.io/gtestino92/reals-backend"
+}
+
+cleanup_occurs_before_pull() {
+  seed_previous_container
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_line_before "$TEST_ROOT/out" "DEPLOY_STAGE=CLEANUP_OLD_BACKEND_IMAGES" "DEPLOY_STAGE=PULL_IMAGE"
+  assert_line_before "$TEST_ROOT/docker.log" "docker image ls ghcr.io/gtestino92/reals-backend" "docker pull $IMAGE"
+}
+
+current_image_id_references_are_preserved() {
+  seed_previous_container
+  {
+    printf '%s\t%s\n' "$PREVIOUS_IMAGE_REF" "$PREVIOUS_IMAGE_ID"
+    printf '%s\t%s\n' "ghcr.io/gtestino92/reals-backend:development" "$PREVIOUS_IMAGE_ID"
+    printf '%s\t%s\n' "ghcr.io/gtestino92/reals-backend:sha-old111" "sha256:old-backend"
+  } > "$TEST_ROOT/docker_images.tsv"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rmi $PREVIOUS_IMAGE_REF"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rmi ghcr.io/gtestino92/reals-backend:development"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi ghcr.io/gtestino92/reals-backend:sha-old111"
+}
+
+old_backend_images_are_removed() {
+  seed_previous_container
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi ghcr.io/gtestino92/reals-backend:sha-old111"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi $IMAGE"
+}
+
+other_repository_images_are_not_removed() {
+  seed_previous_container
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rmi postgres:16"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rmi other.example/reals-backend:sha-old111"
+}
+
+shared_old_image_removes_only_backend_reference() {
+  seed_previous_container
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi ghcr.io/gtestino92/reals-backend:sha-old111"
+  assert_contains "$TEST_ROOT/docker_images.tsv" "other.example/reals-backend:sha-old111"
+}
+
+without_current_container_cleans_all_backend_references() {
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_success "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "PREVIOUS_CONTAINER_EXISTS=false"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi $PREVIOUS_IMAGE_REF"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi $IMAGE"
+  assert_contains "$TEST_ROOT/docker.log" "docker rmi ghcr.io/gtestino92/reals-backend:sha-old111"
+}
+
+cleanup_failure_aborts_before_pull_and_replace() {
+  seed_previous_container
+  export DOCKER_RMI_FAIL="ghcr.io/gtestino92/reals-backend:sha-old111"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_CLEANUP_FAILED"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker pull"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker stop reals-backend"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rm reals-backend"
+}
+
+pull_no_space_reports_controlled_detail() {
+  seed_previous_container
+  export DOCKER_PULL_FAIL=true
+  export DOCKER_PULL_OUTPUT="failed to register layer: no space left on device"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_PULL_FAILED"
+  assert_contains "$TEST_ROOT/out" "ERROR_DETAIL=NO_SPACE_LEFT_ON_DEVICE"
+}
+
+pull_failure_output_is_not_leaked() {
+  seed_previous_container
+  export DOCKER_PULL_FAIL=true
+  export DOCKER_PULL_OUTPUT="unauthorized token=ghp_secret password=super-secret user@example.com"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_DETAIL=REGISTRY_AUTHORIZATION"
+  assert_not_contains "$TEST_ROOT/out" "ghp_secret"
+  assert_not_contains "$TEST_ROOT/out" "password=super-secret"
+  assert_not_contains "$TEST_ROOT/out" "user@example.com"
 }
 
 revision_label_mismatch_leaves_current_container() {
@@ -312,8 +462,8 @@ revision_label_mismatch_leaves_current_container() {
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=IMAGE_REVISION_MISMATCH"
-  assert_not_contains "$TEST_ROOT/docker.log" "docker stop"
-  assert_not_contains "$TEST_ROOT/docker.log" "docker rm"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker stop reals-backend"
+  assert_not_contains "$TEST_ROOT/docker.log" "docker rm reals-backend"
 }
 
 successful_deployment() {
@@ -333,6 +483,7 @@ readiness_failure_triggers_rollback() {
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=READINESS_FAILED"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
 }
 
 ping_failure_triggers_rollback() {
@@ -342,6 +493,7 @@ ping_failure_triggers_rollback() {
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=PING_FAILED"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
 }
 
 new_container_start_failure_triggers_rollback() {
@@ -351,6 +503,7 @@ new_container_start_failure_triggers_rollback() {
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=NEW_CONTAINER_START_FAILED"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
 }
 
 rollback_startup_failure_reports_failure() {
@@ -412,6 +565,17 @@ workflow_requires_controlled_success_marker() {
   assert_contains "$WORKFLOW_FILE" '$DEPLOY_RESULT" != "SUCCESS"'
 }
 
+workflow_parses_and_publishes_error_detail() {
+  assert_contains "$WORKFLOW_FILE" "ERROR_DETAIL="
+  assert_contains "$WORKFLOW_FILE" "error_detail="
+  assert_contains "$WORKFLOW_FILE" "| Error detail |"
+}
+
+workflow_does_not_dump_raw_ssm_output() {
+  assert_not_contains "$WORKFLOW_FILE" "cat ssm-stdout.raw.txt"
+  assert_not_contains "$WORKFLOW_FILE" "cat ssm-stderr.raw.txt"
+}
+
 current_container_stop_failure_reports_controlled_error() {
   seed_previous_container
   export DOCKER_STOP_FAIL=true
@@ -447,7 +611,17 @@ ci_validates_deployment_scripts_before_docker_build() {
 test_case "malformed image tag is rejected" malformed_tag_rejected
 test_case "malformed full revision is rejected" malformed_revision_rejected
 test_case "short tag and revision mismatch is rejected" revision_mismatch_rejected
+test_case "capture current occurs before cleanup" capture_current_occurs_before_cleanup
+test_case "cleanup occurs before docker pull" cleanup_occurs_before_pull
+test_case "current image ID references are preserved" current_image_id_references_are_preserved
+test_case "old backend image references are removed" old_backend_images_are_removed
+test_case "other repository images are not removed" other_repository_images_are_not_removed
+test_case "shared old image removes only backend ref" shared_old_image_removes_only_backend_reference
+test_case "without current container cleans backend refs" without_current_container_cleans_all_backend_references
+test_case "cleanup failure aborts before pull and replace" cleanup_failure_aborts_before_pull_and_replace
 test_case "pull failure leaves current container untouched" pull_failure_leaves_current_container
+test_case "pull no-space failure reports controlled detail" pull_no_space_reports_controlled_detail
+test_case "pull failure output is not leaked" pull_failure_output_is_not_leaked
 test_case "revision label mismatch leaves current container untouched" revision_label_mismatch_leaves_current_container
 test_case "successful deploy reports immutable image" successful_deployment
 test_case "readiness failure triggers rollback" readiness_failure_triggers_rollback
@@ -460,6 +634,8 @@ test_case "output contains controlled deployment markers" output_contains_contro
 test_case "output excludes simulated application logs and secrets" output_excludes_application_logs_and_secrets
 test_case "workflow SSM parameters include executionTimeout" workflow_parameters_include_execution_timeout
 test_case "workflow requires DEPLOY_RESULT success marker" workflow_requires_controlled_success_marker
+test_case "workflow parses and publishes ERROR_DETAIL" workflow_parses_and_publishes_error_detail
+test_case "workflow does not dump raw SSM output" workflow_does_not_dump_raw_ssm_output
 test_case "current container stop failure reports controlled error" current_container_stop_failure_reports_controlled_error
 test_case "current container remove failure reports controlled error" current_container_remove_failure_reports_controlled_error
 test_case "CI validates deployment scripts before Docker build" ci_validates_deployment_scripts_before_docker_build

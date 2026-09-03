@@ -109,8 +109,40 @@ provided full SHA.
 ## Automatic Rollback
 
 `ops/aws/deploy-backend.sh` captures whether the current container exists, its
-configured image reference, and its exact local image ID before replacement. It
-pulls and verifies the requested image before stopping the existing container.
+configured image reference, and its exact local image ID before any image
+cleanup or replacement. The current container is not stopped or removed during
+capture, cleanup, pull, or revision verification.
+
+Before pulling the requested image, the script performs a targeted cleanup of
+local Docker references that belong only to:
+
+```text
+ghcr.io/gtestino92/reals-backend
+```
+
+For each backend repository reference, the script resolves the local image ID.
+When a current container exists, every backend reference whose image ID exactly
+matches the captured current image ID is preserved for rollback. Backend
+references pointing to older image IDs are removed by reference. If an older
+image ID is also referenced by another repository, only the backend repository
+reference is removed. Images from other repositories such as PostgreSQL,
+Certbot, or host services are not touched.
+
+When no current backend container exists, there is no rollback image ID to
+preserve, so all existing backend repository references may be removed before
+the pull. The cleanup fails closed: if a stale backend reference cannot be
+inspected or removed, the script emits `ERROR_CODE=IMAGE_CLEANUP_FAILED`,
+aborts before `docker pull`, and leaves any running current container intact.
+
+The script does not run `docker system prune`, `docker image prune`,
+`docker image prune -a`, or any other global Docker cleanup. There is no
+post-success cleanup. Conceptually, after a normal deploy the host retains the
+new current image generation plus the immediately previous image generation
+needed for rollback; the next pre-pull cleanup removes older backend
+generations while preserving the image ID that is currently deployed.
+
+The script then pulls and verifies the requested image before stopping the
+existing container.
 
 If the new container fails to start, or if internal EC2 checks fail against
 `127.0.0.1`, the script:
@@ -121,9 +153,6 @@ If the new container fails to start, or if internal EC2 checks fail against
 4. Prints `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
 5. Prints `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
 6. Returns non-zero even when rollback succeeds.
-
-The script does not delete the previous image and does not run broad Docker
-cleanup commands.
 
 The workflow then performs public HTTPS smoke checks through Nginx only after
 SSM succeeds. If internal checks succeeded but public readiness or ping fails,
@@ -168,6 +197,7 @@ The GitHub workflow summary shows:
 - configured EC2 `Name` tag;
 - SSM command result;
 - deployment stage and controlled error code;
+- controlled pull error detail when present;
 - readiness and ping results;
 - whether rollback occurred.
 
@@ -192,12 +222,20 @@ DEPLOYED_REVISION=<full-sha>
 DEPLOYED_IMAGE=<immutable-image>
 ROLLBACK_IMAGE=<previous-image-id>
 ERROR_CODE=...
+ERROR_DETAIL=...
 ```
 
-The workflow summary does not include arbitrary SSM stdout, stderr, Docker
-logs, HTTP response bodies, `/etc/reals/backend.env`, environment values,
-credentials, tokens, or application logs. Inspect detailed container logs on the
-EC2 host through an authorized SSM session.
+For `docker pull` failures, the remote script captures Docker output only
+internally and maps known causes to controlled `ERROR_DETAIL` values such as
+`NO_SPACE_LEFT_ON_DEVICE`, `REGISTRY_AUTHORIZATION`, `MANIFEST_NOT_FOUND`,
+`DNS_FAILURE`, `TLS_FAILURE`, `NETWORK_TIMEOUT`, or `UNCLASSIFIED`. The primary
+failure remains `ERROR_CODE=IMAGE_PULL_FAILED`.
+
+The workflow summary parses and publishes only controlled markers. It does not
+include arbitrary SSM stdout, stderr, Docker logs, raw Docker pull output, HTTP
+response bodies, `/etc/reals/backend.env`, environment values, credentials,
+tokens, or application logs. Inspect detailed container logs on the EC2 host
+through an authorized SSM session.
 
 ## GitHub Environment `dev`
 
@@ -326,7 +364,8 @@ The host must already have:
 - `STORAGE_S3_BUCKET` set to the application media bucket.
 - Nginx already proxying HTTPS traffic to `127.0.0.1:8080`.
 - Permission to pull `ghcr.io/gtestino92/reals-backend`.
-- Enough disk space for the new and immediately previous Docker images.
+- Enough disk space for the new and immediately previous backend image
+  generations after targeted pre-pull backend image cleanup.
 
 The deployment does not transport a GHCR token. If the GHCR package is private,
 configure host-level read-only Docker credentials before deployment. This is a

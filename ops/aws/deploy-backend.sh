@@ -25,6 +25,10 @@ emit_error() {
   echo "Inspect the container logs on the EC2 host through an authorized SSM session."
 }
 
+emit_error_detail() {
+  echo "ERROR_DETAIL=$1"
+}
+
 fail() {
   local error_code="$1"
   shift
@@ -60,15 +64,39 @@ requested_image() {
   printf '%s:%s\n' "$IMAGE_REPOSITORY" "$image_tag"
 }
 
-pull_and_verify_image() {
+classify_pull_error() {
+  local pull_output="$1"
+  local normalized
+  normalized="$(printf '%s' "$pull_output" | tr '[:upper:]' '[:lower:]')"
+
+  case "$normalized" in
+    *"no space left on device"*) echo "NO_SPACE_LEFT_ON_DEVICE" ;;
+    *"unauthorized"*|*"authentication required"*|*"access denied"*|*"denied:"*) echo "REGISTRY_AUTHORIZATION" ;;
+    *"manifest unknown"*|*"manifest not found"*|*"not found"*) echo "MANIFEST_NOT_FOUND" ;;
+    *"no such host"*|*"temporary failure in name resolution"*|*"server misbehaving"*) echo "DNS_FAILURE" ;;
+    *"tls"*|*"certificate"*) echo "TLS_FAILURE" ;;
+    *"timeout"*|*"timed out"*|*"i/o timeout"*|*"context deadline exceeded"*) echo "NETWORK_TIMEOUT" ;;
+    *) echo "UNCLASSIFIED" ;;
+  esac
+}
+
+pull_image() {
   local image="$1"
-  local expected_revision="$2"
+  local pull_output
 
   emit_stage "PULL_IMAGE"
-  docker pull "$image" >/dev/null 2>&1 ||
-    fail "IMAGE_PULL_FAILED" "failed to pull requested image; verify GHCR visibility or host Docker credentials"
+  if ! pull_output="$(docker pull "$image" 2>&1)"; then
+    emit_error_detail "$(classify_pull_error "$pull_output")"
+    fail "IMAGE_PULL_FAILED" "failed to pull requested image; see ERROR_DETAIL for the controlled failure classification"
+  fi
+}
 
+verify_image_revision() {
+  local image="$1"
+  local expected_revision="$2"
   local revision_label
+
+  emit_stage "VERIFY_IMAGE"
   revision_label="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image" 2>/dev/null || true)"
 
   [[ "$revision_label" == "$expected_revision" ]] ||
@@ -93,6 +121,37 @@ capture_current_deployment() {
   else
     echo "PREVIOUS_CONTAINER_EXISTS=false"
   fi
+}
+
+cleanup_old_backend_images() {
+  local image_ref
+  local image_id
+  local image_refs
+
+  emit_stage "CLEANUP_OLD_BACKEND_IMAGES"
+  if ! image_refs="$(docker image ls "$IMAGE_REPOSITORY" --format '{{ .Repository }}:{{ .Tag }}' 2>/dev/null)"; then
+    emit_error "IMAGE_CLEANUP_FAILED" "failed to list backend image references before pull"
+    return 1
+  fi
+
+  while IFS= read -r image_ref; do
+    [[ -n "$image_ref" ]] || continue
+    [[ "$image_ref" != *":<none>" ]] || continue
+
+    if ! image_id="$(docker image inspect --format '{{ .Id }}' "$image_ref" 2>/dev/null)"; then
+      emit_error "IMAGE_CLEANUP_FAILED" "failed to inspect backend image reference before pull"
+      return 1
+    fi
+
+    if [[ -n "$PREVIOUS_IMAGE_ID" && "$image_id" == "$PREVIOUS_IMAGE_ID" ]]; then
+      continue
+    fi
+
+    if ! docker rmi "$image_ref" >/dev/null 2>&1; then
+      emit_error "IMAGE_CLEANUP_FAILED" "failed to remove stale backend image reference before pull"
+      return 1
+    fi
+  done <<< "$image_refs"
 }
 
 remove_existing_container_strict() {
@@ -213,8 +272,10 @@ deploy() {
   require_prerequisites
 
   image="$(requested_image "$image_tag")"
-  pull_and_verify_image "$image" "$expected_revision"
   capture_current_deployment
+  cleanup_old_backend_images
+  pull_image "$image"
+  verify_image_revision "$image" "$expected_revision"
 
   emit_stage "REPLACE_CONTAINER"
   if ! remove_existing_container_strict; then

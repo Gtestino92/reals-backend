@@ -221,6 +221,7 @@ jobs:
           DEPLOY_RESULT="$(grep -E '^DEPLOY_RESULT=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           DEPLOY_STAGE="$(grep -E '^DEPLOY_STAGE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           ERROR_CODE="$(grep -E '^ERROR_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          ERROR_DETAIL="$(grep -E '^ERROR_DETAIL=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           ROLLBACK_OCCURRED="no"
           if [[ "$DEPLOY_RESULT" == "ROLLED_BACK" || "$DEPLOY_RESULT" == "ROLLBACK_FAILED" ]]; then
             ROLLBACK_OCCURRED="yes"
@@ -231,6 +232,7 @@ jobs:
             echo "deploy_result=${DEPLOY_RESULT:-unknown}"
             echo "deploy_stage=${DEPLOY_STAGE:-unknown}"
             echo "error_code=${ERROR_CODE:-none}"
+            echo "error_detail=${ERROR_DETAIL:-none}"
             echo "rollback_occurred=${ROLLBACK_OCCURRED}"
           } >> "$GITHUB_OUTPUT"
 
@@ -243,6 +245,7 @@ jobs:
             echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
             echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
             echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Error detail | ${ERROR_DETAIL:-none} |"
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -332,6 +335,7 @@ jobs:
           DEPLOY_RESULT: ${{ steps.ssm.outputs.deploy_result }}
           DEPLOY_STAGE: ${{ steps.ssm.outputs.deploy_stage }}
           ERROR_CODE: ${{ steps.ssm.outputs.error_code }}
+          ERROR_DETAIL: ${{ steps.ssm.outputs.error_detail }}
           ROLLBACK_OCCURRED: ${{ steps.ssm.outputs.rollback_occurred }}
           READINESS_RESULT: ${{ steps.smoke.outputs.readiness }}
           PING_RESULT: ${{ steps.smoke.outputs.ping }}
@@ -351,6 +355,7 @@ jobs:
             echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
             echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
             echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Error detail | ${ERROR_DETAIL:-none} |"
             echo "| Readiness result | ${READINESS_RESULT:-not run} |"
             echo "| Ping result | ${PING_RESULT:-not run} |"
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED:-unknown} |"
