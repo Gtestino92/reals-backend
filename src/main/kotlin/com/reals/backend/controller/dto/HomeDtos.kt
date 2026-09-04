@@ -90,7 +90,8 @@ data class HomeNextStepResponse(
     val partner: PartnerSummaryResponse?,
     val createdAt: OffsetDateTime? = null,
     val schedulingExpiresAt: OffsetDateTime? = null,
-    val secondChat: HomeChatResponse? = null
+    val secondChat: HomeChatResponse? = null,
+    val requiresAction: Boolean
 )
 
 data class HomeNextStepLiteResponse(
@@ -99,7 +100,8 @@ data class HomeNextStepLiteResponse(
     val matchId: UUID,
     val createdAt: OffsetDateTime? = null,
     val schedulingExpiresAt: OffsetDateTime? = null,
-    val secondChat: HomePendingSecondChatLiteResponse? = null
+    val secondChat: HomePendingSecondChatLiteResponse? = null,
+    val requiresAction: Boolean
 )
 
 data class HomePendingSecondChatLiteResponse(

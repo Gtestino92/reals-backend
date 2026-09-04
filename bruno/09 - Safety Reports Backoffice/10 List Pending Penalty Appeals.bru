@@ -1,0 +1,31 @@
+meta {
+  name: 10 List Pending Penalty Appeals
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/api/admin/penalty-appeals/pending
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!Array.isArray(body)) {
+    throw new Error("Expected an array of pending penalty appeals.");
+  }
+  
+  if (body.length > 0) {
+    const first = body[0];
+    bru.setEnvVar("penaltyId", first.penaltyId);
+    bru.setEnvVar("appealUserId", first.userId);
+    bru.setEnvVar("appealSourceReportId", first.sourceReportId);
+  }
+}

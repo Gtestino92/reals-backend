@@ -1,0 +1,36 @@
+meta {
+  name: 11 Decide Penalty Appeal
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/admin/penalty-appeals/{{penaltyId}}/decision
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "decision": "APPROVE",
+    "notes": "Appeal reviewed from Bruno"
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!body || !body.status) {
+    throw new Error("Expected penalty appeal decision response.");
+  }
+  
+  if (body.status !== "APPROVED") {
+    throw new Error(`Expected APPROVED appeal status, got ${body.status}.`);
+  }
+}
