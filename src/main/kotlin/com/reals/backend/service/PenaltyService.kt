@@ -7,6 +7,8 @@ import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.UserRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -77,6 +79,19 @@ class PenaltyService(
         require(reason.isNotBlank()) {
             "Penalty reason is required"
         }
+        lockPenalizedUser(userId)
+        penaltyRepository.flush()
+        if (
+            penaltyRepository.findEffectiveBans(
+                userId = userId,
+                now = now
+            ).any { it.type == PenaltyType.PERMANENT_BAN }
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACTIVE_PENALTY,
+                message = "User already has an active permanent penalty"
+            )
+        }
 
         return savePenalty(
             Penalty(
@@ -96,7 +111,9 @@ class PenaltyService(
         now: OffsetDateTime
     ): Penalty {
         validatePenaltyShape(penalty)
-        lockPenalizedUser(penalty.userId)
+        if (penalty.type != PenaltyType.PERMANENT_BAN) {
+            lockPenalizedUser(penalty.userId)
+        }
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
         val saved = penaltyRepository.save(penalty)
         auditEventService.record(

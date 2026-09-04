@@ -1,6 +1,8 @@
 package com.reals.backend.repository
 
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyAppealStatus
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.*
 import org.springframework.data.repository.query.Param
 import java.time.OffsetDateTime
@@ -29,6 +31,43 @@ interface PenaltyRepository :
         userId: UUID,
         @Param("now")
         now: OffsetDateTime
+    ): List<Penalty>
+
+    fun findFirstByUserIdAndTypeAndActiveTrueOrderByCreatedAtDesc(
+        userId: UUID,
+        type: com.reals.backend.domain.PenaltyType
+    ): Penalty?
+
+    fun findFirstByUserIdAndTypeAndAppealStatusInOrderByAppealedAtDesc(
+        userId: UUID,
+        type: com.reals.backend.domain.PenaltyType,
+        appealStatuses: Collection<PenaltyAppealStatus>
+    ): Penalty?
+
+    fun findByAppealStatusOrderByAppealedAtAsc(
+        appealStatus: PenaltyAppealStatus
+    ): List<Penalty>
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Penalty p where p.id = :penaltyId")
+    fun findByIdForUpdate(
+        @Param("penaltyId")
+        penaltyId: UUID
+    ): Penalty?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+        """
+        select p from Penalty p
+        where p.userId = :userId
+          and p.type = com.reals.backend.domain.PenaltyType.PERMANENT_BAN
+          and p.active = true
+        order by p.createdAt desc
+        """
+    )
+    fun findActivePermanentByUserIdForUpdate(
+        @Param("userId")
+        userId: UUID
     ): List<Penalty>
 
     @Query(

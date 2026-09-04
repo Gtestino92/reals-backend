@@ -5,6 +5,7 @@ import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.scheduler.PenaltyExpirationJob
+import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainConflictException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -310,6 +311,60 @@ class SafetyPenaltyIntegrationTest : BaseIT() {
         assertEquals(admin.id, penalty.appliedByUserId)
         assertNull(penalty.expiresAt)
         assertTrue(penalty.active)
+    }
+
+    @Test
+    fun `second active permanent penalty for same user is rejected`() {
+        val user = createActiveProfile(
+            email = "duplicate-permanent-${UUID.randomUUID()}@example.com",
+            displayName = "Duplicate Permanent",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+
+        val first = penaltyService.createPermanentPenalty(
+            userId = user,
+            reason = "First permanent violation"
+        )
+        val exception = assertThrows<DomainConflictException> {
+            penaltyService.createPermanentPenalty(
+                userId = user,
+                reason = "Second permanent violation"
+            )
+        }
+
+        assertEquals(DomainErrorCode.ACTIVE_PENALTY, exception.code)
+        assertEquals(
+            listOf(first.id),
+            penaltyRepository.findAll()
+                .filter { it.userId == user && it.type == PenaltyType.PERMANENT_BAN && it.active }
+                .map { it.id }
+        )
+    }
+
+    @Test
+    fun `active temporary and active permanent penalties can coexist`() {
+        val user = createActiveProfile(
+            email = "temporary-permanent-coexist-${UUID.randomUUID()}@example.com",
+            displayName = "Temporary Permanent Coexist",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+
+        val temporary = penaltyService.createTemporaryPenalty(
+            userId = user,
+            reason = "Temporary violation",
+            duration = Duration.ofHours(2)
+        )
+        val permanent = penaltyService.createPermanentPenalty(
+            userId = user,
+            reason = "Permanent violation"
+        )
+
+        val penalties = penaltyRepository.findAll().filter { it.userId == user && it.active }
+        assertTrue(penalties.any { it.id == temporary.id && it.type == PenaltyType.TEMPORARY_BAN })
+        assertTrue(penalties.any { it.id == permanent.id && it.type == PenaltyType.PERMANENT_BAN })
+        assertEquals(PenaltyType.PERMANENT_BAN, penaltyService.resolveEffectiveBan(user)?.type)
     }
 
     @Test

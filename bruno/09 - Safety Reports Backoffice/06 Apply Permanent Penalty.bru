@@ -24,6 +24,11 @@ body:json {
   }
 }
 
+vars:pre-request {
+  penalty_reason: te zarpaste
+  safety_report_penalty_notes: atestiguada
+}
+
 script:post-response {
   const body = res.getBody();
   

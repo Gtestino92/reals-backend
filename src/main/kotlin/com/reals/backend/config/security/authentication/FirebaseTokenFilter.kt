@@ -4,6 +4,7 @@ import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
+import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.AuthOriginPolicy
@@ -123,6 +124,26 @@ class FirebaseTokenFilter(
             if (user?.status == UserStatus.ACTIVE) {
                 val effectiveBan = penaltyService.resolveEffectiveBan(userId = user.id)
                 if (effectiveBan != null) {
+                    if (
+                        effectiveBan.type == PenaltyType.PERMANENT_BAN &&
+                        isPermanentBanAppealAllowedPath(request)
+                    ) {
+                        SecurityContextHolder.getContext().authentication =
+                            UsernamePasswordAuthenticationToken(
+                                CurrentUserAuthContext(
+                                    userId = user.id,
+                                    firebaseUid = decoded.uid,
+                                    email = decoded.email,
+                                    emailVerified = decoded.isEmailVerified,
+                                    signInProvider = signInProvider
+                                ),
+                                null,
+                                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                            )
+
+                        filterChain.doFilter(request, response)
+                        return
+                    }
                     SecurityContextHolder.clearContext()
                     writeBanned(
                         response = response,
@@ -205,6 +226,18 @@ class FirebaseTokenFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun isPermanentBanAppealAllowedPath(request: HttpServletRequest): Boolean {
+        val path = request.servletPath.ifBlank {
+            request.requestURI.removePrefix(request.contextPath)
+        }
+
+        return path == "/api/me/ban/appeal" &&
+            (
+                request.method.equals("GET", ignoreCase = true) ||
+                    request.method.equals("POST", ignoreCase = true)
+            )
     }
 
     private fun isDeletedAccountAllowedPath(request: HttpServletRequest): Boolean {

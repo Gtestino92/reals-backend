@@ -15,6 +15,12 @@ enum class PenaltyType {
     PERMANENT_BAN
 }
 
+enum class PenaltyAppealStatus {
+    PENDING,
+    APPROVED,
+    REJECTED
+}
+
 @Entity
 @Table(name = "penalties")
 data class Penalty(
@@ -49,5 +55,24 @@ data class Penalty(
     var appliedByUserId: UUID? = null,
 
     @Column(name = "active", nullable = false)
-    var active: Boolean = true
+    var active: Boolean = true,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "appeal_status")
+    var appealStatus: PenaltyAppealStatus? = null,
+
+    @Column(name = "appeal_statement", columnDefinition = "text")
+    var appealStatement: String? = null,
+
+    @Column(name = "appealed_at")
+    var appealedAt: OffsetDateTime? = null,
+
+    @Column(name = "appeal_reviewed_at")
+    var appealReviewedAt: OffsetDateTime? = null,
+
+    @Column(name = "appeal_reviewed_by_user_id")
+    var appealReviewedByUserId: UUID? = null,
+
+    @Column(name = "appeal_review_notes", columnDefinition = "text")
+    var appealReviewNotes: String? = null
 )

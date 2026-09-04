@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/admin/safety-reports?status={{safety_report_status}}
+  url: {{baseUrl}}/api/admin/safety-reports?status=PENDING
   body: none
   auth: none
+}
+
+params:query {
+  status: PENDING
 }
 
 headers {

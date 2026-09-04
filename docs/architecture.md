@@ -318,20 +318,25 @@ here.
 
 `Penalty` rows represent administrative account bans only. Temporary bans are
 effective while `active=true` and `now < expiresAt`; permanent bans are
-effective while `active=true` with `expiresAt=null`. If multiple rows are
-effective, a permanent ban wins over temporary bans and otherwise the latest
-temporary expiry wins. The expiration scheduler normalizes expired temporary
-rows but is not the authorization boundary. Penalty creation also invokes the
-shared user operational containment service, which reuses account-deletion
-containment mechanics while recording ban-specific chat end reasons. Permanent
-bans fully contain active engagements and release their locks. Temporary bans
-always remove the user from matchmaking, then selectively contain only
-engagements that cannot remain usable through the effective expiry plus the
-configured `account.ban.temporary-resume-margin-minutes` margin, default 30
-minutes. First chats and active second chats always close; visual and scheduling
-states can survive when their persisted deadline or second-chat entry cutoff is
-still viable. Temporary-ban expiry never restores historical engagements that
-were legitimately closed.
+effective while `active=true` with `expiresAt=null`. At most one permanent ban
+can be active for a user. If multiple rows are effective, a permanent ban wins
+over temporary bans and otherwise the latest temporary expiry wins. The
+expiration scheduler normalizes expired temporary rows but is not the
+authorization boundary. Penalty creation also invokes the shared user
+operational containment service, which reuses account-deletion containment
+mechanics while recording ban-specific chat end reasons. Permanent bans fully
+contain active engagements and release their locks. A permanent-ban appeal can
+move one permanent penalty from pending review to approved; approval makes only
+that penalty inactive and enables future activity when no other effective ban
+exists. It does not reopen historical chats, matches, connections, scheduling
+state or matchmaking queue rows. Temporary bans always remove the user from
+matchmaking, then selectively contain only engagements that cannot remain usable
+through the effective expiry plus the configured
+`account.ban.temporary-resume-margin-minutes` margin, default 30 minutes. First
+chats and active second chats always close; visual and scheduling states can
+survive when their persisted deadline or second-chat entry cutoff is still
+viable. Temporary-ban expiry never restores historical engagements that were
+legitimately closed.
 
 Local execution profiles expose `/api/local-dev/jobs/.../run` endpoints to
 trigger the same job beans manually, plus `/api/local-dev/timeouts/...`

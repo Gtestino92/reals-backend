@@ -22,6 +22,10 @@ body:json {
   }
 }
 
+vars:pre-request {
+  safety_report_dismiss_notes: siga siga
+}
+
 script:post-response {
   const body = res.getBody();
   

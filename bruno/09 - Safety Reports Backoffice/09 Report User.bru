@@ -1,0 +1,31 @@
+meta {
+  name: 09 Report User
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/admin/safety-reports
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+body:json {
+  {
+    "reportedUserId": "90f9268d-81da-42e0-a839-ea7395b16755",
+    "contextType": "USER",
+    "reason": "OTHER",
+    "details": "E2E admin-created safety report"
+  }
+}
+
+vars:pre-request {
+  temporary_penalty_hours: 30
+  penalty_reason: jjj
+}
