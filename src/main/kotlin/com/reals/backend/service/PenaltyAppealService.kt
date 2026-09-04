@@ -1,9 +1,9 @@
 package com.reals.backend.service
 
-import com.reals.backend.controller.dto.PenaltyAppealDecision
 import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyAppealDecision
 import com.reals.backend.domain.PenaltyAppealStatus
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.PenaltyRepository

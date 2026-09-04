@@ -21,6 +21,11 @@ enum class PenaltyAppealStatus {
     REJECTED
 }
 
+enum class PenaltyAppealDecision {
+    APPROVE,
+    REJECT
+}
+
 @Entity
 @Table(name = "penalties")
 data class Penalty(

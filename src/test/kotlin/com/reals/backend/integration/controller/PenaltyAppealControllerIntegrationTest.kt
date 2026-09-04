@@ -4,6 +4,7 @@ import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyAppealDecision
 import com.reals.backend.domain.PenaltyAppealStatus
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.integration.ControllerIT
@@ -282,7 +283,7 @@ class PenaltyAppealControllerIntegrationTest : ControllerIT() {
         penaltyAppealService.decideAppeal(
             penaltyId = permanent.id,
             adminUserId = adminUserId,
-            decision = com.reals.backend.controller.dto.PenaltyAppealDecision.APPROVE,
+            decision = PenaltyAppealDecision.APPROVE,
             notes = "Approve permanent appeal"
         )
 

@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyAppealDecision
 import com.reals.backend.domain.PenaltyAppealStatus
 import com.reals.backend.validation.PlainText
 import jakarta.validation.constraints.NotBlank
@@ -68,14 +69,9 @@ data class AdminPendingPenaltyAppealResponse(
     }
 }
 
-enum class PenaltyAppealDecision {
-    APPROVE,
-    REJECT
-}
 
 data class DecidePenaltyAppealRequest(
     val decision: PenaltyAppealDecision,
-
     @field:NotBlank
     @field:Size(max = 1000)
     @field:Pattern(regexp = PlainText.REGEX, message = PlainText.MESSAGE)
