@@ -557,6 +557,144 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
+    fun `effective permanent ban allows exact appeal get with current user principal and user role only`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-permanent-ban-appeal-get",
+            email = "admin@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-permanent-ban-appeal-get",
+            email = "admin@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-permanent-ban-appeal-get")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null
+            )
+        )
+
+        val response = MockHttpServletResponse()
+
+        adminFilter.doFilter(
+            authorizedRequest("GET", "/api/me/ban/appeal", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        val authentication = SecurityContextHolder.getContext().authentication!!
+        val authorities = authentication.authorities.map { it.authority }.toSet()
+        assertEquals(200, response.status)
+        assertTrue(authentication.principal is CurrentUserAuthContext)
+        assertEquals(setOf(SecurityRoles.ROLE_USER), authorities)
+    }
+
+    @Test
+    fun `effective permanent ban allows exact appeal post with current user principal`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-permanent-ban-appeal-post",
+            email = "permanent-ban-post@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-permanent-ban-appeal-post",
+            email = "permanent-ban-post@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-permanent-ban-appeal-post")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null
+            )
+        )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("POST", "/api/me/ban/appeal", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(200, response.status)
+        assertTrue(SecurityContextHolder.getContext().authentication!!.principal is CurrentUserAuthContext)
+    }
+
+    @Test
+    fun `effective temporary ban rejects appeal endpoint`() {
+        val expiresAt = OffsetDateTime.parse("2026-09-01T12:00:00Z")
+        val decodedToken = decodedToken(
+            uid = "firebase-temporary-ban-appeal",
+            email = "temporary-ban-appeal@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-temporary-ban-appeal",
+            email = "temporary-ban-appeal@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-temporary-ban-appeal")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.TEMPORARY_BAN,
+                expiresAt = expiresAt
+            )
+        )
+
+        val response = MockHttpServletResponse()
+
+        localFilter.doFilter(
+            authorizedRequest("GET", "/api/me/ban/appeal", "valid-token"),
+            response,
+            MockFilterChain()
+        )
+
+        assertEquals(403, response.status)
+        assertTrue(response.contentAsString.contains("ACCOUNT_TEMPORARILY_BANNED"))
+        assertEquals(null, SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `permanent ban appeal exception does not allow similar paths`() {
+        val decodedToken = decodedToken(
+            uid = "firebase-permanent-ban-similar-path",
+            email = "permanent-ban-similar@example.com",
+            providerValue = "password"
+        )
+        val user = user(
+            firebaseUid = "firebase-permanent-ban-similar-path",
+            email = "permanent-ban-similar@example.com"
+        )
+        `when`(firebaseTokenAuthenticationVerifier.verify("valid-token")).thenReturn(decodedToken)
+        `when`(userService.findByFirebaseUid("firebase-permanent-ban-similar-path")).thenReturn(user)
+        `when`(penaltyService.resolveEffectiveBan(eqUuid(user.id), anyOffsetDateTime())).thenReturn(
+            EffectiveAccountBan(
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null
+            )
+        )
+
+        listOf(
+            MockHttpServletRequest("GET", "/api/me/ban/appeal/extra"),
+            MockHttpServletRequest("GET", "/api/me/ban/appeals"),
+            MockHttpServletRequest("PUT", "/api/me/ban/appeal")
+        ).forEach { request ->
+            SecurityContextHolder.clearContext()
+            request.addHeader("Authorization", "Bearer valid-token")
+            val response = MockHttpServletResponse()
+
+            localFilter.doFilter(request, response, MockFilterChain())
+
+            assertEquals(403, response.status)
+            assertTrue(response.contentAsString.contains("ACCOUNT_PERMANENTLY_BANNED"))
+            assertEquals(null, SecurityContextHolder.getContext().authentication)
+        }
+    }
+
+    @Test
     fun `expired temporary ban resolved as none allows active linked user`() {
         val decodedToken = decodedToken(
             uid = "firebase-expired-ban",

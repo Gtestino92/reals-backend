@@ -181,6 +181,33 @@ The allowlist decision uses only the Firebase token email. The backend user's
 persisted local email is not a fallback for administrator authority, and an
 unprovisioned Firebase principal never receives `ROLE_ADMIN`.
 
+Administrative account bans are enforced inside the Firebase authentication
+filter for existing `ACTIVE` backend users. A temporary ban blocks all protected
+API routes while it is effective. A permanent ban blocks normal API access with
+`403 ACCOUNT_PERMANENTLY_BANNED`.
+
+The only permanent-ban exception is the authenticated appeal surface:
+
+```text
+GET  /api/me/ban/appeal
+POST /api/me/ban/appeal
+```
+
+Those requests still require a valid Firebase ID token, preserve normal
+`authOrigin` validation, remain under Firebase App Check when App Check is
+enabled, and remain under pre- and post-authentication rate limiting. They are
+not `permitAll` routes and are not excluded from the Firebase token filter.
+For this exception the filter builds a normal `CurrentUserAuthContext` but
+grants only `ROLE_USER`; it never grants `ROLE_ADMIN` even when the Firebase
+email is allowlisted. Similar paths or methods are not exempt.
+
+A pending permanent-ban appeal does not suspend or lift the ban. If an
+administrator approves the appeal, the specific permanent penalty becomes
+inactive and the user is eligible only for future activity, subject to any other
+effective ban. Approval does not reconstruct contained chats, matches,
+connections, scheduling state, matchmaking queue rows, or historical safety
+report verdicts.
+
 Provisioning links an existing legacy backend row by email only when the
 Firebase token reports `emailVerified=true`. An unverified Firebase email can
 still create a brand-new backend user and can still load an already-linked

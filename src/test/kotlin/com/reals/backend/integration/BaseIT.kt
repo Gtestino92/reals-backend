@@ -62,6 +62,7 @@ import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import com.reals.backend.service.PenaltyService
+import com.reals.backend.service.PenaltyAppealService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.photo.ProfilePhotoService
 import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
@@ -185,6 +186,9 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var penaltyService: PenaltyService
+
+    @Autowired
+    protected lateinit var penaltyAppealService: PenaltyAppealService
 
     @Autowired
     protected lateinit var pushDeviceTokenService: PushDeviceTokenService

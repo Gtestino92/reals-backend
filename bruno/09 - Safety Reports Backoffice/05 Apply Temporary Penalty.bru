@@ -25,6 +25,11 @@ body:json {
   }
 }
 
+vars:pre-request {
+  temporary_penalty_hours: 30
+  penalty_reason: jjj
+}
+
 script:post-response {
   const body = res.getBody();
   
