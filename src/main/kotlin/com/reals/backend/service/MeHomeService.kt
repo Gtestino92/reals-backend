@@ -36,6 +36,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.matching.MatchmakingAvailabilityService
@@ -57,6 +58,7 @@ class MeHomeService(
     private val participationRepository: SecondChatParticipationRepository,
     private val visualReviewRepository: VisualReviewRepository,
     private val chatDecisionRepository: ChatDecisionRepository,
+    private val scheduleProposalRepository: ScheduleProposalRepository,
     private val matchmakingAvailabilityService: MatchmakingAvailabilityService,
     private val homeStatusService: HomeStatusService,
     private val userBlockService: UserBlockService,
@@ -146,7 +148,8 @@ class MeHomeService(
                 partner = partnerProfilesByUserId[
                     partnerUserId(connection.userAId, connection.userBId, userId)
                 ],
-                now = snapshot.now
+                now = snapshot.now,
+                userId
             )
         }
 
@@ -156,7 +159,7 @@ class MeHomeService(
             activeInitialCount = pendingActions.size,
             activeConnectionCount = nextSteps.count { it.type != HomeNextStepType.SECOND_CHAT_EXPIRED },
             hasPendingSchedulingConnection = hasPendingSchedulingConnection,
-            actionableConnectionCount = nextSteps.count { it.type != HomeNextStepType.SECOND_CHAT_EXPIRED }
+            actionableConnectionCount = nextSteps.count { it.requiresAction }
         )
 
         val matchmakingAvailability = matchmakingAvailabilityService.availabilityFor(
@@ -225,7 +228,8 @@ class MeHomeService(
                     ]?.confirmedDateTime,
                     currentNegotiation = snapshot.currentNegotiationsByConnectionId[connection.id],
                     myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
-                    now = snapshot.now
+                    now = snapshot.now,
+                    userId
                 )
             },
             passiveNotices = passiveNoticesForPendingScheduling(
@@ -764,7 +768,8 @@ class MeHomeService(
         currentNegotiation: ScheduleNegotiation?,
         myAttendanceStatus: SecondChatAttendanceStatus?,
         partner: Profile?,
-        now: OffsetDateTime
+        now: OffsetDateTime,
+        currentUserId: UUID
     ): HomeNextStepResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
@@ -805,6 +810,11 @@ class MeHomeService(
                 availableAt = secondChatAvailableAt,
                 myAttendanceStatus = myAttendanceStatus,
                 partner = partner
+            ),
+            requiresAction = !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                connection.id,
+                currentUserId,
+                currentNegotiation?.roundNumber ?: 1
             )
         )
     }
@@ -815,7 +825,8 @@ class MeHomeService(
         secondChatAvailableAt: OffsetDateTime?,
         currentNegotiation: ScheduleNegotiation?,
         myAttendanceStatus: SecondChatAttendanceStatus?,
-        now: OffsetDateTime
+        now: OffsetDateTime,
+        currentUserId: UUID
     ): HomeNextStepLiteResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
@@ -854,6 +865,11 @@ class MeHomeService(
                 chat = secondChat,
                 availableAt = secondChatAvailableAt,
                 myAttendanceStatus = myAttendanceStatus
+            ),
+            requiresAction = !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                connection.id,
+                currentUserId,
+                currentNegotiation?.roundNumber ?: 1
             )
         )
     }
