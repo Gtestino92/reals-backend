@@ -798,6 +798,19 @@ class MeHomeService(
             ) ?: return null
         }
 
+        val requiresAction = when (type) {
+            HomeNextStepType.SCHEDULING ->
+                currentNegotiation?.let { negotiation ->
+                    !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                        connection.id,
+                        currentUserId,
+                        negotiation.roundNumber
+                    )
+                } ?: false
+
+            else -> false
+        }
+
         return HomeNextStepResponse(
             type = type,
             connectionId = connection.id,
@@ -811,11 +824,7 @@ class MeHomeService(
                 myAttendanceStatus = myAttendanceStatus,
                 partner = partner
             ),
-            requiresAction = !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                connection.id,
-                currentUserId,
-                currentNegotiation?.roundNumber ?: 1
-            )
+            requiresAction = requiresAction
         )
     }
 
@@ -855,6 +864,19 @@ class MeHomeService(
             ) ?: return null
         }
 
+        val requiresAction = when (type) {
+            HomeNextStepType.SCHEDULING ->
+                currentNegotiation?.let { negotiation ->
+                    !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                        connection.id,
+                        currentUserId,
+                        negotiation.roundNumber
+                    )
+                } ?: false
+
+            else -> false
+        }
+
         return HomeNextStepLiteResponse(
             type = type,
             connectionId = connection.id,
@@ -866,11 +888,7 @@ class MeHomeService(
                 availableAt = secondChatAvailableAt,
                 myAttendanceStatus = myAttendanceStatus
             ),
-            requiresAction = !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                connection.id,
-                currentUserId,
-                currentNegotiation?.roundNumber ?: 1
-            )
+            requiresAction = requiresAction
         )
     }
 

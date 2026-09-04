@@ -23,6 +23,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.matching.MatchmakingAvailability
@@ -48,6 +49,7 @@ class MeHomeServiceTest {
     private val visualReviewRepository = Mockito.mock(VisualReviewRepository::class.java)
     private val chatDecisionRepository = Mockito.mock(ChatDecisionRepository::class.java)
     private val matchmakingAvailabilityService = Mockito.mock(MatchmakingAvailabilityService::class.java)
+    private val scheduleProposalRepository = Mockito.mock(ScheduleProposalRepository::class.java)
     private val homeStatusService = Mockito.mock(HomeStatusService::class.java)
     private val userBlockService = Mockito.mock(UserBlockService::class.java)
     private val readMetrics = ReadMetrics(SimpleMeterRegistry())
@@ -63,6 +65,7 @@ class MeHomeServiceTest {
         participationRepository = participationRepository,
         visualReviewRepository = visualReviewRepository,
         chatDecisionRepository = chatDecisionRepository,
+        scheduleProposalRepository = scheduleProposalRepository,
         matchmakingAvailabilityService = matchmakingAvailabilityService,
         homeStatusService = homeStatusService,
         userBlockService = userBlockService,
@@ -266,7 +269,7 @@ class MeHomeServiceTest {
             response.nextSteps.map { it.type }
         )
         assertEquals(2, response.activeInteractionsSummary.activeConnectionCount)
-        assertEquals(2, response.activeInteractionsSummary.actionableConnectionCount)
+        assertEquals(0, response.activeInteractionsSummary.actionableConnectionCount)
     }
 
     @Test
@@ -822,6 +825,49 @@ class MeHomeServiceTest {
 
         assertEquals(currentNegotiation.createdAt, fullNextStep.createdAt)
         assertEquals(connection.schedulingExpiresAt, fullNextStep.schedulingExpiresAt)
+    }
+
+    @Test
+    fun `scheduling requires action when current user has not submitted proposal for current round`() {
+        val userId = UUID.randomUUID()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000601"),
+            userId = userId,
+            state = ConnectionState.SCHEDULING_PHASE
+        )
+        val negotiation = negotiation(
+            connection = connection,
+            confirmedDateTime = null,
+            status = NegotiationStatus.PENDING
+        )
+
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation)
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        Mockito.`when`(
+            scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                connection.id,
+                userId,
+                negotiation.roundNumber
+            )
+        ).thenReturn(false)
+
+        val full = service.getHome(userId)
+        val pending = service.getPendingHomeState(userId)
+
+        assertEquals(HomeNextStepType.SCHEDULING, full.nextSteps.single().type)
+        assertEquals(true, full.nextSteps.single().requiresAction)
+        assertEquals(1, full.activeInteractionsSummary.actionableConnectionCount)
+
+        assertEquals(HomeNextStepType.SCHEDULING, pending.nextSteps.single().type)
+        assertEquals(true, pending.nextSteps.single().requiresAction)
     }
 
     private fun stubOperationalState(
