@@ -870,6 +870,49 @@ class MeHomeServiceTest {
         assertEquals(true, pending.nextSteps.single().requiresAction)
     }
 
+    @Test
+    fun `scheduling does not require action when current user already submitted proposal for current round`() {
+        val userId = UUID.randomUUID()
+        val connection = connection(
+            id = UUID.fromString("00000000-0000-0000-0000-000000000602"),
+            userId = userId,
+            state = ConnectionState.SCHEDULING_PHASE
+        )
+        val negotiation = negotiation(
+            connection = connection,
+            confirmedDateTime = null,
+            status = NegotiationStatus.PENDING
+        )
+
+        stubOperationalState(
+            userId = userId,
+            matches = emptyList(),
+            connections = listOf(connection),
+            negotiations = listOf(negotiation)
+        )
+        stubFullHome(userId)
+        Mockito.`when`(homeStatusService.getOrCreateStatus(userId))
+            .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
+
+        Mockito.`when`(
+            scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
+                connection.id,
+                userId,
+                negotiation.roundNumber
+            )
+        ).thenReturn(true)
+
+        val full = service.getHome(userId)
+        val pending = service.getPendingHomeState(userId)
+
+        assertEquals(HomeNextStepType.SCHEDULING, full.nextSteps.single().type)
+        assertEquals(false, full.nextSteps.single().requiresAction)
+        assertEquals(0, full.activeInteractionsSummary.actionableConnectionCount)
+
+        assertEquals(HomeNextStepType.SCHEDULING, pending.nextSteps.single().type)
+        assertEquals(false, pending.nextSteps.single().requiresAction)
+    }
+
     private fun stubOperationalState(
         userId: UUID,
         matches: List<Match>,
