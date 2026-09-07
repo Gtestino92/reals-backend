@@ -61,7 +61,7 @@ class ProfilePhotoAnalysisConfigurationTest {
     }
 
     @Test
-    fun `dev Sightengine opt-in selects Sightengine provider`() {
+    fun `dev Sightengine opt-in fails without selecting provider`() {
         contextRunner
             .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
@@ -70,13 +70,14 @@ class ProfilePhotoAnalysisConfigurationTest {
                 "profile.photos.sightengine.api-secret=test-secret"
             )
             .run { context ->
-                assertThat(context).hasSingleBean(SightenginePhotoAnalysisProvider::class.java)
-                assertThat(context).hasSingleBean(RestClient::class.java)
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 
     @Test
-    fun `dev Sightengine opt-in uses Sightengine RestClient when Firebase Auth RestClient also exists`() {
+    fun `dev Sightengine opt-in fails before creating RestClient when Firebase Auth RestClient also exists`() {
         contextRunnerWithFirebaseAuthRest
             .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
@@ -85,17 +86,9 @@ class ProfilePhotoAnalysisConfigurationTest {
                 "profile.photos.sightengine.api-secret=test-secret"
             )
             .run { context ->
-                assertThat(context).hasNotFailed()
-                assertThat(context).hasBean("firebaseAuthRestClient")
-                assertThat(context).hasBean("sightengineRestClient")
-                val provider = context.getBean(SightenginePhotoAnalysisProvider::class.java)
-                val restClientField = SightenginePhotoAnalysisProvider::class.java
-                    .getDeclaredField("restClient")
-                    .apply { isAccessible = true }
-
-                assertThat(restClientField.get(provider))
-                    .isSameAs(context.getBean("sightengineRestClient"))
-                    .isNotSameAs(context.getBean("firebaseAuthRestClient"))
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 
@@ -150,12 +143,12 @@ class ProfilePhotoAnalysisConfigurationTest {
             .run { context ->
                 assertThat(context).hasFailed()
                 assertThat(context.startupFailure)
-                    .hasMessageContaining("provider=sightengine is supported only in dev or prod")
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 
     @Test
-    fun `dev selecting Sightengine without api user fails startup`() {
+    fun `dev selecting Sightengine without api user fails as unsupported`() {
         contextRunner
             .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
@@ -163,12 +156,13 @@ class ProfilePhotoAnalysisConfigurationTest {
                 "profile.photos.sightengine.api-secret=test-secret"
             )
             .run { context ->
-                assertThat(context.startupFailure).isNotNull()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 
     @Test
-    fun `dev selecting Sightengine without api secret fails startup`() {
+    fun `dev selecting Sightengine without api secret fails as unsupported`() {
         contextRunner
             .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
@@ -176,12 +170,13 @@ class ProfilePhotoAnalysisConfigurationTest {
                 "profile.photos.sightengine.api-user=test-user"
             )
             .run { context ->
-                assertThat(context.startupFailure).isNotNull()
+                assertThat(context.startupFailure)
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 
     @Test
-    fun `dev selecting Sightengine with invalid endpoint fails startup`() {
+    fun `dev selecting Sightengine with invalid endpoint fails as unsupported`() {
         contextRunner
             .withInitializer { context -> context.environment.setActiveProfiles("dev") }
             .withPropertyValues(
@@ -193,7 +188,7 @@ class ProfilePhotoAnalysisConfigurationTest {
             .run { context ->
                 assertThat(context).hasFailed()
                 assertThat(context.startupFailure)
-                    .hasMessageContaining("valid absolute HTTPS URI when provider=sightengine")
+                    .hasMessageContaining("provider=sightengine is supported only in prod")
             }
     }
 

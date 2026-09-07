@@ -122,8 +122,8 @@ chat:
     duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
     approval:
-      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
-      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:0}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:0}
     guidance:
       required-participation-score: 60
       direct-question-reply-multiplier: 2
@@ -160,6 +160,8 @@ profile:
     required-count: ${PROFILE_PHOTOS_REQUIRED_COUNT:2}
     min-person-photos: ${PROFILE_PHOTOS_MIN_PERSON_PHOTOS:1}
     min-full-body-photos: ${PROFILE_MIN_FULL_BODY_PHOTOS:1}
+    moderation:
+      provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
   authenticity-verification:
     provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
     fail-on-provider-error: ${PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}

@@ -205,7 +205,7 @@ class ProfilePhotoAnalysisProviderStartupValidator(
 
     private fun validateSightengineProvider() {
         require(sightengineProviderSupported(environment)) {
-            "profile.photos.moderation.provider=sightengine is supported only in dev or prod"
+            "profile.photos.moderation.provider=sightengine is supported only in prod"
         }
         sightengineProperties.requireCredentials()
         sightengineProperties.requireValidSelectedProviderEndpoint()
@@ -221,8 +221,7 @@ private fun sightengineProviderSupported(environment: Environment): Boolean {
     val activeExecutionProfiles = environment.activeProfiles
         .toSet()
         .intersect(EnvironmentExposurePolicy.EXECUTION_PROFILES)
-    return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.DEV_PROFILE) ||
-        activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
+    return activeExecutionProfiles == setOf(EnvironmentExposurePolicy.PROD_PROFILE)
 }
 
 internal const val PROFILE_PHOTO_MODERATION_PROVIDER_PROPERTY = "profile.photos.moderation.provider"
