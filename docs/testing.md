@@ -213,7 +213,7 @@ The current PostgreSQL profile covers targeted production-readiness checks:
 - Concurrent activation of one available second chat.
 - Concurrent Firebase provisioning with PostgreSQL unique constraints.
 
-GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
+GitHub Actions also runs `./mvnw test` on pull requests and pushes to
 `master` or `development`.
 
 ## CI Gates
@@ -231,8 +231,8 @@ Pull requests to `development` or `master` run:
 - CodeQL default setup from GitHub code scanning.
 
 Pushes to `development` or `master` run the same validation and then publish
-the backend image to GHCR. The image publishing job does not run for pull
-requests.
+the same Docker image that was validated and scanned to GHCR. Image publishing
+does not run for pull requests.
 
 ## Smoke Checks
 
