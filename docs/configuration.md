@@ -57,7 +57,7 @@ External-provider defaults are intentionally different by profile:
 
 | Integration | Local | Dev default | Dev smoke | Prod |
 | --- | --- | --- | --- | --- |
-| Sightengine | no-op `none` provider | no-op `none` provider | real opt-in with `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` | required real Sightengine |
+| Sightengine | no-op `none` provider | no-op `none` provider | `sightengine` is rejected | required real Sightengine |
 | Firebase Auth | `local-firebase` real Admin SDK; non-Firebase local profiles use local auto-auth | real Firebase Admin verification | real Firebase Admin verification | real Firebase Admin verification |
 | App Check | disabled by default in `local-firebase` | disabled by default | `MONITOR` or `ENFORCED` with project/app config | `ENFORCED` required |
 | FCM | no-op outside Firebase profiles; Firebase sender in `local-firebase` | real Firebase Admin Messaging | real device delivery through normal flows | real Firebase Admin Messaging |
@@ -122,10 +122,10 @@ Non-sensitive runtime configuration:
 | `CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS` | no | `Retry-After` value returned with `CHAT_AUDIO_UPLOAD_BUSY`. Defaults to `1`. |
 | `PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE` | no | Servlet multipart parser file-size limit for profile-photo uploads. Defaults to `5MB`; keep aligned with the 5 MiB product limit. |
 | `PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE` | no | Servlet multipart parser request-size limit. Defaults to `6MB` to leave room for multipart headers and the `position` field. |
-| `PROFILE_PHOTO_MODERATION_PROVIDER` | prod: yes; dev Sightengine smoke: yes | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. DEV starts with no-op moderation unless explicitly set to `sightengine`. In `dev` and `prod`, selecting `sightengine` enables the real Sightengine provider and requires usable Sightengine configuration. In `prod`, startup requires `sightengine`; it cannot fall back to `none`. |
+| `PROFILE_PHOTO_MODERATION_PROVIDER` | prod: yes | Profile photo analysis/moderation provider. Supported values: `none`, `sightengine`. Defaults to `none`. DEV uses no-op moderation and rejects `sightengine` to avoid external-provider consumption. In `prod`, startup requires `sightengine`; it cannot fall back to `none`. |
 | `PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR` | no | If `true`, provider errors reject photo upload. Defaults to `false`, which persists `NEEDS_REVIEW`. |
 | `PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS` | no | If `true`, rejected photos can be persisted with `moderationStatus=REJECTED`. Defaults to `false`, which rejects upload before storage. |
-| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | when Sightengine selected | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`; when selected in `dev` or `prod`, startup requires a valid absolute HTTPS URI. |
+| `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` | when Sightengine selected in prod | Sightengine check endpoint. Defaults to `https://api.sightengine.com/1.0/check.json`; when selected in `prod`, startup requires a valid absolute HTTPS URI. |
 | `PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS` | no | Sightengine connect timeout in milliseconds. Defaults to `3000`; must be positive. |
 | `PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS` | no | Sightengine response/read timeout in milliseconds. Defaults to `10000`; must be positive. |
 | `PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD` | no | Reals sexual-explicit review score threshold. Defaults to `0.50`. |
@@ -152,8 +152,8 @@ Non-sensitive runtime configuration:
 | `SCHEDULING_SECOND_CHAT_CONFLICT_WINDOW_MINUTES` | no | Symmetric inclusive window, in minutes, around another confirmed second-chat start for the same user. Defaults to `60`; `0` means only the exact confirmed instant conflicts. Negative values are rejected at startup. |
 | `CHAT_FIRST_CHAT_DURATION_MINUTES` | no | Dev/prod first-chat absolute duration in minutes. Defaults to `15`. |
 | `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES` | no | Dev/prod first-chat inactivity threshold in minutes. Defaults to `5`. Legacy fallback: `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES`. |
-| `CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES` | no | Minimum elapsed first-chat time before `APPROVED` is accepted. Local profiles default to `0`; dev/default profiles default to `1`; prod defaults to `3`. |
-| `CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER` | no | Minimum confirmed first-chat messages required from each participant before `APPROVED` is accepted. Local profiles default to `0`; dev/default/prod default to `3`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES` | no | Minimum elapsed first-chat time before `APPROVED` is accepted. Local and dev profiles default to `0`; the shared default remains `1`; prod defaults to `3`. |
+| `CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER` | no | Minimum confirmed first-chat messages required from each participant before `APPROVED` is accepted. Local and dev profiles default to `0`; the shared default and prod default remain `3`. |
 | `MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES` | no | Local Firebase override for repeated same-pair testing. Defaults to `true` in `local-firebase` Docker runs and `false` globally. Keep `false` for production-like active-pair restrictions. |
 | `MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING` | no | Historical previous-pair cooldown exclusion. Defaults to `true` in dev/prod and `false` in local repeatable profiles. It is independent from active-pair duplicate handling and never disables user-block exclusion. |
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
@@ -320,8 +320,8 @@ Sensitive runtime secrets:
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` | one Firebase credential source | Preferred for lightweight container runtimes. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | one Firebase credential source | Raw service-account JSON when the platform supports multiline secrets safely. |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | one Firebase credential source | Path to a mounted service-account JSON file. |
-| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod` | Sightengine API user. DEV default `none` does not require it. Do not commit real values. |
-| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod` | Sightengine API secret. DEV default `none` does not require it. Do not commit or log it. |
+| `SIGHTENGINE_API_USER` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API user. DEV rejects Sightengine and does not require it. Do not commit real values. |
+| `SIGHTENGINE_API_SECRET` | when `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `prod` | Sightengine API secret. DEV rejects Sightengine and does not require it. Do not commit or log it. |
 | `STORAGE_S3_ACCESS_KEY_ID` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible access key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_ACCESS_KEY_ID`. |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | with `STORAGE_S3_CREDENTIALS_MODE=STATIC` | MinIO/R2/S3-compatible secret key. Must be nonblank in `STATIC`; must be absent/blank in `DEFAULT_CHAIN`. Legacy fallback: `S3_SECRET_ACCESS_KEY`. |
 | `STORAGE_S3_SESSION_TOKEN` | only for explicit temporary credentials in `STATIC` mode | Optional AWS session token used with `STORAGE_S3_ACCESS_KEY_ID` and `STORAGE_S3_SECRET_ACCESS_KEY`. Must not be configured alone or in `DEFAULT_CHAIN`. Legacy fallback: `S3_SESSION_TOKEN`. |
@@ -588,10 +588,10 @@ Delete, list and reorder do not consume that bucket; the broad pre-auth IP
 limiter is unchanged. Current rate-limit buckets are in-memory and
 single-instance.
 
-Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` only for explicit
-real-provider smoke testing and in `prod` for production. DEV defaults to
-`none`, requires no Sightengine credentials and makes no Sightengine calls.
-When `dev` or `prod` selects `sightengine`, the backend sends one synchronous
+Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` only in `prod` for
+production. DEV always uses the no-op provider path for profile-photo moderation
+and rejects `sightengine`, so it requires no Sightengine credentials and makes
+no Sightengine calls. When `prod` selects `sightengine`, the backend sends one synchronous
 multipart request to
 `PROFILE_PHOTO_SIGHTENGINE_ENDPOINT` per technically valid upload or
 replacement. The request uses the server-normalized JPEG bytes as the `media`
@@ -603,7 +603,7 @@ failures, not silently downgraded requests.
 
 Sightengine credentials are `SIGHTENGINE_API_USER` and
 `SIGHTENGINE_API_SECRET`. They are required when provider `sightengine` is
-selected in `dev` or `prod`. Startup also requires a valid absolute HTTPS
+selected in `prod`. Startup also requires a valid absolute HTTPS
 endpoint and positive connect/read timeouts. Do not commit credentials, log
 them, or expose raw provider responses to clients.
 
