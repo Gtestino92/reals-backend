@@ -74,7 +74,7 @@ exists.
 
 1. Merge the change into `development`.
 2. Wait for the existing `CI` workflow on `development` to pass.
-3. Confirm the CI `publish-image` job pushed `ghcr.io/gtestino92/reals-backend:sha-<short-sha>`.
+3. Confirm the CI `Validate Docker image` job pushed `ghcr.io/gtestino92/reals-backend:sha-<short-sha>`.
 4. Open GitHub Actions.
 5. Select `Deploy AWS Dev`.
 6. Select branch `development`.
