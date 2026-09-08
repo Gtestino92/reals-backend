@@ -1,42 +1,51 @@
-name: Deploy AWS Dev
+name: Deploy AWS Prod
 
 on:
   workflow_dispatch:
     inputs:
       revision:
-        description: "Optional full development-ancestor Git SHA to deploy or roll back to"
+        description: "Optional full master-ancestor Git SHA to deploy or roll back to"
         required: false
         type: string
+      rollback_mode:
+        description: "Application rollback behavior when the new container fails"
+        required: true
+        type: choice
+        options:
+          - automatic
+          - disabled
+        default: automatic
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: reals-backend-aws-dev
+  group: reals-backend-aws-prod
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy dev backend
+    name: Deploy prod backend
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    environment: dev
+    environment: prod
     env:
       IMAGE_REPOSITORY: ghcr.io/gtestino92/reals-backend
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
       AWS_EC2_INSTANCE_NAME: ${{ vars.AWS_EC2_INSTANCE_NAME }}
       BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
+      ROLLBACK_MODE: ${{ inputs.rollback_mode }}
 
     steps:
-      - name: Reject non-development refs
+      - name: Reject non-master refs
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF}" != "refs/heads/development" ]]; then
-            echo "Deploy AWS Dev only runs from refs/heads/development; selected ref was ${GITHUB_REF}" >&2
+          if [[ "${GITHUB_REF}" != "refs/heads/master" ]]; then
+            echo "Deploy AWS Prod only runs from refs/heads/master; selected ref was ${GITHUB_REF}" >&2
             exit 1
           fi
 
@@ -45,16 +54,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          : "${AWS_REGION:?AWS_REGION is required on the dev GitHub Environment}"
-          : "${AWS_DEPLOY_ROLE_ARN:?AWS_DEPLOY_ROLE_ARN is required on the dev GitHub Environment}"
-          : "${AWS_EC2_INSTANCE_NAME:?AWS_EC2_INSTANCE_NAME is required on the dev GitHub Environment}"
-          : "${BACKEND_BASE_URL:?BACKEND_BASE_URL is required on the dev GitHub Environment}"
+          : "${AWS_REGION:?AWS_REGION is required on the prod GitHub Environment}"
+          : "${AWS_DEPLOY_ROLE_ARN:?AWS_DEPLOY_ROLE_ARN is required on the prod GitHub Environment}"
+          : "${AWS_EC2_INSTANCE_NAME:?AWS_EC2_INSTANCE_NAME is required on the prod GitHub Environment}"
+          : "${BACKEND_BASE_URL:?BACKEND_BASE_URL is required on the prod GitHub Environment}"
 
-      - name: Checkout selected development revision
+          case "${ROLLBACK_MODE}" in
+            automatic|disabled) ;;
+            *)
+              echo "ROLLBACK_MODE must be automatic or disabled" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout selected master revision
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: development
+          ref: master
 
       - name: Resolve immutable image tag
         id: revision
@@ -64,10 +81,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          git fetch --no-tags origin development
+          git fetch --no-tags origin master
 
           if [[ -z "${INPUT_REVISION}" ]]; then
-            RESOLVED_REVISION="${GITHUB_SHA}"
+            RESOLVED_REVISION="$(git rev-parse origin/master)"
           else
             if [[ ! "${INPUT_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
               echo "revision must be a full 40-character hexadecimal Git commit SHA" >&2
@@ -77,7 +94,7 @@ jobs:
           fi
 
           git cat-file -e "${RESOLVED_REVISION}^{commit}"
-          git merge-base --is-ancestor "${RESOLVED_REVISION}" "origin/development"
+          git merge-base --is-ancestor "${RESOLVED_REVISION}" "origin/master"
 
           SHORT_SHA="${RESOLVED_REVISION::7}"
           IMAGE_TAG="sha-${SHORT_SHA}"
@@ -94,7 +111,7 @@ jobs:
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
-          role-session-name: reals-backend-dev-deploy-${{ github.run_id }}
+          role-session-name: reals-backend-prod-deploy-${{ github.run_id }}
 
       - name: Resolve running EC2 instance
         id: ec2
@@ -132,6 +149,7 @@ jobs:
             --arg encoded "$ENCODED_SCRIPT" \
             --arg image_tag "$IMAGE_TAG" \
             --arg revision "$RESOLVED_REVISION" \
+            --arg rollback_mode "$ROLLBACK_MODE" \
             '{
               executionTimeout: ["840"],
               commands: [
@@ -142,7 +160,7 @@ jobs:
                 "cat > \"$work_dir/deploy-backend.sh.gz.b64\" <<'\''REALS_DEPLOY_SCRIPT_B64'\''\n\($encoded)\nREALS_DEPLOY_SCRIPT_B64",
                 "base64 -d \"$work_dir/deploy-backend.sh.gz.b64\" | gzip -d > \"$work_dir/deploy-backend.sh\"",
                 "chmod 700 \"$work_dir/deploy-backend.sh\"",
-                "\"$work_dir/deploy-backend.sh\" \($image_tag | @sh) \($revision | @sh)"
+                "ROLLBACK_MODE=\($rollback_mode | @sh) \"$work_dir/deploy-backend.sh\" \($image_tag | @sh) \($revision | @sh)"
               ]
             }' > ssm-parameters.json
 
@@ -150,7 +168,7 @@ jobs:
             aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --comment "Deploy Reals AWS dev backend ${IMAGE_TAG}" \
+              --comment "Deploy Reals AWS prod backend ${IMAGE_TAG}" \
               --parameters file://ssm-parameters.json \
               --timeout-seconds 900 \
               --query 'Command.CommandId' \
@@ -260,6 +278,7 @@ jobs:
             echo "| Deployment stage | ${EFFECTIVE_DEPLOY_STAGE:-unknown} |"
             echo "| Error code | ${EFFECTIVE_ERROR_CODE:-none} |"
             echo "| Error detail | ${ERROR_DETAIL:-none} |"
+            echo "| Rollback mode | ${ROLLBACK_MODE} |"
             echo "| Failed container state | ${FAILED_CONTAINER_STATE:-not captured} |"
             echo "| Failed container exit code | ${FAILED_CONTAINER_EXIT_CODE:-not captured} |"
             echo "| Failed container OOM killed | ${FAILED_CONTAINER_OOM_KILLED:-not captured} |"
@@ -367,15 +386,16 @@ jobs:
           set -euo pipefail
 
           {
-            echo "### Deploy AWS Dev"
+            echo "### Deploy AWS Prod"
             echo
             echo "| Field | Value |"
             echo "| --- | --- |"
-            echo "| Environment | dev |"
+            echo "| Environment | prod |"
             echo "| Resolved revision | ${RESOLVED_REVISION:-not resolved} |"
             echo "| Immutable image tag | ${IMAGE_TAG:-not resolved} |"
             echo "| Target EC2 Name tag | ${AWS_EC2_INSTANCE_NAME:-not configured} |"
-            echo "| SSM command result | ${SSM_STATUS:-not run} |"
+            echo "| Rollback mode | ${ROLLBACK_MODE:-unknown} |"
+            echo "| SSM result | ${SSM_STATUS:-not run} |"
             echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
             echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
             echo "| Error code | ${ERROR_CODE:-none} |"
