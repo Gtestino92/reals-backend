@@ -240,6 +240,15 @@ jobs:
           DEPLOY_STAGE="$(grep -E '^DEPLOY_STAGE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           ERROR_CODE="$(grep -E '^ERROR_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
           ERROR_DETAIL="$(grep -E '^ERROR_DETAIL=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          PRIMARY_FAILURE_STAGE="$(grep -E '^PRIMARY_FAILURE_STAGE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          PRIMARY_FAILURE_ERROR_CODE="$(grep -E '^PRIMARY_FAILURE_ERROR_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          FAILED_CONTAINER_STATE="$(grep -E '^FAILED_CONTAINER_STATE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          FAILED_CONTAINER_EXIT_CODE="$(grep -E '^FAILED_CONTAINER_EXIT_CODE=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          FAILED_CONTAINER_OOM_KILLED="$(grep -E '^FAILED_CONTAINER_OOM_KILLED=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          FAILED_CONTAINER_DIAGNOSTICS="$(grep -E '^FAILED_CONTAINER_DIAGNOSTICS=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          FAILED_CONTAINER_LOG_PATH="$(grep -E '^FAILED_CONTAINER_LOG_PATH=' ssm-stdout.raw.txt | tail -n 1 | cut -d= -f2- || true)"
+          EFFECTIVE_DEPLOY_STAGE="${PRIMARY_FAILURE_STAGE:-$DEPLOY_STAGE}"
+          EFFECTIVE_ERROR_CODE="${PRIMARY_FAILURE_ERROR_CODE:-$ERROR_CODE}"
           ROLLBACK_OCCURRED="no"
           if [[ "$DEPLOY_RESULT" == "ROLLED_BACK" || "$DEPLOY_RESULT" == "ROLLBACK_FAILED" ]]; then
             ROLLBACK_OCCURRED="yes"
@@ -248,9 +257,14 @@ jobs:
           {
             echo "status=${SSM_STATUS}"
             echo "deploy_result=${DEPLOY_RESULT:-unknown}"
-            echo "deploy_stage=${DEPLOY_STAGE:-unknown}"
-            echo "error_code=${ERROR_CODE:-none}"
+            echo "deploy_stage=${EFFECTIVE_DEPLOY_STAGE:-unknown}"
+            echo "error_code=${EFFECTIVE_ERROR_CODE:-none}"
             echo "error_detail=${ERROR_DETAIL:-none}"
+            echo "failed_container_state=${FAILED_CONTAINER_STATE:-not captured}"
+            echo "failed_container_exit_code=${FAILED_CONTAINER_EXIT_CODE:-not captured}"
+            echo "failed_container_oom_killed=${FAILED_CONTAINER_OOM_KILLED:-not captured}"
+            echo "failed_container_diagnostics=${FAILED_CONTAINER_DIAGNOSTICS:-not captured}"
+            echo "failed_container_log_path=${FAILED_CONTAINER_LOG_PATH:-none}"
             echo "rollback_occurred=${ROLLBACK_OCCURRED}"
           } >> "$GITHUB_OUTPUT"
 
@@ -261,10 +275,15 @@ jobs:
             echo "| --- | --- |"
             echo "| Terminal status | ${SSM_STATUS} |"
             echo "| Deployment result | ${DEPLOY_RESULT:-unknown} |"
-            echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
-            echo "| Error code | ${ERROR_CODE:-none} |"
+            echo "| Deployment stage | ${EFFECTIVE_DEPLOY_STAGE:-unknown} |"
+            echo "| Error code | ${EFFECTIVE_ERROR_CODE:-none} |"
             echo "| Error detail | ${ERROR_DETAIL:-none} |"
             echo "| Rollback mode | ${ROLLBACK_MODE} |"
+            echo "| Failed container state | ${FAILED_CONTAINER_STATE:-not captured} |"
+            echo "| Failed container exit code | ${FAILED_CONTAINER_EXIT_CODE:-not captured} |"
+            echo "| Failed container OOM killed | ${FAILED_CONTAINER_OOM_KILLED:-not captured} |"
+            echo "| Diagnostics | ${FAILED_CONTAINER_DIAGNOSTICS:-not captured} |"
+            echo "| Diagnostics path | ${FAILED_CONTAINER_LOG_PATH:-none} |"
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -355,6 +374,11 @@ jobs:
           DEPLOY_STAGE: ${{ steps.ssm.outputs.deploy_stage }}
           ERROR_CODE: ${{ steps.ssm.outputs.error_code }}
           ERROR_DETAIL: ${{ steps.ssm.outputs.error_detail }}
+          FAILED_CONTAINER_STATE: ${{ steps.ssm.outputs.failed_container_state }}
+          FAILED_CONTAINER_EXIT_CODE: ${{ steps.ssm.outputs.failed_container_exit_code }}
+          FAILED_CONTAINER_OOM_KILLED: ${{ steps.ssm.outputs.failed_container_oom_killed }}
+          FAILED_CONTAINER_DIAGNOSTICS: ${{ steps.ssm.outputs.failed_container_diagnostics }}
+          FAILED_CONTAINER_LOG_PATH: ${{ steps.ssm.outputs.failed_container_log_path }}
           ROLLBACK_OCCURRED: ${{ steps.ssm.outputs.rollback_occurred }}
           READINESS_RESULT: ${{ steps.smoke.outputs.readiness }}
           PING_RESULT: ${{ steps.smoke.outputs.ping }}
@@ -376,6 +400,11 @@ jobs:
             echo "| Deployment stage | ${DEPLOY_STAGE:-unknown} |"
             echo "| Error code | ${ERROR_CODE:-none} |"
             echo "| Error detail | ${ERROR_DETAIL:-none} |"
+            echo "| Failed container state | ${FAILED_CONTAINER_STATE:-not captured} |"
+            echo "| Failed container exit code | ${FAILED_CONTAINER_EXIT_CODE:-not captured} |"
+            echo "| Failed container OOM killed | ${FAILED_CONTAINER_OOM_KILLED:-not captured} |"
+            echo "| Diagnostics | ${FAILED_CONTAINER_DIAGNOSTICS:-not captured} |"
+            echo "| Diagnostics path | ${FAILED_CONTAINER_LOG_PATH:-none} |"
             echo "| Readiness result | ${READINESS_RESULT:-not run} |"
             echo "| Ping result | ${PING_RESULT:-not run} |"
             echo "| Rollback occurred | ${ROLLBACK_OCCURRED:-unknown} |"

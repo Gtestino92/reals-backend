@@ -112,13 +112,16 @@ The default is `automatic` to preserve the dev deployment behavior.
 
 If the new container fails to start, readiness fails, or ping fails, the script:
 
-1. Removes the failed new container when present.
-2. Starts a replacement container from the exact previously captured local image
+1. Records the primary failure stage and controlled error code.
+2. Captures safe failed-container metadata when the new container exists.
+3. Saves a bounded local log snapshot on the EC2 host when possible.
+4. Removes the failed new container when present.
+5. Starts a replacement container from the exact previously captured local image
    ID or image reference.
-3. Runs the same internal readiness and ping checks.
-4. Emits `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
-5. Emits `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
-6. Returns non-zero even when rollback succeeds.
+6. Runs the same internal readiness and ping checks.
+7. Emits `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
+8. Emits `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
+9. Returns non-zero even when rollback succeeds.
 
 This is the normal production mode because production Flyway migrations are
 expected to be N-1 compatible.
@@ -131,11 +134,14 @@ application image.
 
 If the new container fails, the script:
 
-1. Removes the failed new container when present.
-2. Emits `DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED`.
-3. Emits `ERROR_DETAIL=ROLLBACK_DISABLED`.
-4. Does not start the previous image.
-5. Does not attempt any database rollback.
+1. Records the primary failure stage and controlled error code.
+2. Captures safe failed-container metadata and a bounded local log snapshot when
+   possible.
+3. Removes the failed new container when present.
+4. Emits `DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED`.
+5. Emits `ERROR_DETAIL=ROLLBACK_DISABLED`.
+6. Does not start the previous image.
+7. Does not attempt any database rollback.
 
 Recovery in this mode is deliberate: fix-forward application deployment,
 manual incident response, or database restore from an operator-approved backup
@@ -223,6 +229,46 @@ ROLLBACK_MODE=disabled is required
 
 There is no automatic database rollback in the workflow or script.
 
+## Failed Container Diagnostics
+
+For failed new deployments, the script emits controlled markers for the primary
+failure and for safe failed-container metadata:
+
+```text
+PRIMARY_FAILURE_STAGE=VERIFY_READINESS
+PRIMARY_FAILURE_ERROR_CODE=READINESS_FAILED
+FAILED_CONTAINER_STATE=exited
+FAILED_CONTAINER_EXIT_CODE=1
+FAILED_CONTAINER_OOM_KILLED=false
+FAILED_CONTAINER_DIAGNOSTICS=saved
+FAILED_CONTAINER_LOG_PATH=/var/log/reals/deploy-failures/reals-backend-<timestamp>-sha-abcdef0.log
+```
+
+If `docker run` fails before Docker leaves an inspectable container,
+diagnostics are reported as `unavailable` and the primary failure remains
+`NEW_CONTAINER_START_FAILED`.
+
+Local log snapshots default to:
+
+```text
+/var/log/reals/deploy-failures
+```
+
+The directory is created with restrictive permissions, snapshot files are
+written with `0600` permissions, each snapshot stores only safe metadata plus a
+bounded `docker logs --tail 200`, and only the most recent five snapshots
+created by this mechanism are retained. Snapshot creation and retention cleanup
+are best-effort: they must not block automatic rollback or disabled-mode
+cleanup.
+
+Snapshot files can contain sensitive runtime application logs. GitHub Actions
+must receive only the controlled markers and local path. Operators should
+inspect the file only through an authorized SSM session:
+
+```text
+sudo less <diagnostics path>
+```
+
 ## Deployment Summary Safety
 
 The production GitHub Step Summary includes controlled fields only:
@@ -237,13 +283,20 @@ The production GitHub Step Summary includes controlled fields only:
 - Deployment stage
 - Error code
 - Error detail
+- Failed container state
+- Failed container exit code
+- Failed container OOM killed
+- Diagnostics
+- Diagnostics path
 - Readiness result
 - Ping result
 - Rollback occurred
 
 The summary must not include the env file, database password, Firebase secrets,
-Sightengine credentials, raw SSM stdout/stderr, raw container logs or raw HTTP
-response bodies.
+Sightengine credentials, raw SSM stdout/stderr, failed-container log contents,
+raw container logs or raw HTTP response bodies. When primary failure markers
+exist, `Deployment stage` and `Error code` describe the original failed new
+deployment rather than later rollback health-check activity.
 
 ## Pending Before Real Production
 
