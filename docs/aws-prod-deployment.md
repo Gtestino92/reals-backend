@@ -261,6 +261,10 @@ created by this mechanism are retained. Snapshot creation and retention cleanup
 are best-effort: they must not block automatic rollback or disabled-mode
 cleanup.
 
+`DEPLOY_FAILURE_LOG_DIR` must not be `/`, must not contain `..` path
+components, and if it already exists it must already be a secure dedicated
+directory. The script never changes permissions on a pre-existing directory.
+
 Snapshot files can contain sensitive runtime application logs. GitHub Actions
 must receive only the controlled markers and local path. Operators should
 inspect the file only through an authorized SSM session:

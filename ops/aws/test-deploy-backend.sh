@@ -71,6 +71,12 @@ chmod_modes_supported() {
   [[ "$(stat -c '%a' "$probe_dir" 2>/dev/null || true)" == "700" ]]
 }
 
+set_fake_mode() {
+  local path="$1"
+  local mode="$2"
+  printf '%s\t%s\n' "$path" "$mode" >> "$TEST_ROOT/modes.tsv"
+}
+
 diagnostics_path_from_output() {
   local file="$1"
   grep -E '^FAILED_CONTAINER_LOG_PATH=' "$file" | tail -n 1 | cut -d= -f2-
@@ -134,9 +140,11 @@ create_stub_environment() {
   TEST_ROOT="$(mktemp -d)"
   export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID PREVIOUS_IMAGE_REF SIMULATED_APP_LOG
   unset DOCKER_PULL_FAIL DOCKER_PULL_OUTPUT DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_NEW_RUN_EXITS DOCKER_NEW_RUN_STATUS DOCKER_NEW_RUN_EXIT_CODE DOCKER_NEW_RUN_OOM DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL DOCKER_RMI_FAIL DOCKER_LOG_LINE_COUNT DOCKER_LOG_FAIL CURL_MODE ROLLBACK_CURL_MODE ROLLBACK_MODE
-  mkdir -p "$TEST_ROOT/bin"
+  /usr/bin/mkdir -p "$TEST_ROOT/bin"
   printf 'SPRING_PROFILES_ACTIVE=dev\n' > "$TEST_ROOT/backend.env"
   : > "$TEST_ROOT/docker.log"
+  : > "$TEST_ROOT/chmod.log"
+  : > "$TEST_ROOT/modes.tsv"
 
   cat > "$TEST_ROOT/bin/docker" <<'STUB'
 #!/usr/bin/env bash
@@ -377,7 +385,75 @@ case "$url" in
 esac
 STUB
 
-  chmod +x "$TEST_ROOT/bin/docker" "$TEST_ROOT/bin/curl"
+  cat > "$TEST_ROOT/bin/mkdir" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=""
+args=()
+while [[ $# -gt 0 ]]; do
+  case "${1:-}" in
+    -m)
+      mode="${2:-}"
+      shift 2
+      ;;
+    -m*)
+      mode="${1#-m}"
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+/usr/bin/mkdir "${args[@]}"
+if [[ -n "$mode" ]]; then
+  for arg in "${args[@]}"; do
+    case "$arg" in
+      -*) ;;
+      *) printf '%s\t%s\n' "$arg" "$mode" >> "$TEST_ROOT/modes.tsv" ;;
+    esac
+  done
+fi
+STUB
+
+  cat > "$TEST_ROOT/bin/chmod" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "chmod $*" >> "$TEST_ROOT/chmod.log"
+/usr/bin/chmod "$@"
+
+mode="${1:-}"
+shift || true
+if [[ "$mode" =~ ^[0-7]+$ ]]; then
+  for path in "$@"; do
+    printf '%s\t%s\n' "$path" "$mode" >> "$TEST_ROOT/modes.tsv"
+  done
+fi
+STUB
+
+  cat > "$TEST_ROOT/bin/stat" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "-c" && "${2:-}" == "%a" && $# -eq 3 ]]; then
+  path="$3"
+  if [[ -f "$TEST_ROOT/modes.tsv" ]]; then
+    mode="$(awk -F '\t' -v path="$path" '$1 == path { value = $2 } END { if (value != "") print value }' "$TEST_ROOT/modes.tsv")"
+    if [[ -n "$mode" ]]; then
+      printf '%s\n' "$mode"
+      exit 0
+    fi
+  fi
+fi
+
+/usr/bin/stat "$@"
+STUB
+
+  chmod +x "$TEST_ROOT/bin/docker" "$TEST_ROOT/bin/curl" "$TEST_ROOT/bin/mkdir" "$TEST_ROOT/bin/chmod" "$TEST_ROOT/bin/stat"
   export PATH="$TEST_ROOT/bin:$PATH"
   export ENV_FILE="$TEST_ROOT/backend.env"
   export HEALTH_RETRIES=2
@@ -746,6 +822,7 @@ failed_container_snapshot_retention_keeps_recent_files_only() {
 
   seed_previous_container
   mkdir -p "$DEPLOY_FAILURE_LOG_DIR"
+  set_fake_mode "$DEPLOY_FAILURE_LOG_DIR" "700"
   for index in 1 2 3 4 5 6; do
     printf 'old %s\n' "$index" > "$DEPLOY_FAILURE_LOG_DIR/reals-backend-2026010${index}T000000Z-sha-000000${index}.log"
     touch -t "2026010${index}0000" "$DEPLOY_FAILURE_LOG_DIR/reals-backend-2026010${index}T000000Z-sha-000000${index}.log"
@@ -764,6 +841,56 @@ snapshot_write_failure_does_not_prevent_rollback() {
   export CURL_MODE=readiness_fail
   printf 'not a directory\n' > "$TEST_ROOT/not-a-dir"
   export DEPLOY_FAILURE_LOG_DIR="$TEST_ROOT/not-a-dir"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
+}
+
+root_failure_log_dir_is_rejected_without_chmod_and_rollback_continues() {
+  seed_previous_container
+  export CURL_MODE=readiness_fail
+  export DEPLOY_FAILURE_LOG_DIR="/"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_not_contains "$TEST_ROOT/chmod.log" "chmod 700 /"
+}
+
+preexisting_insecure_failure_log_dir_is_not_chmodded() {
+  local insecure_dir="$TEST_ROOT/insecure-deploy-failures"
+
+  seed_previous_container
+  mkdir -p "$insecure_dir"
+  set_fake_mode "$insecure_dir" "755"
+  export CURL_MODE=readiness_fail
+  export DEPLOY_FAILURE_LOG_DIR="$insecure_dir"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_not_contains "$TEST_ROOT/chmod.log" "chmod 700 $insecure_dir"
+}
+
+new_failure_log_dir_is_created_with_0700() {
+  local new_dir="$TEST_ROOT/new-deploy-failures"
+
+  seed_previous_container
+  export CURL_MODE=readiness_fail
+  export DEPLOY_FAILURE_LOG_DIR="$new_dir"
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "FAILED_CONTAINER_DIAGNOSTICS=saved"
+  assert_file_mode "$new_dir" "700"
+  assert_contains "$TEST_ROOT/modes.tsv" "$new_dir"$'\t'"700"
+}
+
+invalid_failure_log_dir_validation_does_not_prevent_rollback() {
+  seed_previous_container
+  export CURL_MODE=readiness_fail
+  export DEPLOY_FAILURE_LOG_DIR="$TEST_ROOT/../unsafe-deploy-failures"
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
@@ -1045,6 +1172,10 @@ test_case "failed container snapshot contains limited tail" failed_container_sna
 test_case "failed container snapshot permissions are restrictive" failed_container_snapshot_permissions_are_restrictive
 test_case "failed container snapshot retention keeps recent files only" failed_container_snapshot_retention_keeps_recent_files_only
 test_case "snapshot write failure does not prevent rollback" snapshot_write_failure_does_not_prevent_rollback
+test_case "root failure log dir is rejected without chmod and rollback continues" root_failure_log_dir_is_rejected_without_chmod_and_rollback_continues
+test_case "preexisting insecure failure log dir is not chmodded" preexisting_insecure_failure_log_dir_is_not_chmodded
+test_case "new failure log dir is created with 0700" new_failure_log_dir_is_created_with_0700
+test_case "invalid failure log dir validation does not prevent rollback" invalid_failure_log_dir_validation_does_not_prevent_rollback
 test_case "disabled rollback does not start previous image on startup failure" disabled_rollback_does_not_start_previous_image_on_start_failure
 test_case "disabled rollback does not start previous image on health failure" disabled_rollback_does_not_start_previous_image_on_health_failure
 test_case "disabled rollback captures diagnostics before cleanup" disabled_rollback_captures_diagnostics_before_cleanup

@@ -169,6 +169,9 @@ during startup, readiness or ping.
 The failed-container log snapshot is local host evidence only. It is written
 with restrictive permissions, keeps only a small number of recent snapshots,
 and stores only a bounded `docker logs --tail 200` output plus safe metadata.
+The log directory must not be `/`, must not contain `..` path components, and
+if it already exists it must already be a secure dedicated directory; the script
+does not change permissions on a pre-existing directory.
 The snapshot can contain sensitive runtime details from application logs, so it
 must be inspected only through an authorized SSM session:
 

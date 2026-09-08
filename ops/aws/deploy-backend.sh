@@ -216,6 +216,46 @@ prune_failed_container_logs_best_effort() {
   )
 }
 
+failure_log_dir_path_is_allowed() {
+  local directory="$1"
+
+  [[ "$directory" =~ ^/[A-Za-z0-9_./-]+$ ]] || return 1
+  [[ "$directory" != "/" ]] || return 1
+  [[ ! "$directory" =~ (^|/)\.\.(/|$) ]] || return 1
+}
+
+failure_log_dir_is_secure() {
+  local directory="$1"
+  local mode
+  local last_three
+  local group_digit
+  local other_digit
+
+  [[ -d "$directory" && ! -L "$directory" ]] || return 1
+  [[ -w "$directory" && -x "$directory" ]] || return 1
+
+  mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
+  [[ "$mode" =~ ^[0-7]+$ ]] || return 1
+  last_three="${mode: -3}"
+  group_digit="${last_three:1:1}"
+  other_digit="${last_three:2:1}"
+  [[ "$group_digit" == "0" && "$other_digit" == "0" ]]
+}
+
+prepare_failure_log_dir() {
+  local directory="$1"
+
+  failure_log_dir_path_is_allowed "$directory" || return 1
+
+  if [[ -e "$directory" ]]; then
+    failure_log_dir_is_secure "$directory"
+    return
+  fi
+
+  mkdir -p -m 700 "$directory" || return 1
+  failure_log_dir_is_secure "$directory"
+}
+
 save_failed_container_log_snapshot() {
   local image_tag="$1"
   local expected_revision="$2"
@@ -228,7 +268,7 @@ save_failed_container_log_snapshot() {
   local log_path
   local temp_path
 
-  if [[ ! "$DEPLOY_FAILURE_LOG_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]]; then
+  if ! prepare_failure_log_dir "$DEPLOY_FAILURE_LOG_DIR" >/dev/null 2>&1; then
     echo "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
     echo "FAILED_CONTAINER_LOG_PATH=none"
     return 0
@@ -244,8 +284,6 @@ save_failed_container_log_snapshot() {
 
   if (
     umask 077
-    mkdir -p "$DEPLOY_FAILURE_LOG_DIR" || exit 1
-    chmod 700 "$DEPLOY_FAILURE_LOG_DIR" || exit 1
     {
       printf 'timestamp=%s\n' "$timestamp"
       printf 'image_tag=%s\n' "$image_tag"
@@ -258,6 +296,7 @@ save_failed_container_log_snapshot() {
     } > "$temp_path" || exit 1
     chmod 600 "$temp_path" || exit 1
     mv -f "$temp_path" "$log_path" || exit 1
+    chmod 600 "$log_path" || exit 1
     [[ -s "$log_path" ]] || exit 1
     prune_failed_container_logs_best_effort "$DEPLOY_FAILURE_LOG_DIR" "$safe_container_name" || true
   ) >/dev/null 2>&1; then
