@@ -30,12 +30,15 @@ read as an architecture document or changelog.
   Nginx or load-balancer boundary, JVM/container settings, private PostgreSQL,
   S3 bucket, Firebase project, App Check mode, allowed app ids and readiness
   checks.
-- Promote immutable release SHAs or version tags only; dev can continue using
-  the existing `development` and `sha-*` image workflow.
-- Define backup/restore and rollback procedures, including how failed Flyway
-  migrations are handled for a production database.
-- Keep automatic dev rollback separate from production promotion. Production
-  rollback must be an explicit operator procedure against a known release.
+- Promote immutable `master` ancestor SHAs only through the prepared
+  `Deploy AWS Prod` workflow; do not deploy `latest`, `master` or
+  `development` tags.
+- Complete the real production backup/restore procedure and restore drill. The
+  repository workflow intentionally performs application rollback only and never
+  automatic database rollback.
+- Keep Flyway migrations intended for production N-1 compatible as documented
+  in `docs/aws-prod-deployment.md`; if a migration is not N-1 compatible, the
+  production deploy must use `ROLLBACK_MODE=disabled`.
 
 ### Credential and template hygiene
 

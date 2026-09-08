@@ -10,10 +10,16 @@ PING_URL="${PING_URL:-http://127.0.0.1:8080/api/ping}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-18}"
 HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-5}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-5}"
+ROLLBACK_MODE="${ROLLBACK_MODE:-automatic}"
+DEPLOY_FAILURE_LOG_DIR="${DEPLOY_FAILURE_LOG_DIR:-/var/log/reals/deploy-failures}"
+DEPLOY_FAILURE_LOG_RETENTION="${DEPLOY_FAILURE_LOG_RETENTION:-5}"
+DEPLOY_FAILURE_LOG_TAIL="${DEPLOY_FAILURE_LOG_TAIL:-200}"
 
 PREVIOUS_CONTAINER_EXISTS=false
 PREVIOUS_IMAGE_REF=""
 PREVIOUS_IMAGE_ID=""
+PRIMARY_FAILURE_STAGE=""
+PRIMARY_FAILURE_ERROR_CODE=""
 
 emit_stage() {
   echo "DEPLOY_STAGE=$1"
@@ -27,6 +33,18 @@ emit_error() {
 
 emit_error_detail() {
   echo "ERROR_DETAIL=$1"
+}
+
+record_primary_failure() {
+  local stage="$1"
+  local error_code="$2"
+
+  if [[ -z "$PRIMARY_FAILURE_STAGE" && -z "$PRIMARY_FAILURE_ERROR_CODE" ]]; then
+    PRIMARY_FAILURE_STAGE="$stage"
+    PRIMARY_FAILURE_ERROR_CODE="$error_code"
+    echo "PRIMARY_FAILURE_STAGE=$PRIMARY_FAILURE_STAGE"
+    echo "PRIMARY_FAILURE_ERROR_CODE=$PRIMARY_FAILURE_ERROR_CODE"
+  fi
 }
 
 fail() {
@@ -49,6 +67,15 @@ validate_inputs() {
   local expected_tag="sha-${expected_revision:0:7}"
   [[ "$image_tag" == "$expected_tag" ]] ||
     fail "TAG_REVISION_MISMATCH" "image tag does not match expected revision"
+}
+
+validate_rollback_mode() {
+  case "$ROLLBACK_MODE" in
+    automatic|disabled) ;;
+    *)
+      fail "INVALID_ROLLBACK_MODE" "ROLLBACK_MODE must be either automatic or disabled"
+      ;;
+  esac
 }
 
 require_prerequisites() {
@@ -111,6 +138,51 @@ container_running() {
   [[ "$(docker container inspect --format '{{ .State.Running }}' "$CONTAINER_NAME" 2>/dev/null || true)" == "true" ]]
 }
 
+safe_diagnostic_value() {
+  local value="$1"
+  local fallback="${2:-unknown}"
+
+  if [[ "$value" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
+safe_exit_code_value() {
+  local value="$1"
+
+  if [[ "$value" =~ ^-?[0-9]+$ ]]; then
+    printf '%s\n' "$value"
+  else
+    printf 'unknown\n'
+  fi
+}
+
+safe_bool_value() {
+  local value="$1"
+
+  case "$value" in
+    true|false) printf '%s\n' "$value" ;;
+    *) printf 'unknown\n' ;;
+  esac
+}
+
+safe_file_component() {
+  local value="$1"
+  local fallback="$2"
+  local sanitized
+
+  sanitized="$(printf '%s' "$value" | tr -c 'A-Za-z0-9_.-' '-')"
+  sanitized="${sanitized#-}"
+  sanitized="${sanitized%-}"
+  if [[ -n "$sanitized" ]]; then
+    printf '%s\n' "$sanitized"
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
 capture_current_deployment() {
   emit_stage "CAPTURE_CURRENT"
   if container_exists; then
@@ -121,6 +193,146 @@ capture_current_deployment() {
   else
     echo "PREVIOUS_CONTAINER_EXISTS=false"
   fi
+}
+
+prune_failed_container_logs_best_effort() {
+  local directory="$1"
+  local safe_container_name="$2"
+  local retention="$DEPLOY_FAILURE_LOG_RETENTION"
+  local old_file
+
+  [[ "$retention" =~ ^[0-9]+$ ]] || retention=5
+  (( retention > 0 )) || retention=5
+
+  while IFS= read -r old_file; do
+    [[ -n "$old_file" ]] || continue
+    rm -f -- "$old_file" >/dev/null 2>&1 || true
+  done < <(
+    find "$directory" -maxdepth 1 -type f \
+      -name "${safe_container_name}-*-sha-???????.log" \
+      -printf '%T@ %p\n' 2>/dev/null |
+      sort -rn |
+      awk -v keep="$retention" 'NR > keep { sub(/^[^ ]+ /, ""); print }'
+  )
+}
+
+failure_log_dir_path_is_allowed() {
+  local directory="$1"
+
+  [[ "$directory" =~ ^/[A-Za-z0-9_./-]+$ ]] || return 1
+  [[ "$directory" != "/" ]] || return 1
+  [[ ! "$directory" =~ (^|/)\.\.(/|$) ]] || return 1
+}
+
+failure_log_dir_is_secure() {
+  local directory="$1"
+  local mode
+  local last_three
+  local group_digit
+  local other_digit
+
+  [[ -d "$directory" && ! -L "$directory" ]] || return 1
+  [[ -w "$directory" && -x "$directory" ]] || return 1
+
+  mode="$(stat -c '%a' "$directory" 2>/dev/null || true)"
+  [[ "$mode" =~ ^[0-7]+$ ]] || return 1
+  last_three="${mode: -3}"
+  group_digit="${last_three:1:1}"
+  other_digit="${last_three:2:1}"
+  [[ "$group_digit" == "0" && "$other_digit" == "0" ]]
+}
+
+prepare_failure_log_dir() {
+  local directory="$1"
+
+  failure_log_dir_path_is_allowed "$directory" || return 1
+
+  if [[ -e "$directory" ]]; then
+    failure_log_dir_is_secure "$directory"
+    return
+  fi
+
+  mkdir -p -m 700 "$directory" || return 1
+  failure_log_dir_is_secure "$directory"
+}
+
+save_failed_container_log_snapshot() {
+  local image_tag="$1"
+  local expected_revision="$2"
+  local failed_state="$3"
+  local failed_exit_code="$4"
+  local failed_oom_killed="$5"
+  local tail_count="$DEPLOY_FAILURE_LOG_TAIL"
+  local timestamp
+  local safe_container_name
+  local log_path
+  local temp_path
+
+  if ! prepare_failure_log_dir "$DEPLOY_FAILURE_LOG_DIR" >/dev/null 2>&1; then
+    echo "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+    echo "FAILED_CONTAINER_LOG_PATH=none"
+    return 0
+  fi
+
+  [[ "$tail_count" =~ ^[0-9]+$ ]] || tail_count=200
+  (( tail_count > 0 )) || tail_count=200
+
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || printf 'unknown-time')"
+  safe_container_name="$(safe_file_component "$CONTAINER_NAME" "reals-backend")"
+  log_path="${DEPLOY_FAILURE_LOG_DIR}/${safe_container_name}-${timestamp}-${image_tag}.log"
+  temp_path="${log_path}.tmp.$$"
+
+  if (
+    umask 077
+    {
+      printf 'timestamp=%s\n' "$timestamp"
+      printf 'image_tag=%s\n' "$image_tag"
+      printf 'revision=%s\n' "$expected_revision"
+      printf 'container_status=%s\n' "$failed_state"
+      printf 'exit_code=%s\n' "$failed_exit_code"
+      printf 'oom_killed=%s\n' "$failed_oom_killed"
+      printf '\n'
+      docker logs --tail "$tail_count" "$CONTAINER_NAME" 2>&1 || true
+    } > "$temp_path" || exit 1
+    chmod 600 "$temp_path" || exit 1
+    mv -f "$temp_path" "$log_path" || exit 1
+    chmod 600 "$log_path" || exit 1
+    [[ -s "$log_path" ]] || exit 1
+    prune_failed_container_logs_best_effort "$DEPLOY_FAILURE_LOG_DIR" "$safe_container_name" || true
+  ) >/dev/null 2>&1; then
+    echo "FAILED_CONTAINER_DIAGNOSTICS=saved"
+    echo "FAILED_CONTAINER_LOG_PATH=$log_path"
+  else
+    rm -f -- "$temp_path" >/dev/null 2>&1 || true
+    echo "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+    echo "FAILED_CONTAINER_LOG_PATH=none"
+  fi
+}
+
+capture_failed_container_diagnostics() {
+  local image_tag="$1"
+  local expected_revision="$2"
+  local failed_state="unknown"
+  local failed_exit_code="unknown"
+  local failed_oom_killed="unknown"
+
+  if ! container_exists; then
+    echo "FAILED_CONTAINER_STATE=unknown"
+    echo "FAILED_CONTAINER_EXIT_CODE=unknown"
+    echo "FAILED_CONTAINER_OOM_KILLED=unknown"
+    echo "FAILED_CONTAINER_DIAGNOSTICS=unavailable"
+    echo "FAILED_CONTAINER_LOG_PATH=none"
+    return 0
+  fi
+
+  failed_state="$(safe_diagnostic_value "$(docker container inspect --format '{{ .State.Status }}' "$CONTAINER_NAME" 2>/dev/null || true)")"
+  failed_exit_code="$(safe_exit_code_value "$(docker container inspect --format '{{ .State.ExitCode }}' "$CONTAINER_NAME" 2>/dev/null || true)")"
+  failed_oom_killed="$(safe_bool_value "$(docker container inspect --format '{{ .State.OOMKilled }}' "$CONTAINER_NAME" 2>/dev/null || true)")"
+
+  echo "FAILED_CONTAINER_STATE=$failed_state"
+  echo "FAILED_CONTAINER_EXIT_CODE=$failed_exit_code"
+  echo "FAILED_CONTAINER_OOM_KILLED=$failed_oom_killed"
+  save_failed_container_log_snapshot "$image_tag" "$expected_revision" "$failed_state" "$failed_exit_code" "$failed_oom_killed"
 }
 
 cleanup_old_backend_images() {
@@ -223,12 +435,14 @@ wait_for_endpoint() {
 verify_runtime_health() {
   emit_stage "VERIFY_READINESS"
   if ! wait_for_endpoint "readiness" "$READINESS_URL" "UP"; then
+    record_primary_failure "VERIFY_READINESS" "READINESS_FAILED"
     echo "ERROR_CODE=READINESS_FAILED"
     return 1
   fi
 
   emit_stage "VERIFY_PING"
   if ! wait_for_endpoint "ping" "$PING_URL" "ok"; then
+    record_primary_failure "VERIFY_PING" "PING_FAILED"
     echo "ERROR_CODE=PING_FAILED"
     return 1
   fi
@@ -263,12 +477,32 @@ rollback_previous_container() {
   return 1
 }
 
+handle_failed_deployment() {
+  local image_tag="$1"
+  local expected_revision="$2"
+
+  capture_failed_container_diagnostics "$image_tag" "$expected_revision"
+
+  if [[ "$ROLLBACK_MODE" == "automatic" ]]; then
+    rollback_previous_container
+    return 1
+  fi
+
+  emit_stage "ROLLBACK_DISABLED"
+  cleanup_existing_container_best_effort
+  echo "DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED"
+  echo "ROLLBACK_MODE=disabled"
+  emit_error_detail "ROLLBACK_DISABLED"
+  return 1
+}
+
 deploy() {
   local image_tag="$1"
   local expected_revision="$2"
   local image
 
   validate_inputs "$image_tag" "$expected_revision"
+  validate_rollback_mode
   require_prerequisites
 
   image="$(requested_image "$image_tag")"
@@ -283,13 +517,14 @@ deploy() {
   fi
 
   if ! start_container "$image"; then
+    record_primary_failure "REPLACE_CONTAINER" "NEW_CONTAINER_START_FAILED"
     echo "ERROR_CODE=NEW_CONTAINER_START_FAILED"
-    rollback_previous_container
+    handle_failed_deployment "$image_tag" "$expected_revision"
     return 1
   fi
 
   if ! verify_runtime_health; then
-    rollback_previous_container
+    handle_failed_deployment "$image_tag" "$expected_revision"
     return 1
   fi
 

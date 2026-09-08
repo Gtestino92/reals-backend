@@ -147,12 +147,40 @@ existing container.
 If the new container fails to start, or if internal EC2 checks fail against
 `127.0.0.1`, the script:
 
-1. Removes the failed container if present.
-2. Recreates `reals-backend` from the previously captured local image ID.
-3. Runs the same internal readiness and ping checks.
-4. Prints `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
-5. Prints `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
-6. Returns non-zero even when rollback succeeds.
+1. Records the primary failure stage and controlled error code before rollback
+   starts.
+2. Captures safe failed-container metadata when the new container exists:
+   container state, exit code and OOM-killed flag.
+3. Saves a bounded local log snapshot on the EC2 host under
+   `/var/log/reals/deploy-failures` by default.
+4. Removes the failed container if present.
+5. Recreates `reals-backend` from the previously captured local image ID.
+6. Runs the same internal readiness and ping checks.
+7. Prints `DEPLOY_RESULT=ROLLED_BACK` when rollback succeeds.
+8. Prints `DEPLOY_RESULT=ROLLBACK_FAILED` when rollback cannot be verified.
+9. Returns non-zero even when rollback succeeds.
+
+Rollback health checks may emit their own internal `DEPLOY_STAGE` and
+`ERROR_CODE` markers, but the workflow summary prefers
+`PRIMARY_FAILURE_STAGE` and `PRIMARY_FAILURE_ERROR_CODE` when present. A
+successful rollback therefore does not hide whether the new deployment failed
+during startup, readiness or ping.
+
+The failed-container log snapshot is local host evidence only. It is written
+with restrictive permissions, keeps only a small number of recent snapshots,
+and stores only a bounded `docker logs --tail 200` output plus safe metadata.
+The log directory must not be `/`, must not contain `..` path components, and
+if it already exists it must already be a secure dedicated directory; the script
+does not change permissions on a pre-existing directory.
+The snapshot can contain sensitive runtime details from application logs, so it
+must be inspected only through an authorized SSM session:
+
+```text
+sudo less <diagnostics path>
+```
+
+Do not copy this log content into GitHub Actions, artifacts, tickets or shared
+channels without deliberate redaction.
 
 The workflow then performs public HTTPS smoke checks through Nginx only after
 SSM succeeds. If internal checks succeeded but public readiness or ping fails,
@@ -221,6 +249,13 @@ DEPLOY_RESULT=ROLLBACK_FAILED
 DEPLOYED_REVISION=<full-sha>
 DEPLOYED_IMAGE=<immutable-image>
 ROLLBACK_IMAGE=<previous-image-id>
+PRIMARY_FAILURE_STAGE=...
+PRIMARY_FAILURE_ERROR_CODE=...
+FAILED_CONTAINER_STATE=...
+FAILED_CONTAINER_EXIT_CODE=...
+FAILED_CONTAINER_OOM_KILLED=...
+FAILED_CONTAINER_DIAGNOSTICS=saved|unavailable
+FAILED_CONTAINER_LOG_PATH=<local-ec2-path-or-none>
 ERROR_CODE=...
 ERROR_DETAIL=...
 ```
@@ -231,11 +266,12 @@ internally and maps known causes to controlled `ERROR_DETAIL` values such as
 `DNS_FAILURE`, `TLS_FAILURE`, `NETWORK_TIMEOUT`, or `UNCLASSIFIED`. The primary
 failure remains `ERROR_CODE=IMAGE_PULL_FAILED`.
 
-The workflow summary parses and publishes only controlled markers. It does not
-include arbitrary SSM stdout, stderr, Docker logs, raw Docker pull output, HTTP
-response bodies, `/etc/reals/backend.env`, environment values, credentials,
-tokens, or application logs. Inspect detailed container logs on the EC2 host
-through an authorized SSM session.
+The workflow summary parses and publishes only controlled markers. It may show
+the local diagnostics path, but it does not include arbitrary SSM stdout,
+stderr, Docker logs, failed-container log contents, raw Docker pull output,
+HTTP response bodies, `/etc/reals/backend.env`, environment values,
+credentials, tokens, or application logs. Inspect detailed container logs on
+the EC2 host through an authorized SSM session.
 
 ## GitHub Environment `dev`
 
@@ -383,30 +419,30 @@ ENV_FILE=/etc/reals/backend.env
 PORT_BINDING=127.0.0.1:8080:8080
 READINESS_URL=http://127.0.0.1:8080/actuator/health/readiness
 PING_URL=http://127.0.0.1:8080/api/ping
+DEPLOY_FAILURE_LOG_DIR=/var/log/reals/deploy-failures
+DEPLOY_FAILURE_LOG_RETENTION=5
+DEPLOY_FAILURE_LOG_TAIL=200
 ```
 
 Override these only through controlled host environment variables when the dev
 runtime shape intentionally changes.
 
-## Future Production Design
+## Production Deployment
 
-Do not reuse the dev workflow or role for production.
+Do not reuse the dev workflow or role for production. The prepared production
+workflow and production rollback/Flyway policy are documented in
+`docs/aws-prod-deployment.md`.
 
-Production preparation is a separate task. Before the first production
-deployment, the team must:
+Before the first production deployment, the team must still:
 
 1. Review commits exclusive to `master`.
 2. Reconcile branch divergence intentionally.
 3. Create a reviewed promotion from `development` to `master`.
 4. Validate Flyway migrations, backups, and rollback implications.
-5. Configure a separate GitHub Environment such as `prod`.
+5. Configure the separate GitHub Environment `prod`.
 6. Configure a separate AWS OIDC deployment role.
-7. Use a separate manually approved production deployment workflow.
-8. Deploy an immutable SHA or release tag, never moving `master` or `latest`.
-
-The intended production design also requires separate EC2/runtime variables,
-required reviewers or environment approval, a documented production rollback
-procedure, and no shared dev/prod AWS role or environment configuration.
+7. Configure separate EC2/runtime variables and required reviewers.
+8. Deploy an immutable SHA, never `master` or `latest`.
 
 When release versioning is introduced, prefer an immutable release tag such as
 `v1.0.0`. Until then, an exact SHA known to belong to the reviewed production
