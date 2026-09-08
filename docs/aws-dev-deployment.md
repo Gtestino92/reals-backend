@@ -388,25 +388,22 @@ PING_URL=http://127.0.0.1:8080/api/ping
 Override these only through controlled host environment variables when the dev
 runtime shape intentionally changes.
 
-## Future Production Design
+## Production Deployment
 
-Do not reuse the dev workflow or role for production.
+Do not reuse the dev workflow or role for production. The prepared production
+workflow and production rollback/Flyway policy are documented in
+`docs/aws-prod-deployment.md`.
 
-Production preparation is a separate task. Before the first production
-deployment, the team must:
+Before the first production deployment, the team must still:
 
 1. Review commits exclusive to `master`.
 2. Reconcile branch divergence intentionally.
 3. Create a reviewed promotion from `development` to `master`.
 4. Validate Flyway migrations, backups, and rollback implications.
-5. Configure a separate GitHub Environment such as `prod`.
+5. Configure the separate GitHub Environment `prod`.
 6. Configure a separate AWS OIDC deployment role.
-7. Use a separate manually approved production deployment workflow.
-8. Deploy an immutable SHA or release tag, never moving `master` or `latest`.
-
-The intended production design also requires separate EC2/runtime variables,
-required reviewers or environment approval, a documented production rollback
-procedure, and no shared dev/prod AWS role or environment configuration.
+7. Configure separate EC2/runtime variables and required reviewers.
+8. Deploy an immutable SHA, never `master` or `latest`.
 
 When release versioning is introduced, prefer an immutable release tag such as
 `v1.0.0`. Until then, an exact SHA known to belong to the reviewed production

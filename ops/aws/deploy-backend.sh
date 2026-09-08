@@ -10,6 +10,7 @@ PING_URL="${PING_URL:-http://127.0.0.1:8080/api/ping}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-18}"
 HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-5}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-5}"
+ROLLBACK_MODE="${ROLLBACK_MODE:-automatic}"
 
 PREVIOUS_CONTAINER_EXISTS=false
 PREVIOUS_IMAGE_REF=""
@@ -49,6 +50,15 @@ validate_inputs() {
   local expected_tag="sha-${expected_revision:0:7}"
   [[ "$image_tag" == "$expected_tag" ]] ||
     fail "TAG_REVISION_MISMATCH" "image tag does not match expected revision"
+}
+
+validate_rollback_mode() {
+  case "$ROLLBACK_MODE" in
+    automatic|disabled) ;;
+    *)
+      fail "INVALID_ROLLBACK_MODE" "ROLLBACK_MODE must be either automatic or disabled"
+      ;;
+  esac
 }
 
 require_prerequisites() {
@@ -263,12 +273,27 @@ rollback_previous_container() {
   return 1
 }
 
+handle_failed_deployment() {
+  if [[ "$ROLLBACK_MODE" == "automatic" ]]; then
+    rollback_previous_container
+    return 1
+  fi
+
+  emit_stage "ROLLBACK_DISABLED"
+  cleanup_existing_container_best_effort
+  echo "DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED"
+  echo "ROLLBACK_MODE=disabled"
+  emit_error_detail "ROLLBACK_DISABLED"
+  return 1
+}
+
 deploy() {
   local image_tag="$1"
   local expected_revision="$2"
   local image
 
   validate_inputs "$image_tag" "$expected_revision"
+  validate_rollback_mode
   require_prerequisites
 
   image="$(requested_image "$image_tag")"
@@ -284,12 +309,12 @@ deploy() {
 
   if ! start_container "$image"; then
     echo "ERROR_CODE=NEW_CONTAINER_START_FAILED"
-    rollback_previous_container
+    handle_failed_deployment
     return 1
   fi
 
   if ! verify_runtime_health; then
-    rollback_previous_container
+    handle_failed_deployment
     return 1
   fi
 

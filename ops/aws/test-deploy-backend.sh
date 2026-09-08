@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_SCRIPT="$PROJECT_ROOT/ops/aws/deploy-backend.sh"
 WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/deploy-aws-dev.yml"
+PROD_WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/deploy-aws-prod.yml"
 CI_WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/ci.yml"
 
 FULL_REVISION="0123456789abcdef0123456789abcdef01234567"
@@ -43,6 +44,11 @@ assert_no_run_for_image() {
   fi
 }
 
+assert_file_empty() {
+  local file="$1"
+  [[ ! -s "$file" ]] || fail_test "expected $file to be empty"
+}
+
 line_number_for() {
   local file="$1"
   local pattern="$2"
@@ -68,7 +74,7 @@ assert_line_before() {
 create_stub_environment() {
   TEST_ROOT="$(mktemp -d)"
   export TEST_ROOT IMAGE PREVIOUS_IMAGE_ID PREVIOUS_IMAGE_REF SIMULATED_APP_LOG
-  unset DOCKER_PULL_FAIL DOCKER_PULL_OUTPUT DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL DOCKER_RMI_FAIL CURL_MODE ROLLBACK_CURL_MODE
+  unset DOCKER_PULL_FAIL DOCKER_PULL_OUTPUT DOCKER_LABEL_REVISION DOCKER_NEW_RUN_FAIL DOCKER_ROLLBACK_RUN_FAIL DOCKER_STOP_FAIL DOCKER_RM_FAIL DOCKER_RMI_FAIL CURL_MODE ROLLBACK_CURL_MODE ROLLBACK_MODE
   mkdir -p "$TEST_ROOT/bin"
   printf 'SPRING_PROFILES_ACTIVE=dev\n' > "$TEST_ROOT/backend.env"
   : > "$TEST_ROOT/docker.log"
@@ -476,8 +482,20 @@ successful_deployment() {
   assert_contains "$TEST_ROOT/out" "DEPLOYED_IMAGE=$IMAGE"
 }
 
+default_rollback_mode_is_automatic() {
+  seed_previous_container
+  export DOCKER_NEW_RUN_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=NEW_CONTAINER_START_FAILED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
+  assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
+  assert_contains "$TEST_ROOT/docker.log" "$PREVIOUS_IMAGE_ID"
+}
+
 readiness_failure_triggers_rollback() {
   seed_previous_container
+  export ROLLBACK_MODE=automatic
   export CURL_MODE=readiness_fail
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
@@ -488,6 +506,7 @@ readiness_failure_triggers_rollback() {
 
 ping_failure_triggers_rollback() {
   seed_previous_container
+  export ROLLBACK_MODE=automatic
   export CURL_MODE=ping_fail
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
@@ -498,12 +517,50 @@ ping_failure_triggers_rollback() {
 
 new_container_start_failure_triggers_rollback() {
   seed_previous_container
+  export ROLLBACK_MODE=automatic
   export DOCKER_NEW_RUN_FAIL=true
   run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
   expect_failure "$TEST_ROOT/out"
   assert_contains "$TEST_ROOT/out" "ERROR_CODE=NEW_CONTAINER_START_FAILED"
   assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=ROLLED_BACK"
   assert_contains "$TEST_ROOT/out" "ROLLBACK_IMAGE=$PREVIOUS_IMAGE_ID"
+}
+
+disabled_rollback_does_not_start_previous_image_on_start_failure() {
+  seed_previous_container
+  export ROLLBACK_MODE=disabled
+  export DOCKER_NEW_RUN_FAIL=true
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=NEW_CONTAINER_START_FAILED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_STAGE=ROLLBACK_DISABLED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED"
+  assert_contains "$TEST_ROOT/out" "ERROR_DETAIL=ROLLBACK_DISABLED"
+  assert_no_run_for_image "$TEST_ROOT/docker.log" "$PREVIOUS_IMAGE_ID"
+}
+
+disabled_rollback_does_not_start_previous_image_on_health_failure() {
+  seed_previous_container
+  export ROLLBACK_MODE=disabled
+  export CURL_MODE=readiness_fail
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=READINESS_FAILED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_STAGE=ROLLBACK_DISABLED"
+  assert_contains "$TEST_ROOT/out" "DEPLOY_RESULT=FAILED_ROLLBACK_DISABLED"
+  assert_contains "$TEST_ROOT/out" "ERROR_DETAIL=ROLLBACK_DISABLED"
+  assert_no_run_for_image "$TEST_ROOT/docker.log" "$PREVIOUS_IMAGE_ID"
+  [[ "$(cat "$TEST_ROOT/container_exists")" == "false" ]] ||
+    fail_test "expected failed new container to be removed"
+}
+
+invalid_rollback_mode_fails_before_docker() {
+  seed_previous_container
+  export ROLLBACK_MODE=manual
+  run_deploy "$TEST_ROOT/out" "$IMAGE_TAG" "$FULL_REVISION"
+  expect_failure "$TEST_ROOT/out"
+  assert_contains "$TEST_ROOT/out" "ERROR_CODE=INVALID_ROLLBACK_MODE"
+  assert_file_empty "$TEST_ROOT/docker.log"
 }
 
 rollback_startup_failure_reports_failure() {
@@ -576,6 +633,64 @@ workflow_does_not_dump_raw_ssm_output() {
   assert_not_contains "$WORKFLOW_FILE" "cat ssm-stderr.raw.txt"
 }
 
+prod_workflow_rejects_non_master_refs() {
+  assert_contains "$PROD_WORKFLOW_FILE" "Deploy AWS Prod only runs from refs/heads/master"
+  assert_contains "$PROD_WORKFLOW_FILE" 'if [[ "${GITHUB_REF}" != "refs/heads/master" ]]'
+}
+
+prod_workflow_uses_prod_environment_and_concurrency() {
+  assert_contains "$PROD_WORKFLOW_FILE" "environment: prod"
+  assert_contains "$PROD_WORKFLOW_FILE" "group: reals-backend-aws-prod"
+  assert_contains "$PROD_WORKFLOW_FILE" "cancel-in-progress: false"
+  assert_contains "$PROD_WORKFLOW_FILE" 'role-session-name: reals-backend-prod-deploy-${{ github.run_id }}'
+}
+
+prod_workflow_accepts_controlled_rollback_mode_choice() {
+  assert_contains "$PROD_WORKFLOW_FILE" "rollback_mode:"
+  assert_contains "$PROD_WORKFLOW_FILE" "type: choice"
+  assert_contains "$PROD_WORKFLOW_FILE" "default: automatic"
+  assert_contains "$PROD_WORKFLOW_FILE" 'ROLLBACK_MODE: ${{ inputs.rollback_mode }}'
+  assert_contains "$PROD_WORKFLOW_FILE" 'ROLLBACK_MODE=\($rollback_mode | @sh)'
+}
+
+prod_workflow_validates_master_ancestor_full_sha() {
+  assert_contains "$PROD_WORKFLOW_FILE" "git fetch --no-tags origin master"
+  assert_contains "$PROD_WORKFLOW_FILE" 'RESOLVED_REVISION="$(git rev-parse origin/master)"'
+  assert_contains "$PROD_WORKFLOW_FILE" "^[0-9a-fA-F]{40}$"
+  assert_contains "$PROD_WORKFLOW_FILE" 'git cat-file -e "${RESOLVED_REVISION}^{commit}"'
+  assert_contains "$PROD_WORKFLOW_FILE" 'git merge-base --is-ancestor "${RESOLVED_REVISION}" "origin/master"'
+}
+
+prod_workflow_uses_only_immutable_deploy_image_tag() {
+  assert_contains "$PROD_WORKFLOW_FILE" 'IMAGE_TAG="sha-${SHORT_SHA}"'
+  assert_contains "$PROD_WORKFLOW_FILE" 'IMAGE="${IMAGE_REPOSITORY}:${IMAGE_TAG}"'
+  assert_not_contains "$PROD_WORKFLOW_FILE" 'IMAGE_TAG="latest"'
+  assert_not_contains "$PROD_WORKFLOW_FILE" 'IMAGE_TAG="master"'
+  assert_not_contains "$PROD_WORKFLOW_FILE" 'IMAGE_TAG="development"'
+  assert_not_contains "$PROD_WORKFLOW_FILE" ':latest'
+}
+
+prod_workflow_summary_includes_required_fields() {
+  assert_contains "$PROD_WORKFLOW_FILE" "| Environment | prod |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Resolved revision |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Immutable image tag |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Target EC2 Name tag |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Rollback mode |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| SSM result |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Deployment result |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Deployment stage |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Error code |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Error detail |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Readiness result |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Ping result |"
+  assert_contains "$PROD_WORKFLOW_FILE" "| Rollback occurred |"
+}
+
+prod_workflow_does_not_dump_raw_ssm_output() {
+  assert_not_contains "$PROD_WORKFLOW_FILE" "cat ssm-stdout.raw.txt"
+  assert_not_contains "$PROD_WORKFLOW_FILE" "cat ssm-stderr.raw.txt"
+}
+
 current_container_stop_failure_reports_controlled_error() {
   seed_previous_container
   export DOCKER_STOP_FAIL=true
@@ -624,9 +739,13 @@ test_case "pull no-space failure reports controlled detail" pull_no_space_report
 test_case "pull failure output is not leaked" pull_failure_output_is_not_leaked
 test_case "revision label mismatch leaves current container untouched" revision_label_mismatch_leaves_current_container
 test_case "successful deploy reports immutable image" successful_deployment
+test_case "default ROLLBACK_MODE is automatic" default_rollback_mode_is_automatic
 test_case "readiness failure triggers rollback" readiness_failure_triggers_rollback
 test_case "ping failure triggers rollback" ping_failure_triggers_rollback
 test_case "new-container startup failure triggers rollback" new_container_start_failure_triggers_rollback
+test_case "disabled rollback does not start previous image on startup failure" disabled_rollback_does_not_start_previous_image_on_start_failure
+test_case "disabled rollback does not start previous image on health failure" disabled_rollback_does_not_start_previous_image_on_health_failure
+test_case "invalid rollback mode fails before Docker" invalid_rollback_mode_fails_before_docker
 test_case "rollback startup failure reports ROLLBACK_FAILED" rollback_startup_failure_reports_failure
 test_case "rollback health failure reports ROLLBACK_FAILED" rollback_health_failure_reports_failure
 test_case "successful rollback restores previous exact image" successful_rollback_restores_previous_exact_image
@@ -636,6 +755,13 @@ test_case "workflow SSM parameters include executionTimeout" workflow_parameters
 test_case "workflow requires DEPLOY_RESULT success marker" workflow_requires_controlled_success_marker
 test_case "workflow parses and publishes ERROR_DETAIL" workflow_parses_and_publishes_error_detail
 test_case "workflow does not dump raw SSM output" workflow_does_not_dump_raw_ssm_output
+test_case "prod workflow rejects non-master refs" prod_workflow_rejects_non_master_refs
+test_case "prod workflow uses prod environment and concurrency" prod_workflow_uses_prod_environment_and_concurrency
+test_case "prod workflow accepts controlled rollback mode choice" prod_workflow_accepts_controlled_rollback_mode_choice
+test_case "prod workflow validates master ancestor full SHA" prod_workflow_validates_master_ancestor_full_sha
+test_case "prod workflow uses only immutable deploy image tag" prod_workflow_uses_only_immutable_deploy_image_tag
+test_case "prod workflow summary includes required fields" prod_workflow_summary_includes_required_fields
+test_case "prod workflow does not dump raw SSM output" prod_workflow_does_not_dump_raw_ssm_output
 test_case "current container stop failure reports controlled error" current_container_stop_failure_reports_controlled_error
 test_case "current container remove failure reports controlled error" current_container_remove_failure_reports_controlled_error
 test_case "CI validates deployment scripts before Docker build" ci_validates_deployment_scripts_before_docker_build
