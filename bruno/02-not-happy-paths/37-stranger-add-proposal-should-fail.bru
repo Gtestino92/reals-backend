@@ -1,0 +1,33 @@
+meta {
+  name: 37 Stranger Add Proposal Should Fail
+  type: http
+  seq: 37
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeStrangerUserId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 1,
+    "proposedDateTimes": ["{{negativeSecondChatDateTime}}"]
+  }
+}
+
+script:post-response {
+  if (res.getStatus() !== 403) {
+    throw new Error(`Expected 403 Forbidden, got ${res.getStatus()}`);
+  }
+  const body = res.getBody();
+  if (!body || body.code !== "ACCESS_DENIED") {
+    throw new Error(`Expected ACCESS_DENIED, got ${body && body.code}`);
+  }
+}

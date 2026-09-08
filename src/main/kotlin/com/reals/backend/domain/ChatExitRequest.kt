@@ -27,6 +27,7 @@ enum class ChatExitReason {
     NO_LONGER_INTERESTED,
     INAPPROPRIATE_BEHAVIOR,
     HARASSMENT,
+    CHILD_SAFETY_CONCERN,
     OTHER
 }
 

@@ -36,16 +36,21 @@ Useful local helpers:
 - `POST /api/local-dev/jobs/chat-timeout/run`
 - `POST /api/local-dev/jobs/inactivity-check/run`
 - `POST /api/local-dev/jobs/visual-phase-expiration/run`
+- `POST /api/local-dev/jobs/visual-review-reminder/run`
 - `POST /api/local-dev/jobs/scheduling-activation/run`
 - `POST /api/local-dev/jobs/scheduling-timeout/run`
 - `POST /api/local-dev/jobs/second-chat-reminder/run`
 - `POST /api/local-dev/jobs/second-chat-lifecycle/run`
+- `POST /api/local-dev/jobs/user-reliability-cleanup/run`
 - `POST /api/local-dev/timeouts/chats/{chatId}/expire-now`
 - `POST /api/local-dev/timeouts/chats/{chatId}/read-only-expire-now`
 - `POST /api/local-dev/timeouts/matches/{matchId}/visual-expire-now`
 - `POST /api/local-dev/timeouts/connections/{connectionId}/scheduling-available-now`
 - `POST /api/local-dev/timeouts/connections/{connectionId}/scheduling-expire-now`
 - `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-late-window-now`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-before-hard-cutoff`
+- `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-past-hard-cutoff`
 
 ## Baseline Happy Path
 
@@ -63,7 +68,9 @@ Purpose: validate the complete user flow before forcing any timeout.
 8. Confirm `inactivityExpiresAt` moves forward after a new message.
 9. Approve first chat from both clients.
 10. Confirm both clients move to visual review.
-11. Confirm visual review responses expose `visualExpiresAt`.
+11. Confirm visual review responses expose `visualExpiresAt`, and Home
+    `VISUAL_REVIEW` pending actions expose `visualStartedAt` and
+    `visualExpiresAt`.
 12. Submit required visual-review personal messages/reads if the UI requires
     them.
 13. Approve visual review from both clients.
@@ -81,7 +88,7 @@ Purpose: validate the complete user flow before forcing any timeout.
     `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now`
 23. Run `POST /api/local-dev/jobs/second-chat-lifecycle/run`.
 24. Refresh Home and confirm second chat is available.
-25. Enter second chat from both clients and send messages.
+25. Call `POST /api/connections/{connectionId}/second-chat/join` from both clients and send messages.
 
 Expected frontend behavior:
 
@@ -167,6 +174,33 @@ Expected frontend behavior:
 - Disable visual decision after the deadline.
 - Refresh/navigate away if the backend returns `VISUAL_REVIEW_EXPIRED`.
 
+## Visual Review Reminder
+
+Purpose: validate the backend-generated visual-review reminder push and
+deduplication.
+
+The immediate visual-review availability push has been removed. Reminder
+eligibility is persisted as `VisualReview.reminderEligibleAt` when the visual
+review is created. With the default configuration, the reminder becomes eligible
+when 40% of the visual-review duration remains. The job runs every 30 minutes,
+so delivery is approximate. Legacy rows with `reminderEligibleAt = null` are
+ignored unless manually backfilled outside Flyway.
+
+1. Move a fresh match to visual review.
+2. Confirm both Android clients have registered FCM tokens.
+3. Wait until `reminderEligibleAt` is due, or in local-only manual testing update
+   that column for the match to a past timestamp.
+4. Run `POST /api/local-dev/jobs/visual-review-reminder/run`.
+5. Confirm only users whose own visual decision is still pending receive a push.
+6. Run the reminder job again.
+7. Confirm duplicate pushes are not sent for the same user and match.
+
+Expected frontend behavior:
+
+- Notification tap should navigate using normal Home/state refresh.
+- Do not infer partner decision state from reminder presence or absence.
+- Do not rely on an in-app notification inbox or unread counter.
+
 ## Scheduling Activation
 
 Purpose: validate the pending-to-actionable scheduling transition.
@@ -237,22 +271,48 @@ Expected frontend behavior:
 - Do not rely on an in-app notification inbox or unread counter.
 - Do not expect a reminder once the connection reaches `SECOND_CHAT_AVAILABLE`.
 
-## Scheduled Second Chat Never Opened
+## Second Chat Start Notification
 
-Purpose: validate that a scheduled second chat closes if nobody enters before
-the writable window ends.
+Purpose: validate the `SECOND_CHAT_STARTED` push after a confirmed second-chat
+start.
 
-This is not fully covered by the current local timeout helpers in one request.
-The helper can move `confirmedDateTime` to now, but this scenario requires
-`confirmedDateTime + chat.second-chat.duration-minutes` to be in the past.
+1. Confirm a second-chat schedule and move `confirmedDateTime` to now with
+   local-dev tooling.
+2. Confirm both Android clients have registered FCM tokens.
+3. Optionally join with one participant before running the job.
+4. Run `POST /api/local-dev/jobs/second-chat-start-notification/run`.
+5. Confirm only participants without `ON_TIME` or `LATE` attendance and
+   `joinedAt` receive the push.
+6. Confirm already-joined participants are recorded as
+   `SKIPPED_ALREADY_JOINED`.
+7. Confirm no new push is initiated after `confirmedDateTime + 5 minutes`.
+8. Confirm Android uses `second-chat-<connectionId>` as the notification tag and
+   the start notification can replace the earlier reminder.
+9. Confirm Home shows the relevant current or nearest scheduled second chat
+   first after opening the notification.
+
+## Scheduled Second Chat No-Show
+
+Purpose: validate explicit attendance, manual no-show claims and hard cutoff
+resolution.
 
 1. Confirm a second-chat schedule.
-2. Do not open the second chat on either client.
-3. Either wait for the full writable window after `availableAt`, or adjust
-   `ScheduleNegotiation.confirmedDateTime` locally so the end of the writable
-   window is already in the past.
-4. Run `POST /api/local-dev/jobs/second-chat-lifecycle/run`.
-5. Refresh Home and confirm no second-chat action remains.
+2. Run `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-late-window-now`.
+3. Join with one participant and inspect `GET /api/connections/{connectionId}/second-chat/status`.
+4. Create `POST /api/connections/{connectionId}/second-chat/no-show-claims`.
+5. Either join with the partner before the returned `expiresAt` and confirm the claim is `CANCELLED`, or run the lifecycle job after `expiresAt` and confirm the absent partner is `NO_SHOW`.
+6. For both-absent behavior, use `second-chat-past-hard-cutoff`, do not join either participant, run the lifecycle job, and confirm both are `NO_SHOW`, the connection is `CLOSED`, and no empty chat exists.
+
+## Active Second Chat Conversation Lifecycle
+
+Purpose: validate mutual completion, partner inactivity and initial silence.
+
+1. Confirm a second-chat schedule and make it available.
+2. Join both participants; `conversationStartedAt` should be set after the second join.
+3. Send at least one message from each participant, force `second-chat-conversation-started-past`, create `POST /api/connections/{connectionId}/second-chat/completion-requests`, and accept before expiry to confirm `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`.
+4. Repeat with rejection, timeout and message cancellation to confirm the requester-only 60-second cooldown.
+5. Send one latest message, force `latest-message-claimable`, create `POST /api/connections/{connectionId}/second-chat/inactivity-claims`, then either send before expiry to cancel or force request expiry and run the lifecycle job to confirm `ABANDONED / SECOND_CHAT_PARTNER_INACTIVITY`. Also test a waiting message sent before the partner joins with `latest-message-before-conversation-started`; the five- and ten-minute deadlines should be calculated from `conversationStartedAt`.
+6. With both joined and no messages, force `second-chat-conversation-started-past`, run the lifecycle job and confirm `ABANDONED / SECOND_CHAT_NO_CONVERSATION_STARTED` with both-user reliability events.
 
 ## Active Second Chat Timeout And Read-Only Cleanup
 
@@ -263,7 +323,7 @@ Use local tooling.
 1. Confirm a second-chat schedule.
 2. Run `POST /api/local-dev/timeouts/connections/{connectionId}/second-chat-available-now`.
 3. Run `POST /api/local-dev/jobs/second-chat-lifecycle/run`.
-4. Enter second chat from at least one client so the chat becomes active.
+4. Call `POST /api/connections/{connectionId}/second-chat/join` from both clients so the chat becomes active.
 5. Send messages from both clients.
 6. Run `POST /api/local-dev/timeouts/chats/{chatId}/expire-now`.
 7. Run `POST /api/local-dev/jobs/second-chat-lifecycle/run`.

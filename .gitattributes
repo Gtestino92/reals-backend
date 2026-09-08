@@ -1,0 +1,2 @@
+src/test/resources/legal-documents/**/*.html text eol=lf
+legal-documents/**/*.html text eol=lf

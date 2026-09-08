@@ -5,8 +5,13 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
+import com.reals.backend.service.ChatAudioUploadBusyException
+import com.reals.backend.service.ProfilePhotoUploadBusyException
+import com.reals.backend.service.localdev.LocalFirebaseEmailVerificationFailedException
 import jakarta.validation.ConstraintViolationException
+import jakarta.servlet.http.HttpServletRequest
 import org.hibernate.exception.JDBCConnectionException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.CannotAcquireLockException
@@ -15,6 +20,7 @@ import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -47,7 +53,7 @@ class GlobalExceptionHandler {
     fun handleMethodArgumentNotValid(
         ex: MethodArgumentNotValidException
     ): ResponseEntity<ErrorResponse> {
-        val code = ex.chatValidationErrorCode() ?: "VALIDATION_ERROR"
+        val code = ex.stableValidationErrorCode() ?: "VALIDATION_ERROR"
 
         return ResponseEntity.badRequest()
             .body(
@@ -138,13 +144,18 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(MissingServletRequestPartException::class)
     fun handleMissingServletRequestPart(
-        ex: MissingServletRequestPartException
+        ex: MissingServletRequestPartException,
+        request: HttpServletRequest
     ): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
             .body(
                 ErrorResponse(
                     code = if (ex.requestPartName == "file") {
-                        DomainErrorCode.INVALID_PROFILE_PHOTO.name
+                        if (request.requestURI.endsWith("/audio-messages")) {
+                            DomainErrorCode.CHAT_AUDIO_INVALID_FORMAT.name
+                        } else {
+                            DomainErrorCode.INVALID_PROFILE_PHOTO.name
+                        }
                     } else {
                         "VALIDATION_ERROR"
                     },
@@ -281,6 +292,69 @@ class GlobalExceptionHandler {
             )
     }
 
+    @ExceptionHandler(ChatAudioStorageException::class)
+    fun handleChatAudioStorageException(
+        ex: ChatAudioStorageException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Chat audio storage failure while processing request: {}", ex.message)
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.CHAT_AUDIO_UPLOAD_FAILED.name,
+                    error = "Bad Gateway",
+                    message = "Chat audio upload failed. Please retry."
+                )
+            )
+    }
+
+    @ExceptionHandler(LocalFirebaseEmailVerificationFailedException::class)
+    fun handleLocalFirebaseEmailVerificationFailure(
+        ex: LocalFirebaseEmailVerificationFailedException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn(
+            "Local Firebase email verification update failed: {}",
+            ex.cause?.javaClass?.simpleName ?: ex.javaClass.simpleName
+        )
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(
+                ErrorResponse(
+                    code = "LOCAL_FIREBASE_EMAIL_VERIFICATION_FAILED",
+                    error = "Bad Gateway",
+                    message = "Firebase email verification update failed. Please retry."
+                )
+            )
+    }
+
+    @ExceptionHandler(ProfilePhotoUploadBusyException::class)
+    fun handleProfilePhotoUploadBusy(
+        ex: ProfilePhotoUploadBusyException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.PROFILE_PHOTO_UPLOAD_BUSY.name,
+                    error = "Service Unavailable",
+                    message = "Profile photo upload capacity is temporarily exhausted. Please retry later."
+                )
+            )
+
+    @ExceptionHandler(ChatAudioUploadBusyException::class)
+    fun handleChatAudioUploadBusy(
+        ex: ChatAudioUploadBusyException
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(
+                ErrorResponse(
+                    code = DomainErrorCode.CHAT_AUDIO_UPLOAD_BUSY.name,
+                    error = "Service Unavailable",
+                    message = "Chat audio upload capacity is temporarily exhausted. Please retry later."
+                )
+            )
+
     @ExceptionHandler(NoSuchElementException::class)
     fun handleNotFound(
         ex: NoSuchElementException
@@ -357,7 +431,7 @@ class GlobalExceptionHandler {
     private fun FieldError.toValidationMessage(): String =
         "$field: ${defaultMessage ?: "invalid value"}"
 
-    private fun MethodArgumentNotValidException.chatValidationErrorCode(): String? {
+    private fun MethodArgumentNotValidException.stableValidationErrorCode(): String? {
         val chatMessageRequestObjects =
             setOf(
                 "sendMessageRequest",
@@ -366,14 +440,26 @@ class GlobalExceptionHandler {
                 "chatSafetyCancellationRequest"
             )
 
-        return if (
+        if (
             bindingResult.objectName in chatMessageRequestObjects &&
             bindingResult.fieldErrors.any { it.field == "content" || it.field == "details" }
         ) {
-            DomainErrorCode.CHAT_MESSAGE_INVALID.name
-        } else {
-            null
+            return DomainErrorCode.CHAT_MESSAGE_INVALID.name
         }
+
+        if (bindingResult.objectName == "upsertProfileQuestionAnswerRequest") {
+            return DomainErrorCode.INVALID_PROFILE_QUESTION_ANSWER.name
+        }
+
+        if (bindingResult.objectName == "updateProfileQuestionSelectionsRequest") {
+            return if (bindingResult.fieldErrors.any { it.field == "questionIds" }) {
+                DomainErrorCode.PROFILE_QUESTION_SELECTION_LIMIT_EXCEEDED.name
+            } else {
+                DomainErrorCode.INVALID_PROFILE_QUESTION_SELECTION.name
+            }
+        }
+
+        return null
     }
 
     private fun Throwable.isDatabaseUnavailable(): Boolean {

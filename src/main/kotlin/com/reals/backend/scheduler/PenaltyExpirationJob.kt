@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component
 
 @Component
 class PenaltyExpirationJob(
-    private val penaltyService: PenaltyService
+    private val penaltyService: PenaltyService,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -58,7 +59,8 @@ class PenaltyExpirationJob(
         log.logJobSummary(
             jobName = "PenaltyExpirationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
 
         return summary

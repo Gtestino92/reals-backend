@@ -2,7 +2,6 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
@@ -15,6 +14,8 @@ import org.mockito.Mockito
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -27,6 +28,7 @@ import java.time.LocalDate
 import java.util.UUID
 import javax.imageio.ImageIO
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
 
     @MockitoBean
@@ -60,7 +62,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
 
         val profile = profileService.findByUserId(userId)!!
-        val savedPhoto = profileService.getPhotos(profile.id).single()
+        val savedPhoto = profilePhotoService.getPhotos(profile.id).single()
         assertEquals("users/$userId/profile-photos/uploaded.jpg", savedPhoto.storageKey)
         assertEquals("APPROVED", savedPhoto.moderationStatus.name)
 
@@ -100,7 +102,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
 
         val profile = profileService.findByUserId(userId)!!
-        val photoId = profileService.getPhotos(profile.id).single().id
+        val photoId = profilePhotoService.getPhotos(profile.id).single().id
 
         mockMvc.perform(
             multipart("/api/me/profile/photos/$photoId/file")
@@ -120,8 +122,8 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.validationStatus", equalTo("VALIDATED")))
             .andExpect(jsonPath("$.moderationStatus", equalTo("APPROVED")))
 
-        assertEquals(newObject.key, profileService.getPhotos(profile.id).single().storageKey)
-        Mockito.verify(storageService).delete(oldObject.key)
+        assertEquals(newObject.key, profilePhotoService.getPhotos(profile.id).single().storageKey)
+        Mockito.verify(storageService).deleteObject(oldObject.bucket, oldObject.key)
     }
 
     @Test
@@ -144,7 +146,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
 
         val profile = profileService.findByUserId(userId)!!
-        val photoId = profileService.getPhotos(profile.id).single().id
+        val photoId = profilePhotoService.getPhotos(profile.id).single().id
 
         mockMvc.perform(
             delete("/api/me/profile/photos/$photoId")
@@ -154,7 +156,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.photoCount", equalTo(0)))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
 
-        Mockito.verify(storageService).delete(storedObject.key)
+        Mockito.verify(storageService).deleteObject(storedObject.bucket, storedObject.key)
     }
 
     @Test
@@ -334,10 +336,10 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
             displayName = "Photo File",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -367,6 +369,18 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
 
     private fun stubStorageUploads(vararg storedObjects: StoredObject) {
         Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObjects.first().bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObjects.first().key, *storedObjects.drop(1).map { it.key }.toTypedArray())
+
+        Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),
                 anyUuid(),
@@ -376,7 +390,7 @@ class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
         ).thenReturn(storedObjects.first(), *storedObjects.drop(1).toTypedArray())
 
         storedObjects.forEach { storedObject ->
-            Mockito.`when`(storageService.getReadUrl(storedObject.key))
+            Mockito.`when`(storageService.getReadUrl(storedObject.bucket, storedObject.key))
                 .thenReturn(readUrlFor(storedObject.key))
         }
     }

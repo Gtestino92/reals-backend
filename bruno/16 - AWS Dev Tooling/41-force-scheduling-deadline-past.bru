@@ -1,0 +1,21 @@
+meta {
+  name: 41 Force Scheduling Deadline Past
+  type: http
+  seq: 41
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/connections/{{devConnectionId}}/scheduling-expire-now
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "connection") {
+    throw new Error("Expected dev timeout mutation for connection.");
+  }
+}

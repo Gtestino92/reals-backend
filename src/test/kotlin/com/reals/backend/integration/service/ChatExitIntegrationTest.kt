@@ -165,6 +165,94 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
+    fun `pending mutual cancellation blocks requester and responder messages without mutating chat`() {
+        val setup = createMatchWithFirstChat()
+        val lastMessageAtBefore = chatService.findByIdOrThrow(setup.firstChatId).lastMessageAt
+
+        chatExitService.requestMutualCancellation(
+            chatId = setup.firstChatId,
+            requesterUserId = setup.userAId
+        )
+
+        val requesterException = assertThrows<DomainConflictException> {
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                content = "Requester message after pending mutual cancellation"
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, requesterException.code)
+
+        val responderException = assertThrows<DomainConflictException> {
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userBId,
+                content = "Responder message after pending mutual cancellation"
+            )
+        }
+        assertEquals(DomainErrorCode.CHAT_MUTUAL_CANCELLATION_PENDING, responderException.code)
+
+        assertEquals(0, chatMessageRepository.findByChatSessionIdOrderBySentAtAsc(setup.firstChatId).size)
+        assertEquals(lastMessageAtBefore, chatService.findByIdOrThrow(setup.firstChatId).lastMessageAt)
+    }
+
+    @Test
+    fun `pending mutual cancellation still allows message and exit request reads`() {
+        val setup = createMatchWithFirstChat()
+        val message =
+            chatService.sendMessage(
+                chatId = setup.firstChatId,
+                senderId = setup.userAId,
+                content = "Message before mutual cancellation"
+            )
+        val exitRequest =
+            chatExitService.requestMutualCancellation(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId
+            )
+
+        val messages = chatService.getMessages(setup.firstChatId, setup.userBId)
+        val exitRequests = chatExitService.findExitRequests(setup.firstChatId, setup.userBId)
+
+        assertEquals(listOf(message.id), messages.map { it.id })
+        assertEquals(listOf(exitRequest.id), exitRequests.map { it.id })
+    }
+
+    @Test
+    fun `same requester repeating pending mutual cancellation remains idempotent`() {
+        val setup = createMatchWithFirstChat()
+
+        val first =
+            chatExitService.requestMutualCancellationWithResult(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId,
+                reason = ChatExitReason.OTHER,
+                details = "Original details"
+            )
+        val repeated =
+            chatExitService.requestMutualCancellationWithResult(
+                chatId = setup.firstChatId,
+                requesterUserId = setup.userAId,
+                reason = ChatExitReason.HARASSMENT,
+                details = "Replacement details"
+            )
+
+        assertTrue(first.created)
+        assertFalse(repeated.created)
+        assertEquals(first.exitRequest.id, repeated.exitRequest.id)
+        assertEquals(ChatExitReason.OTHER, repeated.exitRequest.reason)
+        assertEquals("Original details", repeated.exitRequest.details)
+        assertEquals(
+            1,
+            chatExitRequestRepository.findByChatIdOrderByCreatedAtDesc(setup.firstChatId)
+                .count {
+                    it.type == ChatExitRequestType.MUTUAL_CANCEL &&
+                        it.status == ChatExitRequestStatus.PENDING
+                }
+        )
+    }
+
+    @Test
     fun `timeout mutual cancellation fails before timeout`() {
         val setup = createMatchWithFirstChat()
         val exitRequest =
@@ -322,7 +410,7 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `unilateral first chat cancellation before minimum messages applies penalty`() {
+    fun `unilateral first chat cancellation before minimum messages records reliability without penalty`() {
         val setup = createMatchWithFirstChat()
 
         val outcome =
@@ -335,9 +423,9 @@ class ChatExitIntegrationTest : BaseIT() {
         assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.UNILATERAL_CANCEL, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
-        assertTrue(outcome.penaltyApplied)
-        assertEquals(setup.userAId, outcome.penalizedUserId)
-        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
+        assertFalse(outcome.penaltyApplied)
+        assertNull(outcome.penalizedUserId)
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
         assertNoMatchLocks(setup.userAId, setup.userBId)
     }
 
@@ -373,24 +461,25 @@ class ChatExitIntegrationTest : BaseIT() {
             chatExitService.cancelChatForSafety(
                 chatId = setup.firstChatId,
                 reporterUserId = setup.userAId,
-                reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-                details = "Reported inappropriate behavior"
+                reason = ChatExitReason.CHILD_SAFETY_CONCERN,
+                details = "Reported child-safety concern"
             )
 
         assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
         assertEquals(ChatEndReason.SAFETY_REPORT, outcome.chat.endedReason)
         assertEquals(ChatExitRequestType.SAFETY_REPORT, outcome.exitRequest.type)
         assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
+        assertEquals(ChatExitReason.CHILD_SAFETY_CONCERN, outcome.exitRequest.reason)
         assertFalse(outcome.penaltyApplied)
         assertNull(outcome.penalizedUserId)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
 
         val report = safetyReportRepository.findAll().single()
         assertEquals(SafetyReportStatus.PENDING, report.status)
-        assertEquals(SafetyReportReason.INAPPROPRIATE_BEHAVIOR, report.reason)
+        assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
         assertEquals(SafetyReportSource.USER, report.source)
-        assertEquals("Reported inappropriate behavior", report.details)
+        assertEquals("Reported child-safety concern", report.details)
         assertEquals(setup.userAId, report.reporterUserId)
         assertEquals(setup.userBId, report.reportedUserId)
         assertEquals(setup.firstChatId, report.chatId)
@@ -400,27 +489,14 @@ class ChatExitIntegrationTest : BaseIT() {
         assertNull(report.connectionId)
         assertNull(report.penaltyId)
 
-        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
-            blockerUserId = setup.userAId,
-            blockedUserId = setup.userBId
-        ) ?: error("Expected safety report to create a user block")
-        assertEquals(UserBlockSource.SAFETY_REPORT, block.source)
-        assertEquals(report.id, block.sourceReportId)
-        assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
-        assertTrue(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
-
-        val repeatedBlock = userBlockService.blockUser(
-            blockerUserId = setup.userAId,
-            blockedUserId = setup.userBId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
+        assertNull(
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+                blockerUserId = setup.userAId,
+                blockedUserId = setup.userBId
+            )
         )
-        assertEquals(block.id, repeatedBlock.id)
-        assertEquals(
-            1,
-            userBlockRepository.findAll()
-                .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
-        )
+        assertFalse(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+        assertFalse(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
 
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
             ?: error("Expected safety report evidence snapshot")
@@ -441,9 +517,9 @@ class ChatExitIntegrationTest : BaseIT() {
 
         assertEquals("CHAT", metadata.get("contextType").asString())
         assertEquals(setup.firstChatId.toString(), metadata.get("contextId").asString())
-        assertEquals("INAPPROPRIATE_BEHAVIOR", metadata.get("reason").asString())
+        assertEquals("CHILD_SAFETY_CONCERN", metadata.get("reason").asString())
         assertEquals("PENDING", metadata.get("status").asString())
-        assertFalse(reportAudit.metadataJson!!.contains("Reported inappropriate behavior"))
+        assertFalse(reportAudit.metadataJson!!.contains("Reported child-safety concern"))
         val chatEndedAudit = auditEventRepository.findAll()
             .single {
                 it.eventType == AuditEventType.CHAT_ENDED &&
@@ -452,6 +528,48 @@ class ChatExitIntegrationTest : BaseIT() {
             }
         assertEquals(setup.userAId, chatEndedAudit.actorUserId)
         assertTrue(chatEndedAudit.metadataJson!!.contains("SAFETY_REPORT"))
+
+        assertEquals(
+            0,
+            auditEventRepository.findAll()
+                .count { it.eventType == AuditEventType.USER_BLOCK_CREATED }
+        )
+    }
+
+    @Test
+    fun `safety cancellation creates requested safety report block idempotently`() {
+        val setup = createMatchWithFirstChat()
+
+        chatExitService.cancelChatForSafety(
+            chatId = setup.firstChatId,
+            reporterUserId = setup.userAId,
+            reason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
+            details = "Unsafe chat content",
+            blockUser = true
+        )
+
+        val report = safetyReportRepository.findAll().single()
+        val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId
+        ) ?: error("Expected requested safety report block")
+        assertEquals(UserBlockSource.SAFETY_REPORT, block.source)
+        assertEquals(report.id, block.sourceReportId)
+        assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
+        assertTrue(userBlockService.isBlockedPair(setup.userBId, setup.userAId))
+
+        val repeatedBlock = userBlockService.blockUser(
+            blockerUserId = setup.userAId,
+            blockedUserId = setup.userBId,
+            source = UserBlockSource.SAFETY_REPORT,
+            sourceReportId = report.id
+        )
+        assertEquals(block.id, repeatedBlock.id)
+        assertEquals(
+            1,
+            userBlockRepository.findAll()
+                .count { it.blockerUserId == setup.userAId && it.blockedUserId == setup.userBId }
+        )
 
         assertEquals(
             1,
@@ -490,75 +608,94 @@ class ChatExitIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `accept mutual cancellation closes second chat connection`() {
+    fun `ordinary mutual cancellation request is not available for second chats`() {
         val setup = createActiveSecondChat()
-        val exitRequest =
+
+        val exception = assertThrows<DomainConflictException> {
             chatExitService.requestMutualCancellation(
                 chatId = setup.secondChatId,
                 requesterUserId = setup.userAId
             )
+        }
+        assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, exception.code)
+        assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
 
-        val outcome =
+    @Test
+    fun `ordinary mutual cancellation resolution is not available for second chats`() {
+        val setup = createActiveSecondChat()
+        val exitRequest = chatExitRequestRepository.save(
+            com.reals.backend.domain.ChatExitRequest(
+                chatId = setup.secondChatId,
+                requesterUserId = setup.userAId,
+                responderUserId = setup.userBId,
+                type = ChatExitRequestType.MUTUAL_CANCEL
+            )
+        )
+
+        val acceptException = assertThrows<DomainConflictException> {
             chatExitService.acceptMutualCancellation(
                 chatId = setup.secondChatId,
                 requestId = exitRequest.id,
                 responderUserId = setup.userBId
             )
+        }
+        assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, acceptException.code)
 
-        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
-        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
-        assertEquals(ChatExitRequestStatus.ACCEPTED, outcome.exitRequest.status)
-        assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
-        assertNoConnectionLocks(setup.userAId, setup.userBId)
-    }
-
-    @Test
-    fun `reject mutual cancellation closes second chat connection`() {
-        val setup = createActiveSecondChat()
-        val exitRequest =
-            chatExitService.requestMutualCancellation(
-                chatId = setup.secondChatId,
-                requesterUserId = setup.userAId
-            )
-
-        val outcome =
+        val rejectException = assertThrows<DomainConflictException> {
             chatExitService.rejectMutualCancellation(
                 chatId = setup.secondChatId,
                 requestId = exitRequest.id,
                 responderUserId = setup.userBId
             )
-
-        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
-        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
-        assertEquals(ChatExitRequestStatus.REJECTED, outcome.exitRequest.status)
-        assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
-        assertNoConnectionLocks(setup.userAId, setup.userBId)
+        }
+        assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, rejectException.code)
+        assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(setup.connectionId).state)
     }
 
     @Test
-    fun `timeout mutual cancellation closes second chat connection`() {
+    fun `ordinary mutual cancellation timeout is not available for second chats`() {
         val setup = createActiveSecondChat()
-        val exitRequest =
-            expired(
-                chatExitService.requestMutualCancellation(
+        val exitRequest = expired(
+            chatExitRequestRepository.save(
+                com.reals.backend.domain.ChatExitRequest(
                     chatId = setup.secondChatId,
-                    requesterUserId = setup.userAId
+                    requesterUserId = setup.userAId,
+                    responderUserId = setup.userBId,
+                    type = ChatExitRequestType.MUTUAL_CANCEL
                 )
             )
+        )
 
-        val outcome =
+        val exception = assertThrows<DomainConflictException> {
             chatExitService.timeoutMutualCancellation(
                 chatId = setup.secondChatId,
                 requestId = exitRequest.id,
                 userId = setup.userBId
             )
+        }
+        assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, exception.code)
+        assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
 
-        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
-        assertEquals(ChatEndReason.MUTUAL_CANCEL, outcome.chat.endedReason)
-        assertEquals(ChatExitRequestStatus.TIMED_OUT, outcome.exitRequest.status)
-        assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
-        assertFalse(outcome.penaltyApplied)
-        assertNull(outcome.penalizedUserId)
+    @Test
+    fun `unilateral second chat cancellation is not available`() {
+        val setup = createActiveSecondChat()
+
+        val exception = assertThrows<DomainConflictException> {
+            chatExitService.cancelChatUnilaterally(
+                chatId = setup.secondChatId,
+                userId = setup.userAId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED, exception.code)
+        assertEquals(ChatStatus.ACTIVE, chatService.findByIdOrThrow(setup.secondChatId).status)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(setup.connectionId).state)
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userAId })
     }
 
     @Test
@@ -589,23 +726,6 @@ class ChatExitIntegrationTest : BaseIT() {
                 requesterUserId = stranger.id
             )
         }
-    }
-
-    @Test
-    fun `unilateral second chat cancellation before minimum messages applies penalty`() {
-        val setup = createActiveSecondChat()
-
-        val outcome =
-            chatExitService.cancelChatUnilaterally(
-                chatId = setup.secondChatId,
-                userId = setup.userAId
-            )
-
-        assertEquals(ChatStatus.CANCELLED, outcome.chat.status)
-        assertEquals(ChatEndReason.UNILATERAL_CANCEL, outcome.chat.endedReason)
-        assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(setup.connectionId).state)
-        assertEquals(setup.userAId, outcome.penalizedUserId)
-        assertTrue(penaltyRepository.existsByUserIdAndActiveTrue(setup.userAId))
     }
 
     private fun expired(exitRequest: ChatExitRequest): ChatExitRequest {

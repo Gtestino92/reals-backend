@@ -44,12 +44,13 @@ class MeController(
         @CurrentUserId userId: UUID
     ): ResponseEntity<HomeResponse> {
         val statusBefore = homeStatusService.getOrCreateStatus(userId = userId)
-        val home = meHomeService.getHome(userId = userId)
-        homeStatusService.markCleanIfVersionStill(
+        val projection = meHomeService.getHomeProjection(userId = userId)
+        homeStatusService.reconcileAfterFullHomeIfVersionStill(
             userId = userId,
-            expectedVersion = statusBefore.version
+            expectedVersion = statusBefore.version,
+            nextRefreshAt = projection.nextRefreshAt
         )
-        return ResponseEntity.ok(home)
+        return ResponseEntity.ok(projection.home)
     }
 
     @GetMapping("/api/me/home/status")
@@ -61,6 +62,7 @@ class MeController(
             HomeStatusResponse(
                 version = status.version,
                 dirty = status.dirty,
+                nextRefreshAt = status.nextRefreshAt,
                 serverTime = OffsetDateTime.now()
             )
         )
@@ -89,6 +91,18 @@ class MeController(
         @CurrentUserId userId: UUID
     ): ResponseEntity<UserResponse> {
         val user = userService.reactivateUser(
+            userId = userId
+        )
+        return ResponseEntity.ok(
+            UserResponse.from(user)
+        )
+    }
+
+    @PostMapping("/api/me/deletion/finalization")
+    fun finalizeDeletionNow(
+        @CurrentUserId userId: UUID
+    ): ResponseEntity<UserResponse> {
+        val user = userService.finalizeAccountDeletionNow(
             userId = userId
         )
         return ResponseEntity.ok(
@@ -125,7 +139,9 @@ class MeController(
 
         val user = userService.provisionFromFirebase(
             firebaseUid = firebasePrincipal.uid,
-            email = firebasePrincipal.email
+            email = firebasePrincipal.email,
+            emailVerified = firebasePrincipal.emailVerified,
+            signInProvider = firebasePrincipal.signInProvider
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(

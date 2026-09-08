@@ -2,6 +2,10 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
+import com.reals.backend.domain.Penalty
+import com.reals.backend.domain.PenaltyType
+import com.reals.backend.domain.ProposalStatus
+import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.integration.BaseIT
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainException
@@ -10,10 +14,17 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.beans.factory.annotation.Value
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class SchedulingServiceIntegrationTest : BaseIT() {
+
+    @Value("\${account.ban.temporary-resume-margin-minutes:30}")
+    private var temporaryResumeMarginMinutes: Long = 0
+
+    @Value("\${chat.second-chat.entry-window-minutes:20}")
+    private var secondChatEntryWindowMinutes: Long = 0
 
     @Test
     fun `add proposals rejects duplicate submission in same round`() {
@@ -23,6 +34,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slot)
         )
 
@@ -30,6 +42,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(slot.plusHours(1))
             )
         }
@@ -43,6 +56,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = emptyList()
             )
         }
@@ -57,6 +71,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(slot, slot)
             )
         }
@@ -70,6 +85,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(OffsetDateTime.now().minusDays(1).withMinute(0).withSecond(0).withNano(0))
             )
         }
@@ -83,6 +99,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(futureHalfHourSlot().plusMinutes(15))
             )
         }
@@ -99,6 +116,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(futureHalfHourSlot())
             )
         }
@@ -117,9 +135,147 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(futureHalfHourSlot())
             )
         }
+    }
+
+    @Test
+    fun `add proposals rejects stale expected round`() {
+        val setup = createConnectionInSchedulingPhase()
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        negotiation.roundNumber = 2
+        negotiationRepository.saveAndFlush(negotiation)
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_ROUND_CHANGED) {
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userAId,
+                expectedRoundNumber = 1,
+                proposedDateTimes = listOf(futureHalfHourSlot())
+            )
+        }
+    }
+
+    @Test
+    fun `same round submission succeeds when partner proposals already exist`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot.plusHours(1))
+        )
+
+        val proposals = proposalRepository.findByConnectionId(setup.connectionId)
+        assertEquals(2, proposals.size)
+        assertTrue(proposals.all { it.roundNumber == 1 && it.status == ProposalStatus.PENDING })
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `partner proposal rejection is independent and advances only after both lists rejected`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slotA = futureHalfHourSlot()
+        val slotB = slotA.plusHours(1)
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slotA)
+        )
+
+        val afterFirstRejection = schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1
+        )
+
+        assertEquals(NegotiationStatus.PENDING, afterFirstRejection.status)
+        assertEquals(1, afterFirstRejection.roundNumber)
+        assertEquals(
+            ProposalStatus.REJECTED,
+            proposalRepository.findByConnectionId(setup.connectionId).single { it.userId == setup.userAId }.status
+        )
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slotB)
+        )
+
+        val currentRoundBeforeSecondRejection =
+            proposalRepository.findByConnectionIdAndRoundNumber(setup.connectionId, 1)
+        assertEquals(
+            ProposalStatus.PENDING,
+            currentRoundBeforeSecondRejection.single { it.userId == setup.userBId }.status
+        )
+
+        val afterSecondRejection = schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1
+        )
+
+        assertEquals(NegotiationStatus.PENDING, afterSecondRejection.status)
+        assertEquals(2, afterSecondRejection.roundNumber)
+        assertTrue(
+            proposalRepository.findByConnectionIdAndRoundNumber(setup.connectionId, 1)
+                .all { it.status == ProposalStatus.REJECTED }
+        )
+    }
+
+    @Test
+    fun `reject partner proposals rejects stale expected round`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_ROUND_CHANGED) {
+            schedulingService.rejectPartnerProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                expectedRoundNumber = 2
+            )
+        }
+    }
+
+    @Test
+    fun `future partner proposal can still be accepted`() {
+        val setup = createConnectionInSchedulingPhase()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
+        )
+
+        val negotiation = schedulingService.acceptProposal(
+            connectionId = setup.connectionId,
+            proposalId = proposal.id,
+            acceptorUserId = setup.userBId
+        )
+
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(proposal.proposedDateTime.toInstant(), negotiation.confirmedDateTime?.toInstant())
+        assertEquals(ConnectionState.SECOND_CHAT_SCHEDULED, connectionService.findByIdOrThrow(setup.connectionId).state)
     }
 
     @Test
@@ -128,11 +284,13 @@ class SchedulingServiceIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         assertSchedulingCode(DomainErrorCode.SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL) {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = proposal.id,
                 acceptorUserId = setup.userAId
             )
@@ -141,12 +299,155 @@ class SchedulingServiceIntegrationTest : BaseIT() {
 
     @Test
     fun `accept proposal rejects missing proposal`() {
+        val setup = createConnectionInSchedulingPhase()
+
         assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = UUID.randomUUID(),
                 acceptorUserId = UUID.randomUUID()
             )
         }
+    }
+
+    @Test
+    fun `accept proposal rejects expired proposal and preserves scheduling state`() {
+        val setup = createConnectionInSchedulingPhase()
+        val baseSlot = futureHalfHourSlot()
+        val submittedProposals = schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(
+                baseSlot,
+                baseSlot.plusHours(1)
+            )
+        )
+        val expiredProposal = submittedProposals[0]
+        val otherProposal = submittedProposals[1]
+
+        moveProposalTime(
+            proposalId = expiredProposal.id,
+            proposedDateTime = OffsetDateTime.now().minusMinutes(30)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = expiredProposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        val persistedProposals = proposalRepository.findByConnectionIdAndRoundNumber(setup.connectionId, 1)
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+
+        assertEquals(ProposalStatus.PENDING, persistedProposals.single { it.id == expiredProposal.id }.status)
+        assertEquals(ProposalStatus.PENDING, persistedProposals.single { it.id == otherProposal.id }.status)
+        assertEquals(NegotiationStatus.PENDING, negotiation.status)
+        assertEquals(1, negotiation.roundNumber)
+        assertEquals(null, negotiation.confirmedDateTime)
+        assertEquals(ConnectionState.SCHEDULING_PHASE, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
+
+    @Test
+    fun `accept proposal rejects proposal that is no later than current time`() {
+        val setup = createConnectionInSchedulingPhase()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
+        )
+
+        moveProposalTime(
+            proposalId = proposal.id,
+            proposedDateTime = OffsetDateTime.now()
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+    }
+
+    @Test
+    fun `expired proposal remains rejectable after failed acceptance`() {
+        val setup = createConnectionInSchedulingPhase()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
+        )
+
+        moveProposalTime(
+            proposalId = proposal.id,
+            proposedDateTime = OffsetDateTime.now().minusMinutes(30)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        val negotiation = schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1
+        )
+
+        assertEquals(NegotiationStatus.PENDING, negotiation.status)
+        assertEquals(1, negotiation.roundNumber)
+        assertEquals(
+            ProposalStatus.REJECTED,
+            proposalRepository.findById(proposal.id).orElseThrow().status
+        )
+    }
+
+    @Test
+    fun `mixed list keeps future proposal acceptable after expired proposal fails`() {
+        val setup = createConnectionInSchedulingPhase()
+        val baseSlot = futureHalfHourSlot()
+        val proposals = schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(
+                baseSlot,
+                baseSlot.plusHours(1)
+            )
+        )
+        val expiredProposal = proposals[0]
+        val futureProposal = proposals[1]
+
+        moveProposalTime(
+            proposalId = expiredProposal.id,
+            proposedDateTime = OffsetDateTime.now().minusMinutes(30)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = expiredProposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        val negotiation = schedulingService.acceptProposal(
+            connectionId = setup.connectionId,
+            proposalId = futureProposal.id,
+            acceptorUserId = setup.userBId
+        )
+
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(futureProposal.proposedDateTime.toInstant(), negotiation.confirmedDateTime?.toInstant())
     }
 
     @Test
@@ -155,16 +456,19 @@ class SchedulingServiceIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         schedulingService.acceptProposal(
+            connectionId = setup.connectionId,
             proposalId = proposal.id,
             acceptorUserId = setup.userBId
         )
 
         assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = proposal.id,
                 acceptorUserId = setup.userBId
             )
@@ -177,7 +481,8 @@ class SchedulingServiceIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
         val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
         negotiation.roundNumber += 1
@@ -185,6 +490,7 @@ class SchedulingServiceIntegrationTest : BaseIT() {
 
         assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = proposal.id,
                 acceptorUserId = setup.userBId
             )
@@ -192,24 +498,287 @@ class SchedulingServiceIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `reject current round fails unless both users submitted`() {
+    fun `reject partner proposals fails when partner has no pending proposals`() {
         val setup = createConnectionInSchedulingPhase()
 
         schedulingService.addProposals(
             connectionId = setup.connectionId,
             userId = setup.userAId,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(futureHalfHourSlot())
         )
 
-        assertSchedulingCode(DomainErrorCode.SCHEDULING_ROUND_NOT_REJECTABLE) {
-            schedulingService.rejectCurrentRound(
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE) {
+            schedulingService.rejectPartnerProposals(
                 connectionId = setup.connectionId,
-                userId = setup.userAId
+                userId = setup.userAId,
+                expectedRoundNumber = 1
             )
         }
 
         assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
         assertEquals(ConnectionState.SCHEDULING_PHASE, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
+
+    @Test
+    fun `auto confirm ignores expired overlap and selects future overlap`() {
+        val now = OffsetDateTime.now()
+        val expiredOverlap = now.minusMinutes(30)
+        val futureOverlap = now.plusHours(1).withMinute(0).withSecond(0).withNano(0)
+        val userAId = UUID.randomUUID()
+        val userBId = UUID.randomUUID()
+
+        val candidate = schedulingService.selectBestFutureOverlap(
+            proposalsA = listOf(
+                proposal(userId = userAId, preferenceOrder = 1, proposedDateTime = expiredOverlap),
+                proposal(userId = userAId, preferenceOrder = 2, proposedDateTime = futureOverlap)
+            ),
+            proposalsB = listOf(
+                proposal(userId = userBId, preferenceOrder = 1, proposedDateTime = expiredOverlap),
+                proposal(userId = userBId, preferenceOrder = 2, proposedDateTime = futureOverlap)
+            ),
+            now = now
+        )
+
+        assertEquals(futureOverlap.toInstant(), candidate?.proposalA?.proposedDateTime?.toInstant())
+        assertEquals(4, candidate?.score)
+    }
+
+    @Test
+    fun `auto confirm returns no candidate when all overlaps are expired`() {
+        val now = OffsetDateTime.now()
+        val expiredOverlap = now.minusMinutes(30)
+
+        val candidate = schedulingService.selectBestFutureOverlap(
+            proposalsA = listOf(
+                proposal(userId = UUID.randomUUID(), preferenceOrder = 1, proposedDateTime = expiredOverlap)
+            ),
+            proposalsB = listOf(
+                proposal(userId = UUID.randomUUID(), preferenceOrder = 1, proposedDateTime = expiredOverlap)
+            ),
+            now = now
+        )
+
+        assertEquals(null, candidate)
+    }
+
+    @Test
+    fun `automatic overlap confirmation rejects slot made impossible by effective temporary ban`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+                .plusNanos(1)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_SLOT_CONFLICT) {
+            schedulingService.addProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                expectedRoundNumber = 1,
+                proposedDateTimes = listOf(slot)
+            )
+        }
+
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `explicit proposal acceptance rejects slot made impossible by partner temporary ban without ban metadata`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+                .plusNanos(1)
+        )
+
+        val exception = assertThrows<DomainException> {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SCHEDULING_SLOT_CONFLICT, exception.code)
+        assertFalse(exception.message.orEmpty().contains("ban", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("penalty", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("expires", ignoreCase = true))
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `explicit proposal acceptance rejects slot made impossible by permanent ban without ban metadata`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        val proposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+        saveActivePermanentBan(setup.userAId)
+
+        val exception = assertThrows<DomainException> {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = proposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        assertEquals(DomainErrorCode.SCHEDULING_SLOT_CONFLICT, exception.code)
+        assertFalse(exception.message.orEmpty().contains("ban", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("penalty", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("permanent", ignoreCase = true))
+        assertFalse(exception.message.orEmpty().contains("expires", ignoreCase = true))
+        assertEquals(NegotiationStatus.PENDING, schedulingService.findNegotiationOrThrow(setup.connectionId).status)
+    }
+
+    @Test
+    fun `second chat slot remains confirmable at exact temporary ban resume margin`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+        saveActiveTemporaryBan(
+            userId = setup.userAId,
+            expiresAt = slot.plusMinutes(secondChatEntryWindowMinutes)
+                .minusMinutes(temporaryResumeMarginMinutes)
+        )
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        assertEquals(NegotiationStatus.CONFIRMED, negotiation.status)
+        assertEquals(slot.toInstant(), negotiation.confirmedDateTime?.toInstant())
+        assertEquals(ConnectionState.SECOND_CHAT_SCHEDULED, connectionService.findByIdOrThrow(setup.connectionId).state)
+    }
+
+    @Test
+    fun `auto confirm preserves future overlap score and earliest tie break`() {
+        val now = OffsetDateTime.now()
+        val early = now.plusHours(1).withMinute(0).withSecond(0).withNano(0)
+        val late = early.plusHours(1)
+        val userAId = UUID.randomUUID()
+        val userBId = UUID.randomUUID()
+
+        val candidate = schedulingService.selectBestFutureOverlap(
+            proposalsA = listOf(
+                proposal(userId = userAId, preferenceOrder = 2, proposedDateTime = early),
+                proposal(userId = userAId, preferenceOrder = 1, proposedDateTime = late)
+            ),
+            proposalsB = listOf(
+                proposal(userId = userBId, preferenceOrder = 1, proposedDateTime = early),
+                proposal(userId = userBId, preferenceOrder = 2, proposedDateTime = late)
+            ),
+            now = now
+        )
+
+        assertEquals(early.toInstant(), candidate?.proposalA?.proposedDateTime?.toInstant())
+        assertEquals(3, candidate?.score)
+    }
+
+    @Test
+    fun `retrying same partner proposal rejection returns stable conflict and preserves state`() {
+        val setup = createConnectionInSchedulingPhase()
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(futureHalfHourSlot())
+        )
+
+        schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE) {
+            schedulingService.rejectPartnerProposals(
+                connectionId = setup.connectionId,
+                userId = setup.userBId,
+                expectedRoundNumber = 1
+            )
+        }
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        assertEquals(NegotiationStatus.PENDING, negotiation.status)
+        assertEquals(1, negotiation.roundNumber)
+        assertTrue(
+            proposalRepository.findByConnectionId(setup.connectionId)
+                .all { it.status == ProposalStatus.REJECTED }
+        )
+    }
+
+    @Test
+    fun `rejected proposals cannot be accepted and do not auto confirm overlap`() {
+        val setup = createConnectionInSchedulingPhase()
+        val slot = futureHalfHourSlot()
+
+        val rejectedProposal = schedulingService.addProposal(
+            connectionId = setup.connectionId,
+            userId = setup.userAId,
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
+        )
+
+        schedulingService.rejectPartnerProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1
+        )
+
+        assertSchedulingCode(DomainErrorCode.SCHEDULING_PROPOSAL_NOT_AVAILABLE) {
+            schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
+                proposalId = rejectedProposal.id,
+                acceptorUserId = setup.userBId
+            )
+        }
+
+        schedulingService.addProposals(
+            connectionId = setup.connectionId,
+            userId = setup.userBId,
+            expectedRoundNumber = 1,
+            proposedDateTimes = listOf(slot)
+        )
+
+        val negotiation = schedulingService.findNegotiationOrThrow(setup.connectionId)
+        assertEquals(NegotiationStatus.PENDING, negotiation.status)
+        assertEquals(1, negotiation.roundNumber)
+        assertEquals(null, negotiation.confirmedDateTime)
+        assertFalse(
+            proposalRepository.findByConnectionId(setup.connectionId)
+                .any { it.status == ProposalStatus.ACCEPTED }
+        )
     }
 
     @Test
@@ -245,5 +814,54 @@ class SchedulingServiceIntegrationTest : BaseIT() {
             action()
         }
         assertEquals(expected, exception.code)
+    }
+
+    private fun moveProposalTime(
+        proposalId: UUID,
+        proposedDateTime: OffsetDateTime
+    ) {
+        val proposal = proposalRepository.findById(proposalId).orElseThrow()
+        proposal.proposedDateTime = proposedDateTime
+        proposalRepository.saveAndFlush(proposal)
+    }
+
+    private fun proposal(
+        userId: UUID,
+        preferenceOrder: Int,
+        proposedDateTime: OffsetDateTime
+    ): ScheduleProposal =
+        ScheduleProposal(
+            connectionId = UUID.randomUUID(),
+            userId = userId,
+            roundNumber = 1,
+            preferenceOrder = preferenceOrder,
+            proposedDateTime = proposedDateTime
+        )
+
+    private fun saveActiveTemporaryBan(
+        userId: UUID,
+        expiresAt: OffsetDateTime
+    ) {
+        penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = userId,
+                reason = "Scheduling temporary ban",
+                type = PenaltyType.TEMPORARY_BAN,
+                expiresAt = expiresAt,
+                active = true
+            )
+        )
+    }
+
+    private fun saveActivePermanentBan(userId: UUID) {
+        penaltyRepository.saveAndFlush(
+            Penalty(
+                userId = userId,
+                reason = "Scheduling permanent ban",
+                type = PenaltyType.PERMANENT_BAN,
+                expiresAt = null,
+                active = true
+            )
+        )
     }
 }

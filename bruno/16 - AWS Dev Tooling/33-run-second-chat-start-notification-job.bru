@@ -1,0 +1,21 @@
+meta {
+  name: 33 Run Second Chat Start Notification Job
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/second-chat-start-notification/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "SecondChatStartNotificationJob") {
+    throw new Error("Expected SecondChatStartNotificationJob to run.");
+  }
+}

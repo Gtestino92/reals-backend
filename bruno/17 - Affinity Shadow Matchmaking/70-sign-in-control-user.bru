@@ -1,0 +1,43 @@
+meta {
+  name: 70 Sign In Control User
+  type: http
+  seq: 70
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{affinity_control_user_email}}",
+    "password": "{{affinity_control_user_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 200) {
+    throw new Error(`Expected Firebase sign-in 200 for Control User, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
+  }
+  const expectedEmail = bru.getEnvVar("affinity_control_user_email");
+  if (body.email !== expectedEmail) {
+    throw new Error(`Expected Control User email ${expectedEmail}, got ${body.email}.`);
+  }
+  bru.setEnvVar("affinity_control_user_id_token", body.idToken);
+  if (body.refreshToken) {
+    bru.setEnvVar("affinity_control_user_refresh_token", body.refreshToken);
+  }
+  bru.setEnvVar("affinity_control_user_firebase_uid", body.localId);
+}

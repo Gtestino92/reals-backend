@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component
 
 @Component
 class AccountDeletionFinalizationJob(
-    private val userService: UserService
+    private val userService: UserService,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -54,7 +55,8 @@ class AccountDeletionFinalizationJob(
         log.logJobSummary(
             jobName = "AccountDeletionFinalizationJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
 
         return summary

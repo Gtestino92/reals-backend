@@ -1,6 +1,8 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.ChatEndReason
+import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportSource
@@ -9,6 +11,7 @@ import com.reals.backend.integration.ControllerIT
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -21,7 +24,7 @@ import java.util.UUID
 class SafetyReportControllerIntegrationTest : ControllerIT() {
 
     @Test
-    fun `creates visual profile report and blocks reported user`() {
+    fun `creates visual profile report and contains pair without default block`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -54,6 +57,36 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         assertEquals(setup.matchId, report.contextId)
         assertNull(report.chatId)
 
+        assertNull(
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+                blockerUserId = setup.userAId,
+                blockedUserId = setup.userBId
+            )
+        )
+        assertEquals(MatchState.VISUAL_REJECTED, matchRepository.findById(setup.matchId).orElseThrow().state)
+    }
+
+    @Test
+    fun `creates visual profile report with requested block`() {
+        val setup = createMatchInVisualPhase()
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(
+                    reportJson(
+                        reportedUserId = setup.userBId,
+                        contextType = SafetyReportContextType.VISUAL_PROFILE,
+                        matchId = setup.matchId,
+                        details = "Visual profile content is unsafe",
+                        blockUser = true
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+
+        val report = safetyReportRepository.findAll().single()
         val block = userBlockRepository.findByBlockerUserIdAndBlockedUserId(
             blockerUserId = setup.userAId,
             blockedUserId = setup.userBId
@@ -61,6 +94,8 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         assertNotNull(block)
         assertEquals(UserBlockSource.SAFETY_REPORT, block?.source)
         assertEquals(report.id, block?.sourceReportId)
+        assertEquals(1, userBlockRepository.findAll().size)
+        assertEquals(MatchState.VISUAL_REJECTED, matchRepository.findById(setup.matchId).orElseThrow().state)
     }
 
     @Test
@@ -125,7 +160,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `creates chat report without closing chat`() {
+    fun `creates chat report with explicit non-blocking containment`() {
         val setup = createMatchWithFirstChat()
 
         mockMvc.perform(
@@ -137,7 +172,9 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
                         reportedUserId = setup.userBId,
                         contextType = SafetyReportContextType.CHAT,
                         chatId = setup.firstChatId,
-                        details = "Chat content was unsafe"
+                        reason = SafetyReportReason.CHILD_SAFETY_CONCERN,
+                        details = "Chat content was unsafe",
+                        blockUser = false
                     )
                 )
         )
@@ -146,11 +183,27 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.contextType", equalTo("CHAT")))
             .andExpect(jsonPath("$.contextId", equalTo(setup.firstChatId.toString())))
 
-        assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.firstChatId).orElseThrow().status)
+        val chat = chatRepository.findById(setup.firstChatId).orElseThrow()
+        assertEquals(ChatStatus.CANCELLED, chat.status)
+        assertEquals(ChatEndReason.SAFETY_REPORT, chat.endedReason)
+
+        val report = safetyReportRepository.findAll().single()
+        assertEquals(SafetyReportReason.CHILD_SAFETY_CONCERN, report.reason)
+        assertEquals(com.reals.backend.domain.SafetyReportStatus.PENDING, report.status)
+        assertNull(
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(
+                blockerUserId = setup.userAId,
+                blockedUserId = setup.userBId
+            )
+        )
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
+
+        val match = matchRepository.findById(setup.matchId).orElseThrow()
+        assertEquals(MatchState.CHAT_REJECTED, match.state)
     }
 
     @Test
-    fun `deduplicates same reporter reported and context`() {
+    fun `rejects duplicate user report for same reporter reported and context`() {
         val setup = createMatchInVisualPhase()
         val body = reportJson(
             reportedUserId = setup.userBId,
@@ -167,19 +220,17 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isCreated)
 
-        val firstReport = safetyReportRepository.findAll().single()
-
         mockMvc.perform(
             post("/api/safety/reports")
                 .with(authenticatedAs(setup.userAId))
                 .contentType(jsonContentType)
                 .content(body)
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.id", equalTo(firstReport.id.toString())))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("SAFETY_REPORT_ALREADY_EXISTS")))
 
         assertEquals(1, safetyReportRepository.findAll().size)
-        assertEquals(1, userBlockRepository.findAll().size)
+        assertEquals(0, userBlockRepository.findAll().size)
     }
 
     @Test
@@ -222,7 +273,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isCreated)
 
         assertEquals(2, safetyReportRepository.findAll().size)
-        assertEquals(1, userBlockRepository.findAll().size)
+        assertEquals(0, userBlockRepository.findAll().size)
     }
 
     @Test
@@ -232,7 +283,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
             email = "stranger-${UUID.randomUUID()}@example.com",
             displayName = "Stranger",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
 
         mockMvc.perform(
@@ -315,7 +366,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `existing block does not prevent report creation`() {
+    fun `existing block does not duplicate when report also requests block`() {
         val setup = createMatchInVisualPhase()
         userBlockService.blockUser(
             blockerUserId = setup.userAId,
@@ -332,7 +383,8 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
                         reportedUserId = setup.userBId,
                         contextType = SafetyReportContextType.VISUAL_PROFILE,
                         matchId = setup.matchId,
-                        details = "Unsafe profile with existing block"
+                        details = "Unsafe profile with existing block",
+                        blockUser = true
                     )
                 )
         )
@@ -340,6 +392,10 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
 
         assertEquals(1, safetyReportRepository.findAll().size)
         assertEquals(1, userBlockRepository.findAll().size)
+        assertEquals(
+            UserBlockSource.MANUAL,
+            userBlockRepository.findByBlockerUserIdAndBlockedUserId(setup.userAId, setup.userBId)?.source
+        )
         assertTrue(userBlockService.isBlockedPair(setup.userAId, setup.userBId))
     }
 
@@ -350,7 +406,8 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         matchId: UUID? = null,
         profilePhotoId: UUID? = null,
         reason: SafetyReportReason = SafetyReportReason.INAPPROPRIATE_BEHAVIOR,
-        details: String
+        details: String,
+        blockUser: Boolean? = null
     ): String {
         val fields = mutableMapOf<String, Any>(
             "reportedUserId" to reportedUserId,
@@ -361,6 +418,7 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
         chatId?.let { fields["chatId"] = it }
         matchId?.let { fields["matchId"] = it }
         profilePhotoId?.let { fields["profilePhotoId"] = it }
+        blockUser?.let { fields["blockUser"] = it }
         return jsonBody(fields)
     }
 }

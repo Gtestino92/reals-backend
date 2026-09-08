@@ -1,11 +1,17 @@
 package com.reals.backend.config.security.authentication
 
-import com.google.firebase.auth.FirebaseAuth
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
+import com.reals.backend.domain.PenaltyType
+import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.service.AuthOriginPolicy
+import com.reals.backend.service.EffectiveAccountBan
+import com.reals.backend.service.PenaltyService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -22,7 +28,10 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 @Profile("local-firebase", "dev", "prod")
 class FirebaseTokenFilter(
+    private val environmentExposurePolicy: EnvironmentExposurePolicy,
     private val userService: UserService,
+    private val penaltyService: PenaltyService,
+    private val firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier,
     @param:Value("\${backoffice.admin-emails:}")
     private val adminEmailsProperty: String = ""
 ) : OncePerRequestFilter() {
@@ -41,11 +50,20 @@ class FirebaseTokenFilter(
         }
         return request.method.equals("OPTIONS", ignoreCase = true) ||
             path == "/api/ping" ||
-            path.startsWith("/api/auth/") ||
-            path.startsWith("/api/local-dev/") ||
+            (
+                request.method.equals("POST", ignoreCase = true) &&
+                    path == "/api/auth/password-reset"
+            ) ||
+            (
+                request.method.equals("GET", ignoreCase = true) &&
+                    path == "/api/legal/documents/current"
+            ) ||
+            (
+                environmentExposurePolicy.localDevEndpointsAllowed() &&
+                    path.startsWith("/api/local-dev/")
+            ) ||
             path == "/actuator/health" ||
             path.startsWith("/actuator/health/") ||
-            path == "/actuator/info" ||
             path.startsWith("/h2-console/")
     }
 
@@ -76,10 +94,64 @@ class FirebaseTokenFilter(
         }
 
         try {
-            val decoded = FirebaseAuth.getInstance()
-                .verifyIdToken(token, true)
+            val decoded = firebaseTokenAuthenticationVerifier.verify(token)
+            val signInProvider = FirebaseSignInProvider.fromToken(decoded)
+            if (signInProvider == null) {
+                SecurityContextHolder.clearContext()
+                writeUnauthorized(
+                    response = response,
+                    code = "UNSUPPORTED_AUTH_PROVIDER",
+                    message = "Firebase sign-in provider is unsupported"
+                )
+                return
+            }
 
             val user = userService.findByFirebaseUid(decoded.uid)
+
+            if (
+                user != null &&
+                !AuthOriginPolicy.authenticationAllowed(user.authOrigin, signInProvider)
+            ) {
+                SecurityContextHolder.clearContext()
+                writeUnauthorized(
+                    response = response,
+                    code = "AUTH_METHOD_NOT_ALLOWED",
+                    message = "Authentication method is not allowed for this account"
+                )
+                return
+            }
+
+            if (user?.status == UserStatus.ACTIVE) {
+                val effectiveBan = penaltyService.resolveEffectiveBan(userId = user.id)
+                if (effectiveBan != null) {
+                    if (
+                        effectiveBan.type == PenaltyType.PERMANENT_BAN &&
+                        isPermanentBanAppealAllowedPath(request)
+                    ) {
+                        SecurityContextHolder.getContext().authentication =
+                            UsernamePasswordAuthenticationToken(
+                                CurrentUserAuthContext(
+                                    userId = user.id,
+                                    firebaseUid = decoded.uid,
+                                    email = decoded.email,
+                                    emailVerified = decoded.isEmailVerified,
+                                    signInProvider = signInProvider
+                                ),
+                                null,
+                                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
+                            )
+
+                        filterChain.doFilter(request, response)
+                        return
+                    }
+                    SecurityContextHolder.clearContext()
+                    writeBanned(
+                        response = response,
+                        ban = effectiveBan
+                    )
+                    return
+                }
+            }
 
             if (user?.status == UserStatus.DELETED) {
                 if (!isDeletedAccountAllowedPath(request)) {
@@ -98,7 +170,8 @@ class FirebaseTokenFilter(
                             userId = user.id,
                             firebaseUid = decoded.uid,
                             email = decoded.email,
-                            emailVerified = decoded.isEmailVerified
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
@@ -113,7 +186,9 @@ class FirebaseTokenFilter(
                     UsernamePasswordAuthenticationToken(
                         FirebasePrincipal(
                             uid = decoded.uid,
-                            email = decoded.email
+                            email = decoded.email,
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
@@ -124,12 +199,15 @@ class FirebaseTokenFilter(
                             userId = user.id,
                             firebaseUid = decoded.uid,
                             email = decoded.email,
-                            emailVerified = decoded.isEmailVerified
+                            emailVerified = decoded.isEmailVerified,
+                            signInProvider = signInProvider
                         ),
                         null,
                         authoritiesForActiveUser(
-                            localEmail = user.email,
-                            firebaseEmail = decoded.email
+                            user = user,
+                            firebaseUid = decoded.uid,
+                            firebaseEmail = decoded.email,
+                            firebaseEmailVerified = decoded.isEmailVerified
                         )
                     )
                 }
@@ -150,6 +228,18 @@ class FirebaseTokenFilter(
         filterChain.doFilter(request, response)
     }
 
+    private fun isPermanentBanAppealAllowedPath(request: HttpServletRequest): Boolean {
+        val path = request.servletPath.ifBlank {
+            request.requestURI.removePrefix(request.contextPath)
+        }
+
+        return path == "/api/me/ban/appeal" &&
+            (
+                request.method.equals("GET", ignoreCase = true) ||
+                    request.method.equals("POST", ignoreCase = true)
+            )
+    }
+
     private fun isDeletedAccountAllowedPath(request: HttpServletRequest): Boolean {
         val path = request.servletPath.ifBlank {
             request.requestURI.removePrefix(request.contextPath)
@@ -161,21 +251,33 @@ class FirebaseTokenFilter(
         ) || (
             request.method.equals("POST", ignoreCase = true) &&
             path == "/api/me/reactivation"
+        ) || (
+            request.method.equals("POST", ignoreCase = true) &&
+            path == "/api/me/deletion/finalization"
         )
     }
 
-    private fun authoritiesForActiveUser(
-        localEmail: String?,
-        firebaseEmail: String?
+    internal fun authoritiesForActiveUser(
+        user: User,
+        firebaseUid: String,
+        firebaseEmail: String?,
+        firebaseEmailVerified: Boolean
     ): List<SimpleGrantedAuthority> {
         val authorities =
             mutableListOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
 
-        val candidateEmails =
-            listOfNotNull(firebaseEmail, localEmail)
-                .map { it.trim().lowercase() }
+        val normalizedFirebaseEmail = firebaseEmail
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
 
-        if (candidateEmails.any { it in adminEmails }) {
+        if (
+            user.status == UserStatus.ACTIVE &&
+            user.firebaseUid == firebaseUid &&
+            firebaseEmailVerified &&
+            normalizedFirebaseEmail != null &&
+            normalizedFirebaseEmail in adminEmails
+        ) {
             authorities += SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
         }
 
@@ -192,6 +294,23 @@ class FirebaseTokenFilter(
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(
             """{"code":"$code","error":"Unauthorized","message":"$message"}"""
+        )
+    }
+
+    private fun writeBanned(
+        response: HttpServletResponse,
+        ban: EffectiveAccountBan
+    ) {
+        response.status = HttpServletResponse.SC_FORBIDDEN
+        response.contentType = MediaType.APPLICATION_JSON_VALUE
+        response.characterEncoding = Charsets.UTF_8.name()
+        response.writer.write(
+            when (ban.expiresAt) {
+                null ->
+                    """{"code":"${DomainErrorCode.ACCOUNT_PERMANENTLY_BANNED.name}","error":"Forbidden","message":"Account is permanently banned"}"""
+                else ->
+                    """{"code":"${DomainErrorCode.ACCOUNT_TEMPORARILY_BANNED.name}","error":"Forbidden","message":"Account is temporarily banned","expiresAt":"${ban.expiresAt}"}"""
+            }
         )
     }
 }

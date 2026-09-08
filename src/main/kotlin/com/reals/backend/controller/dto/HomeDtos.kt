@@ -5,6 +5,8 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.Profile
 import com.reals.backend.domain.ProfileStatus
+import com.reals.backend.domain.SecondChatAttendanceStatus
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -20,6 +22,7 @@ data class HomeResponse(
 data class HomeStatusResponse(
     val version: Long,
     val dirty: Boolean,
+    val nextRefreshAt: OffsetDateTime?,
     val serverTime: OffsetDateTime
 )
 
@@ -34,7 +37,7 @@ data class HomePendingStateResponse(
 data class HomeActiveInteractionsSummaryResponse(
     val activeInitialCount: Int,
     val activeConnectionCount: Int,
-    val pendingSchedulingConnectionCount: Int,
+    val hasPendingSchedulingConnection: Boolean,
     val actionableConnectionCount: Int
 )
 
@@ -46,7 +49,8 @@ data class HomeMatchmakingResponse(
 
 data class HomeMatchmakingBlockedReasonResponse(
     val code: String,
-    val message: String
+    val message: String,
+    val nextAvailableAt: OffsetDateTime? = null
 )
 
 enum class HomePendingActionType {
@@ -58,19 +62,24 @@ data class HomePendingActionResponse(
     val type: HomePendingActionType,
     val matchId: UUID,
     val chatId: UUID?,
+    val visualStartedAt: Instant?,
+    val visualExpiresAt: Instant?,
     val partner: PartnerSummaryResponse?
 )
 
 data class HomePendingActionLiteResponse(
     val type: HomePendingActionType,
     val matchId: UUID,
-    val chatId: UUID?
+    val chatId: UUID?,
+    val visualStartedAt: Instant?,
+    val visualExpiresAt: Instant?
 )
 
 enum class HomeNextStepType {
     SCHEDULING,
     SECOND_CHAT_SCHEDULED,
     SECOND_CHAT_AVAILABLE,
+    SECOND_CHAT_EXPIRED,
     SECOND_CHAT_READ_ONLY
 }
 
@@ -79,22 +88,30 @@ data class HomeNextStepResponse(
     val connectionId: UUID,
     val matchId: UUID,
     val partner: PartnerSummaryResponse?,
-    val secondChat: HomeChatResponse? = null
+    val createdAt: OffsetDateTime? = null,
+    val schedulingExpiresAt: OffsetDateTime? = null,
+    val secondChat: HomeChatResponse? = null,
+    val requiresAction: Boolean
 )
 
 data class HomeNextStepLiteResponse(
     val type: HomeNextStepType,
     val connectionId: UUID,
     val matchId: UUID,
-    val secondChat: HomePendingSecondChatLiteResponse? = null
+    val createdAt: OffsetDateTime? = null,
+    val schedulingExpiresAt: OffsetDateTime? = null,
+    val secondChat: HomePendingSecondChatLiteResponse? = null,
+    val requiresAction: Boolean
 )
 
 data class HomePendingSecondChatLiteResponse(
     val chatId: UUID?,
     val availableAt: OffsetDateTime?,
+    val entryClosesAt: OffsetDateTime?,
     val expiresAt: OffsetDateTime?,
     val readOnlyUntil: OffsetDateTime?,
-    val durationMinutes: Long?
+    val durationMinutes: Long?,
+    val myAttendanceStatus: SecondChatAttendanceStatus?
 )
 
 enum class HomePassiveNoticeType {
@@ -102,8 +119,7 @@ enum class HomePassiveNoticeType {
 }
 
 data class HomePassiveNoticeResponse(
-    val type: HomePassiveNoticeType,
-    val count: Int
+    val type: HomePassiveNoticeType
 )
 
 data class HomeChatResponse(
@@ -111,27 +127,33 @@ data class HomeChatResponse(
     val chatType: ChatType?,
     val chatStatus: ChatStatus?,
     val availableAt: OffsetDateTime,
+    val entryClosesAt: OffsetDateTime,
     val expiresAt: OffsetDateTime,
     val readOnlyUntil: OffsetDateTime?,
     val durationMinutes: Long,
+    val myAttendanceStatus: SecondChatAttendanceStatus,
     val partner: PartnerSummaryResponse?
 ) {
     companion object {
         fun from(
             chat: Chat?,
             availableAt: OffsetDateTime,
+            entryClosesAt: OffsetDateTime,
             expiresAt: OffsetDateTime,
             readOnlyUntil: OffsetDateTime?,
             durationMinutes: Long,
+            myAttendanceStatus: SecondChatAttendanceStatus,
             partner: Profile?
         ) = HomeChatResponse(
             chatId = chat?.id,
             chatType = chat?.chatType,
             chatStatus = chat?.status,
             availableAt = availableAt,
+            entryClosesAt = entryClosesAt,
             expiresAt = expiresAt,
             readOnlyUntil = readOnlyUntil,
             durationMinutes = durationMinutes,
+            myAttendanceStatus = myAttendanceStatus,
             partner = partner?.let { PartnerSummaryResponse.from(it) }
         )
     }

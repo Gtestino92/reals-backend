@@ -3,6 +3,7 @@ package com.reals.backend.service
 import com.reals.backend.config.s3.S3CompatibleStorageConfig
 import com.reals.backend.config.s3.S3ReadUrlMode
 import com.reals.backend.config.s3.S3StorageProperties
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -12,7 +13,9 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import java.util.UUID
 
@@ -38,7 +41,7 @@ class S3StorageServiceTest {
             bytes = byteArrayOf(1, 2, 3)
         )
 
-        assertEquals("reals-profile-photos", storedObject.bucket)
+        assertEquals("reals-media", storedObject.bucket)
         assertEquals("users/$userId/profile-photos/$photoId.jpg", storedObject.key)
         assertEquals("image/jpeg", storedObject.contentType)
         assertEquals(3, storedObject.sizeBytes)
@@ -67,7 +70,7 @@ class S3StorageServiceTest {
 
             val url = service.getReadUrl("users/user-id/profile-photos/photo.png")
 
-            assertTrue(url.startsWith("http://localhost:9000/reals-profile-photos/"))
+            assertTrue(url.startsWith("http://localhost:9000/reals-media/"))
             assertTrue(url.contains("users/user-id/profile-photos/photo.png"))
             assertTrue(url.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"))
             assertTrue(url.contains("X-Amz-Signature="))
@@ -77,9 +80,162 @@ class S3StorageServiceTest {
     }
 
     @Test
+    fun `presigned audio read url uses persisted bucket`() {
+        val properties = storageProperties(
+            endpoint = "http://minio:9000",
+            presignedUrlEndpoint = "http://localhost:9000",
+            readUrlMode = S3ReadUrlMode.PRESIGNED
+        )
+        val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
+
+        try {
+            val service = S3StorageService(
+                s3Client = Mockito.mock(S3Client::class.java),
+                s3Presigner = presigner,
+                properties = properties
+            )
+
+            val url = service.getReadUrl(
+                bucket = "archived-chat-media",
+                key = "chats/chat-id/messages/message-id.m4a"
+            )
+
+            assertTrue(url.startsWith("http://localhost:9000/archived-chat-media/"))
+            assertTrue(url.contains("chats/chat-id/messages/message-id.m4a"))
+        } finally {
+            presigner.close()
+        }
+    }
+
+    @Test
+    fun `upload chat audio returns shared media bucket and audio object key`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+
+        val chatId = UUID.fromString("00000000-0000-0000-0000-000000000011")
+        val messageId = UUID.fromString("00000000-0000-0000-0000-000000000012")
+
+        val storedObject = service.uploadChatAudio(
+            chatId = chatId,
+            messageId = messageId,
+            contentType = "AUDIO/MP4",
+            bytes = byteArrayOf(1, 2, 3)
+        )
+
+        assertEquals("reals-media", storedObject.bucket)
+        assertEquals("chats/$chatId/messages/$messageId.m4a", storedObject.key)
+        assertEquals("audio/mp4", storedObject.contentType)
+        assertEquals(3, storedObject.sizeBytes)
+        Mockito.verify(s3Client).putObject(
+            any(PutObjectRequest::class.java),
+            any(RequestBody::class.java)
+        )
+    }
+
+    @Test
+    fun `profile photo object key keeps profile photos namespace`() {
+        val service = S3StorageService(
+            s3Client = Mockito.mock(S3Client::class.java),
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+
+        val userId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val photoId = UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+        assertEquals(
+            "users/$userId/profile-photos/$photoId.png",
+            service.profilePhotoObjectKey(
+                userId = userId,
+                objectId = photoId,
+                contentType = "image/png"
+            )
+        )
+    }
+
+    @Test
+    fun `chat audio object key keeps messages namespace`() {
+        val service = S3StorageService(
+            s3Client = Mockito.mock(S3Client::class.java),
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+
+        val chatId = UUID.fromString("00000000-0000-0000-0000-000000000011")
+        val messageId = UUID.fromString("00000000-0000-0000-0000-000000000012")
+
+        assertEquals(
+            "chats/$chatId/messages/$messageId.m4a",
+            service.chatAudioObjectKey(chatId = chatId, messageId = messageId)
+        )
+    }
+
+    @Test
+    fun `media bucket and profile photo bucket use same configured bucket`() {
+        val service = S3StorageService(
+            s3Client = Mockito.mock(S3Client::class.java),
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+
+        assertEquals("reals-media", service.mediaBucket())
+        assertEquals("reals-media", service.profilePhotoBucket())
+    }
+
+    @Test
+    fun `chat audio upload storage failures use audio-specific exception`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+        Mockito.doThrow(RuntimeException("storage down"))
+            .`when`(s3Client)
+            .putObject(
+                any(PutObjectRequest::class.java),
+                any(RequestBody::class.java)
+            )
+
+        assertThrows<ChatAudioStorageException> {
+            service.uploadChatAudio(
+                chatId = UUID.fromString("00000000-0000-0000-0000-000000000011"),
+                messageId = UUID.fromString("00000000-0000-0000-0000-000000000012"),
+                contentType = "audio/mp4",
+                bytes = byteArrayOf(1, 2, 3)
+            )
+        }
+    }
+
+    @Test
+    fun `delete treats missing object as successful cleanup`() {
+        val s3Client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(
+            s3Client = s3Client,
+            s3Presigner = Mockito.mock(S3Presigner::class.java),
+            properties = storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED)
+        )
+        Mockito.doThrow(
+            S3Exception.builder()
+                .statusCode(404)
+                .message("object not found")
+                .build()
+        ).`when`(s3Client).deleteObject(any(DeleteObjectRequest::class.java))
+
+        service.deleteObject(
+            bucket = "reals-media",
+            key = "missing.jpg"
+        )
+    }
+
+    @Test
     fun `public read url uses configured public base url`() {
         val properties = storageProperties(
-            publicBaseUrl = "http://localhost:9000/reals-profile-photos/",
+            publicBaseUrl = "http://localhost:9000/reals-media/",
             readUrlMode = S3ReadUrlMode.PUBLIC
         )
         val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
@@ -92,7 +248,7 @@ class S3StorageServiceTest {
             )
 
             assertEquals(
-                "http://localhost:9000/reals-profile-photos/users/user-id/profile-photos/photo.png",
+                "http://localhost:9000/reals-media/users/user-id/profile-photos/photo.png",
                 service.getReadUrl("users/user-id/profile-photos/photo.png")
             )
         } finally {
@@ -140,7 +296,7 @@ class S3StorageServiceTest {
 
             val url = service.getReadUrl("users/user-id/profile-photos/photo.png")
 
-            assertTrue(url.startsWith("http://localhost:9000/reals-profile-photos/"))
+            assertTrue(url.startsWith("http://localhost:9000/reals-media/"))
             assertTrue(url.contains("X-Amz-Signature="))
         } finally {
             presigner.close()
@@ -150,14 +306,14 @@ class S3StorageServiceTest {
     private fun storageProperties(
         endpoint: String = "http://localhost:9000",
         presignedUrlEndpoint: String? = "http://localhost:9000",
-        publicBaseUrl: String? = "http://localhost:9000/reals-profile-photos",
+        publicBaseUrl: String? = "http://localhost:9000/reals-media",
         readUrlMode: S3ReadUrlMode
     ): S3StorageProperties =
         S3StorageProperties(
             endpoint = endpoint,
             presignedUrlEndpoint = presignedUrlEndpoint,
             region = "us-east-1",
-            bucket = "reals-profile-photos",
+            bucket = "reals-media",
             accessKeyId = "test-access-key",
             secretAccessKey = "test-secret-key",
             publicBaseUrl = publicBaseUrl,

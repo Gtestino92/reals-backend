@@ -6,11 +6,19 @@ Automated tests live under:
 src/test/kotlin/com/reals/backend/integration
 ```
 
-The suite uses Spring Boot integration tests with the `test` profile and H2 in-memory.
-PostgreSQL-specific behavior that H2 cannot model, such as row claiming with
-`FOR UPDATE SKIP LOCKED`, is covered by focused Testcontainers tests under the
-same suite. Those tests require Docker and are skipped when Docker is not
-available.
+The normal suite uses Spring Boot integration tests with the `test` profile and
+H2 in-memory PostgreSQL compatibility mode. It does not require Docker.
+
+PostgreSQL-specific verification is explicit:
+
+```bash
+./mvnw -Ppostgres-it verify
+```
+
+That profile uses Testcontainers with `postgres:16-alpine`, runs real Flyway
+migrations, validates the JPA schema with `ddl-auto=validate`, and fails when
+the explicitly requested PostgreSQL environment cannot run. The PostgreSQL
+suite is targeted rather than exhaustive.
 
 Structure:
 
@@ -54,15 +62,28 @@ For those cases, service-level integration tests catch more realistic regression
 - incompatible queued users producing no match
 - matchmaking candidate-pair filtering, candidate limit behavior and FIFO tie-breaking
 - second-chat slot auto-confirmation across ordered proposal lists
-- scheduling preference tie-breaks and explicit round rejection
+- scheduling preference tie-breaks and explicit partner proposal rejection
 - scheduling failure after max rounds
 
 `ChatExitIntegrationTest` covers:
 
 - mutual first-chat cancellation without penalties
 - mutual cancellation rejection and timeout closing the chat without penalties
-- safety cancellation and reported-user penalty
+- pending mutual cancellation blocking requester/responder message sends without creating messages or changing `lastMessageAt`
+- pending mutual cancellation preserving message reads, exit-request reads and same-requester idempotency
+- safety cancellation without an automatic permanent block, plus explicit report/manual block behavior
 - unilateral second-chat cancellation penalty behavior
+
+`FirstChatGuidanceIntegrationTest` covers:
+
+- first-chat guidance initialization, deterministic catalog selection, advancement and completion
+- pending mutual cancellation blocking guidance next requests without changing guidance state
+
+`ChatMessageConcurrencyIntegrationTest` covers:
+
+- serialized concurrent message writes in one active first chat
+- single activation when concurrent messages enter an available second chat
+- message sends racing mutual cancellation request creation through the shared chat-row lock
 
 `UserSoftDeleteIntegrationTest` covers:
 
@@ -90,6 +111,7 @@ For those cases, service-level integration tests catch more realistic regression
 Controller integration tests cover representative HTTP contract checks for:
 
 - `ProfileController` and `MeController`: authenticated current-user resolution and profile creation JSON.
+- `AffinityQuestionAnswerController` and `ReferenceController`: private current-user affinity answers, authenticated catalog reads, legal write gates and absence of scoring policy internals from responses.
 - `MatchController`: chat decision response, conflict mapping and personal-message write.
 - `ConnectionController`: proposal submission, negotiation confirmation and proposal validation errors.
 - `ChatController`: sending/listing messages, non-participant rejection and mutual cancellation over HTTP.
@@ -102,7 +124,64 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 - `03 Alternate Outcomes`: valid business outcomes that stop before a successful second chat, such as first-chat rejection, visual rejection, scheduling failure after max rounds and incompatible queued users.
 - `04 Timeout Outcomes`: local-only manual checks for deadline-driven jobs. These use `/api/local-dev/timeouts/...` to move deadlines into the past and `/api/local-dev/jobs/.../run` to trigger the real jobs deterministically.
 
-Most `/api/local-dev/...` endpoints are only exposed for `local`, `local-nodb` and `local-postgres` profiles. The matchmaking processor endpoint is also exposed for `local-firebase` so Android/Firebase manual flows can process queued pairs locally. Local-dev endpoints must not be enabled in cloud dev or production.
+`/api/local-dev/...` endpoints are exposed for `local-nodb`,
+`local-postgres`, `local-firebase` and `dev`. They are unauthenticated only in
+local execution profiles, including `local-firebase`, so Android/Firebase
+manual flows can process queued pairs and trigger jobs locally. In hosted
+`dev`, the same tooling requires an authenticated Firebase-backed `ROLE_ADMIN`
+user. Local-dev endpoints must not be enabled in production.
+
+`POST /api/me/local-dev/email-verification` is different: it is a local
+Firebase helper under the authenticated `/api/me/**` boundary, not the
+unauthenticated `/api/local-dev/**` tooling namespace. Focused tests cover its
+`local-firebase` plus property exposure gate, absence from non-local-Firebase
+profiles, Firebase Admin update delegation, and the existing verified-email
+guards for photo upload/replacement and profile activation.
+
+Firebase App Check has focused unit and WebMvc tests for JWT verification,
+filter modes, route exclusions, filter ordering and profile startup behavior.
+They generate local RSA keys and never contact Firebase JWKS. Use:
+
+```text
+.\mvnw.cmd "-Dtest=FirebaseAppCheck*Test,NimbusFirebaseAppCheckVerifierTest" test
+```
+
+Affinity-question tests are intentionally focused:
+
+- catalog unit tests validate startup-failure rules, required visible
+  categories, enabled-flag/policy consistency, matrix completeness/exact
+  keys/symmetry, range checks, unsupported answer types and
+  sensitive-question wording boundaries;
+- service integration tests cover private answer create/update/delete,
+  idempotent partial PATCH semantics, duplicate question rejection, invalid
+  question/option errors, stale/deprecated answer deletion, ownership
+  isolation, `DRAFT` and `ACTIVE` profiles, missing profile behavior,
+  serialized write behavior and the database uniqueness invariant;
+- pure evaluator tests cover neutral missing answers, shared-domain evidence,
+  low-interest non-reward, taste differences, constructive-conversation
+  potential, ordinal extreme negatives, semantic-version mismatch, symmetry and
+  declared output ranges.
+
+
+Profile-question tests are intentionally focused:
+
+- catalog unit tests validate the bundled Spanish resource, startup-failure
+  rules, stable id boundaries, single-line prompts, unique ids/orders, positive
+  versions and inactive-question filtering;
+- service integration tests cover create/update/delete, idempotency, answer
+  normalization, 160-character boundaries, stale semantic-version behavior,
+  selection replacement, compaction, repository constraints and profile-status
+  invariants;
+- controller and visual-profile integration tests cover authenticated catalog
+  reads, private current-user API shape, legal write gates, stable error codes,
+  visual access ordering and privacy boundaries for selected versus unselected
+  answers.
+
+The App Check filter is expected between the pre-authentication rate limiter
+and `FirebaseTokenFilter`. In `DISABLED` mode it does not require or verify the
+header. In `MONITOR` it allows missing, invalid and temporarily unverifiable
+tokens while recording bounded diagnostics. In `ENFORCED` it returns stable
+`401`/`503` errors before Firebase authentication.
 
 ## Running Tests
 
@@ -113,10 +192,28 @@ From a shell with Java configured:
 ```
 
 Use `.\mvnw test` on Unix-like shells.
-The PostgreSQL concurrency coverage uses Testcontainers, so Docker must be
-running if you want that test to execute locally.
 
-GitHub Actions also runs `./mvnw clean test` on pull requests and pushes to
+For the mutual-exit chat-locking change, focused chat integration tests passed
+locally and the full Maven test suite was run by the user with `.\mvnw.cmd test`
+and passed.
+
+Run the explicit PostgreSQL profile only when Docker is available:
+
+```text
+.\mvnw.cmd -Ppostgres-it verify
+```
+
+Use `./mvnw -Ppostgres-it verify` on Unix-like shells.
+
+The current PostgreSQL profile covers targeted production-readiness checks:
+
+- Home query-count shape on real PostgreSQL.
+- Bounded chat-message initial and incremental reads, including UUID tie-break pagination and V30 index presence.
+- Concurrent writes in one first chat.
+- Concurrent activation of one available second chat.
+- Concurrent Firebase provisioning with PostgreSQL unique constraints.
+
+GitHub Actions also runs `./mvnw test` on pull requests and pushes to
 `master` or `development`.
 
 ## CI Gates
@@ -134,8 +231,8 @@ Pull requests to `development` or `master` run:
 - CodeQL default setup from GitHub code scanning.
 
 Pushes to `development` or `master` run the same validation and then publish
-the backend image to GHCR. The image publishing job does not run for pull
-requests.
+the same Docker image that was validated and scanned to GHCR. Image publishing
+does not run for pull requests.
 
 ## Smoke Checks
 
@@ -143,10 +240,25 @@ The `Smoke check` GitHub Actions workflow is manual and is intended for a
 deployed environment. Provide the backend base URL and it checks:
 
 - `GET /actuator/health/readiness`
-- `GET /actuator/info`
 - `GET /api/ping`
 
-It does not deploy anything and does not require application credentials.
-Optional inputs `expected_image_tag` and `expected_image_revision` validate the
-image metadata exposed by `/actuator/info`, so the same workflow can be wired
-into deploy automation later.
+It does not deploy anything and intentionally checks only public operational
+endpoints. `/actuator/info` is administrator-only in hosted environments; image
+metadata can be inspected manually with a fresh administrator bearer token when
+needed.
+
+## Representative FCM Smoke Verification
+
+On July 21, 2026, the backend was manually smoke-tested with the
+`local-firebase` profile against a signed optimized Android `localRelease`
+installation. Firebase Authentication and Firebase App Check verification
+worked, the Android client registered an FCM device token in
+`push_device_tokens`, and the visual-review reminder job was triggered through
+the local-dev job path.
+
+Firebase accepted provider delivery to currently valid registration tokens, a
+representative notification reached the physical Android device, and the
+persisted delivery record was `SENT` because at least one provider delivery
+succeeded. This representative local smoke does not prove production delivery
+rates, Play Integrity behavior, all OEM background modes, retry behavior or any
+remote deployment.

@@ -6,6 +6,7 @@ import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
@@ -20,12 +21,11 @@ class ConnectionService(
     private val chatRepository: ChatRepository,
     private val dismissalRepository: ConnectionHomeDismissalRepository,
     private val negotiationRepository: ScheduleNegotiationRepository,
+    private val participationRepository: SecondChatParticipationRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val userService: UserService,
+    private val userBlockService: UserBlockService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
-
-    @param:Value($$"${engagement.max-active-connections:2}")
-    private val maxActiveConnections: Int,
 
     @param:Value($$"${scheduling.negotiation-duration-minutes:2880}")
     private val negotiationDurationMinutes: Long,
@@ -34,7 +34,10 @@ class ConnectionService(
     private val schedulingActivationDelayMinutes: Long,
 
     @param:Value($$"${chat.second-chat.duration-minutes:120}")
-    private val secondChatDurationMinutes: Long
+    private val secondChatDurationMinutes: Long,
+
+    @param:Value($$"${chat.second-chat.entry-window-minutes:20}")
+    private val entryWindowMinutes: Long
 
 ) {
 
@@ -44,6 +47,10 @@ class ConnectionService(
                 NoSuchElementException("Connection not found: $connectionId")
             }
     }
+
+    fun lockByIdOrThrow(connectionId: UUID): Connection =
+        connectionRepository.findByIdForUpdate(connectionId)
+            ?: throw NoSuchElementException("Connection not found: $connectionId")
 
     fun findByIdForUserOrThrow(
         connectionId: UUID,
@@ -67,6 +74,7 @@ class ConnectionService(
      * locks, while the actionable scheduling phase is activated later.
      */
     fun createFromMatch(match: Match): Connection {
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         connectionRepository.findByMatchId(match.id)?.let { existing ->
             ensureConnectionLocks(existing)
@@ -103,6 +111,7 @@ class ConnectionService(
     fun activateScheduling(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SCHEDULING_PHASE) {
             ensureConnectionLocks(connection)
@@ -135,18 +144,6 @@ class ConnectionService(
             reason = "scheduling_available"
         )
         return saved
-    }
-
-    private fun checkConnectionLimit(userId: UUID) {
-
-        val active = lockRepository.countByUserIdAndEngagementType(
-            userId,
-            EngagementType.CONNECTION
-        )
-
-        check(active < maxActiveConnections) {
-            "User $userId has reached the maximum number of active connections ($maxActiveConnections)"
-        }
     }
 
     private fun validateParticipant(
@@ -188,8 +185,6 @@ class ConnectionService(
             return
         }
 
-        checkConnectionLimit(userId)
-
         lockRepository.save(
             ActiveEngagementLock(
                 userId = userId,
@@ -206,6 +201,7 @@ class ConnectionService(
     fun transitionToSecondChatScheduled(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT_SCHEDULED) {
             return connection
@@ -234,6 +230,7 @@ class ConnectionService(
     fun transitionToSecondChatAvailable(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT_AVAILABLE) {
             return connection
@@ -262,6 +259,7 @@ class ConnectionService(
     fun transitionToSecondChat(connectionId: UUID): Connection {
 
         val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
 
         if (connection.state == ConnectionState.SECOND_CHAT) {
             return connection
@@ -281,6 +279,51 @@ class ConnectionService(
             reason = "second_chat_entered"
         )
         return saved
+    }
+
+    fun transitionToSecondChatIdempotent(connectionId: UUID): Connection {
+        val connection = findByIdOrThrow(connectionId)
+        userBlockService.requirePairNotBlocked(connection.userAId, connection.userBId)
+
+        check(
+            connection.state == ConnectionState.SECOND_CHAT_SCHEDULED ||
+                connection.state == ConnectionState.SECOND_CHAT_AVAILABLE ||
+                connection.state == ConnectionState.SECOND_CHAT
+        ) {
+            "Cannot transition to SECOND_CHAT: connection is in state ${connection.state}"
+        }
+
+        if (connection.state == ConnectionState.SECOND_CHAT) {
+            return connection
+        }
+
+        val previousState = connection.state
+        val transitioned = connectionRepository.transitionToSecondChatIfAllowed(
+            connectionId = connectionId,
+            updatedAt = OffsetDateTime.now()
+        )
+        val updated = findByIdOrThrow(connectionId)
+
+        check(updated.state == ConnectionState.SECOND_CHAT) {
+            "Cannot transition to SECOND_CHAT: connection is in state ${updated.state}"
+        }
+
+        if (transitioned == 1) {
+            if (previousState == ConnectionState.SECOND_CHAT_SCHEDULED) {
+                homeStateInvalidationService.bumpBoth(
+                    userAId = updated.userAId,
+                    userBId = updated.userBId,
+                    reason = "second_chat_available"
+                )
+            }
+            homeStateInvalidationService.bumpBoth(
+                userAId = updated.userAId,
+                userBId = updated.userBId,
+                reason = "second_chat_entered"
+            )
+        }
+
+        return updated
     }
 
     /**
@@ -339,7 +382,7 @@ class ConnectionService(
             return existing
         }
 
-        check(isSecondChatDismissible(connection)) {
+        check(isSecondChatDismissible(connection, userId)) {
             "Second chat for connection $connectionId is still actionable"
         }
 
@@ -356,12 +399,34 @@ class ConnectionService(
         return dismissal
     }
 
-    private fun isSecondChatDismissible(connection: Connection): Boolean {
+    private fun isSecondChatDismissible(
+        connection: Connection,
+        userId: UUID
+    ): Boolean {
         if (connection.state == ConnectionState.CLOSED) {
             return true
         }
 
         val now = OffsetDateTime.now()
+        val negotiation = negotiationRepository.findByConnectionId(connection.id)
+        val confirmedDateTime = negotiation?.confirmedDateTime
+        val myAttendanceStatus =
+            participationRepository
+                .findByConnectionIdAndUserId(
+                    connectionId = connection.id,
+                    userId = userId
+                )
+                ?.attendanceStatus
+                ?: SecondChatAttendanceStatus.PENDING
+
+        if (
+            confirmedDateTime != null &&
+            !hasJoinedSecondChat(myAttendanceStatus) &&
+            !confirmedDateTime.plusMinutes(entryWindowMinutes).isAfter(now)
+        ) {
+            return true
+        }
+
         val secondChat =
             chatRepository.findByConnectionIdAndChatType(
                 connectionId = connection.id,
@@ -371,8 +436,7 @@ class ConnectionService(
         return when (connection.state) {
             ConnectionState.SECOND_CHAT_SCHEDULED ->
                 secondChat == null &&
-                    negotiationRepository.findByConnectionId(connection.id)
-                        ?.confirmedDateTime
+                    confirmedDateTime
                         ?.plusMinutes(secondChatDurationMinutes)
                         ?.let { !it.isAfter(now) } == true
 
@@ -384,6 +448,8 @@ class ConnectionService(
             ConnectionState.SECOND_CHAT ->
                 when (secondChat?.status) {
                     ChatStatus.EXPIRED,
+                    ChatStatus.FINISHED,
+                    ChatStatus.ABANDONED,
                     ChatStatus.CLOSED -> true
                     ChatStatus.AVAILABLE,
                     ChatStatus.ACTIVE -> !secondChat.timeoutAt.isAfter(now)
@@ -395,4 +461,8 @@ class ConnectionService(
             ConnectionState.CLOSED -> false
         }
     }
+
+    private fun hasJoinedSecondChat(status: SecondChatAttendanceStatus): Boolean =
+        status == SecondChatAttendanceStatus.ON_TIME ||
+            status == SecondChatAttendanceStatus.LATE
 }

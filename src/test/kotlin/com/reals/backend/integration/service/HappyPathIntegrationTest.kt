@@ -1,17 +1,18 @@
 package com.reals.backend.integration.service
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatEndReason
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.MatchState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.SecondChatConversationLifecycleService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -27,19 +28,19 @@ class HappyPathIntegrationTest : BaseIT() {
             email = "ana-${UUID.randomUUID()}@example.com",
             displayName = "Ana",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "bruno-${UUID.randomUUID()}@example.com",
             displayName = "Bruno",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         enqueueForMatchmaking(userA)
         enqueueForMatchmaking(userB)
 
-        val pair = matchmakingService.findNextCandidatePair()
+        val pair = matchmakingService.claimNextCandidatePair()
             ?: error("Expected a candidate pair")
         val match = matchService.createMatch(pair.first, pair.second)
         val firstChat = chatService.startFirstChat(match.id)
@@ -53,6 +54,7 @@ class HappyPathIntegrationTest : BaseIT() {
 
         chatService.recordChatDecision(match.id, userA, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(match.id, userB, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(match.id)
 
         val decision = chatDecisionRepository.findByMatchId(match.id)
         assertNotNull(decision)
@@ -93,6 +95,7 @@ class HappyPathIntegrationTest : BaseIT() {
         val proposalA = schedulingService.addProposals(
             connectionId = connection.id,
             userId = userA,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slot.plusHours(1), slot)
         )
         assertEquals(2, proposalA.size)
@@ -101,6 +104,7 @@ class HappyPathIntegrationTest : BaseIT() {
         schedulingService.addProposals(
             connectionId = connection.id,
             userId = userB,
+            expectedRoundNumber = 1,
             proposedDateTimes = listOf(slot, slot.plusHours(2))
         )
 
@@ -119,25 +123,41 @@ class HappyPathIntegrationTest : BaseIT() {
             confirmedDateTime = OffsetDateTime.now().minusSeconds(1)
         )
 
-        val secondChat = chatService.findVisibleSecondChatOrThrow(connection.id, userA)
+        val joined = joinSecondChatOrThrow(connection.id, userA)
+        val secondChat = chatService.findByIdOrThrow(joined.chatId!!)
+        joinSecondChatOrThrow(connection.id, userB)
         assertEquals(ChatStatus.ACTIVE, secondChat.status)
         assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
 
-        chatService.sendMessage(secondChat.id, userA, "Ya quedo habilitado el segundo chat")
-        chatService.sendMessage(secondChat.id, userB, "Seguimos por aca")
-
-        val exitRequest =
-            chatExitService.requestMutualCancellation(
-                chatId = secondChat.id,
-                requesterUserId = userA
+        val conversationStartedAt = chatService.findByIdOrThrow(secondChat.id).conversationStartedAt
+            ?: error("Expected second-chat conversationStartedAt")
+        sendMessageOrThrow(secondChat.id, userA, "Ya quedo habilitado el segundo chat", conversationStartedAt.plusMinutes(3))
+        sendMessageOrThrow(secondChat.id, userB, "Seguimos por aca", conversationStartedAt.plusMinutes(4))
+        val completionRequest =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = connection.id,
+                requesterUserId = userA,
+                now = conversationStartedAt.plusMinutes(10)
             )
-        chatExitService.acceptMutualCancellation(
-            chatId = secondChat.id,
-            requestId = exitRequest.id,
-            responderUserId = userB
+        secondChatConversationLifecycleService.decideMutualCompletion(
+            connectionId = connection.id,
+            requestId = completionRequest.request!!.id,
+            responderUserId = userB,
+            decision = SecondChatConversationLifecycleService.CompletionDecision.ACCEPTED,
+            now = conversationStartedAt.plusMinutes(10).plusSeconds(1)
         )
 
-        assertEquals(ChatStatus.CANCELLED, chatService.findByIdOrThrow(secondChat.id).status)
+        val finishedSecondChat = chatService.findByIdOrThrow(secondChat.id)
+        assertEquals(ChatStatus.FINISHED, finishedSecondChat.status)
+        assertEquals(ChatEndReason.SECOND_CHAT_MUTUAL_COMPLETION, finishedSecondChat.endedReason)
+        assertEquals(ConnectionState.SECOND_CHAT, connectionService.findByIdOrThrow(connection.id).state)
+
+        chatRepository.updateReadOnlyUntil(
+            chatId = secondChat.id,
+            readOnlyUntil = OffsetDateTime.now().minusSeconds(1)
+        )
+        assertTrue(chatService.closeExpiredReadOnlySecondChat(secondChat.id))
+        assertEquals(ChatStatus.CLOSED, chatService.findByIdOrThrow(secondChat.id).status)
         assertEquals(ConnectionState.CLOSED, connectionService.findByIdOrThrow(connection.id).state)
         assertNoConnectionLocks(userA, userB)
     }

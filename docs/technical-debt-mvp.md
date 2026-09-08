@@ -1,94 +1,47 @@
-# TECH_DEBT_MVP
+# MVP technical debt
 
-This file lists technical debt, cleanup tasks and product decisions that should be resolved for a first usable MVP/beta version of Reals.
+This file tracks backend work that still blocks a controlled MVP/beta. Current
+architecture, configuration, security, data-retention and deployment behavior
+live in the canonical docs; production hardening lives in
+`docs/technical-debt-prod.md`.
 
-MVP scope here means: enough to run the core product flow end-to-end with controlled users, a dev/staging backend, Android APK distribution, and known temporary shortcuts clearly documented.
+Do not use this file as a changelog. Delete completed setup notes once a
+canonical current-state document covers the implemented behavior.
 
-Do not implement these implicitly while working on unrelated tasks.
+## Current MVP status
 
+- The first external dev backend has been selected and implemented on AWS.
+  Current behavior is documented in `docs/dev-deployment.md` and
+  `docs/aws-dev-deployment.md`.
+- The core backend flow is implemented with Firebase auth, PostgreSQL/Flyway,
+  S3-compatible media storage, profile photos, profile activation, matchmaking,
+  Home reads, first chat, visual review, scheduling, second chat, safety
+  reports, user blocks, account deletion and local/dev operational tooling.
+- Backend profile-photo reordering is implemented at
+  `PUT /api/me/profile/photos/reorder`.
+- The shared push notification preparation, delivery-result persistence and
+  sender workflow is implemented under `service.notification`.
+- Google-origin Firebase authentication is implemented at the backend boundary
+  through Firebase ID tokens and immutable backend-owned `authOrigin`.
 
-## 5. MVP infrastructure/dev environment
+## Remaining MVP backend debt
 
-### 5.1 First external dev deploy target
+- Keep Bruno/local smoke flows aligned with the current API when they are used
+  as controlled MVP manual QA.
+- Add new entries here only for concrete backend work that blocks controlled
+  MVP/beta usage and is not already covered by canonical docs.
 
-MVP need:
-- A backend environment reachable from a physical Android device and installable APK.
+## Deferred beyond MVP
 
-Decision pending:
-- Choose first external development deploy target.
+These are tracked as production or future-product work, not MVP blockers:
 
-Candidates:
-- Render.
-- Fly.io.
-- Railway.
-- Google Cloud Run.
-- AWS App Runner.
-- ECS Fargate.
-- Managed PostgreSQL provider such as Neon, Supabase, Render PostgreSQL, Railway PostgreSQL or AWS RDS.
-
-MVP recommendation:
-- Prefer simple container platform + managed PostgreSQL before Kubernetes.
-
-### 5.2 Dev deployment model
-
-Before distributing APKs beyond local machine:
-- Define runtime platform.
-- Define managed PostgreSQL instance.
-- Define Firebase service-account secret.
-- Define environment variables.
-- Define health check path.
-- Define rollback strategy.
-- Define which GHCR tag dev tracks.
-
-### 5.3 Smoke check workflow
-
-MVP task:
-- Wire the manual `Smoke check` GitHub Actions workflow into the eventual dev deploy pipeline once the dev runtime platform exists.
-
-Acceptance criteria:
-- Smoke check runs against the deployed backend.
-- `/actuator/health` and `/actuator/info` are aligned with deployed image metadata.
-
----
-
-## 6. Explicitly deferred from MVP
-
-The following are intentionally not MVP blockers:
-
-- Real-time chat via WebSocket or SSE.
-- Additional push notification event coverage beyond currently implemented MVP events.
-- Google Sign-In / social auth providers.
-- Reveal quotas.
-- Advanced compatibility scoring.
-- ML-based matching.
-- Popularity, attractiveness or ELO-style ranking.
-- Gamified reputation badges.
-- Production trust score based on real behavior.
-- Full manual moderation workflow.
-- Identity verification provider integration.
-- Canonical country/city reference dataset.
-- Geohash/spatial indexing.
-- CDN/cache strategy for media.
-- Application-level message encryption.
-- Parallel matchmaking workers.
-- Kubernetes/Helm/Terraform unless the chosen platform requires them.
-
-### 6.1 Push notification delivery workflow cleanup
-
-Current notification event services intentionally keep their event-specific
-behavior explicit, but they repeat the same delivery workflow:
-
-- check existing `PushNotificationDelivery` by user, notification type and aggregate id;
-- load active device tokens;
-- send through `PushNotificationSender`;
-- disable invalid tokens;
-- save `SENT`, `FAILED` or `SKIPPED_NO_ACTIVE_TOKEN`;
-- catch per-user failures without failing the owning product transition.
-
-Planned cleanup:
-
-- Extract a shared `PushNotificationDeliveryService` under `service.notification`.
-- Keep event services responsible for eligibility, recipients and payload shape.
-- Keep provider transport under `service.notification.sender`.
-- Preserve existing idempotency semantics and delivery statuses.
-- Avoid changing notification timing, scheduler cadence or payload contents during the extraction.
+- Production deployment boundary, secrets, backup/restore and rollback policy.
+- Production photo-analysis provider smoke validation and moderation operations.
+- Production backoffice access model, child-safety operations and appeals.
+- Final account-deletion purge/anonymization and backup-retention policy.
+- Production observability backend, dashboards and alerting.
+- Notification retry/backoff/outbox semantics and production FCM validation.
+- Capacity, reliability and ranking calibration from real traffic.
+- Distributed/gateway rate limiting for multi-instance scale.
+- WebSocket/SSE, Redis, projections, direct-to-storage uploads, CDN, PostGIS,
+  Kubernetes, Terraform/CDK, ML-based matching and public reputation features.

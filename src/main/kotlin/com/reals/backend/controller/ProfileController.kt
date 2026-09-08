@@ -9,11 +9,15 @@ import com.reals.backend.controller.dto.ProfileResponse
 import com.reals.backend.controller.dto.ReorderProfilePhotosRequest
 import com.reals.backend.controller.dto.UpdateMatchFiltersRequest
 import com.reals.backend.controller.dto.UpdateProfileRequest
-import com.reals.backend.service.PhotoPlacement
+import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.ProfilePhotoUploadGuard
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.photo.PhotoPlacement
+import com.reals.backend.service.photo.ProfilePhotoService
+import com.reals.backend.service.photo.ProfilePhotoView
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
@@ -38,7 +42,10 @@ import java.util.UUID
 @RequestMapping("/api/me/profile")
 @Validated
 class ProfileController(
-    private val profileService: ProfileService
+    private val profileService: ProfileService,
+    private val profilePhotoService: ProfilePhotoService,
+    private val legalComplianceService: LegalComplianceService,
+    private val profilePhotoUploadGuard: ProfilePhotoUploadGuard
 ) {
 
     /**
@@ -51,22 +58,24 @@ class ProfileController(
         @Valid
         @RequestBody request: CreateProfileRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = profileService.createProfile(
             userId = userId,
             displayName = request.displayName,
             birthDate = request.birthDate,
             gender = request.gender,
-            lookingForGender = request.lookingForGender,
+            lookingForGenders = request.lookingForGenders,
             intention = request.intention,
             city = request.city,
-            country = request.country,
+            countryCode = request.countryCode,
             bio = request.bio,
             preferredMinAge = request.preferredMinAge,
             preferredMaxAge = request.preferredMaxAge,
             maxDistanceKm = request.maxDistanceKm
         )
 
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profilePhotoService.getPhotos(profile.id)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             ProfileResponse.from(profile, photos.size)
@@ -79,7 +88,7 @@ class ProfileController(
     ): ResponseEntity<ProfileResponse> {
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val photos = profileService.getPhotos(profile.id)
+        val photos = profilePhotoService.getPhotos(profile.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -95,6 +104,8 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateProfileRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateProfile(
@@ -102,12 +113,10 @@ class ProfileController(
             displayName = request.displayName,
             bio = request.bio,
             city = request.city,
-            country = request.country,
-            intention = request.intention,
-            lookingForGender = request.lookingForGender
+            countryCode = request.countryCode,
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -128,13 +137,15 @@ class ProfileController(
             )
         }
 
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
+
         val profile = findProfileForCurrentUserOrThrow(authContext.userId)
 
         val activated = profileService.activateProfile(
             profileId = profile.id
         )
 
-        val photos = profileService.getPhotos(activated.id)
+        val photos = profilePhotoService.getPhotos(activated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -150,16 +161,20 @@ class ProfileController(
         @Valid
         @RequestBody request: UpdateMatchFiltersRequest
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         val updated = profileService.updateDynamicMatchFilters(
             profileId = profile.id,
+            intention = request.intention,
+            lookingForGenders = request.lookingForGenders,
             preferredMinAge = request.preferredMinAge,
             preferredMaxAge = request.preferredMaxAge,
             maxDistanceKm = request.maxDistanceKm
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -169,17 +184,19 @@ class ProfileController(
         )
     }
 
-    @PostMapping("/identity-verification")
-    fun verifyMyIdentity(
+    @PostMapping("/authenticity-verification")
+    fun verifyMyProfileAuthenticity(
         @CurrentUserId userId: UUID
     ): ResponseEntity<ProfileResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val verified = profileService.verifyIdentity(
+        val verified = profileService.verifyProfileAuthenticity(
             profileId = profile.id
         )
 
-        val photos = profileService.getPhotos(verified.id)
+        val photos = profilePhotoService.getPhotos(verified.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -200,7 +217,7 @@ class ProfileController(
         consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
     )
     fun uploadPhoto(
-        @CurrentUserId userId: UUID,
+        @CurrentUserAuth authContext: CurrentUserAuthContext,
 
         @RequestPart("file")
         file: MultipartFile,
@@ -209,19 +226,24 @@ class ProfileController(
         @Min(1)
         position: Int
     ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        requireVerifiedEmailForPhotoUpload(authContext)
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
 
-        val photo = profileService.uploadPhoto(
-            profileId = profile.id,
-            position = position,
-            contentType = file.contentType,
-            bytes = file.bytes
-        )
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
+
+        val photo = profilePhotoUploadGuard.withPermit {
+            profilePhotoService.uploadPhoto(
+                profileId = profile.id,
+                position = position,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() }
+            )
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             PhotoResponse.from(
                 photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
+                url = profilePhotoService.resolvePhotoReadUrl(photo)
             )
         )
     }
@@ -239,7 +261,8 @@ class ProfileController(
         val profile = findProfileForCurrentUserOrThrow(userId)
 
         return ResponseEntity.ok(
-            profileService.getPhotoResponses(profileId = profile.id)
+            profilePhotoService.getPhotoViews(profileId = profile.id)
+                .map(::toPhotoResponse)
         )
     }
 
@@ -249,9 +272,11 @@ class ProfileController(
         @Valid
         @RequestBody request: ReorderProfilePhotosRequest
     ): ResponseEntity<List<PhotoResponse>> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val photos = profileService.reorderPhotos(
+        val photos = profilePhotoService.reorderPhotos(
             profileId = profile.id,
             placements = request.placements.map {
                 PhotoPlacement(
@@ -265,7 +290,7 @@ class ProfileController(
             photos.map {
                 PhotoResponse.from(
                     photo = it,
-                    url = profileService.resolvePhotoReadUrlForResponse(it)
+                    url = profilePhotoService.resolvePhotoReadUrl(it)
                 )
             }
         )
@@ -284,12 +309,12 @@ class ProfileController(
     ): ResponseEntity<ProfileResponse> {
         val profile = findProfileForCurrentUserOrThrow(userId)
 
-        val updated = profileService.deletePhoto(
+        val updated = profilePhotoService.deletePhoto(
             profileId = profile.id,
             photoId = photoId
         )
 
-        val photos = profileService.getPhotos(updated.id)
+        val photos = profilePhotoService.getPhotos(updated.id)
 
         return ResponseEntity.ok(
             ProfileResponse.from(
@@ -310,26 +335,31 @@ class ProfileController(
         consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
     )
     fun replacePhotoFile(
-        @CurrentUserId userId: UUID,
+        @CurrentUserAuth authContext: CurrentUserAuthContext,
 
         @PathVariable photoId: UUID,
 
         @RequestPart("file")
         file: MultipartFile
     ): ResponseEntity<PhotoResponse> {
-        val profile = findProfileForCurrentUserOrThrow(userId)
+        requireVerifiedEmailForPhotoUpload(authContext)
+        legalComplianceService.requireCurrentRequirementsSatisfied(authContext.userId)
 
-        val photo = profileService.replacePhoto(
-            profileId = profile.id,
-            photoId = photoId,
-            contentType = file.contentType,
-            bytes = file.bytes
-        )
+        val profile = findProfileForCurrentUserOrThrow(authContext.userId)
+
+        val photo = profilePhotoUploadGuard.withPermit {
+            profilePhotoService.replacePhoto(
+                profileId = profile.id,
+                photoId = photoId,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() }
+            )
+        }
 
         return ResponseEntity.ok(
             PhotoResponse.from(
                 photo = photo,
-                url = profileService.resolvePhotoReadUrlForResponse(photo)
+                url = profilePhotoService.resolvePhotoReadUrl(photo)
             )
         )
     }
@@ -340,4 +370,19 @@ class ProfileController(
                 code = DomainErrorCode.PROFILE_NOT_FOUND,
                 message = "Profile not found for current user"
             )
+
+    private fun requireVerifiedEmailForPhotoUpload(authContext: CurrentUserAuthContext) {
+        if (!authContext.emailVerified) {
+            throw DomainConflictException(
+                code = DomainErrorCode.EMAIL_NOT_VERIFIED,
+                message = "Verificá tu email antes de subir fotos de perfil."
+            )
+        }
+    }
+
+    private fun toPhotoResponse(view: ProfilePhotoView): PhotoResponse =
+        PhotoResponse.from(
+            photo = view.photo,
+            url = view.readUrl
+        )
 }

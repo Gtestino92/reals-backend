@@ -13,13 +13,6 @@ enum class Gender {
     OTHER
 }
 
-enum class LookingForGender {
-    MEN,
-    WOMEN,
-    EVERYONE,
-    OTHER
-}
-
 enum class Intention {
     DATE,
     FRIENDSHIP,
@@ -32,12 +25,13 @@ enum class ProfileStatus {
     INACTIVE
 }
 
-enum class IdentityVerificationStatus {
+enum class ProfileAuthenticityVerificationStatus {
     NOT_STARTED,
     PENDING,
     VERIFIED,
     REJECTED,
-    NEEDS_REVIEW
+    NEEDS_REVIEW,
+    STALE
 }
 
 @Entity
@@ -60,20 +54,26 @@ data class Profile(
     @Column(name = "birth_date", nullable = false)
     var birthDate: LocalDate,
 
-    @Column(name = "identity_verified", nullable = false)
-    var identityVerified: Boolean = false,
+    @Column(name = "authenticity_verified", nullable = false)
+    var authenticityVerified: Boolean = false,
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "identity_verification_status", nullable = false)
-    var identityVerificationStatus: IdentityVerificationStatus = IdentityVerificationStatus.NOT_STARTED,
+    @Column(name = "authenticity_verification_status", nullable = false)
+    var authenticityVerificationStatus: ProfileAuthenticityVerificationStatus =
+        ProfileAuthenticityVerificationStatus.NOT_STARTED,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false)
     var gender: Gender,
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+        name = "profile_looking_for_genders",
+        joinColumns = [JoinColumn(name = "profile_id")]
+    )
     @Enumerated(EnumType.STRING)
-    @Column(name = "looking_for_gender", nullable = false)
-    var lookingForGender: LookingForGender,
+    @Column(name = "gender", nullable = false)
+    var lookingForGenders: MutableSet<Gender> = mutableSetOf(),
 
     @Enumerated(EnumType.STRING)
     @Column(name = "intention", nullable = false)
@@ -82,8 +82,8 @@ data class Profile(
     @Column(name = "city", nullable = false)
     var city: String,
 
-    @Column(name = "country", nullable = false)
-    var country: String,
+    @Column(name = "country_code", nullable = false, length = 2)
+    var countryCode: String,
 
     @Column(name = "bio")
     var bio: String? = null,

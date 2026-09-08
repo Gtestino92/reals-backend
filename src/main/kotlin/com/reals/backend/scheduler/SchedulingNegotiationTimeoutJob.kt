@@ -18,7 +18,8 @@ import java.time.OffsetDateTime
 @Component
 class SchedulingNegotiationTimeoutJob(
     private val connectionRepository: ConnectionRepository,
-    private val schedulingService: SchedulingService
+    private val schedulingService: SchedulingService,
+    private val schedulerMetrics: SchedulerMetrics = SchedulerMetrics.noop()
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -81,7 +82,8 @@ class SchedulingNegotiationTimeoutJob(
         log.logJobSummary(
             jobName = "SchedulingNegotiationTimeoutJob",
             summary = summary,
-            startedAt = startedAt
+            startedAt = startedAt,
+            schedulerMetrics = schedulerMetrics
         )
 
         return summary

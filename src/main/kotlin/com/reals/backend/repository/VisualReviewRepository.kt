@@ -2,11 +2,13 @@ package com.reals.backend.repository
 
 import com.reals.backend.domain.VisualReview
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -28,6 +30,78 @@ interface VisualReviewRepository :
     fun findByExpiresAtBefore(
         expiresAt: OffsetDateTime
     ): List<VisualReview>
+
+    @Query(
+        """
+        select v.matchId from VisualReview v
+        where v.expiresAt <= :expiresAt
+        order by v.expiresAt asc, v.id asc
+        """
+    )
+    fun findExpiredMatchIds(
+        @Param("expiresAt") expiresAt: OffsetDateTime,
+        pageable: Pageable
+    ): List<UUID>
+
+    @Query(
+        """
+        select v
+        from VisualReview v
+        where v.reminderEligibleAt is not null
+          and v.reminderEligibleAt <= :now
+          and v.availableAt <= :now
+          and v.expiresAt is not null
+          and v.expiresAt > :now
+          and (
+            v.userAVisualDecision is null
+            or v.userBVisualDecision is null
+          )
+        """
+    )
+    fun findVisualReviewReminderCandidates(
+        @Param("now") now: OffsetDateTime
+    ): List<VisualReview>
+
+    @Query(
+        value = """
+        select count(*)
+        from visual_reviews v
+        join matches m
+          on m.id = v.match_id
+        where v.created_at > :cutoff
+          and (
+            m.user_a_id = :userId
+            or m.user_b_id = :userId
+          )
+        """,
+        nativeQuery = true
+    )
+    fun countAdvancementsForUserCreatedAfter(
+        @Param("userId") userId: UUID,
+        @Param("cutoff") cutoff: OffsetDateTime
+    ): Long
+
+    @Query(
+        value = """
+        select v.created_at
+        from visual_reviews v
+        join matches m
+          on m.id = v.match_id
+        where v.created_at > :cutoff
+          and (
+            m.user_a_id = :userId
+            or m.user_b_id = :userId
+          )
+        order by v.created_at desc, v.id desc
+        limit 1 offset :offset
+        """,
+        nativeQuery = true
+    )
+    fun findRetryThresholdAdvancementCreatedAfter(
+        @Param("userId") userId: UUID,
+        @Param("cutoff") cutoff: OffsetDateTime,
+        @Param("offset") offset: Int
+    ): Instant?
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update VisualReview v set v.expiresAt = :expiresAt where v.matchId = :matchId")

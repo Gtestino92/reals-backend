@@ -2,7 +2,6 @@ package com.reals.backend.integration.service
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
@@ -63,10 +62,10 @@ class ProfilePhotoModerationActivationIntegrationTest : BaseIT() {
             displayName = "Moderation Activation",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -77,7 +76,7 @@ class ProfilePhotoModerationActivationIntegrationTest : BaseIT() {
                 ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,

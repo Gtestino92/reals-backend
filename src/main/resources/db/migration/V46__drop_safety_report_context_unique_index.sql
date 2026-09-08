@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS uq_safety_report_reporter_reported_context;

@@ -1,0 +1,21 @@
+meta {
+  name: 28 Run Penalty Expiration Job
+  type: http
+  seq: 28
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/penalty-expiration/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "PenaltyExpirationJob") {
+    throw new Error("Expected PenaltyExpirationJob to run.");
+  }
+}

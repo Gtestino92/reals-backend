@@ -1,0 +1,21 @@
+meta {
+  name: 13 Run Visual Review Reminder Job
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/visual-review-reminder/run
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getBody().job !== "VisualReviewReminderNotificationJob") {
+    throw new Error("Expected VisualReviewReminderNotificationJob to run.");
+  }
+}
+
+docs {
+  Sends due visual-review reminders for users whose own visual decision is still pending. Legacy visual reviews without reminderEligibleAt are ignored.
+}

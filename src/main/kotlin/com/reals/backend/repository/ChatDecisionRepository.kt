@@ -7,4 +7,5 @@ import java.util.UUID
 interface ChatDecisionRepository : JpaRepository<ChatDecision, UUID> {
     fun findByChatId(chatId: UUID): ChatDecision?
     fun findByMatchId(matchId: UUID): ChatDecision?
+    fun findByMatchIdIn(matchIds: Collection<UUID>): List<ChatDecision>
 }

@@ -8,6 +8,122 @@ Local no-auth development can inject a fixed authenticated user through `DevAuto
 
 A user creates one profile. The profile starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking. Activation validates configured photo requirements.
 
+
+Public profile questions are optional profile content, separate from affinity
+questions. A user may save many current-catalog free-text answers privately, then
+select zero to three answered current questions for public display. The ordered
+selection is replaced as a complete list, and deleting a selected answer compacts
+remaining positions. Answer edits, deletes and selection changes do not activate
+a draft profile, deactivate a profile, move an active profile to draft, affect
+photo authenticity or change matchmaking filters.
+
+
+Before profile creation, authenticated clients can fetch
+`GET /api/reference/countries` to populate a country selector. The response is a
+complete list of `{ "code", "displayName" }` entries built by the backend from
+the Java runtime ISO country list with Spanish display names and immutable
+in-memory state. Clients submit the selected `code` as profile `countryCode`.
+The backend trims and uppercases valid alpha-2 codes before persistence and
+rejects display names, alpha-3 codes, unknown codes and blank values. `city`
+remains free text.
+
+Profile trust-provider shortcuts are execution-profile aware. Outside `prod`,
+provider `none` preserves MVP compatibility for local/dev/test flows: profile
+authenticity verification may return `VERIFIED`, photo moderation may return
+`APPROVED`, and
+technical photo validation may produce `isPersonPhoto=true`,
+`isFullBody=true` and `validationStatus=VALIDATED`. In `prod`, provider `none`
+does not create positive trust facts: profile authenticity verification returns
+`409 AUTHENTICITY_VERIFICATION_NOT_CONFIGURED`, photo moderation persists
+`NEEDS_REVIEW`, and technical photo validation alone persists
+`false`/`false`/`PENDING`. Successful image decoding is not semantic
+person/full-body validation. Production activation defaults to requiring
+moderation approval in addition to the existing validated/person/full-body photo
+counts.
+
+When `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` in `dev` or `prod`, a
+technically valid profile-photo upload or replacement runs one Sightengine
+multipart request with the fixed models `face-analysis`, `nudity-2.1`,
+`violence`, `gore-2.0` and `offensive-2.0`. DEV defaults to provider `none`;
+real Sightengine in DEV is an explicit smoke-test opt-in and fails startup when
+credentials or provider configuration are unusable. Real face presence is used
+only for the MVP `isPersonPhoto` field: at least one
+`faces` entry counts as a person photo, `artificial_faces` do not count, and
+`isFullBody` remains `false` because this provider path is not a full-body
+detector. This does not perform profile authenticity verification, facial
+recognition, face matching, liveness, legal identity verification, age
+estimation or minor detection.
+Mapped moderation signals can become `NEEDS_REVIEW` and are handled by the
+admin review queue.
+
+Profile Authenticity Verification is not legal identity verification. It is a
+separate profile trust state whose future target is:
+
+```text
+liveness-derived live reference
++
+provider-neutral facial comparison signals for current candidate person photos
+```
+
+The comparison candidate set is `validationStatus=VALIDATED` and
+`isPersonPhoto=true`, sorted by profile-photo position. `isPersonPhoto` selects
+comparison candidates; it does not prove that the detected person is the
+verified user. Reals policy uses configurable positive and contradictory facial
+evidence thresholds. The default MVP policy requires an accepted live reference,
+at least 3 `MATCHED` candidate person photos and at most 0 `CONTRADICTORY`
+candidate person photos. `MATCHED` is positive evidence, `UNRESOLVED` is
+neutral and `CONTRADICTORY` is comparable facial evidence inconsistent with the
+accepted live reference. Group photos can be `MATCHED` when at least one
+comparable face matches the live reference, while non-person photos are excluded
+from face comparison. Old, distant, side-profile, obscured or otherwise poor
+comparisons may be `UNRESOLVED` and do not automatically invalidate the
+profile. Strong contradictory evidence prevents automatic verification under
+the default zero-contradiction policy, but it does not prove fraud and currently
+produces `NEEDS_REVIEW`, not automatic `REJECTED`.
+
+The current MVP only has a provider-neutral synchronous skeleton. The
+Sightengine path's `isPersonPhoto` means at least one real face was detected; it
+does not prove person consistency, facial authenticity or ownership. A body-only
+image without a comparable visible face is not solved by this skeleton.
+Uploading, replacing or deleting a profile photo invalidates previous
+authenticity verification to `STALE` and sets `authenticityVerified=false`.
+Reordering photos does not invalidate authenticity.
+
+Photo moderation has a small admin human-review loop. Automated/provider
+moderation can produce `APPROVED`, `REJECTED` or `NEEDS_REVIEW`.
+`NEEDS_REVIEW` photos appear in `/api/admin/profile-photos/review` for admins
+with `ROLE_ADMIN`; an admin can resolve them through
+`POST /api/admin/profile-photos/{photoId}/moderation` as `APPROVED` or
+`REJECTED` by submitting the `expectedPhotoVersion` returned by the queue item
+they reviewed. If the photo changed after the queue was loaded, the resolution
+returns `409 PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`; the admin should
+refresh and review the current photo again. This is a content-moderation
+decision, not user-visible moderation scoring. It does not change semantic
+validation fields such as `validationStatus`, `isPersonPhoto` or `isFullBody`.
+Automatic provider moderation does not create child-safety reports, safety
+reports, blocks, penalties, bans or account deletions.
+
+Legal compliance is backend-authoritative for selected protected
+participation/progression writes. After provisioning, clients can call
+`GET /api/me/legal-status`; when `requirementsSatisfied=false`, they should
+show the current legal requirements, use `GET /api/legal/documents/current` for
+URL metadata as needed, submit the required factual actions with
+`POST /api/me/legal-document-actions`, and refresh legal status. The Android
+client may route based on this status, but backend guarded operations are the
+enforcement boundary.
+
+Guarded operations may return `409 LEGAL_ACTION_REQUIRED`. For future Android
+clients, that stable code means refresh legal status and route to the legal
+requirements UI. Legal state is not part of Home and is not modeled as a Home
+pending action.
+
+Reads, legal endpoints, individual text/audio chat message sends, account
+deletion/reactivation, chat exit/cancellation and safety/reporting flows remain
+available without current legal compliance. `APPROVED` first-chat and visual
+decisions require compliance; `REJECTED` decisions remain available. Scheduling
+proposal submission, proposal acceptance and partner scheduling-proposal
+rejection require compliance.
+
 ## 2. Matchmaking Queue
 
 Users enter the queue through:
@@ -18,13 +134,34 @@ MatchmakingService.enqueue(userId)
 
 Eligibility checks include:
 
-- no active penalty
+- no effective account ban
 - existing active profile
 - not already queued
 - below active match limit
 - below active connection limit
+- below rolling Visual Review advancement cap
 
-Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention and mutual preferred age range. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, and `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
+The backend does not infer queue exit from app backgrounding, minimizing or
+process death. Queue exit remains explicit through the existing dequeue and
+domain-lifecycle behavior.
+
+Candidate pairs are processed by `MatchmakingProcessorService`, normally through `MatchmakingJob` in dev/prod or through the dev-only manual endpoint in local/Bruno flows. Candidate selection is delegated to `MatchmakingService.findNextCandidatePair`. The queue repository first returns up to `matchmaking.candidate-pair-limit` hard-filtered candidate pairs using active profiles, mutual gender preference, intention, mutual preferred age range, permanent user-block exclusion, active-pair exclusion and the configured previous-pairing cooldown. These SQL exclusions run before `LIMIT` so an ineligible historical pair cannot hide an eligible later pair. `MatchmakingService` then enforces mutual maximum distance from the search location captured when each user entered the queue, rechecks the rolling Visual Review advancement cap before returning a claimed pair, and removes stale queue entries that became capped after enqueue. `CompatibilityScorer` chooses the best remaining pair. Scores below `matchmaking.min-compatibility-score` are ignored; a score at or above `matchmaking.early-accept-compatibility-score` is accepted immediately; otherwise the highest score wins with FIFO order as the tie-breaker. Match creation is delegated to `MatchService.createMatch`, which pessimistically locks both active users in deterministic order, rechecks user blocks, active-pair uniqueness, historical cooldowns, Visual Advancement capacity and both users' effective Match and Connection admission caps, then creates the match, creates locks and removes both users from the queue. `ChatService.startFirstChat` then creates the anonymous first chat.
+
+Pair exclusion has three separate meanings:
+
+- Active-pair uniqueness is always on, including local profiles. A pair cannot be matched again while they have `CHAT_ACTIVE`, `VISUAL_PHASE`, a `VISUAL_APPROVED` match without a connection, or any non-`CLOSED` connection.
+- Previous-pairing cooldown is temporary and controlled by `matchmaking.exclude-previous-pairing`. It is enabled in dev/prod and disabled in local repeatable profiles. General terminal outcomes use `matchmaking.previous-pairing-cooldown-days` (30 by default); first-chat automatic timeout or inactivity abandonment uses `matchmaking.first-chat-expiration-cooldown-days` (7 by default); first-chat decision mismatch uses `matchmaking.first-chat-decision-mismatch-cooldown-days` (7 by default).
+- User blocks are permanent exclusions in either direction. Normal chat rejection, visual rejection, expiration, scheduling failure and connection closure do not create blocks.
+
+Expired matches are classified by persisted phase evidence. `EXPIRED` with no `VisualReview` is first-chat expiration and uses the 7-day policy; `EXPIRED` with a `VisualReview` is visual-review expiration and uses the 30-day policy. First-chat automatic terminal metadata (`ChatStatus.EXPIRED`/`ABSOLUTE_TIMEOUT` or `ChatStatus.ABANDONED`/`INACTIVITY_TIMEOUT`) supplies `Chat.endedAt` when present, with `Match.updatedAt` as fallback for legacy or safety-net rows. `CHAT_REJECTED` with first-chat `ChatEndReason.FIRST_CHAT_DECISION_MISMATCH` uses the dedicated 7-day decision-mismatch policy; legacy `CHAT_REJECTED` rows without that end reason keep the general 30-day previous-pairing policy. Cooldowns are calculated from existing rows; there is no cleanup job or derived exclusion table.
+
+Visual Review advancement pacing is separate from reliability and pair history.
+Each persisted `VisualReview` counts once for each participant for the full
+rolling window configured by `matchmaking.visual-advancement.window-hours`.
+Rows are counted while `createdAt > now - window`; equality belongs to the
+available side. `nextAvailableAt` is `oldestActiveVisualReview.createdAt +
+window`. Later `APPROVED`, `REJECTED`, expiry, connection creation and Match
+closure do not change the calculation.
 
 ## 3. First Chat
 
@@ -33,6 +170,32 @@ A new match starts in `CHAT_ACTIVE`. The first chat is created separately:
 ```text
 ChatService.startFirstChat(matchId)
 ```
+
+After match and first-chat creation commit, the backend emits a best-effort
+`MATCH_FOUND` push notification. Durable match/chat state remains authoritative:
+notification failure, missing tokens or FCM provider failure does not roll back
+or invalidate the created match/chat. The Android FCM message is data-only and
+client-rendered with high Android priority. Its data payload is limited to
+`type = MATCH_FOUND`, `matchId` and `expiresAt`; `expiresAt` is the authoritative
+`Chat.timeoutAt` value for the first chat. The FCM TTL is calculated separately
+from the remaining chat lifetime using the same `Chat.timeoutAt`, so stale
+undelivered messages expire while already-delivered local notifications can be
+removed by Android at `expiresAt`.
+
+When a `FIRST_CHAT` actually becomes terminal before its original absolute
+timeout, the domain transition publishes an internal `FirstChatTerminatedEvent`
+with `matchId`, `chatId`, `finalStatus` and `endedReason`. It is emitted only
+for persisted terminal first-chat transitions, not for a pending mutual
+cancellation request or other still-actionable intermediate state. Notification
+infrastructure listens after commit and best-effort sends a data-only Android
+control push with high priority: `type = MATCH_FOUND_INVALIDATED`, `matchId`
+and `expiresAt`. That `expiresAt` is the authoritative original first-chat
+`Chat.timeoutAt`. Android may use it to keep a short-lived invalidation
+tombstone and reject a late out-of-order `MATCH_FOUND` if FCM delivers the
+control message first. The invalidation push removes stale client-rendered
+`MATCH_FOUND` presentation; its FCM TTL is bounded by the remaining
+authoritative `Chat.timeoutAt` window. The original `MATCH_FOUND expiresAt`
+remains the absolute client-side notification timeout.
 
 Messages can be sent only when the chat is active, not timed out, not abandoned
 by inactivity and the sender belongs to the match. Sending a message updates
@@ -50,29 +213,82 @@ Home also returns `matchmaking`, `activeInteractionsSummary`, `nextSteps` and
 `passiveNotices` so clients can render navigation without deriving actions from
 raw `MatchState`, `ConnectionState` or expiration timestamps.
 
+For `VISUAL_REVIEW` pending actions, both full Home and lightweight Home
+pending responses include `visualStartedAt` and `visualExpiresAt` from the
+persisted visual-review record. These fields are `null` for pending actions that
+are not `VISUAL_REVIEW`.
+
 `GET /api/matches/{matchId}/chat` returns the active first chat plus `partner`,
-`myDecision`, `partnerDecision`, `expiresAt` and `inactivityExpiresAt`. The
-decision fields are API-facing statuses from the current user's perspective:
-`PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+`myDecision`, `partnerDecision`, `expiresAt`, `inactivityExpiresAt`, `serverTime`
+and nullable
+`guidance` metadata. New first chats initialize guidance; legacy chats may have
+`guidance = null`. The decision fields are API-facing statuses from the current
+user's perspective: `PENDING`, `APPROVED`, `REJECTED` or `ABANDONED`.
+Clients may use `serverTime` as an advisory backend clock snapshot for first-chat
+countdown and suggestion UX. The backend remains authoritative for all mutations
+and expiration decisions, and this field does not make the backend responsible
+for suggestion visibility or local dismissal.
+
+First-chat guidance is an MVP conversation prompt mechanic owned by the backend.
+When a new first chat is created, the backend persists the complete prompt
+sequence as immutable snapshots. Affinity-derived prompts use the active Spanish
+affinity catalog and the pair's valid answers visible at that moment; remaining
+slots use the deterministic generic Spanish catalog sequence from the chat id.
+One active question is shared by both participants and copied into
+`first_chat_guidance`.
+Users can chat freely; the backend does not semantically evaluate answers.
+`guidance.question.id` is the source/catalog id; `guidance.question.instanceId`
+is the `conversation_prompt_snapshots.id` for this chat and is the quoted-reply
+target id clients use for guidance questions. A participant can request the
+current `progressionAction` only after reaching the configured
+`chat.first-chat.guidance.required-participation-score` during the current
+question interval. Ordinary authored TEXT characters count 1 point; TEXT that
+directly replies to the current guidance question snapshot counts with
+`direct-question-reply-multiplier`, default 2. Quoted preview text and AUDIO
+count 0. Replies to partner messages or older guidance questions count x1. The
+question advances, or final guidance completes, only after both participants
+independently request the action, and partner readiness/request state is not
+exposed. A first chat has at most 3 questions. The final question remains active
+and incomplete until both users reach score and request `COMPLETE`; then
+`completedAt` is set and no question 4 is selected. Clients observe
+question changes through the existing first-chat polling response. Later
+affinity-answer edits/deletions or catalog wording changes do not alter active
+or future prompts in that first chat. Legacy chats without prompt snapshots keep
+their persisted active guidance question and advance with generic deterministic
+fallback. No analytics events are implemented for guidance.
 
 Client countdowns are advisory. The backend remains the source of truth and
 rejects first-chat mutations with `CHAT_EXPIRED` after the absolute deadline or
-`CHAT_ABANDONED` after the inactivity deadline.
+`CHAT_ABANDONED` after the inactivity deadline. During first-chat decision-only
+state, inactivity timeout is disabled and only the absolute deadline applies.
 
-Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`.
+Message polling can use `GET /api/chats/{chatId}/messages` for the initial legacy full list, then `GET /api/chats/{chatId}/messages?after={messageId}` or `afterMessageId={messageId}` for incremental responses shaped as `{ "messages": [...], "hasMore": false, "serverTime": "..." }`. Incremental polling remains ordered by message `(sentAt, id)`; changing a message reaction does not make an old row newer.
+
+Participants can add one irreversible `HEART` reaction to the other participant's `TEXT` or `AUDIO` message. New reactions are allowed only in the user's latest incoming block: incoming messages after the user's latest own message strictly before the latest incoming message, up to and including that latest incoming message. Own messages after the latest incoming block do not invalidate it, but a newer incoming block supersedes older unreacted incoming messages. Existing hearts remain visible whenever that message row is fetched, even after the block expires or the chat becomes read-only. Reactions do not count as conversation, reset inactivity, extend lifecycle deadlines, trigger notifications or alter Home/scheduling/reliability behavior.
+
+Quoted replies are backend-normalized and shallow. A TEXT or AUDIO message can quote exactly one direct target: the other participant's same-chat TEXT/AUDIO message, or a same-chat first-chat guidance question snapshot. Replies to own messages, wrong-chat targets, missing targets and guidance targets in second chat are rejected with the same opaque `CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE` conflict. If a quoted message is itself later quoted, the response previews only that direct message and never recursively serializes the older target.
+
+TEXT sends represent the optional target as `replyTo: { type, targetId }` and require `clientMessageId` whenever a reply is present. AUDIO sends use multipart `file`, required `clientMessageId`, and optional `replyToType` plus `replyToTargetId`; both reply parts must be sent together or omitted together, and the scalar multipart parts are `text/plain`. Malformed or partial AUDIO reply metadata returns `CHAT_MESSAGE_INVALID`. `replyToType` is `MESSAGE` or `GUIDANCE_QUESTION`, and target availability follows the same rules as TEXT. Exact idempotent replay uses the same direct target as part of the semantic payload: TEXT compares normalized content plus target and message type, while AUDIO compares accepted audio SHA-256 plus target and message type. Reusing the same `(chat, sender, clientMessageId)` with a different payload returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`; clients retrying the same AUDIO draft must therefore preserve both the audio bytes and the direct reply target.
+
+Audio messages use the same polling stream. First-chat audio unlocks from shared guidance progress, not per-user counters: `answeredGuidanceQuestions = max(currentQuestionOrdinal - 1, 0)`. Local and test unlock when question 2 becomes active (`requiredAnsweredGuidanceQuestions = 1`); dev/prod unlock when question 3 becomes active (`requiredAnsweredGuidanceQuestions = 2`). With the current three-question flow, dev/prod unlock after both users answered the penultimate question. Legacy first chats without guidance keep audio unavailable. Each participant may create one first-chat audio message, and exact idempotent replay of the already-created message with the same direct reply target does not consume another slot.
 
 ## 4. Chat Decision
 
-Each user can approve continuation, request mutual cancellation or cancel explicitly.
+Each user starts with a `PENDING` first-chat decision. While both users are `PENDING`, each user can approve continuation, request mutual cancellation or cancel explicitly.
 
+- `APPROVED` is backend-authoritative and requires `now >= chat.startedAt + chat.first-chat.approval.min-elapsed-minutes`, at least `chat.first-chat.approval.min-messages-per-user` confirmed messages from the approving user and at least that many confirmed messages from the counterpart. Local profiles default to no approval minimums (`0` minutes and `0` messages), dev/default profiles default to 1 minute and 3 messages per participant, and production explicitly defaults to 3 minutes and 3 messages per participant. Too-early approval returns `FIRST_CHAT_APPROVAL_TOO_EARLY`; insufficient bilateral participation returns `FIRST_CHAT_APPROVAL_PARTICIPATION_REQUIRED`. `REJECTED`, safety cancellation and cancellation paths do not require these approval prerequisites.
 - Mutual `APPROVED`: first chat becomes `FINISHED`, match moves to `VISUAL_PHASE`, visual review is initialized.
-- `REJECTED` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and penalty policy is evaluated.
+- `REJECTED` while the counterpart is still `PENDING` is treated as unilateral cancellation: first chat becomes `CANCELLED`, match moves to `CHAT_REJECTED`, locks are released and first-chat unilateral-close reliability is recorded when applicable. It does not create an account ban.
+- `APPROVED` by one participant while the counterpart remains `PENDING` keeps the match in `CHAT_ACTIVE` and the first chat in `ACTIVE`, but puts the chat in decision-only mode. Both participants can read and poll, use safety report/cancellation, or use manual block. The unresolved participant can submit the remaining `APPROVED` or `REJECTED` decision; the already-decided participant cannot replace their persisted decision. Ordinary first-chat conversation and exit mutations from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`: text send, new audio send, next-guidance request, new mutual-cancellation request and direct unilateral cancellation. In this state `inactivityExpiresAt` is absent and inactivity timeout is disabled; the original absolute `expiresAt`/`timeoutAt` remains authoritative.
+- `REJECTED` by the still-pending participant after the counterpart already persisted `APPROVED` is a completed decision mismatch, not unilateral cancellation. The backend persists both `ChatDecision` values (`APPROVED`/`REJECTED` or `REJECTED`/`APPROVED`), finishes the first chat as `FINISHED / FIRST_CHAT_DECISION_MISMATCH`, moves the match to `CHAT_REJECTED`, releases locks, emits the normal chat-ended audit and `FirstChatTerminatedEvent`, and does not record mutual-no-spark or unilateral-close reliability events. No mutual-cancellation request, unilateral-cancellation exit request or account ban is created.
 - Mutual cancellation request accepted by the other participant cancels the chat without penalty.
-- Mutual cancellation request rejected by the other participant also cancels the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
+- Mutual cancellation request rejected by the other participant also cancels the chat without penalty.
 - Mutual cancellation request timeout is resolved by a client call after `chat.exit-request.mutual-timeout-seconds`; it cancels the chat without penalty. This is not a unilateral cancellation, and the requester must not be penalized for resolving an unanswered request.
-- Safety cancellation cancels the chat, records `ChatEndReason.SAFETY_REPORT`, exempts the reporter, creates a pending `SafetyReport` and creates a directional block from reporter to reported. It does not penalize the reported participant until admin/backoffice review confirms the report.
+- A first-chat mutual cancellation requester with at least one confirmed message receives `FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED` only when the request reaches acceptance, rejection or timeout. Request creation alone is not rewarded. A timed-out request can therefore reward the requester while recording the existing ignored-request event against the non-answering counterpart.
+- Safety cancellation cancels the chat, records `ChatEndReason.SAFETY_REPORT`, exempts the reporter and creates a pending `SafetyReport`. Optional `blockUser: true` additionally creates or reuses a directional permanent block from reporter to reported; omitted or `false` does not block. `CHILD_SAFETY_CONCERN` is preserved explicitly from the accepted exit request to the report reason. It is a reported concern, not a confirmed violation, and does not penalize the reported participant until admin/backoffice review confirms the report.
 
 Approval still requires both users. Cancellation can end the chat earlier through mutual acceptance, mutual rejection, mutual timeout, unilateral cancellation or safety cancellation.
+First-chat absolute timeout or inactivity closure records `FIRST_CHAT_EXPIRED_NO_DECISION` only for participants whose persisted first-chat decision is still unresolved. For an `APPROVED`/`PENDING` pair, inactivity closure is disabled and absolute timeout records the event only for the pending side.
 
 ## 5. Visual Review
 
@@ -83,20 +299,81 @@ Each user submits one `VisualDecision`.
 - If one user rejects while the other has not decided, the match remains in `VISUAL_PHASE` for the pending participant. This avoids an immediate rejection signal through Home.
 - When both users have decided, mutual `APPROVED` moves the match to `VISUAL_APPROVED` and creates a pending connection.
 - When both users have decided and at least one rejected, the match moves to `VISUAL_REJECTED` and remaining match locks are released.
+- The Visual Review advancement cap never blocks Visual Review creation for an
+  existing first chat that reached mutual approval. If that creation reaches the
+  cap, it only blocks future matchmaking search.
 
-Personal messages are stored on `VisualReview`. Current behavior allows reading
-the partner message during visual review once it exists, and requires reading it
-before deciding if the partner already submitted one.
+Personal messages are optional and stored on `VisualReview`. Current behavior
+allows reading the partner message during visual review once it exists. Reading
+is encouraged and unread messages are exposed to clients for visual emphasis,
+but reading is not required before submitting `APPROVED` or `REJECTED`. Opening
+an existing partner message persists the requester-specific read timestamp. A
+successful optional personal-message submission also records a small
+backend-internal reliability participation event when user reliability is
+enabled. Reading the partner message does not create a reliability event.
+`decisionRequiresPartnerPersonalMessageRead` is retained temporarily for
+client-compatible response shape and is always `false`.
 
 Match and visual-profile responses expose `visualExpiresAt` so clients can warn
-before the visual phase expires. New visual decisions after that deadline are
-rejected by the backend.
+before the visual phase expires. Home `VISUAL_REVIEW` pending actions expose
+`visualStartedAt` and `visualExpiresAt` for the currently actionable phase. New
+visual decisions after that deadline are rejected by the backend.
+
+The visual-profile response also includes required `affinityIndicators`. It is
+empty when the first-chat initialization evidence had no eligible positive
+shared `STANDARD` category. Otherwise it contains at most three snapshotted
+positive category `{categoryId, title}` values. Constructive contrast can drive
+a first-chat prompt but never creates a visual indicator. Exact answers, answer
+labels, question ids, scores, percentages and compatibility judgments are not
+returned.
+
+
+The visual-profile response also includes `profileQuestions`, always present as
+a list. It is the partner's live current selection at request time, consistent
+with live bio and photo behavior; no match, chat, visual-review or connection
+snapshot is created. Items expose only `{questionId, prompt, answer, position}`.
+Only current selected answers for active catalog questions are included; stale
+semantic-version answers, inactive/missing questions and unselected saved
+answers are omitted. Response positions are compacted to `1..N` after filtering.
+
+Visual-profile and visual personal-message content is also request-time guarded.
+During `VISUAL_PHASE`, the visual review must exist and the server clock must
+still be before `visualExpiresAt`; the scheduler does not have to run first for
+expired content to be denied. During `VISUAL_APPROVED`, the backend requires an
+existing non-closed connection for the match and requester. `CHAT_ACTIVE`,
+`CHAT_REJECTED`, `VISUAL_REJECTED` and `EXPIRED` matches do not expose visual
+content. Blocked pairs are denied, and denied partner-message reads do not set
+read timestamps.
+
+Visual-review reminder eligibility is persisted as `VisualReview.reminderEligibleAt`
+when the visual review is created. The default configuration makes the reminder
+eligible when 40% of the visual-review duration remains. The backend no longer
+sends an immediate visual-review availability push; the reminder job sends only
+to users whose own visual decision remains pending and deduplicates delivery per
+user and match.
 
 ## 6. Connection Creation
 
 `ConnectionService.createFromMatch(match)` creates a connection after visual approval.
 
-It validates active connection limits and creates `CONNECTION` locks immediately. A connection starts in `SCHEDULING_PENDING` with `schedulingAvailableAt`; it occupies connection capacity but is not yet actionable in Home. `SCHEDULING_PENDING` is a deferred activation state, not a user-driven coordination state.
+It creates `CONNECTION` locks immediately without rechecking active connection
+capacity. A connection starts in `SCHEDULING_PENDING` with
+`schedulingAvailableAt`; it occupies connection capacity but is not yet
+actionable in Home. `SCHEDULING_PENDING` is a deferred activation state, not a
+user-driven coordination state.
+
+Matchmaking capacity limits are admission controls for new opportunities. Match
+capacity controls creation of new Match opportunities, the Visual Advancement
+Cap controls future matchmaking admission from recent `VisualReview.createdAt`
+throughput, and connection capacity controls future matchmaking admission from
+downstream active commitments. `UserReliabilityScore` can lower or raise the
+effective Match and Connection admission caps, but it does not affect Visual
+Advancement capacity and does not retroactively invalidate engagements that were
+already admitted. Once an engagement exists, reaching a limit later must not
+prevent that engagement from progressing through later lifecycle phases.
+Existing engagements can temporarily push active counts above a configured or
+derived limit; the user remains unavailable for new matchmaking until the
+relevant active lock count falls below the current effective cap.
 
 ## 7. Scheduling
 
@@ -104,15 +381,32 @@ Scheduling is activated later by `SchedulingActivationJob` when
 `schedulingAvailableAt <= now`. The job moves the connection to
 `SCHEDULING_PHASE` and initializes negotiation idempotently. Until then, Home
 does not include the connection in `nextSteps`; clients can see it only through
-`activeInteractionsSummary.pendingSchedulingConnectionCount` and the passive
-notice `SCHEDULING_PREPARING`.
+`activeInteractionsSummary.hasPendingSchedulingConnection` and one generic
+count-free passive notice `SCHEDULING_PREPARING`. This intentionally does not
+expose the exact number of internal pending scheduling connections.
+Production runs the activation job on a six-hour fixed-delay cadence by default;
+base/dev profiles keep a one-minute cadence, and local profiles keep scheduler
+execution manual.
 
 `SchedulingNegotiationTimeoutJob` applies only after activation, while the
 connection is in `SCHEDULING_PHASE`. The `schedulingExpiresAt` value created
 with `SCHEDULING_PENDING` is provisional; activation recalculates the actionable
-deadline from the moment scheduling becomes available. In local profiles, where
+deadline from the actual activation time. In local profiles, where
 schedulers are disabled, run `SchedulingActivationJob` manually before testing
 scheduling proposals or scheduling timeout.
+
+While a connection is in `SCHEDULING_PHASE`, Home exposes scheduling progress on
+the `SCHEDULING` next step in both full and pending-lite responses:
+`createdAt` is the current `ScheduleNegotiation.createdAt` and
+`schedulingExpiresAt` is the parent `Connection.schedulingExpiresAt`. These
+fields are only a progress range for the active scheduling phase and remain
+`null` for non-scheduling next steps.
+
+Scheduling proposal submissions and confirmations emit after-commit push events.
+`SCHEDULING_PROPOSALS_RECEIVED` goes only to the partner for one connection and
+round, and is skipped when the submission immediately confirms an overlap.
+`SCHEDULING_CONFIRMED` goes only to the non-triggering participant. Both visible
+messages are privacy-safe and omit identities and times.
 
 Once active, users submit ordered lists of future date/time proposals for the second chat inside the app. This is not the same as scheduling an in-person meeting; any real-world meeting is outside the backend's current scope.
 
@@ -121,16 +415,25 @@ Rules:
 - each user submits one proposal list per round
 - each list must contain 1 to `scheduling.max-proposals-per-round` unique future slots
 - slots must be aligned to half-hour boundaries
+- proposal submission includes `expectedRoundNumber`; stale round requests return `SCHEDULING_ROUND_CHANGED`
 - user must belong to the connection
 - user cannot accept their own proposal
 - a participant can accept a partner proposal without first submitting their own list
-- overlapping proposed instants auto-confirm
+- receiving partner proposals does not make backend submission invalid; clients should preferably review known received proposals before showing their own selector, but that review-first rule is UX rather than a backend precondition
+- explicit acceptance requires the partner proposal instant to remain strictly in the future; expired pending proposals return `SCHEDULING_PROPOSAL_NOT_AVAILABLE`
+- overlapping currently `PENDING` proposed instants auto-confirm only when the overlapping instant is still in the future; rejected lists and expired overlaps never participate in confirmation
+- proposals and confirmations must not conflict with another confirmed second-chat start for the same user while that other connection is `SECOND_CHAT_SCHEDULED` or `SECOND_CHAT_AVAILABLE`; the default conflict window is 60 minutes before through 60 minutes after the confirmed start, inclusive
+- confirmation must remain viable for both participants under effective account bans; a permanent ban blocks confirmation, and a temporary ban allows it only when the candidate start plus the configured second-chat entry window is at least the configured temporary-ban resume margin after the effective ban expiry
 
-If more than one slot overlaps, the backend chooses the slot with the lowest combined preference order. If that still ties, it chooses the earliest agreed slot. If there is no overlap after both users submit, the backend does not immediately open the next round. Proposals remain visible so either participant can accept one partner slot or explicitly reject the current round. A user-triggered rejection opens the next round automatically unless max rounds has been reached.
+If more than one pending future slot overlaps, the backend checks overlaps in lowest combined preference order, then earliest agreed instant, and confirms the first overlap available to both users. If overlaps exist but every overlap conflicts with another confirmed second chat or is non-viable because of an effective account ban, the submission returns opaque `SCHEDULING_SLOT_CONFLICT` and the triggering submission is rolled back. Accepting any pending future partner proposal confirms immediately only after the same conflict and ban-viability checks. If there is no usable overlap after both users submit, the backend does not immediately open the next round. Proposals remain visible so either participant can accept one future partner slot or explicitly reject the partner's pending proposal list.
 
-Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time and moves the connection to `SECOND_CHAT_SCHEDULED`.
+Clients may visually identify proposal options whose proposed instants have passed and should not offer acceptance for them. Backend validation remains authoritative because a proposal can expire between rendering and the acceptance request. Expired pending proposals are not automatically converted to `REJECTED` and do not automatically advance a round.
 
-If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILED` and the connection closes.
+Partner proposal rejection resolves only the partner's pending proposals. A single rejection does not end the round. The round advances only when both participants have submitted at least one proposal in that round and no proposal in the round remains `PENDING`; at that point the backend opens the next round or fails/closes on the final permitted round. Scheduling mutations are serialized per negotiation through a database write lock on the negotiation row.
+
+Confirmation marks the negotiation as `CONFIRMED`, stores `confirmedDateTime` as the agreed second-chat start time, moves the connection to `SECOND_CHAT_SCHEDULED` and initializes `PENDING` participation rows for both users.
+
+If max rounds are exceeded or scheduling expires, the negotiation becomes `FAILED` and the connection closes. Scheduling-expiry reliability is based only on the current round. A user is responsible if they have not submitted in the current round or if current-round partner proposals remain `PENDING` for them to accept or reject. Older-round proposals do not count. Users who actively resolved all required current-round actions are not penalized merely because no workable overlap was found.
 
 Negotiation responses expose the parent connection's `schedulingExpiresAt` so
 clients can warn before the scheduling phase expires. Scheduling mutations after
@@ -139,39 +442,97 @@ persistent failed/closed transition when it runs.
 
 ## 8. Second Chat
 
-Second chat is materialized on demand when a participant enters at or after the
-agreed `confirmedDateTime`. `GET /api/connections/{connectionId}/chat` validates
-that the connection belongs to the authenticated user, checks that the confirmed
-window is open, creates the `SECOND_CHAT` if needed, and moves the connection to
+Second chat entry is explicit. `POST /api/connections/{connectionId}/second-chat/join`
+validates the authenticated participant, confirmed negotiation and server time,
+creates or activates the `SECOND_CHAT` if needed, and moves the connection to
 `SECOND_CHAT`:
 
 ```text
-ChatService.findVisibleSecondChatOrThrow(connectionId, userId)
+SecondChatLifecycleService.joinSecondChat(connectionId, userId)
 ```
 
 Home exposes the agreed start time as `nextSteps[].secondChat.availableAt` for
-`SECOND_CHAT_SCHEDULED`. Clients may enable
-entry from `availableAt` and should show the agreed time before
-that window. `secondChat.expiresAt` is the end of the writable second-chat
-window, and `secondChat.durationMinutes` exposes the configured writable
-duration (`chat.second-chat.duration-minutes`, currently 120 minutes).
+`SECOND_CHAT_SCHEDULED`. The status endpoint returns `scheduledAt`,
+`onTimeUntil`, `entryClosesAt`, `absoluteExpiresAt`, `serverTime`, both
+attendance statuses and any active no-show claim. `GET
+/api/connections/{connectionId}/chat`, Home loads, polling and message fetches
+are side-effect free and do not count as attendance.
 
-The chat is created as `ACTIVE` when a participant enters it through `GET /api/connections/{connectionId}/chat`. At that moment the backend sets `activatedAt`; `timeoutAt` remains the configured end of the agreed writable window (`availableAt + durationMinutes`).
+After the scheduled start, the backend may send one `SECOND_CHAT_STARTED` push
+per participant who has not joined yet. The default delivery window is
+`confirmedDateTime <= now <= confirmedDateTime + 5 minutes`; stale missed runs
+after that window do not initiate new start notifications. The default job
+cadence is 4 minutes, leaving slack inside the five-minute send window. Users
+who already joined are recorded as handled and are not sent to. Android FCM uses
+the same `second-chat-<connectionId>` tag for the reminder and start push, so
+the start push can replace the reminder in background notification display.
+Opening the notification lands on Home, whose second-chat `nextSteps` are
+ordered by current/available chats first, then nearest scheduled future starts,
+then scheduling work, then read-only prior chats.
 
-If the agreed second-chat window expires before a chat is created, the backend
-does not create a stale chat and the lifecycle job closes the scheduled
-connection. This case had no messages, so there is no read-only period.
+Arrival windows are exact: `confirmedDateTime <= now < confirmedDateTime + 10
+minutes` is `ON_TIME`; `confirmedDateTime + 10 minutes <= now <
+confirmedDateTime + 20 minutes` is `LATE`; `now >= confirmedDateTime + 20
+minutes` closes entry and unresolved absences become `NO_SHOW`. Join retries
+preserve the original `joinedAt` and classification. When both participants
+have joined, `conversationStartedAt` is set once to the later joined time.
+`timeoutAt` remains `confirmedDateTime + chat.second-chat.duration-minutes`
+(currently 120 minutes).
 
-`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. When
-an active second chat reaches `timeoutAt`, it moves the chat to `EXPIRED`, sets
-`readOnlyUntil` using `chat.second-chat.read-only-retention-minutes` (currently
-24 hours), and leaves the connection visible in Home as `SECOND_CHAT_READ_ONLY`.
-Messages remain readable, but new messages are rejected because the chat is no
-longer `ACTIVE`. When `readOnlyUntil` is reached, the same job marks the chat
-`CLOSED`, closes the connection and releases locks; the interaction then
-disappears from Home.
+Second-chat audio is user-relative: once the current user has explicitly joined
+with attendance `ON_TIME` or `LATE`, that user can send audio immediately,
+independently of whether the partner has joined and independently of
+`conversationStartedAt`. A participant whose attendance remains `PENDING` or
+whose participation row is missing receives `CHAT_NOT_WRITABLE`. Exact absolute
+timeout semantics still apply: audio is writable only while `now < timeoutAt`,
+subject to the global feature flag, file validation, rate limits and normal
+writable lifecycle. Once unlocked, second-chat audio messages are unlimited in
+quantity.
 
-Explicit second-chat cancellation closes the connection and releases locks. Mutual acceptance, mutual rejection and mutual timeout all close without penalty today. Unilateral cancellation uses penalty policy evaluation, and safety-based cancellation creates a pending report for backoffice review without immediate penalty. Second-chat timeout moves the chat to read-only first; read-only retention cleanup closes the connection. First-chat timeout still expires the match.
+After `confirmedDateTime + 10 minutes` and before `confirmedDateTime + 20
+minutes`, a joined participant may create one pending partner no-show claim per
+connection. The countdown is 60 seconds, capped at the hard cutoff. If the
+partner joins before expiry, the claim is cancelled and the partner is
+classified as `LATE`. If it expires first, the partner is marked `NO_SHOW`, the
+no-show reliability event is recorded once and the interaction is closed to
+read-only when a chat exists.
+
+At the hard cutoff, if one participant joined, only the absent participant is
+marked `NO_SHOW`. If neither joined, both are marked `NO_SHOW`, the connection
+closes directly and no empty chat is created. If both joined, no no-show action
+is taken and the chat remains active.
+
+`SecondChatLifecycleJob` owns the lifecycle after scheduling confirmation. A
+no-show with an existing chat sets `ABANDONED / SECOND_CHAT_NO_SHOW`, `endedAt`
+and `readOnlyUntil`; messages remain readable during retention and new messages
+are rejected. Once both participants have joined, mutual completion can be
+requested after 10 minutes only if each participant has sent a message. Accepted
+completion sets `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`; rejection, timeout
+and new-message cancellation keep the chat active and start a one-minute
+cooldown for the requester.
+
+Partner inactivity is based on `lastMessageAt`, `lastMessageSenderId` and
+`conversationStartedAt`. A participant may send a waiting message before the
+partner joins; that message remains the latest reference message, but the
+response clock starts at `max(lastMessageAt, conversationStartedAt)`, not before
+both users joined. The latest-message author may claim after five minutes and
+before the ten-minute automatic closure deadline; the countdown is 60 seconds
+and cannot extend past automatic inactivity or absolute timeout. Any new conversational message before
+expiry cancels the claim and becomes the new inactivity clock. At exact expiry,
+the silent participant is penalized and the chat becomes `ABANDONED /
+SECOND_CHAT_PARTNER_INACTIVITY`. If both users joined but neither sent any
+message by `conversationStartedAt + 10 minutes`, both receive the initial-silence
+penalty and the chat becomes `ABANDONED /
+SECOND_CHAT_NO_CONVERSATION_STARTED`.
+
+Status polling uses the same effective response clock to suppress invalid
+conversation actions when initial silence or partner inactivity is already due,
+but it does not persist terminal state. Active second-chat absolute timeout still
+sets `EXPIRED / ABSOLUTE_TIMEOUT` and is reliability-neutral. `FINISHED`, `ABANDONED` and `EXPIRED` are read-only until
+retention cleanup; when `readOnlyUntil` is reached, the same job marks the chat
+`CLOSED`, closes the connection and releases locks. Ordinary second-chat mutual
+and unilateral cancellation are unavailable; safety report and manual block
+remain available. First-chat timeout and cancellation semantics are unchanged.
 
 ## 9. Safety Report Review
 
@@ -179,10 +540,18 @@ Safety-report chat closure creates:
 
 - an accepted `ChatExitRequest` with `type = SAFETY_REPORT`, used as operational chat-closure history;
 - a `SafetyReport` with `status = PENDING`, used as the moderation source of truth.
-- a directional `UserBlock` from reporter to reported; matchmaking treats any block between two users as a bidirectional rematch exclusion.
+- optionally, when `blockUser: true`, a directional `UserBlock` from reporter to reported; matchmaking treats any block between two users as a bidirectional rematch exclusion.
 
-Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Dismissing a pending report stores review metadata and creates no penalty. Confirming a pending report creates either a temporary or permanent penalty for the reported user, links it through `sourceReportId`/`penaltyId`, removes the reported user from the matchmaking queue if present and blocks future enqueue while the penalty remains active.
+Admins access `/api/admin/safety-reports` with `ROLE_ADMIN`. Creating or dismissing a pending report stores moderation metadata and creates no penalty, block, reliability event or containment for the reported user. Confirming a pending report creates either a temporary or permanent administrative account ban for the reported user, links it through `sourceReportId`/`penaltyId`, removes the reported user from the matchmaking queue if present, and blocks normal authenticated Reals access while the ban is effective. Permanent bans fully contain active engagements. Temporary bans selectively contain only engagements that cannot remain useful after the effective expiry plus `account.ban.temporary-resume-margin-minutes`, default 30 minutes: first chats and active second chats always close, pending visual and scheduling states may survive when their persisted deadlines remain viable, and scheduled second chats use agreed start plus entry tolerance. Temporary bans stop being effective at exact `now >= expiresAt`, even before scheduler cleanup marks the row inactive; expiry never resurrects closed history.
+
+Pending reports with reason `CHILD_SAFETY_CONCERN` receive derived priority review: admin lists order them before other reports, then order by creation time descending. Priority is not persisted and becomes false after review. Direct user reports retain the existing directional block and active-interaction containment behavior; no penalty or ban is automatic from this reason.
+
+Admins can also dismiss a report as abusive or unjustified. That resolution creates no safety penalty; when user reliability is enabled, it records an internal reliability event against the reporter. Pending reports and ordinary insufficient-evidence dismissals do not create reliability events. Confirmed reports record `SAFETY_REPORT_CONFIRMED_AGAINST_USER` against the reported user only when the sanction is `TEMPORARY_BAN`; `PERMANENT_BAN` remains reliability-neutral.
 
 ## 10. Completion
 
 A connection eventually reaches `CLOSED`. Closure releases active connection locks, so users are no longer counted against the connection limit for that interaction.
+
+## 11. Manual block
+
+A participant may submit `POST /api/matches/{matchId}/block`; the backend resolves the counterpart without exposing their user id. The block immediately excludes the pair and contains every active match or connection. Positive progression then returns `USER_PAIR_BLOCKED`, while reads, rejection, exit, cancellation, and safety remain available. Android must present definitive-action confirmation before submission; Android UI and unblock are not part of this backend MVP.

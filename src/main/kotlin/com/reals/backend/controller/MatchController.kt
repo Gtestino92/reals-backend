@@ -2,12 +2,18 @@ package com.reals.backend.controller
 
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
+import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.VisualDecision
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.*
+import com.reals.backend.service.photo.ProfilePhotoService
+import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.OffsetDateTime
 import java.util.*
 
 @RestController
@@ -15,10 +21,36 @@ import java.util.*
 class MatchController(
     private val matchService: MatchService,
     private val chatService: ChatService,
+    private val firstChatResolutionService: FirstChatResolutionService,
     private val visualReviewService: VisualReviewService,
     private val connectionService: ConnectionService,
-    private val profileService: ProfileService
+    private val profileService: ProfileService,
+    private val profilePhotoService: ProfilePhotoService,
+    private val userBlockCommandService: UserBlockCommandService,
+    private val legalComplianceService: LegalComplianceService,
+    private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val profileQuestionAnswerService: ProfileQuestionAnswerService
 ) {
+
+    @PostMapping("/{matchId}/block")
+    fun blockMatchParticipant(
+        @CurrentUserId userId: UUID,
+        @PathVariable matchId: UUID
+    ): ResponseEntity<UserBlockResponse> {
+        val match = matchService.findByIdForUserOrThrow(matchId, userId)
+        val counterpartId = if (match.userAId == userId) match.userBId else match.userAId
+        val result = userBlockCommandService.blockUserAndContain(
+            blockerUserId = userId,
+            blockedUserId = counterpartId,
+            source = UserBlockSource.MANUAL
+        )
+        val response = UserBlockResponse.from(result.block)
+        return if (result.created) {
+            ResponseEntity.status(201).body(response)
+        } else {
+            ResponseEntity.ok(response)
+        }
+    }
 
     @GetMapping("/{matchId}")
     fun getMatch(
@@ -61,7 +93,7 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val decisions = chatService.getFirstChatDecisionStatuses(
+        val decisions = firstChatResolutionService.getFirstChatDecisionStatuses(
             matchId = matchId,
             userId = userId
         )
@@ -69,6 +101,7 @@ class MatchController(
             matchId = matchId,
             userId = userId
         )
+        val serverTime = OffsetDateTime.now()
 
         return ResponseEntity.ok(
             FirstChatResponse.from(
@@ -76,7 +109,15 @@ class MatchController(
                 partner = partnerProfile,
                 myDecision = decisions.myDecision,
                 partnerDecision = decisions.partnerDecision,
-                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat),
+                guidance = chatService.getFirstChatGuidanceState(
+                    chat = chat,
+                    userId = userId
+                )?.let { FirstChatGuidanceResponse.from(it) },
+                serverTime = serverTime,
+                audioPolicy = ChatAudioPolicyResponse.from(
+                    chatAudioPolicyService.policyFor(chat = chat, userId = userId)
+                )
             )
         )
     }
@@ -92,10 +133,11 @@ class MatchController(
         @PathVariable matchId: UUID
     ): ResponseEntity<VisualProfileResponse> {
 
-        val match = matchService.findByIdForUserOrThrow(
+        val access = visualReviewService.requireVisualContentAccess(
             matchId = matchId,
             userId = userId
         )
+        val match = access.match
 
         val partnerId =
             when (userId) {
@@ -110,9 +152,17 @@ class MatchController(
                 message = "Partner profile not found"
             )
 
-        val photos = profileService.getPhotoResponses(
+        val photos = profilePhotoService.getExternallyVisiblePhotoViews(
             profileId = partnerProfile.id
-        )
+        ).map {
+            PhotoResponse.from(
+                photo = it.photo,
+                url = it.readUrl
+            )
+        }
+        val profileQuestions =
+            profileQuestionAnswerService.getPublicSelectedAnswers(partnerProfile.id)
+                .map(PublicProfileQuestionResponse::from)
         val personalMessageStatus = visualReviewService.getPersonalMessageStatusForUser(
             matchId = matchId,
             userId = userId
@@ -134,7 +184,9 @@ class MatchController(
                     personalMessageStatus.partnerPersonalMessageRead,
                 decisionRequiresPartnerPersonalMessageRead =
                     personalMessageStatus.decisionRequiresPartnerPersonalMessageRead,
-                visualExpiresAt = visualExpiresAt
+                visualExpiresAt = visualExpiresAt,
+                affinityIndicators = visualReviewService.getAffinityIndicators(matchId),
+                profileQuestions = profileQuestions
             )
         )
     }
@@ -152,7 +204,11 @@ class MatchController(
         @Valid
         @RequestBody request: ChatDecisionRequest
     ): ResponseEntity<MatchResponse> {
-        chatService.recordChatDecision(
+        if (request.decision == ChatContinueDecision.APPROVED) {
+            legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        }
+
+        firstChatResolutionService.recordChatDecision(
             matchId = matchId,
             userId = userId,
             decision = request.decision
@@ -186,6 +242,10 @@ class MatchController(
         @Valid
         @RequestBody request: VisualDecisionRequest
     ): ResponseEntity<MatchResponse> {
+        if (request.decision == VisualDecision.APPROVED) {
+            legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+        }
+
         visualReviewService.recordDecision(
             matchId = matchId,
             userId = userId,
@@ -217,6 +277,7 @@ class MatchController(
         @Valid
         @RequestBody request: PersonalMessageRequest
     ): ResponseEntity<Void> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         visualReviewService.recordPersonalMessage(
             matchId = matchId,

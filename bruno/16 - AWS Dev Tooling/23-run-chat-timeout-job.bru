@@ -1,0 +1,21 @@
+meta {
+  name: 23 Run Chat Timeout Job
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/chat-timeout/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "ChatTimeoutJob") {
+    throw new Error("Expected ChatTimeoutJob to run.");
+  }
+}

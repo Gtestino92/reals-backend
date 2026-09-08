@@ -1,0 +1,46 @@
+meta {
+  name: 47 Process Control-B Match
+  type: http
+  seq: 47
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/matchmaking/process?maxPairsPerRun=1
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{affinity_control_user_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status === 401) {
+    throw new Error("Got 401 from local matchmaking process. Refresh Control User sign-in token or confirm local endpoint auth policy.");
+  }
+  if (status === 403) {
+    throw new Error("Got 403 from local matchmaking process. Ensure local-dev auth policy allows this token.");
+  }
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK from local matchmaking process, got ${status}.`);
+  }
+  const body = res.getBody();
+  if (!body || !Array.isArray(body.pairs)) {
+    throw new Error("Expected process response with pairs array.");
+  }
+  if (body.matchesCreated !== 1 || body.pairs.length !== 1) {
+    throw new Error(`Expected exactly one Control-B match, got matchesCreated=${body.matchesCreated}, pairs=${body.pairs.length}.`);
+  }
+  const pair = body.pairs[0];
+  const controlUserId = bru.getEnvVar("affinity_control_user_backend_user_id");
+  const userBId = bru.getEnvVar("affinity_user_b_backend_user_id");
+  if (!pair.id || !pair.userAId || !pair.userBId) {
+    throw new Error("Expected created pair with id, userAId and userBId.");
+  }
+  const actual = new Set([pair.userAId, pair.userBId]);
+  if (!actual.has(controlUserId) || !actual.has(userBId) || actual.size !== 2) {
+    throw new Error(`Expected pair to contain Control User and User B, got ${pair.userAId}/${pair.userBId}.`);
+  }
+  bru.setEnvVar("affinity_pr3_control_match_id", pair.id);
+}

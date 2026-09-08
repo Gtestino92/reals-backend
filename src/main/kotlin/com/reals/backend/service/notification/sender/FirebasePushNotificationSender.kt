@@ -2,9 +2,10 @@ package com.reals.backend.service.notification.sender
 
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingException
+import com.google.firebase.messaging.AndroidConfig
+import com.google.firebase.messaging.AndroidNotification
 import com.google.firebase.messaging.Message
 import com.google.firebase.messaging.MessagingErrorCode
-import com.reals.backend.domain.PushDeviceToken
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
@@ -18,7 +19,7 @@ class FirebasePushNotificationSender(
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun sendToTokens(
-        tokens: List<PushDeviceToken>,
+        tokens: List<PushNotificationToken>,
         notification: PushNotification
     ): PushSendResult {
         if (tokens.isEmpty()) {
@@ -31,15 +32,23 @@ class FirebasePushNotificationSender(
 
         tokens.forEach { deviceToken ->
             try {
-                val message = Message.builder()
+                val messageBuilder = Message.builder()
                     .setToken(deviceToken.token)
-                    .setNotification(
+
+                if (notification.includeNotificationPayload) {
+                    messageBuilder.setNotification(
                         com.google.firebase.messaging.Notification.builder()
                             .setTitle(notification.title)
                             .setBody(notification.body)
                             .build()
                     )
-                    .putAllData(notification.data)
+                }
+
+                messageBuilder.putAllData(notification.data)
+
+                androidConfig(notification)?.let { messageBuilder.setAndroidConfig(it) }
+
+                val message = messageBuilder
                     .build()
 
                 providerMessageIds += firebaseMessaging.send(message)
@@ -78,6 +87,37 @@ class FirebasePushNotificationSender(
     }
 
     private fun FirebaseMessagingException.isInvalidRegistrationToken(): Boolean =
-        messagingErrorCode == MessagingErrorCode.UNREGISTERED ||
+            messagingErrorCode == MessagingErrorCode.UNREGISTERED ||
             messagingErrorCode == MessagingErrorCode.INVALID_ARGUMENT
+
+    private fun androidConfig(notification: PushNotification): AndroidConfig? {
+        if (
+            notification.androidTtlMillis == null &&
+            notification.androidNotificationTag == null &&
+            notification.androidPriority == null
+        ) {
+            return null
+        }
+
+        val builder = AndroidConfig.builder()
+        notification.androidTtlMillis?.let { builder.setTtl(it) }
+        notification.androidPriority?.let { priority ->
+            builder.setPriority(priority.toFirebasePriority())
+        }
+        notification.androidNotificationTag?.takeIf { notification.includeNotificationPayload }?.let { tag ->
+            builder.setNotification(
+                AndroidNotification.builder()
+                    .setTitle(notification.title)
+                    .setBody(notification.body)
+                    .setTag(tag)
+                    .build()
+            )
+        }
+        return builder.build()
+    }
+
+    private fun PushNotificationAndroidPriority.toFirebasePriority(): AndroidConfig.Priority =
+        when (this) {
+            PushNotificationAndroidPriority.HIGH -> AndroidConfig.Priority.HIGH
+        }
 }

@@ -15,6 +15,10 @@ interface PushDeviceTokenRepository : JpaRepository<PushDeviceToken, UUID> {
     fun findByUserIdAndEnabledTrue(userId: UUID): List<PushDeviceToken>
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from PushDeviceToken t where t.userId = :userId")
+    fun deleteByUserId(@Param("userId") userId: UUID): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """
         update PushDeviceToken t

@@ -4,12 +4,17 @@ import com.reals.backend.scheduler.AccountDeletionFinalizationJob
 import com.reals.backend.scheduler.ChatTimeoutJob
 import com.reals.backend.scheduler.InactivityCheckJob
 import com.reals.backend.scheduler.MatchExpirationJob
+import com.reals.backend.scheduler.MatchmakingAvailabilityNotificationJob
+import com.reals.backend.scheduler.MediaCleanupJob
 import com.reals.backend.scheduler.PenaltyExpirationJob
 import com.reals.backend.scheduler.SchedulingActivationJob
 import com.reals.backend.scheduler.SchedulingNegotiationTimeoutJob
 import com.reals.backend.scheduler.SecondChatLifecycleJob
 import com.reals.backend.scheduler.SecondChatReminderNotificationJob
+import com.reals.backend.scheduler.SecondChatStartNotificationJob
+import com.reals.backend.scheduler.UserReliabilityEventCleanupJob
 import com.reals.backend.scheduler.VisualPhaseExpirationJob
+import com.reals.backend.scheduler.VisualReviewReminderNotificationJob
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Profile
 import org.springframework.http.ResponseEntity
@@ -19,19 +24,24 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
 
 @RestController
-@Profile("local", "local-nodb", "local-postgres", "local-firebase")
+@Profile("local-nodb", "local-postgres", "local-firebase", "dev")
 @RequestMapping("/api/local-dev/jobs")
 class DevJobController(
     private val accountDeletionFinalizationJob: ObjectProvider<AccountDeletionFinalizationJob>,
     private val chatTimeoutJob: ObjectProvider<ChatTimeoutJob>,
     private val inactivityCheckJob: ObjectProvider<InactivityCheckJob>,
     private val matchExpirationJob: ObjectProvider<MatchExpirationJob>,
+    private val matchmakingAvailabilityNotificationJob: ObjectProvider<MatchmakingAvailabilityNotificationJob>,
+    private val mediaCleanupJob: ObjectProvider<MediaCleanupJob>,
     private val penaltyExpirationJob: ObjectProvider<PenaltyExpirationJob>,
     private val schedulingActivationJob: ObjectProvider<SchedulingActivationJob>,
     private val schedulingNegotiationTimeoutJob: ObjectProvider<SchedulingNegotiationTimeoutJob>,
     private val secondChatLifecycleJob: ObjectProvider<SecondChatLifecycleJob>,
     private val secondChatReminderNotificationJob: ObjectProvider<SecondChatReminderNotificationJob>,
-    private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>
+    private val secondChatStartNotificationJob: ObjectProvider<SecondChatStartNotificationJob>,
+    private val userReliabilityEventCleanupJob: ObjectProvider<UserReliabilityEventCleanupJob>,
+    private val visualPhaseExpirationJob: ObjectProvider<VisualPhaseExpirationJob>,
+    private val visualReviewReminderNotificationJob: ObjectProvider<VisualReviewReminderNotificationJob>
 ) {
 
     @PostMapping("/chat-timeout/run")
@@ -56,6 +66,21 @@ class DevJobController(
     fun runMatchExpiration(): ResponseEntity<DevJobRunResponse> =
         runJob("MatchExpirationJob") {
             requireJob(matchExpirationJob, "MatchExpirationJob").run()
+        }
+
+    @PostMapping("/matchmaking-availability-notification/run")
+    fun runMatchmakingAvailabilityNotification(): ResponseEntity<DevJobRunResponse> =
+        runJob("MatchmakingAvailabilityNotificationJob") {
+            requireJob(
+                matchmakingAvailabilityNotificationJob,
+                "MatchmakingAvailabilityNotificationJob"
+            ).runNowForDev()
+        }
+
+    @PostMapping("/media-cleanup/run")
+    fun runMediaCleanup(): ResponseEntity<DevJobRunResponse> =
+        runJob("MediaCleanupJob") {
+            requireJob(mediaCleanupJob, "MediaCleanupJob").runNowForDev()
         }
 
     @PostMapping("/penalty-expiration/run")
@@ -88,10 +113,31 @@ class DevJobController(
             requireJob(secondChatReminderNotificationJob, "SecondChatReminderNotificationJob").runNowForDev()
         }
 
+    @PostMapping("/second-chat-start-notification/run")
+    fun runSecondChatStartNotification(): ResponseEntity<DevJobRunResponse> =
+        runJob("SecondChatStartNotificationJob") {
+            requireJob(secondChatStartNotificationJob, "SecondChatStartNotificationJob").runNowForDev()
+        }
+
+    @PostMapping("/user-reliability-cleanup/run")
+    fun runUserReliabilityCleanup(): ResponseEntity<DevJobRunResponse> =
+        runJob("UserReliabilityEventCleanupJob") {
+            requireJob(userReliabilityEventCleanupJob, "UserReliabilityEventCleanupJob").runNowForDev()
+        }
+
     @PostMapping("/visual-phase-expiration/run")
     fun runVisualPhaseExpiration(): ResponseEntity<DevJobRunResponse> =
         runJob("VisualPhaseExpirationJob") {
             requireJob(visualPhaseExpirationJob, "VisualPhaseExpirationJob").run()
+        }
+
+    @PostMapping("/visual-review-reminder/run")
+    fun runVisualReviewReminder(): ResponseEntity<DevJobRunResponse> =
+        runJob("VisualReviewReminderNotificationJob") {
+            requireJob(
+                visualReviewReminderNotificationJob,
+                "VisualReviewReminderNotificationJob"
+            ).runNowForDev()
         }
 
     private fun runJob(

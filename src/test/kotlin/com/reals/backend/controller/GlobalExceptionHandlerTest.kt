@@ -2,8 +2,11 @@ package com.reals.backend.controller
 
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.exception.ChatAudioStorageException
+import com.reals.backend.service.exception.ObjectStorageException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
@@ -113,5 +116,43 @@ class GlobalExceptionHandlerTest {
         assertEquals("PROFILE_NOT_FOUND", response.body?.code)
         assertEquals("Not Found", response.body?.error)
         assertEquals("Profile not found for current user", response.body?.message)
+    }
+
+    @Test
+    fun `authenticity verification not configured exposes stable conflict response`() {
+        val response =
+            handler.handleDomainException(
+                DomainConflictException(
+                    code = DomainErrorCode.AUTHENTICITY_VERIFICATION_NOT_CONFIGURED,
+                    message = "Profile authenticity verification is not configured"
+                )
+            )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals("AUTHENTICITY_VERIFICATION_NOT_CONFIGURED", response.body?.code)
+        assertEquals("Conflict", response.body?.error)
+        assertEquals("Profile authenticity verification is not configured", response.body?.message)
+    }
+
+    @Test
+    fun `profile photo storage failures keep profile photo upload code`() {
+        val response = handler.handleObjectStorageException(
+            ObjectStorageException("Could not upload profile photo")
+        )
+
+        assertEquals(HttpStatus.BAD_GATEWAY, response.statusCode)
+        assertEquals(DomainErrorCode.PROFILE_PHOTO_UPLOAD_FAILED.name, response.body?.code)
+        assertEquals("Profile photo upload failed. Please retry.", response.body?.message)
+    }
+
+    @Test
+    fun `chat audio storage failures expose chat audio upload code`() {
+        val response = handler.handleChatAudioStorageException(
+            ChatAudioStorageException("Could not upload chat audio")
+        )
+
+        assertEquals(HttpStatus.BAD_GATEWAY, response.statusCode)
+        assertEquals(DomainErrorCode.CHAT_AUDIO_UPLOAD_FAILED.name, response.body?.code)
+        assertEquals("Chat audio upload failed. Please retry.", response.body?.message)
     }
 }

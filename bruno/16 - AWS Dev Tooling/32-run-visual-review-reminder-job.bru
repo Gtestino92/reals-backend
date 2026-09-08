@@ -1,0 +1,21 @@
+meta {
+  name: 32 Run Visual Review Reminder Job
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/visual-review-reminder/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "VisualReviewReminderNotificationJob") {
+    throw new Error("Expected VisualReviewReminderNotificationJob to run.");
+  }
+}

@@ -1,0 +1,23 @@
+meta {
+  name: 40 User A Propose Round 1
+  type: http
+  seq: 40
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserAId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 1,
+    "proposedDateTimes": ["{{alternateSlot1}}"]
+  }
+}

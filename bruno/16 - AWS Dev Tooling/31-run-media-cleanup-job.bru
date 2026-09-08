@@ -1,0 +1,21 @@
+meta {
+  name: 31 Run Media Cleanup Job
+  type: http
+  seq: 31
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/media-cleanup/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "MediaCleanupJob") {
+    throw new Error("Expected MediaCleanupJob to run.");
+  }
+}

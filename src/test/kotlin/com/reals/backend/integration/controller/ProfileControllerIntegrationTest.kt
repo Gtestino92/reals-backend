@@ -2,13 +2,13 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoValidationStatus
 import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.ControllerIT
+import org.hamcrest.Matchers.containsInAnyOrder
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -18,6 +18,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
@@ -43,10 +45,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "displayName" to "Controller Profile",
             "birthDate" to LocalDate.of(1995, 1, 1).toString(),
             "gender" to Gender.FEMALE.name,
-            "lookingForGender" to LookingForGender.MEN.name,
+            "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "bio" to "Created through MockMvc",
             "preferredMinAge" to 30,
             "preferredMaxAge" to 40,
@@ -65,41 +67,310 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(40)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
-            .andExpect(jsonPath("$.identityVerified", equalTo(false)))
-            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("NOT_STARTED")))
+            .andExpect(jsonPath("$.city", equalTo("Buenos Aires")))
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE")))
+            .andExpect(jsonPath("$.authenticityVerified", equalTo(false)))
+            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("NOT_STARTED")))
             .andExpect(jsonPath("$.status", equalTo("DRAFT")))
     }
 
     @Test
-    fun `noop identity verification marks profile verified`() {
-        val user = userService.createUser("identity-noop-${UUID.randomUUID()}@example.com")
-        profileService.createProfile(
+    fun `create profile normalizes country code before persistence`() {
+        val user = userService.createUser("profile-country-normalized-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody().toMutableMap()
+        body["countryCode"] = " ar "
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
+
+        val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
+        assertEquals("AR", profile.countryCode)
+    }
+
+    @Test
+    fun `create profile rejects unknown country code with stable error code`() {
+        val user = userService.createUser("profile-country-invalid-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody().toMutableMap()
+        body["countryCode"] = "ZZ"
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_COUNTRY")))
+    }
+
+    @Test
+    fun `update profile normalizes valid country code and rejects invalid values`() {
+        val user = userService.createUser("profile-country-update-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
             userId = user.id,
-            displayName = "Identity Noop",
+            displayName = "Country Update",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
         )
 
         mockMvc.perform(
-            post("/api/me/profile/identity-verification")
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("countryCode" to " uy ")))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.countryCode", equalTo("UY")))
+
+        assertEquals("UY", profileService.findByIdOrThrow(profile.id).countryCode)
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("countryCode" to "Argentina")))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("INVALID_PROFILE_COUNTRY")))
+    }
+
+    @Test
+    fun `update profile null country code preserves existing value`() {
+        val user = userService.createUser("profile-country-null-${UUID.randomUUID()}@example.com")
+        val profile = profileService.createProfile(
+            userId = user.id,
+            displayName = "Country Preserve",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("city" to "Cordoba", "countryCode" to null)))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.city", equalTo("Cordoba")))
+            .andExpect(jsonPath("$.countryCode", equalTo("AR")))
+            .andExpect(jsonPath("$.country").doesNotExist())
+
+        assertEquals("AR", profileService.findByIdOrThrow(profile.id).countryCode)
+    }
+
+    @Test
+    fun `create profile accepts multiple target genders`() {
+        val user = userService.createUser("profile-multi-genders-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody(
+            displayName = "Multi Gender Profile",
+            lookingForGenders = listOf(Gender.FEMALE.name, Gender.NON_BINARY.name)
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("FEMALE", "NON_BINARY")))
+    }
+
+    @Test
+    fun `create profile accepts all target genders`() {
+        val user = userService.createUser("profile-all-genders-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody(
+            displayName = "All Gender Profile",
+            lookingForGenders = Gender.entries.map { it.name }
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE", "FEMALE", "NON_BINARY", "OTHER")))
+    }
+
+    @Test
+    fun `create profile rejects empty target gender set`() {
+        val user = userService.createUser("profile-empty-genders-${UUID.randomUUID()}@example.com")
+        val body = validCreateProfileBody(
+            displayName = "Empty Gender Profile",
+            lookingForGenders = emptyList()
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(body))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `update profile target genders null leaves existing set unchanged`() {
+        val user = userService.createUser("profile-null-genders-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Null Genders",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE, Gender.NON_BINARY),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("city" to "Cordoba")))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.city", equalTo("Cordoba")))
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("FEMALE", "NON_BINARY")))
+    }
+
+    @Test
+    fun `update match filters target genders replaces existing set`() {
+        val user = userService.createUser("profile-replace-genders-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Replace Genders",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE, Gender.NON_BINARY),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/match-filters")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "intention" to Intention.FRIENDSHIP.name,
+                            "lookingForGenders" to listOf(Gender.OTHER.name),
+                            "preferredMinAge" to 21,
+                            "preferredMaxAge" to 45,
+                            "maxDistanceKm" to 75
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.intention", equalTo("FRIENDSHIP")))
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("OTHER")))
+            .andExpect(jsonPath("$.preferredMinAge", equalTo(21)))
+            .andExpect(jsonPath("$.preferredMaxAge", equalTo(45)))
+            .andExpect(jsonPath("$.maxDistanceKm", equalTo(75)))
+    }
+
+    @Test
+    fun `update match filters rejects empty target gender set`() {
+        val user = userService.createUser("profile-update-empty-genders-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Reject Empty Genders",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            put("/api/me/profile/match-filters")
+                .with(authenticatedAs(user.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "intention" to Intention.DATE.name,
+                            "lookingForGenders" to emptyList<String>(),
+                            "preferredMinAge" to 18,
+                            "preferredMaxAge" to 99,
+                            "maxDistanceKm" to 50
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `noop profile authenticity verification marks profile verified`() {
+        val user = userService.createUser("identity-noop-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = user.id,
+            displayName = "Authenticity Noop",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            post("/api/me/profile/authenticity-verification")
                 .with(authenticatedAs(user.id))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.identityVerified", equalTo(true)))
-            .andExpect(jsonPath("$.identityVerificationStatus", equalTo("VERIFIED")))
+            .andExpect(jsonPath("$.authenticityVerified", equalTo(true)))
+            .andExpect(jsonPath("$.authenticityVerificationStatus", equalTo("VERIFIED")))
 
         val profile = profileService.findByUserId(user.id) ?: error("Expected profile")
-        org.junit.jupiter.api.Assertions.assertEquals(true, profile.identityVerified)
+        org.junit.jupiter.api.Assertions.assertEquals(true, profile.authenticityVerified)
         org.junit.jupiter.api.Assertions.assertEquals(
-            com.reals.backend.domain.IdentityVerificationStatus.VERIFIED,
-            profile.identityVerificationStatus
+            com.reals.backend.domain.ProfileAuthenticityVerificationStatus.VERIFIED,
+            profile.authenticityVerificationStatus
         )
     }
 
@@ -110,10 +381,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "displayName" to "<script>alert(1)</script>",
             "birthDate" to LocalDate.of(1995, 1, 1).toString(),
             "gender" to Gender.FEMALE.name,
-            "lookingForGender" to LookingForGender.MEN.name,
+            "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "bio" to "Plain bio",
             "preferredMinAge" to 30,
             "preferredMaxAge" to 40,
@@ -128,6 +399,87 @@ class ProfileControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+    }
+
+    @Test
+    fun `create profile accepts multiline bio and rejects newline in single line fields`() {
+        val acceptedUser = userService.createUser("profile-multiline-bio-${UUID.randomUUID()}@example.com")
+        mockMvc.perform(
+            post("/api/me/profile")
+                .with(authenticatedAs(acceptedUser.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(validCreateProfileBody(bio = "Line one\nLine two\rLine three")))
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.bio", equalTo("Line one\nLine two\rLine three")))
+
+        listOf("displayName", "city", "countryCode").forEach { field ->
+            val user = userService.createUser("profile-newline-$field-${UUID.randomUUID()}@example.com")
+            val body = validCreateProfileBody().toMutableMap()
+            body[field] = "Bad\n$field"
+
+            mockMvc.perform(
+                post("/api/me/profile")
+                    .with(authenticatedAs(user.id))
+                    .contentType(jsonContentType)
+                    .content(jsonBody(body))
+            )
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+        }
+    }
+
+    @Test
+    fun `update profile accepts multiline bio and rejects newline in single line fields`() {
+        val acceptedUser = userService.createUser("profile-update-multiline-bio-${UUID.randomUUID()}@example.com")
+        profileService.createProfile(
+            userId = acceptedUser.id,
+            displayName = "Update Bio",
+            birthDate = LocalDate.of(1995, 1, 1),
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE),
+            intention = Intention.DATE,
+            city = "Buenos Aires",
+            countryCode = "AR",
+            preferredMinAge = 18,
+            preferredMaxAge = 99,
+            maxDistanceKm = 50
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                .with(authenticatedAs(acceptedUser.id))
+                .contentType(jsonContentType)
+                .content(jsonBody(mapOf("bio" to "Line one\nLine two\rLine three")))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.bio", equalTo("Line one\nLine two\rLine three")))
+
+        listOf("displayName", "city", "countryCode").forEach { field ->
+            val user = userService.createUser("profile-update-newline-$field-${UUID.randomUUID()}@example.com")
+            profileService.createProfile(
+                userId = user.id,
+                displayName = "Update Single Line",
+                birthDate = LocalDate.of(1995, 1, 1),
+                gender = Gender.FEMALE,
+                lookingForGenders = setOf(Gender.MALE),
+                intention = Intention.DATE,
+                city = "Buenos Aires",
+                countryCode = "AR",
+                preferredMinAge = 18,
+                preferredMaxAge = 99,
+                maxDistanceKm = 50
+            )
+
+            mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/me/profile")
+                    .with(authenticatedAs(user.id))
+                    .contentType(jsonContentType)
+                    .content(jsonBody(mapOf(field to "Bad\n$field")))
+            )
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.code", equalTo("VALIDATION_ERROR")))
+        }
     }
 
     @Test
@@ -163,10 +515,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Filter Profile",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 25,
             preferredMaxAge = 35,
             maxDistanceKm = 100
@@ -179,6 +531,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .content(
                     """
                     {
+                      "intention": "FRIENDSHIP",
+                      "lookingForGenders": ["MALE", "FEMALE"],
                       "preferredMinAge": 30,
                       "preferredMaxAge": 38,
                       "maxDistanceKm": 25
@@ -187,6 +541,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 )
         )
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.intention", equalTo("FRIENDSHIP")))
+            .andExpect(jsonPath("$.lookingForGenders", containsInAnyOrder("MALE", "FEMALE")))
             .andExpect(jsonPath("$.preferredMinAge", equalTo(30)))
             .andExpect(jsonPath("$.preferredMaxAge", equalTo(38)))
             .andExpect(jsonPath("$.maxDistanceKm", equalTo(25)))
@@ -199,10 +555,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "displayName" to "Young Profile",
             "birthDate" to LocalDate.now().minusYears(17).toString(),
             "gender" to Gender.FEMALE.name,
-            "lookingForGender" to LookingForGender.MEN.name,
+            "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "preferredMinAge" to 18,
             "preferredMaxAge" to 99,
             "maxDistanceKm" to 50
@@ -226,10 +582,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             "displayName" to "Duplicate Profile",
             "birthDate" to LocalDate.of(1995, 1, 1).toString(),
             "gender" to Gender.FEMALE.name,
-            "lookingForGender" to LookingForGender.MEN.name,
+            "lookingForGenders" to listOf(Gender.MALE.name),
             "intention" to Intention.DATE.name,
             "city" to "Buenos Aires",
-            "country" to "AR",
+            "countryCode" to "AR",
             "preferredMinAge" to 18,
             "preferredMaxAge" to 99,
             "maxDistanceKm" to 50
@@ -240,10 +596,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Existing Profile",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -267,10 +623,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Missing Photos",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -337,10 +693,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Invalid Filters",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -353,6 +709,8 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 .content(
                     """
                     {
+                      "intention": "DATE",
+                      "lookingForGenders": ["MALE"],
                       "preferredMinAge": 40,
                       "preferredMaxAge": 30,
                       "maxDistanceKm": 50
@@ -385,10 +743,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Reorder Controller",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -397,7 +755,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             ProfilePhoto(
                 profileId = profile.id,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "users/${user.id}/profile-photos/first.jpg",
                 position = 1,
                 isPersonPhoto = true,
@@ -410,7 +768,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             ProfilePhoto(
                 profileId = profile.id,
                 storageProvider = PhotoStorageProvider.S3,
-                storageBucket = "reals-profile-photos-test",
+                storageBucket = "reals-media-test",
                 storageKey = "users/${user.id}/profile-photos/second.jpg",
                 position = 2,
                 isPersonPhoto = false,
@@ -447,6 +805,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `delete missing photo returns stable error code`() {
         val user = userService.createUser("missing-photo-${UUID.randomUUID()}@example.com")
         profileService.createProfile(
@@ -454,10 +813,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Missing Photo",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -478,10 +837,10 @@ class ProfileControllerIntegrationTest : ControllerIT() {
             displayName = "Activation Ready",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -492,7 +851,7 @@ class ProfileControllerIntegrationTest : ControllerIT() {
                 ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,
@@ -505,4 +864,23 @@ class ProfileControllerIntegrationTest : ControllerIT() {
 
         return user.id
     }
+
+    private fun validCreateProfileBody(
+        displayName: String = "Controller Profile",
+        lookingForGenders: List<String> = listOf(Gender.MALE.name),
+        bio: String? = "Plain bio"
+    ): Map<String, Any?> =
+        mapOf(
+            "displayName" to displayName,
+            "birthDate" to LocalDate.of(1995, 1, 1).toString(),
+            "gender" to Gender.FEMALE.name,
+            "lookingForGenders" to lookingForGenders,
+            "intention" to Intention.DATE.name,
+            "city" to "Buenos Aires",
+            "countryCode" to "AR",
+            "bio" to bio,
+            "preferredMinAge" to 18,
+            "preferredMaxAge" to 99,
+            "maxDistanceKm" to 50
+        )
 }

@@ -6,10 +6,19 @@ import com.reals.backend.controller.dto.ChatResponse
 import com.reals.backend.controller.dto.ConnectionDismissalResponse
 import com.reals.backend.controller.dto.ConnectionResponse
 import com.reals.backend.controller.dto.NegotiationResponse
+import com.reals.backend.controller.dto.RejectPartnerProposalsRequest
 import com.reals.backend.controller.dto.ScheduleProposalResponse
+import com.reals.backend.controller.dto.SecondChatAttendanceResponse
+import com.reals.backend.controller.dto.SecondChatCompletionDecisionRequest
+import com.reals.backend.controller.dto.ChatAudioPolicyResponse
 import com.reals.backend.service.ChatService
+import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.SecondChatConversationLifecycleService
+import com.reals.backend.service.SecondChatLifecycleService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.exception.DomainConflictException
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -21,7 +30,11 @@ import java.util.*
 class ConnectionController(
     private val connectionService: ConnectionService,
     private val chatService: ChatService,
-    private val schedulingService: SchedulingService
+    private val secondChatLifecycleService: SecondChatLifecycleService,
+    private val secondChatConversationLifecycleService: SecondChatConversationLifecycleService,
+    private val schedulingService: SchedulingService,
+    private val legalComplianceService: LegalComplianceService,
+    private val chatAudioPolicyService: ChatAudioPolicyService
 
 ) {
 
@@ -43,16 +56,22 @@ class ConnectionController(
     fun getSecondChat(
         @CurrentUserId userId: UUID,
         @PathVariable connectionId: UUID
-    ): ResponseEntity<ChatResponse> =
-        ResponseEntity.ok(
+    ): ResponseEntity<ChatResponse> {
+        val chat = chatService.findVisibleSecondChatOrThrow(
+            connectionId = connectionId,
+            userId = userId
+        )
+
+        return ResponseEntity.ok(
             ChatResponse.from(
-                c = chatService.findVisibleSecondChatOrThrow(
-                    connectionId = connectionId,
-                    userId = userId
-                ),
-                inactivityExpiresAt = null
+                c = chat,
+                inactivityExpiresAt = null,
+                audioPolicy = ChatAudioPolicyResponse.from(
+                    chatAudioPolicyService.policyFor(chat = chat, userId = userId)
+                )
             )
         )
+    }
 
     @PostMapping("/{connectionId}/second-chat-dismissal")
     fun dismissSecondChatFromHome(
@@ -65,6 +84,119 @@ class ConnectionController(
         )
 
         return ResponseEntity.ok(ConnectionDismissalResponse(dismissed = true))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/join")
+    fun joinSecondChat(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId
+            )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined ->
+                ResponseEntity.ok(secondChatAttendanceResponse(result.view, userId))
+
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @GetMapping("/{connectionId}/second-chat/status")
+    fun getSecondChatStatus(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> =
+        ResponseEntity.ok(
+            secondChatAttendanceResponse(
+                view = secondChatLifecycleService.getSecondChatStatus(
+                    connectionId = connectionId,
+                    userId = userId
+                ),
+                userId = userId
+            )
+        )
+
+    @PostMapping("/{connectionId}/second-chat/no-show-claims")
+    fun createSecondChatNoShowClaim(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatLifecycleService.createPartnerNoShowClaim(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(secondChatAttendanceResponse(result.view, userId))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/completion-requests")
+    fun createSecondChatCompletionRequest(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatConversationLifecycleService.createMutualCompletionRequest(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(secondChatAttendanceResponse(secondChatLifecycleService.getSecondChatStatus(connectionId, userId), userId))
+    }
+
+    @PostMapping("/{connectionId}/second-chat/completion-requests/{requestId}/decision")
+    fun decideSecondChatCompletionRequest(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID,
+        @PathVariable requestId: UUID,
+        @Valid
+        @RequestBody request: SecondChatCompletionDecisionRequest
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        return when (
+            val result = secondChatConversationLifecycleService.decideMutualCompletion(
+                connectionId = connectionId,
+                requestId = requestId,
+                responderUserId = userId,
+                decision = request.decision
+            )
+        ) {
+            is SecondChatConversationLifecycleService.CompletionDecisionResult.Applied ->
+                ResponseEntity.ok(secondChatAttendanceResponse(secondChatLifecycleService.getSecondChatStatus(connectionId, userId), userId))
+
+            is SecondChatConversationLifecycleService.CompletionDecisionResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @PostMapping("/{connectionId}/second-chat/inactivity-claims")
+    fun createSecondChatInactivityClaim(
+        @CurrentUserId userId: UUID,
+        @PathVariable connectionId: UUID
+    ): ResponseEntity<SecondChatAttendanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
+
+        val result =
+            secondChatConversationLifecycleService.createPartnerInactivityClaim(
+                connectionId = connectionId,
+                requesterUserId = userId
+            )
+        return ResponseEntity
+            .status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .body(secondChatAttendanceResponse(secondChatLifecycleService.getSecondChatStatus(connectionId, userId), userId))
     }
 
     @GetMapping("/{connectionId}/negotiation")
@@ -89,11 +221,11 @@ class ConnectionController(
     }
 
     /**
-     * Submits the user's ordered second-chat slot proposals for the current round.
+     * Submits the user's ordered second-chat slot proposals for the expected current round.
      * After saving, tryConfirm() runs automatically:
      *  - If overlap is found with the other user's proposals -> negotiation CONFIRMED
      *      Connection -> SECOND_CHAT_SCHEDULED. The second chat starts at confirmedDateTime.
-     *  - If no overlap -> stays PENDING so each user can accept a partner slot or reject the round.
+     *  - If no overlap -> stays PENDING so each user can accept a partner slot or reject partner proposals.
      */
     @PostMapping("/{connectionId}/proposals")
     fun addProposal(
@@ -102,10 +234,12 @@ class ConnectionController(
         @Valid
         @RequestBody request: AddProposalRequest
     ): ResponseEntity<List<ScheduleProposalResponse>> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val proposals = schedulingService.addProposals(
             connectionId = connectionId,
             userId = userId,
+            expectedRoundNumber = request.expectedRoundNumber,
             proposedDateTimes = request.proposedDateTimes
         )
 
@@ -147,8 +281,10 @@ class ConnectionController(
         @PathVariable proposalId: UUID,
         @PathVariable connectionId: UUID
     ): ResponseEntity<NegotiationResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         val negotiation = schedulingService.acceptProposal(
+            connectionId = connectionId,
             proposalId = proposalId,
             acceptorUserId = userId
         )
@@ -165,18 +301,22 @@ class ConnectionController(
     }
 
     /**
-     * Explicitly rejects the current round and automatically opens the next one.
-     * If maxRounds is exceeded -> negotiation FAILED, Connection CLOSED.
+     * Explicitly rejects pending partner proposals in the expected current round.
+     * The round advances only after both users' proposal lists are resolved.
      */
     @PostMapping("/{connectionId}/negotiation/rejections")
-    fun rejectCurrentRound(
+    fun rejectPartnerProposals(
         @CurrentUserId userId: UUID,
-        @PathVariable connectionId: UUID
+        @PathVariable connectionId: UUID,
+        @Valid
+        @RequestBody request: RejectPartnerProposalsRequest
     ): ResponseEntity<NegotiationResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
-        val negotiation = schedulingService.rejectCurrentRound(
+        val negotiation = schedulingService.rejectPartnerProposals(
             connectionId = connectionId,
-            userId = userId
+            userId = userId,
+            expectedRoundNumber = request.expectedRoundNumber
         )
         val connection = connectionService.findByIdForUserOrThrow(
             connectionId = connectionId,
@@ -187,6 +327,20 @@ class ConnectionController(
                 n = negotiation,
                 schedulingExpiresAt = connection.schedulingExpiresAt
             )
+        )
+    }
+
+    private fun secondChatAttendanceResponse(
+        view: SecondChatLifecycleService.SecondChatAttendanceView,
+        userId: UUID
+    ): SecondChatAttendanceResponse {
+        val audioPolicy = view.chatId
+            ?.let { chatService.findByIdForUserOrThrow(chatId = it, userId = userId) }
+            ?.let { ChatAudioPolicyResponse.from(chatAudioPolicyService.policyFor(chat = it, userId = userId)) }
+
+        return SecondChatAttendanceResponse.from(
+            view = view,
+            audioPolicy = audioPolicy
         )
     }
 }

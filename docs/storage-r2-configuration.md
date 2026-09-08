@@ -1,6 +1,6 @@
-# S3-Compatible Profile Photo Storage
+# S3-Compatible Application Media Storage
 
-Profile photo storage uses the S3-compatible `S3StorageService`, so shared dev
+Application media storage uses the S3-compatible `S3StorageService`. Shared dev
 and prod-like environments can use Cloudflare R2, hosted MinIO, or another
 S3-compatible object store.
 
@@ -60,6 +60,7 @@ Required R2 setup:
 R2 environment variables:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
 STORAGE_S3_REGION=auto
@@ -77,6 +78,9 @@ URLs.
 
 `STORAGE_S3_REGION=auto` is the preferred R2 value. `us-east-1` can also work as
 an S3 compatibility alias, but `auto` makes the provider intent explicit.
+
+R2 uses explicit static credentials. Keep `STORAGE_S3_CREDENTIALS_MODE=STATIC`
+and do not use `DEFAULT_CHAIN` for R2.
 
 ## Option B: Hosted MinIO
 
@@ -115,6 +119,7 @@ MinIO setup requirements:
 MinIO environment variables:
 
 ```text
+STORAGE_S3_CREDENTIALS_MODE=STATIC
 STORAGE_S3_ENDPOINT=<backend-reachable MinIO S3 API URL>
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=<client-reachable MinIO S3 API URL>
 STORAGE_S3_REGION=us-east-1
@@ -135,6 +140,8 @@ ports, use the S3 API endpoint here, not the console URL.
 
 Legacy `S3_*` environment variable names are still accepted as fallbacks. Prefer
 the `STORAGE_S3_*` names for new shared/dev/prod-like deployments.
+The legacy credential-mode fallback is `S3_CREDENTIALS_MODE`; new
+configuration should use `STORAGE_S3_CREDENTIALS_MODE`.
 
 ## MVP Read Mode
 
@@ -145,7 +152,9 @@ STORAGE_S3_READ_URL_MODE=PRESIGNED
 ```
 
 No public bucket or `STORAGE_S3_PUBLIC_BASE_URL` is required in `PRESIGNED` mode.
-`PUBLIC` mode should be reserved for intentionally public media.
+`PUBLIC` mode should be reserved for intentionally public media outside
+production. The backend refuses to start with `SPRING_PROFILES_ACTIVE=prod` and
+`STORAGE_S3_READ_URL_MODE=PUBLIC`; production media reads must use `PRESIGNED`.
 
 ## Current Non-Goals
 

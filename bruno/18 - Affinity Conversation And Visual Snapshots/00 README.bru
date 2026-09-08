@@ -1,0 +1,64 @@
+meta {
+  name: 00 README
+  type: http
+  seq: 0
+}
+
+docs {
+  PR3 affinity conversation and visual snapshot smoke flow.
+
+  Execute requests in this exact order:
+
+  Scenario 1, shared affinity User A + User B:
+  10 Restore User A Reference Answers
+  11 Restore User B Reference Answers
+  12 Dequeue User A
+  13 Dequeue User B
+  14 Dequeue User C
+  15 Dequeue Control User
+  16 Enqueue User A
+  17 Enqueue User B
+  18 Process A-B Match
+  20 Get Initial Chat As A
+  21 Get Initial Chat As B
+  22 Mutate User A Music Answers
+  23 Get Same Chat After Mutation As A
+  24 Get Same Chat After Mutation As B
+  25 Send Participation Message As A
+  26 Send Participation Message As B
+  27 Request Next Question As A
+  28 Request Next Question As B
+  29 Get Advanced Chat As A
+  30 Get Advanced Chat As B
+  31 Approve First Chat As A
+  32 Approve First Chat As B
+  33 Get Visual Profile As A
+  34 Get Visual Profile As B
+  35 Restore User A Reference Answers
+
+  Scenario 2, Control User + User B with no shared evidence:
+  40 Confirm Control User Has Zero Answers
+  41 Dequeue Control User
+  42 Dequeue User B
+  43 Dequeue User A
+  44 Dequeue User C
+  45 Enqueue Control User
+  46 Enqueue User B
+  47 Process Control-B Match
+  48 Get Control Chat
+  49 Get B Chat
+  50 Approve Control First Chat
+  51 Approve B First Chat
+  52 Get Control Visual Profile
+  53 Get B Visual Profile
+  54 Cleanup Control Queue
+  55 Cleanup User B Queue
+
+  Run promptly. The local first chat currently has a five-minute inactivity timeout and a fifteen-minute absolute timeout.
+
+  Scenario 1 proves symmetric prompt snapshot, same-chat immutability after answer mutation, persisted second-question advancement, positive-only visual indicators, indicator immutability, and absence of answer/scoring leakage.
+
+  Scenario 2 proves no-answer neutral fallback, generic guidance, no matchmaking blockage, and empty visual indicators.
+
+  The flow intentionally leaves created match history in place and restores User A reference answers at the end.
+}

@@ -1,12 +1,13 @@
 package com.reals.backend.integration
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.EngagementType
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
+import com.reals.backend.domain.MatchmakingCandidatePair
 import com.reals.backend.domain.PhotoStorageProvider
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.PhotoValidationStatus
@@ -14,44 +15,69 @@ import com.reals.backend.domain.ProfilePhoto
 import com.reals.backend.domain.VisualDecision
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.AuditEventRepository
+import com.reals.backend.repository.AffinityQuestionAnswerRepository
 import com.reals.backend.repository.ChatDecisionRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.ConnectionRepository
+import com.reals.backend.repository.ConversationPromptSnapshotRepository
+import com.reals.backend.repository.FirstChatGuidanceRepository
 import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
 import com.reals.backend.repository.ProfilePhotoRepository
+import com.reals.backend.repository.ProfileQuestionAnswerRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SafetyReportEvidenceSnapshotRepository
 import com.reals.backend.repository.SafetyReportRepository
+import com.reals.backend.repository.SecondChatParticipationRepository
+import com.reals.backend.repository.SecondChatResolutionRequestRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.PushDeviceTokenRepository
 import com.reals.backend.repository.PushNotificationDeliveryRepository
 import com.reals.backend.repository.UserRepository
 import com.reals.backend.repository.UserBlockRepository
 import com.reals.backend.repository.UserHomeStatusRepository
+import com.reals.backend.repository.UserReliabilityEventRepository
 import com.reals.backend.repository.VisualReviewRepository
+import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
+import com.reals.backend.service.affinity.AffinityAnswerPatch
+import com.reals.backend.service.affinity.AffinityQuestionAnswerService
 import com.reals.backend.service.ChatExitService
+import com.reals.backend.service.ChatAccessService
+import com.reals.backend.service.ChatLifecycleService
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.ConnectionService
+import com.reals.backend.service.FirstChatGuidanceService
+import com.reals.backend.service.FirstChatGuidedQuestionCatalog
 import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.matching.MatchmakingProcessorService
+import com.reals.backend.service.matching.MatchmakingPairEligibilityService
 import com.reals.backend.service.matching.MatchmakingService
+import com.reals.backend.repository.matching.MatchmakingCandidateRepository
+import com.reals.backend.repository.matching.MatchmakingPairEligibilityRepository
 import com.reals.backend.service.PenaltyService
+import com.reals.backend.service.PenaltyAppealService
 import com.reals.backend.service.ProfileService
+import com.reals.backend.service.photo.ProfilePhotoService
+import com.reals.backend.service.profilequestion.ProfileQuestionAnswerService
 import com.reals.backend.service.PushDeviceTokenService
 import com.reals.backend.service.SchedulingService
+import com.reals.backend.service.SecondChatConversationLifecycleService
+import com.reals.backend.service.SecondChatLifecycleService
+import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.reports.SafetyReportService
 import com.reals.backend.service.reports.SafetyReportEvidenceSnapshotService
 import com.reals.backend.service.UserService
+import com.reals.backend.service.UserBlockCommandService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.VisualReviewService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import org.junit.jupiter.api.Assertions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -78,7 +104,13 @@ abstract class BaseIT {
     protected lateinit var userBlockService: UserBlockService
 
     @Autowired
+    protected lateinit var userBlockCommandService: UserBlockCommandService
+
+    @Autowired
     protected lateinit var profileService: ProfileService
+
+    @Autowired
+    protected lateinit var profilePhotoService: ProfilePhotoService
 
     @Autowired
     protected lateinit var matchmakingService: MatchmakingService
@@ -87,10 +119,25 @@ abstract class BaseIT {
     protected lateinit var matchmakingProcessorService: MatchmakingProcessorService
 
     @Autowired
+    protected lateinit var matchmakingPairEligibilityService: MatchmakingPairEligibilityService
+
+    @Autowired
+    protected lateinit var matchmakingCandidateRepository: MatchmakingCandidateRepository
+
+    @Autowired
+    protected lateinit var matchmakingPairEligibilityRepository: MatchmakingPairEligibilityRepository
+
+    @Autowired
     protected lateinit var matchService: MatchService
 
     @Autowired
     protected lateinit var chatService: ChatService
+
+    @Autowired
+    protected lateinit var chatAccessService: ChatAccessService
+
+    @Autowired
+    protected lateinit var chatLifecycleService: ChatLifecycleService
 
     @Autowired
     protected lateinit var chatExitService: ChatExitService
@@ -99,10 +146,34 @@ abstract class BaseIT {
     protected lateinit var visualReviewService: VisualReviewService
 
     @Autowired
+    protected lateinit var baseAffinityQuestionAnswerService: AffinityQuestionAnswerService
+
+    @Autowired
+    protected lateinit var baseAffinityQuestionAnswerRepository: AffinityQuestionAnswerRepository
+
+    @Autowired
+    protected lateinit var baseProfileQuestionAnswerService: ProfileQuestionAnswerService
+
+    @Autowired
+    protected lateinit var baseProfileQuestionAnswerRepository: ProfileQuestionAnswerRepository
+
+    @Autowired
     protected lateinit var connectionService: ConnectionService
 
     @Autowired
+    protected lateinit var firstChatGuidanceService: FirstChatGuidanceService
+
+    @Autowired
+    protected lateinit var firstChatGuidedQuestionCatalog: FirstChatGuidedQuestionCatalog
+
+    @Autowired
     protected lateinit var schedulingService: SchedulingService
+
+    @Autowired
+    protected lateinit var secondChatLifecycleService: SecondChatLifecycleService
+
+    @Autowired
+    protected lateinit var secondChatConversationLifecycleService: SecondChatConversationLifecycleService
 
     @Autowired
     protected lateinit var safetyReportService: SafetyReportService
@@ -117,10 +188,16 @@ abstract class BaseIT {
     protected lateinit var penaltyService: PenaltyService
 
     @Autowired
+    protected lateinit var penaltyAppealService: PenaltyAppealService
+
+    @Autowired
     protected lateinit var pushDeviceTokenService: PushDeviceTokenService
 
     @Autowired
     protected lateinit var homeStatusService: HomeStatusService
+
+    @Autowired
+    protected lateinit var userReliabilityScoreService: UserReliabilityScoreService
 
     @Autowired
     protected lateinit var lockRepository: ActiveEngagementLockRepository
@@ -141,6 +218,12 @@ abstract class BaseIT {
     protected lateinit var connectionRepository: ConnectionRepository
 
     @Autowired
+    protected lateinit var firstChatGuidanceRepository: FirstChatGuidanceRepository
+
+    @Autowired
+    protected lateinit var conversationPromptSnapshotRepository: ConversationPromptSnapshotRepository
+
+    @Autowired
     protected lateinit var connectionHomeDismissalRepository: ConnectionHomeDismissalRepository
 
     @Autowired
@@ -154,6 +237,12 @@ abstract class BaseIT {
 
     @Autowired
     protected lateinit var proposalRepository: ScheduleProposalRepository
+
+    @Autowired
+    protected lateinit var secondChatParticipationRepository: SecondChatParticipationRepository
+
+    @Autowired
+    protected lateinit var secondChatResolutionRequestRepository: SecondChatResolutionRequestRepository
 
     @Autowired
     protected lateinit var penaltyRepository: PenaltyRepository
@@ -171,6 +260,9 @@ abstract class BaseIT {
     protected lateinit var visualReviewRepository: VisualReviewRepository
 
     @Autowired
+    protected lateinit var visualReviewAffinityIndicatorRepository: VisualReviewAffinityIndicatorRepository
+
+    @Autowired
     protected lateinit var userRepository: UserRepository
 
     @Autowired
@@ -180,10 +272,16 @@ abstract class BaseIT {
     protected lateinit var homeStatusRepository: UserHomeStatusRepository
 
     @Autowired
+    protected lateinit var userReliabilityEventRepository: UserReliabilityEventRepository
+
+    @Autowired
     protected lateinit var profileRepository: ProfileRepository
 
     @Autowired
     protected lateinit var profilePhotoRepository: ProfilePhotoRepository
+
+    @Autowired
+    protected lateinit var profileQuestionAnswerRepository: ProfileQuestionAnswerRepository
 
     @Autowired
     protected lateinit var pushDeviceTokenRepository: PushDeviceTokenRepository
@@ -195,7 +293,7 @@ abstract class BaseIT {
         email: String,
         displayName: String,
         gender: Gender,
-        lookingForGender: LookingForGender,
+        lookingForGenders: Set<Gender>,
         intention: Intention = Intention.DATE,
         birthDate: LocalDate = LocalDate.of(1995, 1, 1),
         preferredMinAge: Int = 18,
@@ -208,10 +306,10 @@ abstract class BaseIT {
             displayName = displayName,
             birthDate = birthDate,
             gender = gender,
-            lookingForGender = lookingForGender,
+            lookingForGenders = lookingForGenders,
             intention = intention,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             bio = "Integration test profile",
             preferredMinAge = preferredMinAge,
             preferredMaxAge = preferredMaxAge,
@@ -223,7 +321,7 @@ abstract class BaseIT {
                 ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "users/${user.id}/profile-photos/${profile.id}-${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,
@@ -252,6 +350,51 @@ abstract class BaseIT {
         )
     }
 
+    protected fun findBasicCompatiblePairs(
+        limit: Int = 5,
+        today: LocalDate = LocalDate.now(),
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): List<MatchmakingCandidatePair> {
+        val exclusionPolicy = matchmakingPairEligibilityService.effectiveExclusionPolicy()
+        val previousPairingCutoff =
+            if (exclusionPolicy.excludeHistoricalPairings) {
+                matchmakingPairEligibilityService.previousPairingCutoff(now)
+            } else {
+                null
+            }
+        val firstChatExpirationCutoff =
+            if (exclusionPolicy.excludeHistoricalPairings) {
+                matchmakingPairEligibilityService.firstChatExpirationCutoff(now)
+            } else {
+                null
+            }
+        val firstChatDecisionMismatchCutoff =
+            if (exclusionPolicy.excludeHistoricalPairings) {
+                matchmakingPairEligibilityService.firstChatDecisionMismatchCutoff(now)
+            } else {
+                null
+            }
+        val anchor =
+            matchmakingCandidateRepository.claimNextEligibleAnchorForUpdate(
+                today = today,
+                exclusionPolicy = exclusionPolicy,
+                previousPairingCutoff = previousPairingCutoff,
+                firstChatExpirationCutoff = firstChatExpirationCutoff,
+                firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
+            )
+                ?: return emptyList()
+
+        return matchmakingCandidateRepository.findEligiblePartnerCandidates(
+            anchorQueueEntryId = anchor.queueEntryId,
+            limit = limit,
+            today = today,
+            exclusionPolicy = exclusionPolicy,
+            previousPairingCutoff = previousPairingCutoff,
+            firstChatExpirationCutoff = firstChatExpirationCutoff,
+            firstChatDecisionMismatchCutoff = firstChatDecisionMismatchCutoff
+        ).map { it.pair }
+    }
+
     protected fun createMatchWithFirstChat(
         emailPrefix: String = "match"
     ): MatchFixture {
@@ -259,13 +402,13 @@ abstract class BaseIT {
             email = "$emailPrefix-a-${UUID.randomUUID()}@example.com",
             displayName = "Match A",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val userB = createActiveProfile(
             email = "$emailPrefix-b-${UUID.randomUUID()}@example.com",
             displayName = "Match B",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
 
         val match = matchService.createMatch(userA, userB)
@@ -279,7 +422,25 @@ abstract class BaseIT {
         )
     }
 
+    protected fun answerAffinityQuestion(
+        userId: UUID,
+        questionId: String,
+        answerCode: String
+    ) {
+        baseAffinityQuestionAnswerService.patchMyAnswers(
+            userId = userId,
+            patches = listOf(AffinityAnswerPatch(questionId = questionId, answerCode = answerCode))
+        )
+    }
+
     protected fun createMatchInVisualPhase(): MatchFixture {
+        val setup = createMatchInDelayedVisualPhase()
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
+
+        return setup
+    }
+
+    protected fun createMatchInDelayedVisualPhase(): MatchFixture {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
@@ -319,12 +480,14 @@ abstract class BaseIT {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = slot
+            proposedDateTime = slot,
+            expectedRoundNumber = 1
         )
         negotiationRepository.updateConfirmedDateTimeByConnectionId(
             connectionId = setup.connectionId,
@@ -336,10 +499,15 @@ abstract class BaseIT {
 
     protected fun createActiveSecondChat(): ActiveSecondChatFixture {
         val setup = createScheduledSecondChatReadyToEnter()
-        val secondChat = chatService.findVisibleSecondChatOrThrow(
+        val joined = joinSecondChatOrThrow(
             connectionId = setup.connectionId,
             userId = setup.userAId
         )
+        joinSecondChatOrThrow(
+            connectionId = setup.connectionId,
+            userId = setup.userBId
+        )
+        val secondChat = chatRepository.findById(joined.chatId!!).orElseThrow()
 
         Assertions.assertEquals(ChatStatus.ACTIVE, secondChat.status)
         Assertions.assertEquals(
@@ -355,6 +523,86 @@ abstract class BaseIT {
             secondChatId = secondChat.id
         )
     }
+
+    protected fun joinSecondChatOrThrow(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatAttendanceView =
+        when (
+            val result = secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        ) {
+            is SecondChatLifecycleService.SecondChatJoinResult.Joined -> result.view
+            is SecondChatLifecycleService.SecondChatJoinResult.Rejected ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    protected fun rejectSecondChatJoin(
+        connectionId: UUID,
+        userId: UUID,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): SecondChatLifecycleService.SecondChatJoinResult.Rejected {
+        val result = try {
+            secondChatLifecycleService.joinSecondChat(
+                connectionId = connectionId,
+                userId = userId,
+                now = now
+            )
+        } catch (ex: DomainConflictException) {
+            return SecondChatLifecycleService.SecondChatJoinResult.Rejected(
+                code = ex.code,
+                message = ex.message ?: "Second-chat join rejected"
+            )
+        }
+        Assertions.assertTrue(result is SecondChatLifecycleService.SecondChatJoinResult.Rejected)
+        return result as SecondChatLifecycleService.SecondChatJoinResult.Rejected
+    }
+
+    protected fun sendMessageOrThrow(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        now: OffsetDateTime
+    ): ChatMessage =
+        when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = senderId,
+                content = content,
+                now = now
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent -> result.message
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+
+    protected fun sendMessageOrThrow(
+        chatId: UUID,
+        senderId: UUID,
+        content: String,
+        clientMessageId: UUID? = null,
+        replyTarget: ChatService.ChatReplyTarget? = null,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): ChatMessage =
+        when (
+            val result = chatService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = senderId,
+                content = content,
+                clientMessageId = clientMessageId,
+                replyTarget = replyTarget,
+                now = now
+            )
+        ) {
+            is ChatService.SendMessageResult.Sent -> result.message
+            is ChatService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
 
     protected fun futureHalfHourSlot(): OffsetDateTime {
         val candidate = OffsetDateTime.now()
@@ -389,8 +637,8 @@ abstract class BaseIT {
         userAId: UUID,
         userBId: UUID
     ) {
-        Assertions.assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(userAId))
-        Assertions.assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(userBId))
+        Assertions.assertFalse(penaltyService.hasEffectiveBan(userAId))
+        Assertions.assertFalse(penaltyService.hasEffectiveBan(userBId))
     }
 
     protected fun matchExistsForUsers(

@@ -4,7 +4,9 @@ import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ChatExitReason
 import com.reals.backend.domain.ChatStatus
+import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
+import com.reals.backend.domain.SafetyReportReason
 import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.integration.ControllerIT
@@ -20,9 +22,59 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `pending child safety reports are prioritized and reviewed reports are not`() {
+        val reported = userService.createUser("priority-reported-${UUID.randomUUID()}@example.com")
+        val reporter = userService.createUser("priority-reporter-${UUID.randomUUID()}@example.com")
+        val admin = userService.createUser("priority-admin-${UUID.randomUUID()}@example.com")
+        val now = OffsetDateTime.now()
+        val childReport = safetyReportRepository.save(
+            SafetyReport(
+                reporterUserId = reporter.id,
+                reportedUserId = reported.id,
+                contextType = SafetyReportContextType.USER,
+                contextId = reported.id,
+                reason = SafetyReportReason.CHILD_SAFETY_CONCERN,
+                details = "Child-safety concern",
+                createdAt = now.minusDays(1)
+            )
+        )
+        val normalReport = safetyReportRepository.save(
+            SafetyReport(
+                reporterUserId = reporter.id,
+                reportedUserId = reported.id,
+                contextType = SafetyReportContextType.USER,
+                contextId = UUID.randomUUID(),
+                reason = SafetyReportReason.HARASSMENT,
+                details = "Newer standard concern",
+                createdAt = now
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/admin/safety-reports/pending")
+                .with(authenticatedAsAdmin(admin.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id", equalTo(childReport.id.toString())))
+            .andExpect(jsonPath("$[0].priorityReview", equalTo(true)))
+            .andExpect(jsonPath("$[1].id", equalTo(normalReport.id.toString())))
+            .andExpect(jsonPath("$[1].priorityReview", equalTo(false)))
+
+        safetyReportService.dismissReport(childReport.id, admin.id, "Reviewed")
+
+        mockMvc.perform(
+            get("/api/admin/safety-reports/${childReport.id}")
+                .with(authenticatedAsAdmin(admin.id))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.report.priorityReview", equalTo(false)))
+    }
 
     @Test
     fun `admin can create general user report without reporter`() {
@@ -30,7 +82,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             email = "admin-user-report-${UUID.randomUUID()}@example.com",
             displayName = "Reported User",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
         val admin = userService.createUser("admin-create-user-report-${UUID.randomUUID()}@example.com")
 
@@ -66,7 +118,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
         assertEquals(SafetyReportContextType.USER, report.contextType)
         assertEquals(reported, report.contextId)
         assertEquals(0, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(reported))
+        assertFalse(penaltyRepository.findAll().any { it.userId == reported })
 
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
             ?: error("Expected evidence snapshot")
@@ -118,6 +170,63 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
         assertEquals(setup.userAId, report.reporterUserId)
         assertEquals(admin.id, report.createdByAdminUserId)
         assertEquals(0, userBlockRepository.count())
+    }
+
+    @Test
+    fun `admin report can coexist with user report for same reporter reported and context`() {
+        val setup = createMatchInVisualPhase()
+        val admin = userService.createUser("admin-user-coexist-${UUID.randomUUID()}@example.com")
+
+        mockMvc.perform(
+            post("/api/safety/reports")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "reportedUserId" to setup.userBId,
+                            "contextType" to "VISUAL_PROFILE",
+                            "matchId" to setup.matchId,
+                            "reason" to "INAPPROPRIATE_BEHAVIOR",
+                            "details" to "User-created report"
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+
+        mockMvc.perform(
+            post("/api/admin/safety-reports")
+                .with(authenticatedAsAdmin(admin.id))
+                .contentType(jsonContentType)
+                .content(
+                    jsonBody(
+                        mapOf(
+                            "reportedUserId" to setup.userBId,
+                            "reporterUserId" to setup.userAId,
+                            "contextType" to "VISUAL_PROFILE",
+                            "matchId" to setup.matchId,
+                            "reason" to "OTHER",
+                            "details" to "Admin-created report for same context"
+                        )
+                    )
+                )
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.report.source", equalTo("ADMIN")))
+            .andExpect(jsonPath("$.report.reporter.userId", equalTo(setup.userAId.toString())))
+            .andExpect(jsonPath("$.report.reported.userId", equalTo(setup.userBId.toString())))
+            .andExpect(jsonPath("$.report.contextId", equalTo(setup.matchId.toString())))
+
+        val reports = safetyReportRepository.findAll()
+        assertEquals(2, reports.size)
+        assertEquals(
+            setOf(SafetyReportSource.USER, SafetyReportSource.ADMIN),
+            reports.map { it.source }.toSet()
+        )
+        assertEquals(0, userBlockRepository.count())
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
+        assertEquals(0, userReliabilityEventRepository.count())
     }
 
     @Test
@@ -175,7 +284,8 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
 
         assertEquals(ChatStatus.ACTIVE, chatRepository.findById(setup.firstChatId).orElseThrow().status)
         assertEquals(0, userBlockRepository.count())
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
+        assertEquals(0, userReliabilityEventRepository.count())
 
         val report = safetyReportRepository.findAll().single()
         val snapshot = safetyReportEvidenceSnapshotRepository.findBySafetyReportId(report.id)
@@ -191,7 +301,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
             email = "admin-invalid-stranger-${UUID.randomUUID()}@example.com",
             displayName = "Stranger",
             gender = com.reals.backend.domain.Gender.MALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.WOMEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.FEMALE)
         )
 
         mockMvc.perform(
@@ -322,7 +432,7 @@ class AdminSafetyReportControllerIntegrationTest : ControllerIT() {
 
         val updated = safetyReportRepository.findById(report.id).orElseThrow()
         assertEquals(SafetyReportStatus.DISMISSED, updated.status)
-        assertFalse(penaltyRepository.existsByUserIdAndActiveTrue(setup.userBId))
+        assertFalse(penaltyRepository.findAll().any { it.userId == setup.userBId })
 
         val audit = auditEventRepository.findAll()
             .single {

@@ -3,13 +3,16 @@ package com.reals.backend.service
 import com.reals.backend.config.s3.S3StorageProperties
 import com.reals.backend.config.s3.S3ReadUrlMode
 import com.reals.backend.domain.StoredObject
+import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.springframework.stereotype.Service
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import java.time.Duration
@@ -29,46 +32,122 @@ class S3StorageService(
     ): StoredObject {
         return try {
             val normalizedContentType = contentType.lowercase()
-            val extension = extensionFor(normalizedContentType)
-            val key = "users/$userId/profile-photos/$photoId.$extension"
-
-            val request = PutObjectRequest.builder()
-                .bucket(properties.bucket)
-                .key(key)
-                .contentType(normalizedContentType)
-                .contentLength(bytes.size.toLong())
-                .build()
-
-            s3Client.putObject(request, RequestBody.fromBytes(bytes))
-
-            StoredObject(
-                bucket = properties.bucket,
+            val key = profilePhotoObjectKey(
+                userId = userId,
+                objectId = photoId,
+                contentType = normalizedContentType
+            )
+            putObject(
                 key = key,
                 contentType = normalizedContentType,
-                sizeBytes = bytes.size.toLong()
+                bytes = bytes
             )
         } catch (ex: Exception) {
             throw ObjectStorageException("Could not upload profile photo", ex)
         }
     }
 
+    fun uploadChatAudio(
+        chatId: UUID,
+        messageId: UUID,
+        contentType: String,
+        bytes: ByteArray
+    ): StoredObject {
+        return try {
+            putObject(
+                key = chatAudioObjectKey(chatId = chatId, messageId = messageId),
+                contentType = contentType.lowercase(),
+                bytes = bytes
+            )
+        } catch (ex: Exception) {
+            throw ChatAudioStorageException("Could not upload chat audio", ex)
+        }
+    }
+
+    fun putObject(
+        key: String,
+        contentType: String,
+        bytes: ByteArray
+    ): StoredObject {
+        val normalizedContentType = contentType.lowercase()
+        val request = PutObjectRequest.builder()
+            .bucket(properties.bucket)
+            .key(key)
+            .contentType(normalizedContentType)
+            .contentLength(bytes.size.toLong())
+            .build()
+
+        s3Client.putObject(request, RequestBody.fromBytes(bytes))
+
+        return StoredObject(
+            bucket = properties.bucket,
+            key = key,
+            contentType = normalizedContentType,
+            sizeBytes = bytes.size.toLong()
+        )
+    }
+
     fun delete(key: String) {
+        deleteObject(
+            bucket = properties.bucket,
+            key = key
+        )
+    }
+
+    fun deleteObject(
+        bucket: String,
+        key: String
+    ) {
         try {
             val request = DeleteObjectRequest.builder()
-                .bucket(properties.bucket)
+                .bucket(bucket)
                 .key(key)
                 .build()
 
             s3Client.deleteObject(request)
+        } catch (_: NoSuchKeyException) {
+            return
+        } catch (ex: S3Exception) {
+            if (ex.statusCode() == 404) {
+                return
+            }
+            throw ObjectStorageException("Could not delete object from storage", ex)
         } catch (ex: Exception) {
             throw ObjectStorageException("Could not delete object from storage", ex)
         }
     }
 
-    fun getReadUrl(key: String): String {
+    fun profilePhotoObjectKey(
+        userId: UUID,
+        objectId: UUID,
+        contentType: String
+    ): String {
+        val extension = extensionFor(contentType.lowercase())
+        return "users/$userId/profile-photos/$objectId.$extension"
+    }
+
+    fun profilePhotoBucket(): String = properties.bucket
+
+    fun chatAudioObjectKey(
+        chatId: UUID,
+        messageId: UUID
+    ): String = "chats/$chatId/messages/$messageId.m4a"
+
+    fun mediaBucket(): String = properties.bucket
+
+    fun getReadUrl(key: String): String =
+        getReadUrl(
+            bucket = properties.bucket,
+            key = key
+        )
+
+    fun getReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         return when (properties.readUrlMode) {
             S3ReadUrlMode.PUBLIC -> publicReadUrl(key)
-            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(key)
+            S3ReadUrlMode.PRESIGNED -> presignedReadUrl(bucket, key)
         }
     }
 
@@ -84,9 +163,12 @@ class S3StorageService(
         return "${publicBaseUrl.removeSuffix("/")}/$key"
     }
 
-    private fun presignedReadUrl(key: String): String {
+    private fun presignedReadUrl(
+        bucket: String,
+        key: String
+    ): String {
         val getObjectRequest = GetObjectRequest.builder()
-            .bucket(properties.bucket)
+            .bucket(bucket)
             .key(key)
             .build()
 
@@ -104,7 +186,6 @@ class S3StorageService(
         return when (contentType.lowercase()) {
             "image/jpeg" -> "jpg"
             "image/png" -> "png"
-            "image/webp" -> "webp"
             else -> throw IllegalArgumentException("Unsupported content type: $contentType")
         }
     }

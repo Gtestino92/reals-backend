@@ -40,7 +40,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
 
 backoffice:
   admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
@@ -48,53 +48,114 @@ backoffice:
 scheduler:
   enabled: true
   matchmaking-job:
-    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:15000}
     max-pairs-per-run: ${SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN:10}
   chat-timeout-job:
     fixed-delay: ${SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY:60000}
+    batch-size: ${SCHEDULER_CHAT_TIMEOUT_JOB_BATCH_SIZE:100}
   second-chat-lifecycle-job:
     fixed-delay: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY:120000}
+    batch-size: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_BATCH_SIZE:100}
   second-chat-reminder-job:
     # 60000 keeps reminder precision within a 1-minute window.
     fixed-delay: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY:60000}
+    batch-size: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_BATCH_SIZE:100}
+  second-chat-start-notification-job:
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY:240000}
+    batch-size: ${SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_BATCH_SIZE:100}
+  visual-review-reminder-job:
+    fixed-delay: ${SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY:1800000}
+  matchmaking-availability-notification-job:
+    fixed-delay: ${SCHEDULER_MATCHMAKING_AVAILABILITY_NOTIFICATION_JOB_FIXED_DELAY:300000}
+    batch-size: ${SCHEDULER_MATCHMAKING_AVAILABILITY_NOTIFICATION_JOB_BATCH_SIZE:100}
+    discovery-batch-size: ${SCHEDULER_MATCHMAKING_AVAILABILITY_NOTIFICATION_JOB_DISCOVERY_BATCH_SIZE:100}
   match-expiration-job:
     fixed-delay: ${SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY:300000}
+    batch-size: ${SCHEDULER_MATCH_EXPIRATION_JOB_BATCH_SIZE:100}
     max-chat-duration: ${SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION:PT20M}
   inactivity-check-job:
     fixed-delay: ${SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY:60000}
+    batch-size: ${SCHEDULER_INACTIVITY_CHECK_JOB_BATCH_SIZE:100}
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: ${SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY:600000}
+  user-reliability-cleanup-job:
+    fixed-delay: ${SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY:3600000}
   visual-phase-expiration-job:
     fixed-delay: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY:300000}
+    batch-size: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_BATCH_SIZE:100}
   scheduling-timeout-job:
     fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:900000}
   scheduling-activation-job:
-    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:21600000}
+    batch-size: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_BATCH_SIZE:100}
   account-deletion-finalization-job:
     fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}
+  media-cleanup-job:
+    fixed-delay: ${SCHEDULER_MEDIA_CLEANUP_JOB_FIXED_DELAY:300000}
 
 account:
   deletion:
     recovery-window-days: ${ACCOUNT_DELETION_RECOVERY_WINDOW_DAYS:30}
+  ban:
+    temporary-resume-margin-minutes: ${ACCOUNT_BAN_TEMPORARY_RESUME_MARGIN_MINUTES:30}
 
 matchmaking:
   candidate-pair-limit: 100
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  exclude-previous-pairing: ${MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING:true}
+  previous-pairing-cooldown-days: ${MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS:30}
+  first-chat-expiration-cooldown-days: ${MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS:7}
+  first-chat-decision-mismatch-cooldown-days: ${MATCHMAKING_FIRST_CHAT_DECISION_MISMATCH_COOLDOWN_DAYS:7}
+  visual-advancement:
+    max-per-window: ${MATCHMAKING_VISUAL_ADVANCEMENT_MAX_PER_WINDOW:10}
+    window-hours: ${MATCHMAKING_VISUAL_ADVANCEMENT_WINDOW_HOURS:24}
+  ranking:
+    mode: ${MATCHMAKING_RANKING_MODE:LEGACY_EARLY_ACCEPT}
+    compatibility-temperature: ${MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE:0.20}
+    reliability-similarity-scale: ${MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE:10.0}
+    waiting-relaxation-period-hours: ${MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS:72.0}
+    maximum-similarity-scale-multiplier: ${MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER:3.0}
+    affinity:
+      mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:OFF}
+      max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
+      full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
+      full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
+      category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
 
 chat:
+  audio:
+    enabled: ${CHAT_AUDIO_ENABLED:true}
   first-chat:
     duration-minutes: ${CHAT_FIRST_CHAT_DURATION_MINUTES:15}
     inactivity-threshold-minutes: ${CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES:${SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES:5}}
-    min-messages-per-user: 0
-    min-messages-before-free-cancel: 0
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:3}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
+    guidance:
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
+    audio:
+      required-answered-guidance-questions: 2
   visual-phase:
     duration-minutes: 1440
   second-chat:
     duration-minutes: ${CHAT_SECOND_CHAT_DURATION_MINUTES:120}
     read-only-retention-minutes: ${CHAT_SECOND_CHAT_READ_ONLY_RETENTION_MINUTES:1440}
-    min-messages-before-free-cancel: 0
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
+    mutual-completion:
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:30}
+      request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
+      requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    inactivity:
+      claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+      claim-countdown-seconds: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS:60}
+    initial-silence:
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
 
 scheduling:
   activation-delay-minutes: ${SCHEDULING_ACTIVATION_DELAY_MINUTES:5}
@@ -107,42 +168,60 @@ profile:
     max-count: 9
     required-count: 9
     min-person-photos: 3
-    min-full-body-photos: 1
-  identity-verification:
-    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:${IDENTITY_VERIFICATION_PROVIDER:none}}
-    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
-    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+    min-full-body-photos: ${PROFILE_MIN_FULL_BODY_PHOTOS:0}
+    require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:true}
+  authenticity-verification:
+    provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
+    fail-on-provider-error: ${PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+    policy:
+      min-matched-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS:3}
+      max-contradictory-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS:0}
 
 engagement:
   max-active-matches: 5
-  max-active-connections: 2
+  max-active-connections: 4
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
 
+security:
+  app-check:
+    mode: ${FIREBASE_APP_CHECK_MODE:ENFORCED}
+    project-number: ${FIREBASE_PROJECT_NUMBER:}
+    allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
+    jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
+
 storage:
   s3:
-    endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT}}
+    credentials-mode: ${STORAGE_S3_CREDENTIALS_MODE:${S3_CREDENTIALS_MODE:STATIC}}
+    endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT:}}
     presigned-url-endpoint: ${STORAGE_S3_PRESIGNED_URL_ENDPOINT:${S3_PRESIGNED_URL_ENDPOINT:}}
     region: ${STORAGE_S3_REGION:${S3_REGION:auto}}
     bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET}}
-    access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID}}
-    secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY}}
+    access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID:}}
+    secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY:}}
+    session-token: ${STORAGE_S3_SESSION_TOKEN:${S3_SESSION_TOKEN:}}
     public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:}}
     path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
     signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
     read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
-  profile-photos:
-    max-size-bytes: ${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
+  media-cleanup:
+    batch-size: ${STORAGE_MEDIA_CLEANUP_BATCH_SIZE:100}
+    lease-duration: ${STORAGE_MEDIA_CLEANUP_LEASE_DURATION:PT5M}
+    guard-delay: ${STORAGE_MEDIA_CLEANUP_GUARD_DELAY:PT30M}
+    initial-retry-delay: ${STORAGE_MEDIA_CLEANUP_INITIAL_RETRY_DELAY:PT1M}
+    max-retry-delay: ${STORAGE_MEDIA_CLEANUP_MAX_RETRY_DELAY:PT1H}
+    max-attempts: ${STORAGE_MEDIA_CLEANUP_MAX_ATTEMPTS:10}
 
 notifications:
   second-chat-reminder:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: ${NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE:10}
+  second-chat-start:
+    latest-send-after-start-minutes: ${NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES:5}
+  visual-review-reminder:
+    remaining-percentage: ${NOTIFICATIONS_VISUAL_REVIEW_REMINDER_REMAINING_PERCENTAGE:40}

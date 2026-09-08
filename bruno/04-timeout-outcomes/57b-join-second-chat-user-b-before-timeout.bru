@@ -1,0 +1,22 @@
+meta {
+  name: 57b Join Second Chat User B Before Timeout
+  type: http
+  seq: 58
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{timeoutSecondChatConnectionId}}/second-chat/join
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.chatId !== bru.getEnvVar("timeoutSecondChatId")) {
+    throw new Error("Expected both users to join the same timeout second chat.");
+  }
+}

@@ -4,19 +4,22 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 12MB
+      max-file-size: ${PROFILE_PHOTO_MULTIPART_MAX_FILE_SIZE:5MB}
+      max-request-size: ${PROFILE_PHOTO_MULTIPART_MAX_REQUEST_SIZE:6MB}
 
   autoconfigure:
     exclude:
       - org.springframework.boot.actuate.autoconfigure.metrics.cache.CacheMetricsAutoConfiguration
 
-  profiles:
-    active: local-firebase
-    #active: local-nodb
-
   jpa:
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  jackson:
+    time-zone: UTC
 
 logging:
   level:
@@ -31,10 +34,14 @@ management:
   metrics:
     enable:
       all: false
+      reals: true
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
+
+server:
+  port: ${PORT:8080}
 
 backoffice:
   # Comma-separated email allowlist. Matching active local users receive ROLE_ADMIN.
@@ -47,26 +54,46 @@ scheduler:
   # Runs every minute so a 15-minute first chat does not remain open too long.
   chat-timeout-job:
     fixed-delay: 60000
+    batch-size: 100
 
   # Expires active second chats into read-only mode, then closes them after retention.
   second-chat-lifecycle-job:
     fixed-delay: 120000
+    batch-size: 100
 
   # Sends a privacy-safe reminder before a confirmed second-chat start time.
   # Runs every minute so 10-minute reminders are picked up within a 1-minute window.
   second-chat-reminder-job:
     fixed-delay: 60000
+    batch-size: 100
 
+  # Sends a privacy-safe reminder shortly after a confirmed second-chat start.
+  # Runs every 4 minutes; sends only while confirmedDateTime <= now <= confirmedDateTime + 5 minutes.
+  second-chat-start-notification-job:
+    fixed-delay: 240000
+    batch-size: 100
+
+  # Sends a privacy-safe visual-review reminder after the persisted eligibility timestamp.
+  # Runs every 30 minutes; reminder delivery is approximate.
+  visual-review-reminder-job:
+    fixed-delay: 1800000
+
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 100
+    discovery-batch-size: 100
   # Expires matches that have not progressed past CHAT_ACTIVE.
   # Safety net behind ChatTimeoutJob, not the primary first-chat timer.
   match-expiration-job:
     fixed-delay: 300000
+    batch-size: 100
     max-chat-duration: PT20M
 
   # Detects first chats with no messages within the inactivity threshold.
   # Runs every minute so short first-chat sessions can be abandoned promptly.
   inactivity-check-job:
     fixed-delay: 60000
+    batch-size: 100
 
     # How long a first chat can have no messages before being considered inactive.
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
@@ -76,9 +103,14 @@ scheduler:
   penalty-expiration-job:
     fixed-delay: 600000
 
+  # Deletes expired internal reliability events after their scoring window ends.
+  user-reliability-cleanup-job:
+    fixed-delay: ${SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY:3600000}
+
   # Runs every 5 minutes — same cadence as match-expiration-job
   visual-phase-expiration-job:
     fixed-delay: 300000
+    batch-size: 100
 
   # Closes scheduling negotiations that have exceeded their deadline
   # Runs every 15 minutes — hour-level granularity is sufficient for this phase
@@ -89,45 +121,111 @@ scheduler:
   # Enables scheduling after visual approval once its deferred availability time arrives
   scheduling-activation-job:
     fixed-delay: 60000
+    batch-size: 100
 
   # Finalizes recoverable account deletions after the recovery window expires.
   # Runs every hour because finalization is not user-facing urgent.
   account-deletion-finalization-job:
     fixed-delay: 3600000
 
+  # Deletes unreferenced profile-photo objects through durable cleanup tasks.
+  media-cleanup-job:
+    fixed-delay: 300000
+
   # Processes queued users into first-chat matches. ShedLock keeps one active
   # processor at a time across app instances.
   matchmaking-job:
-    fixed-delay: 60000
+    fixed-delay: 15000
     max-pairs-per-run: 5
 
 account:
   deletion:
     recovery-window-days: 30
+  ban:
+    temporary-resume-margin-minutes: 30
+
+matchmaking:
+  allow-active-pair-duplicates: false
+  exclude-previous-pairing: true
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
+  visual-advancement:
+    max-per-window: ${MATCHMAKING_VISUAL_ADVANCEMENT_MAX_PER_WINDOW:10}
+    window-hours: ${MATCHMAKING_VISUAL_ADVANCEMENT_WINDOW_HOURS:24}
+  ranking:
+    mode: LEGACY_EARLY_ACCEPT
+    compatibility-temperature: 0.20
+    reliability-similarity-scale: 2.0
+    waiting-relaxation-period-hours: 72.0
+    maximum-similarity-scale-multiplier: 3.0
+    affinity:
+      mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:OFF}
+      max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
+      full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
+      full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
+      category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
 
 chat:
+  audio:
+    enabled: false
+    max-duration-millis: ${CHAT_AUDIO_MAX_DURATION_MILLIS:60000}
+    max-file-size-bytes: ${CHAT_AUDIO_MAX_FILE_SIZE_BYTES:2097152}
+    allowed-content-types:
+      - audio/mp4
+    upload:
+      max-concurrent: ${CHAT_AUDIO_UPLOAD_MAX_CONCURRENT:2}
+      permit-wait-duration: ${CHAT_AUDIO_UPLOAD_PERMIT_WAIT_DURATION:PT0S}
+      retry-after-seconds: ${CHAT_AUDIO_UPLOAD_RETRY_AFTER_SECONDS:1}
+
   # Maximum duration for the anonymous first chat between matched users
   first-chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
 
-    # Minimum number of messages a user must have sent before being allowed to approve
-    # 0 = disabled (default). Enforce in production once UX is validated
-    min-messages-per-user: 0
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:1}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:3}
 
     # Minimum messages a user must send before unilateral cancellation is penalty-free.
     # Mutual cancellation and safety cancellation bypass this rule.
-    min-messages-before-free-cancel: 0
+
+    guidance:
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
+      max-questions: 3
+      catalog: classpath:first-chat-guided-questions.es.json
+    audio:
+      max-per-user: 1
+      required-answered-guidance-questions: 2
 
   # Maximum duration for the visual phase
   visual-phase:
     duration-minutes: 1440 # 24 hours
+    availability:
+      base-reliability-score: ${CHAT_VISUAL_PHASE_AVAILABILITY_BASE_RELIABILITY_SCORE:100}
+      base-delay-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_BASE_DELAY_MINUTES:10}
+      jitter-range-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_JITTER_RANGE_MINUTES:5}
+      max-reliability-shift-minutes: ${CHAT_VISUAL_PHASE_AVAILABILITY_MAX_RELIABILITY_SHIFT_MINUTES:4}
+      reliability-influence-span-points: ${CHAT_VISUAL_PHASE_AVAILABILITY_RELIABILITY_INFLUENCE_SPAN_POINTS:20}
 
   # Maximum duration for the second chat after the agreed start time.
   second-chat:
     duration-minutes: 120 # 2 hours
     read-only-retention-minutes: 1440 # 24 hours
-    min-messages-before-free-cancel: 0
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
+    mutual-completion:
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
+      request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
+      requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    inactivity:
+      claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+      claim-countdown-seconds: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS:60}
+    initial-silence:
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
 
 scheduling:
   # MVP delay between mutual visual approval and making scheduling actionable
@@ -142,6 +240,10 @@ scheduling:
 
   # Maximum number of proposed second-chat slots each user can submit per round
   max-proposals-per-round: 3
+
+  # Symmetric inclusive window around another confirmed second-chat start time.
+  # A value of 60 blocks candidate starts from confirmedAt - 60m through confirmedAt + 60m.
+  second-chat-conflict-window-minutes: ${SCHEDULING_SECOND_CHAT_CONFLICT_WINDOW_MINUTES:60}
 
 profile:
   photos:
@@ -159,34 +261,119 @@ profile:
 
     require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:false}
 
+    upload:
+      max-concurrent: ${PROFILE_PHOTO_UPLOAD_MAX_CONCURRENT:2}
+      permit-wait-duration: ${PROFILE_PHOTO_UPLOAD_PERMIT_WAIT_DURATION:PT0S}
+      retry-after-seconds: ${PROFILE_PHOTO_UPLOAD_RETRY_AFTER_SECONDS:1}
+
+    validation:
+      max-file-size-bytes: ${PROFILE_PHOTO_MAX_FILE_SIZE_BYTES:${PROFILE_PHOTO_MAX_SIZE_BYTES:5242880}}
+      allowed-content-types:
+        - image/jpeg
+        - image/png
+      max-input-width: ${PROFILE_PHOTO_MAX_INPUT_WIDTH:6000}
+      max-input-height: ${PROFILE_PHOTO_MAX_INPUT_HEIGHT:6000}
+      max-input-pixels: ${PROFILE_PHOTO_MAX_INPUT_PIXELS:20000000}
+
+    normalization:
+      max-output-dimension: ${PROFILE_PHOTO_MAX_OUTPUT_DIMENSION:2048}
+      jpeg-quality: ${PROFILE_PHOTO_JPEG_QUALITY:0.88}
+
     moderation:
       provider: ${PROFILE_PHOTO_MODERATION_PROVIDER:none}
       fail-upload-on-provider-error: ${PROFILE_PHOTO_MODERATION_FAIL_UPLOAD_ON_PROVIDER_ERROR:false}
       persist-rejected-photos: ${PROFILE_PHOTO_MODERATION_PERSIST_REJECTED_PHOTOS:false}
+      policy:
+        sexual-explicit:
+          review-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_SEXUAL_EXPLICIT_REJECT_THRESHOLD:0.80}
+        sexual-suggestive:
+          review-threshold: ${PROFILE_PHOTO_SEXUAL_SUGGESTIVE_REVIEW_THRESHOLD:0.50}
+        violence:
+          review-threshold: ${PROFILE_PHOTO_VIOLENCE_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_VIOLENCE_REJECT_THRESHOLD:0.85}
+        gore:
+          review-threshold: ${PROFILE_PHOTO_GORE_REVIEW_THRESHOLD:0.40}
+          reject-threshold: ${PROFILE_PHOTO_GORE_REJECT_THRESHOLD:0.80}
+        hate:
+          review-threshold: ${PROFILE_PHOTO_HATE_REVIEW_THRESHOLD:0.50}
+          reject-threshold: ${PROFILE_PHOTO_HATE_REJECT_THRESHOLD:0.85}
 
-  identity-verification:
-    provider: ${PROFILE_IDENTITY_VERIFICATION_PROVIDER:none}
-    fail-on-provider-error: ${PROFILE_IDENTITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
-    require-for-activation: ${PROFILE_IDENTITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+    sightengine:
+      endpoint: ${PROFILE_PHOTO_SIGHTENGINE_ENDPOINT:https://api.sightengine.com/1.0/check.json}
+      api-user: ${SIGHTENGINE_API_USER:}
+      api-secret: ${SIGHTENGINE_API_SECRET:}
+      connect-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${PROFILE_PHOTO_SIGHTENGINE_READ_TIMEOUT_MS:10000}
+
+  authenticity-verification:
+    provider: ${PROFILE_AUTHENTICITY_VERIFICATION_PROVIDER:none}
+    fail-on-provider-error: ${PROFILE_AUTHENTICITY_VERIFICATION_FAIL_ON_PROVIDER_ERROR:false}
+    require-for-activation: ${PROFILE_AUTHENTICITY_VERIFICATION_REQUIRE_FOR_ACTIVATION:false}
+    policy:
+      min-matched-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS:3}
+      max-contradictory-person-photos: ${PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS:0}
 
 engagement:
   # Maximum number of simultaneous active Matches a user can participate in
   # A match is active while its lock of type MATCH exists
   max-active-matches: 5
 
-  # Maximum number of simultaneous active Connections a user can participate in
+  # Neutral maximum number of simultaneous active Connections a user can participate in
   # A connection is active while its lock of type CONNECTION exists
-  max-active-connections: 2
+  max-active-connections: 4
+
+  reliability-capacity:
+    match:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MIN:3}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MAX:9}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_REWARD_SCALE:20}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_PENALTY_SCALE:10}
+    connection:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MIN:2}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX:6}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE:30}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE:10}
+
+user-reliability:
+  enabled: ${USER_RELIABILITY_ENABLED:false}
+  base-score: ${USER_RELIABILITY_BASE_SCORE:100}
+  full-weight-days: ${USER_RELIABILITY_FULL_WEIGHT_DAYS:10}
+  half-weight-days: ${USER_RELIABILITY_HALF_WEIGHT_DAYS:10}
+  expiration-days: ${USER_RELIABILITY_EXPIRATION_DAYS:20}
+  first-chat:
+    early-engagement-messages-per-user: ${FIRST_CHAT_EARLY_ENGAGEMENT_MESSAGES_PER_USER:1}
+    early-engagement-minutes: ${FIRST_CHAT_EARLY_ENGAGEMENT_MINUTES:2}
+    min-participation-messages-per-user: ${FIRST_CHAT_MIN_PARTICIPATION_MESSAGES_PER_USER:2}
+    min-participation-minutes: ${FIRST_CHAT_MIN_PARTICIPATION_MINUTES:5}
+  matchmaking:
+    max-modifier: ${USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER:0.05}
 
 notifications:
   second-chat-reminder:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: 10
+  second-chat-start:
+    latest-send-after-start-minutes: 5
+  visual-review-reminder:
+    # Percentage of the visual-review duration remaining when the reminder becomes eligible.
+    # 40 means the reminder is persisted for 60% elapsed. Values must be > 0 and < 100.
+    remaining-percentage: 40
 
 security:
+  firebase-auth:
+    revocation-cache-ttl: ${FIREBASE_AUTH_REVOCATION_CACHE_TTL:PT60S}
+  app-check:
+    mode: ${FIREBASE_APP_CHECK_MODE:DISABLED}
+    project-number: ${FIREBASE_PROJECT_NUMBER:}
+    allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
+    jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
+    pre-auth-capacity: ${RATE_LIMIT_PRE_AUTH_CAPACITY:600}
+    pre-auth-refill-tokens: ${RATE_LIMIT_PRE_AUTH_REFILL_TOKENS:600}
+    pre-auth-refill-period-seconds: ${RATE_LIMIT_PRE_AUTH_REFILL_PERIOD_SECONDS:60}
     default-capacity: ${RATE_LIMIT_DEFAULT_CAPACITY:180}
     default-refill-tokens: ${RATE_LIMIT_DEFAULT_REFILL_TOKENS:180}
     default-refill-period-seconds: ${RATE_LIMIT_DEFAULT_REFILL_PERIOD_SECONDS:60}
@@ -196,12 +383,28 @@ security:
     message-capacity: ${RATE_LIMIT_MESSAGE_CAPACITY:60}
     message-refill-tokens: ${RATE_LIMIT_MESSAGE_REFILL_TOKENS:60}
     message-refill-period-seconds: ${RATE_LIMIT_MESSAGE_REFILL_PERIOD_SECONDS:60}
-    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:30}
-    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:30}
+    profile-photo-capacity: ${RATE_LIMIT_PROFILE_PHOTO_CAPACITY:12}
+    profile-photo-refill-tokens: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_TOKENS:12}
     profile-photo-refill-period-seconds: ${RATE_LIMIT_PROFILE_PHOTO_REFILL_PERIOD_SECONDS:60}
     safety-report-capacity: ${RATE_LIMIT_SAFETY_REPORT_CAPACITY:5}
     safety-report-refill-tokens: ${RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS:5}
     safety-report-refill-period-seconds: ${RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS:86400}
+
+firebase:
+  auth-rest:
+    web-api-key: ${FIREBASE_WEB_API_KEY:}
+    base-url: ${FIREBASE_AUTH_REST_BASE_URL:https://identitytoolkit.googleapis.com/v1}
+    connect-timeout-ms: ${FIREBASE_AUTH_REST_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${FIREBASE_AUTH_REST_READ_TIMEOUT_MS:10000}
+
+storage:
+  media-cleanup:
+    batch-size: 100
+    lease-duration: PT5M
+    guard-delay: PT30M
+    initial-retry-delay: PT1M
+    max-retry-delay: PT1H
+    max-attempts: 10
 
 info:
   app:

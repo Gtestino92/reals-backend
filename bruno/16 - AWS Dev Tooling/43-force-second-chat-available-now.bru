@@ -1,0 +1,21 @@
+meta {
+  name: 43 Force Second Chat Available Now
+  type: http
+  seq: 43
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/connections/{{devConnectionId}}/second-chat-available-now
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().target !== "schedule-negotiation") {
+    throw new Error("Expected dev timeout mutation for schedule-negotiation.");
+  }
+}

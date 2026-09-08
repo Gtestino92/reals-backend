@@ -1,0 +1,36 @@
+meta {
+  name: 02 List Safety Reports By Status
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/admin/safety-reports
+  body: none
+  auth: none
+}
+
+params:query {
+  status: PENDING
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+script:post-response {
+  const body = res.getBody();
+  
+  if (!Array.isArray(body)) {
+    throw new Error("Expected an array of safety reports.");
+  }
+  
+  if (body.length > 0) {
+    const first = body[0];
+    bru.setEnvVar("safetyReportId", first.id);
+    bru.setEnvVar("reportedUserId", first.reportedUserId);
+    bru.setEnvVar("reporterUserId", first.reporterUserId);
+    bru.setEnvVar("safetyReportStatus", first.status);
+  }
+}

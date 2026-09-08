@@ -14,6 +14,7 @@ import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.repository.ChatExitRequestRepository
 import com.reals.backend.repository.ChatMessageRepository
@@ -23,8 +24,10 @@ import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.reports.SafetyReportService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
@@ -36,21 +39,29 @@ class ChatExitService(
     private val chatRepository: ChatRepository,
     private val chatMessageRepository: ChatMessageRepository,
     private val chatExitRequestRepository: ChatExitRequestRepository,
+    private val firstChatDecisionPolicyService: FirstChatDecisionPolicyService,
     private val matchService: MatchService,
-    private val penaltyService: PenaltyService,
     private val safetyReportService: SafetyReportService,
     private val userBlockService: UserBlockService,
     private val connectionService: ConnectionService,
     private val auditEventService: AuditEventService,
-
-    @param:Value("\${chat.first-chat.min-messages-before-free-cancel:0}")
-    private val firstChatMinMessagesBeforeFreeCancel: Int,
-
-    @param:Value("\${chat.second-chat.min-messages-before-free-cancel:0}")
-    private val secondChatMinMessagesBeforeFreeCancel: Int,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val eventPublisher: ApplicationEventPublisher,
 
     @param:Value("\${chat.exit-request.mutual-timeout-seconds:20}")
-    private val mutualCancellationTimeoutSeconds: Long
+    private val mutualCancellationTimeoutSeconds: Long,
+
+    @param:Value("\${user-reliability.first-chat.early-engagement-messages-per-user:1}")
+    private val reliabilityEarlyEngagementMessagesPerUser: Int,
+
+    @param:Value("\${user-reliability.first-chat.early-engagement-minutes:2}")
+    private val reliabilityEarlyEngagementMinutes: Long,
+
+    @param:Value("\${user-reliability.first-chat.min-participation-messages-per-user:2}")
+    private val reliabilityMinParticipationMessagesPerUser: Int,
+
+    @param:Value("\${user-reliability.first-chat.min-participation-minutes:5}")
+    private val reliabilityMinParticipationMinutes: Long
 ) {
 
     private companion object {
@@ -76,9 +87,11 @@ class ChatExitService(
         reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
         details: String? = null
     ): ChatExitRequestCreationResult {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, requesterUserId)
+        rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, requesterUserId)
         val responderUserId = resolvePartnerUserId(chat, requesterUserId)
         val normalizedDetails = normalizeDetails(details)
 
@@ -128,9 +141,11 @@ class ChatExitService(
         requestId: UUID,
         responderUserId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
+        rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -149,6 +164,9 @@ class ChatExitService(
             actorUserId = responderUserId
         )
 
+        recordFirstChatMutualNoSparkClosure(chat)
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
+
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
@@ -162,9 +180,11 @@ class ChatExitService(
         requestId: UUID,
         responderUserId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, responderUserId)
+        rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, responderUserId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         validateActionableMutualCancellationRequest(
@@ -183,6 +203,8 @@ class ChatExitService(
             actorUserId = responderUserId
         )
 
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
+
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
@@ -196,9 +218,11 @@ class ChatExitService(
         requestId: UUID,
         userId: UUID
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
+        rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
         val exitRequest = findExitRequestOrThrow(requestId)
 
         if (
@@ -226,6 +250,16 @@ class ChatExitService(
             actorUserId = userId
         )
 
+        if (chat.chatType == ChatType.FIRST_CHAT) {
+            userReliabilityScoreService.recordEvent(
+                userId = exitRequest.responderUserId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_CLOSE_REQUEST_IGNORED,
+                relatedMatchId = chat.matchId,
+                relatedChatId = chat.id
+            )
+        }
+        recordFirstChatResponsibleCloseRequestResolved(chat, exitRequest)
+
         // Client-triggered mutual timeout means the pending request was not
         // answered in time. It is not a unilateral cancellation and must not
         // penalize the caller under future scoring semantics.
@@ -243,20 +277,31 @@ class ChatExitService(
         reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
         details: String? = null
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
+        return cancelChatUnilaterallyWithLockedChat(
+            chat = chat,
+            userId = userId,
+            reason = reason,
+            details = details
+        )
+    }
+
+    fun cancelChatUnilaterallyWithLockedChat(
+        chat: Chat,
+        userId: UUID,
+        reason: ChatExitReason? = ChatExitReason.NO_LONGER_INTERESTED,
+        details: String? = null
+    ): ChatExitOutcome {
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, userId)
+        rejectOrdinarySecondChatCancellation(chat)
+        firstChatDecisionPolicyService.requireOrdinaryFirstChatMutationAllowed(chat, userId)
         val responderUserId = resolvePartnerUserId(chat, userId)
         val normalizedDetails = normalizeDetails(details)
 
-        val shouldPenalize = shouldPenalizeCancellation(chat, userId)
-        if (shouldPenalize) {
-            penaltyService.createCancellationPenalty(userId = userId)
-        }
-
         val exitRequest = chatExitRequestRepository.save(
             ChatExitRequest(
-                chatId = chatId,
+                chatId = chat.id,
                 requesterUserId = userId,
                 responderUserId = responderUserId,
                 type = ChatExitRequestType.UNILATERAL_CANCEL,
@@ -273,11 +318,17 @@ class ChatExitService(
             actorUserId = userId
         )
 
+        recordFirstChatRejectionReliability(
+            chat = chat,
+            rejectingUserId = userId,
+            counterpartUserId = responderUserId
+        )
+
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
-            penaltyApplied = shouldPenalize,
-            penalizedUserId = if (shouldPenalize) userId else null
+            penaltyApplied = false,
+            penalizedUserId = null
         )
     }
 
@@ -285,9 +336,10 @@ class ChatExitService(
         chatId: UUID,
         reporterUserId: UUID,
         reason: ChatExitReason = ChatExitReason.INAPPROPRIATE_BEHAVIOR,
-        details: String? = null
+        details: String? = null,
+        blockUser: Boolean = false
     ): ChatExitOutcome {
-        val chat = findChatOrThrow(chatId)
+        val chat = findChatForUpdateOrThrow(chatId)
         validateActiveChatWindow(chat)
         validateExitActionAllowed(chat, reporterUserId)
         val reportedUserId = resolvePartnerUserId(chat, reporterUserId)
@@ -318,24 +370,126 @@ class ChatExitService(
             details = normalizedDetails
         )
 
-        userBlockService.blockUser(
-            blockerUserId = reporterUserId,
-            blockedUserId = reportedUserId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
-        )
-
         finishCancelledChat(
             chat = chat,
             endedReason = ChatEndReason.SAFETY_REPORT,
             actorUserId = reporterUserId
         )
 
+        if (blockUser) {
+            userBlockService.blockUserWithResult(
+                blockerUserId = reporterUserId,
+                blockedUserId = reportedUserId,
+                source = UserBlockSource.SAFETY_REPORT,
+                sourceReportId = report.id
+            )
+        }
+
         return ChatExitOutcome(
             chat = chat,
             exitRequest = exitRequest,
             penaltyApplied = false,
             penalizedUserId = null
+        )
+    }
+
+    private fun recordFirstChatMutualNoSparkClosure(chat: Chat) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val match = matchService.findByIdOrThrow(chat.matchId)
+        listOf(match.userAId, match.userBId).forEach { userId ->
+            userReliabilityScoreService.recordEvent(
+                userId = userId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_MUTUAL_NO_SPARK_CLOSURE,
+                relatedMatchId = match.id,
+                relatedChatId = chat.id
+            )
+        }
+    }
+
+    private fun recordFirstChatResponsibleCloseRequestResolved(
+        chat: Chat,
+        exitRequest: ChatExitRequest
+    ) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val requesterMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = exitRequest.requesterUserId
+            )
+
+        if (requesterMessages <= 0L) {
+            return
+        }
+
+        userReliabilityScoreService.recordEvent(
+            userId = exitRequest.requesterUserId,
+            eventType = UserReliabilityEventType.FIRST_CHAT_RESPONSIBLE_CLOSE_REQUEST_RESOLVED,
+            relatedMatchId = chat.matchId,
+            relatedChatId = chat.id
+        )
+    }
+
+    fun recordFirstChatRejectionReliability(
+        chat: Chat,
+        rejectingUserId: UUID,
+        counterpartUserId: UUID
+    ) {
+        if (chat.chatType != ChatType.FIRST_CHAT) {
+            return
+        }
+
+        val now = OffsetDateTime.now()
+        val elapsedThresholdMet = !chat.startedAt.plusMinutes(reliabilityMinParticipationMinutes).isAfter(now)
+        val closingUserMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = rejectingUserId
+            )
+        val counterpartMessages =
+            chatMessageRepository.countByChatSessionIdAndSenderId(
+                chatSessionId = chat.id,
+                senderId = counterpartUserId
+            )
+
+        if (elapsedThresholdMet && closingUserMessages > 0L && counterpartMessages == 0L) {
+            userReliabilityScoreService.recordEvent(
+                userId = counterpartUserId,
+                eventType = UserReliabilityEventType.FIRST_CHAT_CLOSED_AFTER_COUNTERPARTY_INACTIVE,
+                relatedMatchId = chat.matchId,
+                relatedChatId = chat.id
+            )
+            return
+        }
+
+        val sufficientParticipationMet =
+            elapsedThresholdMet &&
+                closingUserMessages >= reliabilityMinParticipationMessagesPerUser.toLong() &&
+                counterpartMessages >= reliabilityMinParticipationMessagesPerUser.toLong()
+
+        if (sufficientParticipationMet) {
+            return
+        }
+
+        val earlyEngagementThresholdMet =
+            !chat.startedAt.plusMinutes(reliabilityEarlyEngagementMinutes).isAfter(now) &&
+                closingUserMessages >= reliabilityEarlyEngagementMessagesPerUser.toLong() &&
+                counterpartMessages >= reliabilityEarlyEngagementMessagesPerUser.toLong()
+
+        userReliabilityScoreService.recordEvent(
+            userId = rejectingUserId,
+            eventType = if (earlyEngagementThresholdMet) {
+                UserReliabilityEventType.FIRST_CHAT_PARTIAL_UNILATERAL_CLOSE
+            } else {
+                UserReliabilityEventType.FIRST_CHAT_EARLY_UNILATERAL_CLOSE
+            },
+            relatedMatchId = chat.matchId,
+            relatedChatId = chat.id
         )
     }
 
@@ -348,6 +502,13 @@ class ChatExitService(
                 )
             }
     }
+
+    private fun findChatForUpdateOrThrow(chatId: UUID): Chat =
+        chatRepository.findByIdForUpdate(chatId)
+            ?: throw DomainNotFoundException(
+                code = DomainErrorCode.CHAT_NOT_FOUND,
+                message = "Chat was not found"
+            )
 
     private fun findExitRequestOrThrow(requestId: UUID): ChatExitRequest =
         chatExitRequestRepository.findById(requestId)
@@ -403,27 +564,6 @@ class ChatExitService(
         }
     }
 
-    private fun shouldPenalizeCancellation(
-        chat: Chat,
-        userId: UUID
-    ): Boolean {
-        val minimum =
-            when (chat.chatType) {
-                ChatType.FIRST_CHAT -> firstChatMinMessagesBeforeFreeCancel
-                ChatType.SECOND_CHAT -> secondChatMinMessagesBeforeFreeCancel
-            }
-
-        if (minimum <= 0) return false
-
-        val sent =
-            chatMessageRepository.countByChatSessionIdAndSenderId(
-                chatSessionId = chat.id,
-                senderId = userId
-            )
-
-        return sent < minimum
-    }
-
     private fun finishCancelledChat(
         chat: Chat,
         endedReason: ChatEndReason,
@@ -448,12 +588,27 @@ class ChatExitService(
         )
 
         when (chat.chatType) {
-            ChatType.FIRST_CHAT -> matchService.rejectChatPhase(chat.matchId)
+            ChatType.FIRST_CHAT -> {
+                publishFirstChatTerminated(chat)
+                matchService.rejectChatPhase(chat.matchId)
+            }
             ChatType.SECOND_CHAT -> {
                 val connectionId = chat.connectionId ?: throw chatNotAvailable()
                 connectionService.closeConnection(connectionId)
             }
         }
+    }
+
+    private fun publishFirstChatTerminated(chat: Chat) {
+        val endedReason = chat.endedReason ?: return
+        eventPublisher.publishEvent(
+            FirstChatTerminatedEvent(
+                matchId = chat.matchId,
+                chatId = chat.id,
+                finalStatus = chat.status,
+                endedReason = endedReason
+            )
+        )
     }
 
     private fun validateActiveChatWindow(chat: Chat) {
@@ -575,4 +730,13 @@ class ChatExitService(
             code = DomainErrorCode.CHAT_MESSAGE_INVALID,
             message = "Chat message is invalid"
         )
+
+    private fun rejectOrdinarySecondChatCancellation(chat: Chat) {
+        if (chat.chatType == ChatType.SECOND_CHAT) {
+            throw DomainConflictException(
+                code = DomainErrorCode.SECOND_CHAT_ORDINARY_CANCELLATION_NOT_ALLOWED,
+                message = "Ordinary cancellation is not available for second chats"
+            )
+        }
+    }
 }

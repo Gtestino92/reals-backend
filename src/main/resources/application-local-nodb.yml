@@ -40,6 +40,12 @@ scheduler:
     fixed-delay: 120000
   second-chat-reminder-job:
     fixed-delay: 60000
+  visual-review-reminder-job:
+    fixed-delay: 1800000
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 100
+    discovery-batch-size: 100
   match-expiration-job:
     fixed-delay: 300000
     max-chat-duration: PT20M
@@ -62,11 +68,17 @@ notifications:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: 10
+  visual-review-reminder:
+    remaining-percentage: 40
 
 matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  exclude-previous-pairing: false
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
 
 profile:
   photos:
@@ -74,3 +86,13 @@ profile:
     required-count: 4
     min-person-photos: 1
     min-full-body-photos: 1
+
+chat:
+  audio:
+    enabled: true
+  first-chat:
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:0}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:0}
+    audio:
+      required-answered-guidance-questions: 1

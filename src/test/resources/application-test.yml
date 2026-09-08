@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:reals_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    url: jdbc:h2:mem:${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -31,52 +31,112 @@ management:
 scheduler:
   enabled: false
   matchmaking-job:
-    fixed-delay: 3600000
+    fixed-delay: 15000
     max-pairs-per-run: 10
   chat-timeout-job:
     fixed-delay: 3600000
+    batch-size: 2
   match-expiration-job:
     fixed-delay: 3600000
+    batch-size: 2
   inactivity-check-job:
     fixed-delay: 3600000
+    batch-size: 2
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: 3600000
+  user-reliability-cleanup-job:
+    fixed-delay: 3600000
   visual-phase-expiration-job:
     fixed-delay: 3600000
+    batch-size: 2
   scheduling-timeout-job:
     fixed-delay: 3600000
+  scheduling-activation-job:
+    fixed-delay: 3600000
+    batch-size: 2
   account-deletion-finalization-job:
     fixed-delay: 3600000
   second-chat-reminder-job:
     fixed-delay: 60000
+    batch-size: 2
+  second-chat-start-notification-job:
+    fixed-delay: 240000
+    batch-size: 2
+  second-chat-lifecycle-job:
+    fixed-delay: 3600000
+    batch-size: 2
+  visual-review-reminder-job:
+    fixed-delay: 1800000
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 2
+    discovery-batch-size: 2
+  media-cleanup-job:
+    fixed-delay: 3600000
 
 notifications:
   second-chat-reminder:
     # Comma-separated lead times in minutes.
     minutes-before: 10
+  second-chat-start:
+    latest-send-after-start-minutes: 5
+  visual-review-reminder:
+    remaining-percentage: 40
 
 account:
   deletion:
     recovery-window-days: 30
+  ban:
+    temporary-resume-margin-minutes: 30
 
 matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  exclude-previous-pairing: true
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
+  visual-advancement:
+    max-per-window: 10
+    window-hours: 24
 
 chat:
+  audio:
+    enabled: true
   first-chat:
     duration-minutes: 15
     inactivity-threshold-minutes: 5
-    min-messages-per-user: 0
     min-messages-before-free-cancel: 1
+    approval:
+      min-elapsed-minutes: 0
+      min-messages-per-user: 0
+    guidance:
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
+      max-questions: 3
+      catalog: classpath:first-chat-guided-questions.es.json
+    audio:
+      required-answered-guidance-questions: 1
   visual-phase:
     duration-minutes: 1440
   second-chat:
     duration-minutes: 120
     read-only-retention-minutes: 1440
-    min-messages-before-free-cancel: 1
+    on-time-window-minutes: 10
+    entry-window-minutes: 20
+    no-show-claim-countdown-seconds: 60
+    mutual-completion:
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
+      request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
+      requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    inactivity:
+      claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+      claim-countdown-seconds: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS:60}
+    initial-silence:
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
 
 scheduling:
   negotiation-duration-minutes: 2880
@@ -92,7 +152,7 @@ profile:
 
 engagement:
   max-active-matches: 5
-  max-active-connections: 2
+  max-active-connections: 4
 
 security:
   rate-limit:
@@ -103,16 +163,17 @@ storage:
     endpoint: http://localhost:9000
     presigned-url-endpoint: http://localhost:9000
     region: us-east-1
-    bucket: reals-profile-photos-test
+    bucket: reals-media-test
     access-key-id: test
     secret-access-key: test
-    public-base-url: http://localhost:9000/reals-profile-photos-test
+    public-base-url: http://localhost:9000/reals-media-test
     path-style-access-enabled: true
     signed-url-duration-minutes: 15
     read-url-mode: PRESIGNED
-  profile-photos:
-    max-size-bytes: 5242880
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
+  media-cleanup:
+    batch-size: 2
+    lease-duration: PT5M
+    guard-delay: PT30M
+    initial-retry-delay: PT1M
+    max-retry-delay: PT1H
+    max-attempts: 3

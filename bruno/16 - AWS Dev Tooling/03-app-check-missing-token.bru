@@ -1,0 +1,27 @@
+meta {
+  name: 03 App Check Missing Token
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  const status = res.getStatus();
+  if (status !== 401) {
+    throw new Error(`Expected 401 for missing App Check token, got ${status}.`);
+  }
+
+  const body = res.getBody();
+  if (!body || body.code !== "MISSING_APP_CHECK_TOKEN") {
+    throw new Error("Expected MISSING_APP_CHECK_TOKEN response body.");
+  }
+}

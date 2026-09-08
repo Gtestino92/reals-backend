@@ -1,6 +1,7 @@
 package com.reals.backend.controller.dto
 
 import com.reals.backend.domain.ChatMessage
+import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.SafetyReportContextType
@@ -10,6 +11,7 @@ import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
 import com.reals.backend.domain.User
 import com.reals.backend.domain.UserStatus
+import com.reals.backend.domain.priorityReview
 import com.reals.backend.service.reports.SafetyReportDetail
 import com.reals.backend.service.reports.SafetyReportUserCounters
 import com.reals.backend.validation.PlainText
@@ -69,6 +71,7 @@ data class SafetyReportAdminSummary(
     val connectionId: UUID?,
     val reason: SafetyReportReason,
     val status: SafetyReportStatus,
+    val priorityReview: Boolean,
     val createdAt: OffsetDateTime,
     val reviewedAt: OffsetDateTime?,
     val createdByAdminUserId: UUID?,
@@ -91,6 +94,7 @@ data class SafetyReportAdminSummary(
                 connectionId = detail.report.connectionId,
                 reason = detail.report.reason,
                 status = detail.report.status,
+                priorityReview = detail.report.priorityReview,
                 createdAt = detail.report.createdAt,
                 reviewedAt = detail.report.reviewedAt,
                 createdByAdminUserId = detail.report.createdByAdminUserId,
@@ -110,13 +114,18 @@ data class SafetyReportAdminDetail(
     val penalty: SafetyPenaltyAdminSummary? = null
 ) {
     companion object {
-        fun from(detail: SafetyReportDetail): SafetyReportAdminDetail =
+        fun from(
+            detail: SafetyReportDetail,
+            audioUrlResolver: (ChatMessage) -> String = {
+                error("Audio URL resolver is required for audio messages")
+            }
+        ): SafetyReportAdminDetail =
             SafetyReportAdminDetail(
                 report = SafetyReportAdminSummary.from(detail),
                 details = detail.report.details,
                 verdictNotes = detail.report.verdictNotes,
                 evidence = SafetyReportEvidenceSnapshotResponse.from(detail.evidence),
-                messages = detail.messages.map { SafetyReportMessageEvidenceResponse.from(it) },
+                messages = detail.messages.map { SafetyReportMessageEvidenceResponse.from(it, audioUrlResolver) },
                 penalty = SafetyPenaltyAdminSummary.from(detail.penalty)
             )
     }
@@ -126,15 +135,33 @@ data class SafetyReportMessageEvidenceResponse(
     val id: UUID,
     val senderUserId: UUID,
     val sentAt: OffsetDateTime,
-    val content: String
+    val messageType: ChatMessageType,
+    val content: String?,
+    val audio: ChatMessageAudioResponse?
 ) {
     companion object {
-        fun from(message: ChatMessage) =
+        fun from(
+            message: ChatMessage,
+            audioUrlResolver: (ChatMessage) -> String = {
+                error("Audio URL resolver is required for audio messages")
+            }
+        ) =
             SafetyReportMessageEvidenceResponse(
                 id = message.id,
                 senderUserId = message.senderId,
                 sentAt = message.sentAt,
-                content = message.content
+                messageType = message.messageType,
+                content = message.content,
+                audio = if (message.messageType == ChatMessageType.AUDIO) {
+                    ChatMessageAudioResponse(
+                        url = audioUrlResolver(message),
+                        durationMillis = requireNotNull(message.audioDurationMillis),
+                        contentType = requireNotNull(message.audioContentType),
+                        sizeBytes = requireNotNull(message.audioSizeBytes)
+                    )
+                } else {
+                    null
+                }
             )
     }
 }

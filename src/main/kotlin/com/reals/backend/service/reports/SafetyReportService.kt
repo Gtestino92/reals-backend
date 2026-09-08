@@ -13,8 +13,10 @@ import com.reals.backend.domain.SafetyReport
 import com.reals.backend.domain.SafetyReportContextType
 import com.reals.backend.domain.SafetyReportSource
 import com.reals.backend.domain.SafetyReportStatus
+import com.reals.backend.domain.UserReliabilityEventType
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.toSafetyReportReason
+import com.reals.backend.domain.priorityReview
 import com.reals.backend.repository.ChatRepository
 import com.reals.backend.repository.ChatMessageRepository
 import com.reals.backend.repository.ProfilePhotoRepository
@@ -26,11 +28,14 @@ import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.AuditEventService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.PenaltyService
+import com.reals.backend.service.PairInteractionContainmentCause
+import com.reals.backend.service.PairInteractionContainmentService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.exception.DomainBadRequestException
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
 import com.reals.backend.service.exception.DomainNotFoundException
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.validation.PlainText
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -53,9 +58,11 @@ class SafetyReportService(
     private val penaltyRepository: PenaltyRepository,
     private val userRepository: UserRepository,
     private val userBlockService: UserBlockService,
+    private val pairInteractionContainmentService: PairInteractionContainmentService,
     private val auditEventService: AuditEventService,
     private val evidenceSnapshotService: SafetyReportEvidenceSnapshotService,
-    private val penaltyService: PenaltyService
+    private val penaltyService: PenaltyService,
+    private val userReliabilityScoreService: UserReliabilityScoreService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -71,17 +78,13 @@ class SafetyReportService(
         reason: ChatExitReason,
         details: String
     ): SafetyReport {
-        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
-            source = SafetyReportSource.USER,
+        lockReportUsersForUpdate(reporterUserId, reportedUserId)
+        rejectExistingUserReport(
             reporterUserId = reporterUserId,
             reportedUserId = reportedUserId,
             contextType = SafetyReportContextType.CHAT,
             contextId = chat.id
         )
-
-        if (existing != null) {
-            return existing
-        }
 
         val report = safetyReportRepository.save(
             SafetyReport(
@@ -103,6 +106,26 @@ class SafetyReportService(
         return report
     }
 
+    private fun rejectExistingUserReport(
+        reporterUserId: UUID,
+        reportedUserId: UUID,
+        contextType: SafetyReportContextType,
+        contextId: UUID
+    ) {
+        safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
+            source = SafetyReportSource.USER,
+            reporterUserId = reporterUserId,
+            reportedUserId = reportedUserId,
+            contextType = contextType,
+            contextId = contextId
+        )?.let {
+            throw DomainConflictException(
+                code = DomainErrorCode.SAFETY_REPORT_ALREADY_EXISTS,
+                message = "Safety report already exists"
+            )
+        }
+    }
+
     fun createUserReport(
         reporterUserId: UUID,
         request: CreateSafetyReportRequest
@@ -113,26 +136,13 @@ class SafetyReportService(
         )
         val details = normalizeReportDetails(request.details)
 
-        val existing = safetyReportRepository.findBySourceAndReporterUserIdAndReportedUserIdAndContextTypeAndContextId(
-            source = SafetyReportSource.USER,
+        lockReportUsersForUpdate(reporterUserId, context.reportedUserId)
+        rejectExistingUserReport(
             reporterUserId = reporterUserId,
             reportedUserId = context.reportedUserId,
             contextType = context.contextType,
             contextId = context.contextId
         )
-
-        if (existing != null) {
-            userBlockService.blockUser(
-                blockerUserId = reporterUserId,
-                blockedUserId = context.reportedUserId,
-                source = UserBlockSource.SAFETY_REPORT,
-                sourceReportId = existing.id
-            )
-            return SafetyReportCreationResult(
-                report = existing,
-                created = false
-            )
-        }
 
         val report = safetyReportRepository.save(
             SafetyReport(
@@ -152,17 +162,35 @@ class SafetyReportService(
 
         captureEvidenceAndAuditReportCreated(report, actorUserId = reporterUserId)
 
-        userBlockService.blockUser(
-            blockerUserId = reporterUserId,
-            blockedUserId = context.reportedUserId,
-            source = UserBlockSource.SAFETY_REPORT,
-            sourceReportId = report.id
+        pairInteractionContainmentService.containPair(
+            userAId = reporterUserId,
+            userBId = context.reportedUserId,
+            cause = PairInteractionContainmentCause.SAFETY_REPORT
         )
+
+        if (request.blockUser) {
+            userBlockService.blockUserWithResult(
+                blockerUserId = reporterUserId,
+                blockedUserId = context.reportedUserId,
+                source = UserBlockSource.SAFETY_REPORT,
+                sourceReportId = report.id
+            )
+        }
 
         return SafetyReportCreationResult(
             report = report,
             created = true
         )
+    }
+
+    private fun lockReportUsersForUpdate(
+        reporterUserId: UUID,
+        reportedUserId: UUID
+    ) {
+        val orderedIds = listOf(reporterUserId, reportedUserId).sortedBy(UUID::toString)
+        check(userRepository.findAllByIdForUpdate(orderedIds).size == 2) {
+            "Cannot create safety report: one or more users were not found"
+        }
     }
 
     fun createAdminReport(
@@ -224,6 +252,10 @@ class SafetyReportService(
             .filter { source == null || it.source == source }
             .filter { reportedUserId == null || it.reportedUserId == reportedUserId }
             .filter { reporterUserId == null || it.reporterUserId == reporterUserId }
+            .sortedWith(
+                compareByDescending<SafetyReport> { it.priorityReview }
+                    .thenByDescending { it.createdAt }
+            )
             .take(100)
             .map { buildReportDetail(it, includeMessages = false, includePenalty = false) }
             .toList()
@@ -265,6 +297,45 @@ class SafetyReportService(
             aggregateId = saved.id,
             actorUserId = adminUserId,
             targetUserId = saved.reportedUserId,
+            metadata = mapOf(
+                "source" to saved.source.name,
+                "previousStatus" to previousStatus.name,
+                "newStatus" to saved.status.name
+            )
+        )
+        return saved
+    }
+
+    fun dismissAbusiveOrUnjustifiedReport(
+        reportId: UUID,
+        adminUserId: UUID,
+        notes: String?
+    ): SafetyReport {
+        val report = getReport(reportId)
+        val previousStatus = report.status
+        validatePending(report)
+
+        report.status = SafetyReportStatus.DISMISSED_ABUSIVE_OR_UNJUSTIFIED
+        report.reviewedAt = OffsetDateTime.now()
+        report.reviewedByUserId = adminUserId
+        report.verdictNotes = normalizeNotes(notes)
+
+        val saved = safetyReportRepository.save(report)
+
+        saved.reporterUserId?.let { reporterUserId ->
+            userReliabilityScoreService.recordEvent(
+                userId = reporterUserId,
+                eventType = UserReliabilityEventType.SAFETY_REPORT_DETERMINED_ABUSIVE,
+                relatedSafetyReportId = saved.id
+            )
+        }
+
+        auditEventService.record(
+            eventType = AuditEventType.SAFETY_REPORT_DISMISSED,
+            aggregateType = AuditAggregateType.SAFETY_REPORT,
+            aggregateId = saved.id,
+            actorUserId = adminUserId,
+            targetUserId = saved.reporterUserId,
             metadata = mapOf(
                 "source" to saved.source.name,
                 "previousStatus" to previousStatus.name,
@@ -327,6 +398,13 @@ class SafetyReportService(
         report.penaltyId = penalty.id
 
         val saved = safetyReportRepository.save(report)
+        if (penalty.type == PenaltyType.TEMPORARY_BAN) {
+            userReliabilityScoreService.recordEvent(
+                userId = saved.reportedUserId,
+                eventType = UserReliabilityEventType.SAFETY_REPORT_CONFIRMED_AGAINST_USER,
+                relatedSafetyReportId = saved.id
+            )
+        }
         auditEventService.record(
             eventType = AuditEventType.SAFETY_REPORT_CONFIRMED,
             aggregateType = AuditAggregateType.SAFETY_REPORT,

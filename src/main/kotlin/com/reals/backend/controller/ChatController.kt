@@ -3,19 +3,44 @@ package com.reals.backend.controller
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
+import com.reals.backend.domain.ChatReplyTargetType
 import com.reals.backend.service.ChatExitService
+import com.reals.backend.service.ChatAudioPolicyService
+import com.reals.backend.service.ChatAudioSendResult
+import com.reals.backend.service.ChatAudioService
+import com.reals.backend.service.ChatAudioUploadGuard
+import com.reals.backend.service.ChatMessageService
+import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
+import com.reals.backend.service.LegalComplianceService
+import com.reals.backend.service.S3StorageService
+import com.reals.backend.service.exception.DomainBadRequestException
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 import java.util.*
 
 @RestController
 @RequestMapping("/api/chats")
+@Validated
 class ChatController(
     private val chatService: ChatService,
-    private val chatExitService: ChatExitService
+    private val chatMessageService: ChatMessageService,
+    private val chatAudioService: ChatAudioService,
+    private val chatAudioUploadGuard: ChatAudioUploadGuard,
+    private val chatAudioPolicyService: ChatAudioPolicyService,
+    private val chatMessageReplyPreviewResolver: ChatMessageReplyPreviewResolver,
+    private val storageService: S3StorageService,
+    private val chatExitService: ChatExitService,
+    private val legalComplianceService: LegalComplianceService
 ) {
 
     @GetMapping("/{chatId}")
@@ -32,7 +57,10 @@ class ChatController(
         return ResponseEntity.ok(
             ChatResponse.from(
                 c = chat,
-                inactivityExpiresAt = chatService.inactivityExpiresAt(chat)
+                inactivityExpiresAt = chatService.inactivityExpiresAt(chat),
+                audioPolicy = ChatAudioPolicyResponse.from(
+                    chatAudioPolicyService.policyFor(chat = chat, userId = userId)
+                )
             )
         )
     }
@@ -44,15 +72,135 @@ class ChatController(
         @Valid
         @RequestBody request: SendMessageRequest
     ): ResponseEntity<ChatMessageResponse> {
+        return when (
+            val result = chatMessageService.sendMessageWithResult(
+                chatId = chatId,
+                senderId = userId,
+                content = request.content,
+                clientMessageId = request.clientMessageId,
+                replyTarget = request.replyTo?.let {
+                    ChatMessageService.ChatReplyTarget(
+                        type = it.type,
+                        targetId = it.targetId
+                    )
+                }
+            )
+        ) {
+            is ChatMessageService.SendMessageResult.Sent ->
+                ResponseEntity.ok(messageResponse(result.message))
 
-        val message = chatService.sendMessage(
-            chatId = chatId,
-            senderId = userId,
-            content = request.content
-        )
+            is ChatMessageService.SendMessageResult.RejectedAfterResolution ->
+                throw DomainConflictException(code = result.code, message = result.message)
+        }
+    }
+
+    @PostMapping(
+        "/{chatId}/audio-messages",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
+    )
+    fun sendAudioMessage(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID,
+        @RequestPart("file") file: MultipartFile,
+        @RequestPart("clientMessageId") clientMessageId: String,
+        @RequestPart(value = "replyToType", required = false) replyToType: String?,
+        @RequestPart(value = "replyToTargetId", required = false) replyToTargetId: String?,
+    ): ResponseEntity<ChatMessageResponse> {
+        val parsedClientMessageId = UUID.fromString(clientMessageId)
+        val parsedReplyToType = replyToType
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    ChatReplyTargetType.valueOf(raw.uppercase())
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToType",
+                    )
+                }
+            }
+
+        val parsedReplyToTargetId = replyToTargetId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching {
+                    UUID.fromString(raw)
+                }.getOrElse {
+                    throw DomainBadRequestException(
+                        code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                        message = "Invalid replyToTargetId",
+                    )
+                }
+            }
+
+        val replyTarget = when {
+            parsedReplyToType == null && parsedReplyToTargetId == null -> null
+
+            parsedReplyToType != null && parsedReplyToTargetId != null ->
+                ChatMessageService.ChatReplyTarget(
+                    type = parsedReplyToType,
+                    targetId = parsedReplyToTargetId,
+                )
+
+            else -> throw DomainBadRequestException(
+                code = DomainErrorCode.CHAT_MESSAGE_INVALID,
+                message = "replyToType and replyToTargetId must be provided together",
+            )
+        }
+        val result = chatAudioUploadGuard.withPermit {
+            chatAudioService.sendAudioMessage(
+                chatId = chatId,
+                senderId = userId,
+                clientMessageId = parsedClientMessageId,
+                contentType = file.contentType,
+                bytes = file.inputStream.use { it.readBytes() },
+                replyTarget = replyTarget,
+            )
+        }
+
+        return when (result) {
+            is ChatAudioSendResult.Created ->
+                ResponseEntity.status(HttpStatus.CREATED)
+                    .body(messageResponse(result.message))
+            is ChatAudioSendResult.Replayed ->
+                ResponseEntity.ok(messageResponse(result.message))
+        }
+    }
+
+    @PutMapping("/{chatId}/messages/{messageId}/reaction")
+    fun putMessageReaction(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID,
+        @PathVariable messageId: UUID,
+        @Valid
+        @RequestBody request: PutMessageReactionRequest
+    ): ResponseEntity<ChatMessageResponse> {
+        val message =
+            chatMessageService.putMessageReaction(
+                chatId = chatId,
+                messageId = messageId,
+                userId = userId,
+                reactionType = request.type
+            )
+        return ResponseEntity.ok(messageResponse(message))
+    }
+
+    @PostMapping("/{chatId}/guidance/next-request")
+    fun requestNextGuidanceQuestion(
+        @CurrentUserId userId: UUID,
+        @PathVariable chatId: UUID
+    ): ResponseEntity<FirstChatGuidanceResponse> {
+        legalComplianceService.requireCurrentRequirementsSatisfied(userId)
 
         return ResponseEntity.ok(
-            ChatMessageResponse.from(message)
+            FirstChatGuidanceResponse.from(
+                chatService.requestFirstChatGuidanceNext(
+                    chatId = chatId,
+                    userId = userId
+                )
+            )
         )
     }
 
@@ -61,29 +209,40 @@ class ChatController(
         @CurrentUserId userId: UUID,
         @PathVariable chatId: UUID,
         @RequestParam(required = false) after: UUID?,
-        @RequestParam(required = false) afterMessageId: UUID?
+        @RequestParam(required = false) afterMessageId: UUID?,
+        @RequestParam(required = false)
+        @Min(1)
+        @Max(500)
+        limit: Int?
     ): ResponseEntity<Any> {
         val effectiveAfterMessageId = after ?: afterMessageId
 
         if (effectiveAfterMessageId != null) {
-            val messages = chatService.getMessagesAfter(
+            val page = chatMessageService.getMessagesAfter(
                 chatId = chatId,
                 userId = userId,
-                afterMessageId = effectiveAfterMessageId
+                afterMessageId = effectiveAfterMessageId,
+                limit = limit
             )
 
             return ResponseEntity.ok<Any>(
-                ChatMessagesResponse.from(messages)
+                ChatMessagesResponse.from(
+                    messages = page.messages,
+                    hasMore = page.hasMore,
+                    audioUrlResolver = ::audioReadUrl,
+                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
+                )
             )
         }
 
-        val messages = chatService.getMessages(
+        val messages = chatMessageService.getMessages(
             chatId = chatId,
-            userId = userId
+            userId = userId,
+            limit = limit
         )
 
         return ResponseEntity.ok<Any>(
-            messages.map { ChatMessageResponse.from(it) }
+            messageResponses(messages)
         )
     }
 
@@ -202,7 +361,8 @@ class ChatController(
                         chatId = chatId,
                         reporterUserId = userId,
                         reason = request.reason,
-                        details = request.details
+                        details = request.details,
+                        blockUser = request.blockUser
                     )
                 )
             )
@@ -212,5 +372,29 @@ class ChatController(
             o = outcome,
             inactivityExpiresAt = chatService.inactivityExpiresAt(outcome.chat)
         )
+
+    private fun audioReadUrl(message: com.reals.backend.domain.ChatMessage): String =
+        storageService.getReadUrl(
+            bucket = requireNotNull(message.audioBucket),
+            key = requireNotNull(message.audioObjectKey)
+        )
+
+    private fun messageResponse(message: com.reals.backend.domain.ChatMessage): ChatMessageResponse =
+        ChatMessageResponse.from(
+            m = message,
+            audioUrlResolver = ::audioReadUrl,
+            replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
+        )
+
+    private fun messageResponses(messages: List<com.reals.backend.domain.ChatMessage>): List<ChatMessageResponse> {
+        val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(messages)
+        return messages.map { message ->
+            ChatMessageResponse.from(
+                m = message,
+                audioUrlResolver = ::audioReadUrl,
+                replyTo = replyPreviews[message.id]
+            )
+        }
+    }
 
 }

@@ -1,6 +1,7 @@
 package com.reals.backend.integration
 
 import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.authentication.FirebaseSignInProvider
 import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import org.springframework.beans.factory.annotation.Autowired
@@ -50,7 +51,8 @@ abstract class ControllerIT : BaseIT() {
         userId: UUID,
         firebaseUid: String? = null,
         email: String? = null,
-        emailVerified: Boolean
+        emailVerified: Boolean,
+        signInProvider: FirebaseSignInProvider? = null
     ): RequestPostProcessor =
         SecurityMockMvcRequestPostProcessors.authentication(
             UsernamePasswordAuthenticationToken(
@@ -58,7 +60,8 @@ abstract class ControllerIT : BaseIT() {
                     userId = userId,
                     firebaseUid = firebaseUid,
                     email = email,
-                    emailVerified = emailVerified
+                    emailVerified = emailVerified,
+                    signInProvider = signInProvider
                 ),
                 null,
                 listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
@@ -67,13 +70,17 @@ abstract class ControllerIT : BaseIT() {
 
     protected fun authenticatedWithFirebase(
         firebaseUid: String,
-        email: String?
+        email: String?,
+        emailVerified: Boolean = false,
+        signInProvider: FirebaseSignInProvider = FirebaseSignInProvider.PASSWORD
     ): RequestPostProcessor =
         SecurityMockMvcRequestPostProcessors.authentication(
             UsernamePasswordAuthenticationToken(
                 FirebasePrincipal(
                     uid = firebaseUid,
-                    email = email
+                    email = email,
+                    emailVerified = emailVerified,
+                    signInProvider = signInProvider
                 ),
                 null,
                 listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))

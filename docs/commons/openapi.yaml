@@ -9,11 +9,15 @@ servers:
   - url: http://localhost:8080
     description: Local backend from the same machine
 security:
-  - bearerAuth: []
+  - firebaseAppCheck: []
+    bearerAuth: []
 tags:
   - name: Health
+  - name: Auth
   - name: Me
+  - name: Reference
   - name: Profiles
+  - name: Legal
   - name: Matchmaking
   - name: Matches
   - name: Chats
@@ -47,8 +51,9 @@ paths:
   /actuator/info:
     get:
       tags: [Health]
-      summary: Build and image metadata
-      security: []
+      summary: Build and image metadata for authenticated administrators
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Application info
@@ -56,10 +61,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InfoResponse'
+  /api/auth/password-reset:
+    post:
+      tags: [Auth]
+      summary: Request a Firebase password reset email when backend policy allows it
+      description: Public with respect to Firebase bearer authentication. When App Check is enabled this endpoint still requires X-Firebase-AppCheck. Every syntactically valid request returns 202 without revealing whether the email exists, auth origin, deletion state or Firebase delivery outcome.
+      security:
+        - firebaseAppCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: Password reset request accepted generically
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /api/me/provision:
     post:
       tags: [Me]
-      summary: Provision or link the authenticated Firebase identity
+      summary: Provision or link the authenticated Firebase identity; legacy email linking requires verified Firebase email
       responses:
         '200':
           description: Existing local dev user
@@ -173,6 +196,45 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/me/notification-preferences:
+    get:
+      tags: [Me]
+      summary: Get authenticated user's notification preference groups
+      description: Returns account-level backend-authoritative notification group toggles. Missing rows default to enabled. SYSTEM notifications are internal, always allowed and not exposed.
+      responses:
+        '200':
+          description: Effective notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Me]
+      summary: Replace authenticated user's notification preference groups
+      description: Replaces the complete configurable account-level state for ACTIVITY, REMINDERS and AVAILABILITY. SYSTEM is always allowed and cannot be configured.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferenceRequest'
+      responses:
+        '200':
+          description: Authoritative notification preferences after update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/reactivation:
     post:
       tags: [Me]
@@ -189,6 +251,162 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/me/deletion/finalization:
+    post:
+      tags: [Me]
+      summary: Permanently finalize a pending account deletion immediately
+      description: Only meaningful for an already deleted account. Uses the same locked finalization behavior as the scheduled finalizer, abandons recovery immediately, anonymizes local email, clears Firebase UID and preserves retained history.
+      responses:
+        '200':
+          description: Finalized deleted user, or already finalized deleted user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/local-dev/email-verification:
+    post:
+      tags: [Me]
+      summary: Local-only Firebase email verification helper
+      description: Local-firebase only and additionally gated by local-dev.firebase.email-auto-verification-enabled=true. Requires a provisioned authenticated Firebase-backed ROLE_USER. Marks only the authenticated Firebase UID emailVerified=true in Firebase Auth through Firebase Admin. Does not mutate PostgreSQL, activate profiles, bypass upload or activation checks, return tokens, accept arbitrary UIDs or emails, or exist in hosted dev/prod. After 204, clients must reload the Firebase user and force-refresh the ID token before using normal profile-photo upload/replacement and profile activation.
+      responses:
+        '204':
+          description: Authenticated Firebase user marked email verified in Firebase Auth, or already verified
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Firebase Admin update failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/legal/documents/current:
+    get:
+      tags: [Legal]
+      summary: List current configured legal documents
+      description: Unauthenticated informational catalog. When Firebase App Check is enabled, this endpoint still requires X-Firebase-AppCheck. An empty configured catalog returns an empty documents array.
+      security:
+        - firebaseAppCheck: []
+      responses:
+        '200':
+          description: Current configured legal documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentLegalDocumentsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/AppCheckUnavailable'
+  /api/me/legal-status:
+    get:
+      tags: [Legal]
+      summary: Get current user's legal document status
+      description: Returns authoritative status for current configured document versions only. Empty legal catalogs are satisfied. Historical actions remain persisted but do not satisfy newer configured versions.
+      responses:
+        '200':
+          description: Current user's legal document status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/me/legal-document-actions:
+    post:
+      tags: [Legal]
+      summary: Record a factual legal document action
+      description: Records that the authenticated user performed the configured required action for the current configured document version. Identical replays are idempotent.
+      requestBody:
+        $ref: '#/components/requestBodies/RecordLegalDocumentAction'
+      responses:
+        '200':
+          description: Existing identical action record returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocumentActionResponse'
+        '201':
+          description: New factual action record created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocumentActionResponse'
+        '400':
+          description: "Malformed request or requested action does not match the configured required action. Stable code for wrong action: `LEGAL_DOCUMENT_ACTION_INVALID`."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: "Requested document type has no current configured document. Stable code: `LEGAL_DOCUMENT_NOT_FOUND`."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: "Requested version is not the current configured version. Stable code: `LEGAL_DOCUMENT_VERSION_NOT_CURRENT`."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reference/countries:
+    get:
+      tags: [Reference]
+      summary: List canonical countries
+      description: Authenticated reference-data endpoint. Returns the complete immutable in-memory country catalog built once from the Java runtime ISO country list, with Spanish display names. Clients should use `code` as the submitted and persisted profile `countryCode`; city remains free text.
+      responses:
+        '200':
+          description: Canonical country reference list ordered by Spanish display name, with code as tie-breaker
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountryReferenceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/reference/affinity-questions:
+    get:
+      tags: [Reference]
+      summary: List active affinity questions
+      description: Authenticated reference-data endpoint. Returns the server-authoritative affinity-question catalog version, visible categories and active questions. Internal scoring policies, matrices and weights are never exposed.
+      responses:
+        '200':
+          description: Client-safe affinity-question catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityQuestionCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/reference/profile-questions:
+    get:
+      tags: [Reference]
+      summary: List active public profile questions
+      description: Authenticated reference-data endpoint. Returns the server-authoritative profile-question catalog version and active questions in catalog order. The internal active flag is never exposed. Profile questions are free-text public-profile prompts and are separate from private affinity questions.
+      responses:
+        '200':
+          description: Client-safe profile-question catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/me/profile:
     post:
       tags: [Profiles]
@@ -228,14 +446,14 @@ paths:
     post:
       tags: [Profiles]
       summary: Activate authenticated user's profile
-      description: Requires the current Firebase ID token to have emailVerified=true. Email verification is not required for profile creation, editing, photo upload, photo replacement, photo deletion or match-filter configuration.
+      description: Requires the current Firebase ID token to have emailVerified=true. Email verification is not required for profile creation, editing, photo deletion, photo reorder or match-filter configuration.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Profile cannot be activated, including EMAIL_NOT_VERIFIED when the current Firebase token has not verified email.
+          description: Profile cannot be activated, including EMAIL_NOT_VERIFIED when the current Firebase token has not verified email. Protected activation may also return LEGAL_ACTION_REQUIRED.
           content:
             application/json:
               schema:
@@ -246,6 +464,11 @@ paths:
                     code: EMAIL_NOT_VERIFIED
                     error: Conflict
                     message: Verificá tu email antes de activar el perfil.
+                legalActionRequired:
+                  value:
+                    code: LEGAL_ACTION_REQUIRED
+                    error: Conflict
+                    message: Current legal document actions are required before continuing
   /api/me/profile/match-filters:
     put:
       tags: [Profiles]
@@ -261,14 +484,180 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-  /api/me/profile/identity-verification:
+  /api/me/profile/authenticity-verification:
     post:
       tags: [Profiles]
-      summary: Run identity verification for the profile
-      description: Current provider none marks the profile VERIFIED for MVP/local compatibility and does not represent real external identity or age verification.
+      summary: Run profile authenticity verification for the profile
+      description: Profile Authenticity Verification is not legal identity verification. With provider none outside prod, the MVP compatibility path may mark the profile VERIFIED without liveness or face comparison. With provider none in prod, verification is unavailable and no VERIFIED state is persisted. The current synchronous provider abstraction is not the final liveness/session API.
       responses:
         '200':
           $ref: '#/components/responses/Profile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Domain conflict. In prod with provider none, stable code `AUTHENTICITY_VERIFICATION_NOT_CONFIGURED` is returned. This endpoint may also return `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                authenticityVerificationNotConfigured:
+                  value:
+                    code: AUTHENTICITY_VERIFICATION_NOT_CONFIGURED
+                    error: Conflict
+                    message: Profile authenticity verification is not configured
+                legalActionRequired:
+                  value:
+                    code: LEGAL_ACTION_REQUIRED
+                    error: Conflict
+                    message: Current legal document actions are required before continuing
+  /api/me/profile/affinity-answers:
+    get:
+      tags: [Profiles]
+      summary: List authenticated user's private affinity answers
+      description: Returns only answers owned by the authenticated user's profile. Affinity answers are private and are not exposed through counterpart-facing profile, match, visual review, Home or chat responses.
+      responses:
+        '200':
+          description: Current user's private affinity answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Profiles]
+      summary: Partially upsert authenticated user's private affinity answers
+      description: Idempotent partial set operation. Only included question ids are modified; omitted existing answers remain unchanged. PATCH accepts only active current-catalog questions and valid current answer codes; duplicate question ids, inactive/deprecated/missing questions, and invalid answer codes return focused affinity validation errors. Requires current legal requirements but does not require verified email.
+      requestBody:
+        $ref: '#/components/requestBodies/PatchAffinityAnswers'
+      responses:
+        '200':
+          description: Complete authoritative current-user affinity answer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/affinity-answers/{questionId}:
+    parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 96
+    delete:
+      tags: [Profiles]
+      summary: Delete one authenticated-user affinity answer
+      description: Removes only the authenticated profile's answer for the normalized question id. Unlike PATCH, DELETE does not require the question to be active or present in the current catalog, so deprecated, removed or stale private answers can be cleared. Deleting a nonexistent owned answer is an idempotent no-op. Requires current legal requirements but does not require verified email.
+      responses:
+        '200':
+          description: Complete authoritative current-user affinity answer list after deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AffinityAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/question-answers:
+    get:
+      tags: [Profiles]
+      summary: List authenticated user's profile-question answers
+      description: Returns every saved profile-question answer for the current user's profile, including unselected answers and semantic-version-stale answers. This is private current-user data and is not exposed to counterparts.
+      responses:
+        '200':
+          description: Current user's private profile-question answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/me/profile/question-answers/{questionId}:
+    parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+    put:
+      tags: [Profiles]
+      summary: Create or update one profile-question answer
+      description: Legal-gated upsert for a current active profile question. The answer is trimmed, must be nonblank single-line plain text and is limited to 160 normalized characters. Existing selected position is preserved. Does not activate draft profiles or move active profiles to draft.
+      requestBody:
+        $ref: '#/components/requestBodies/UpsertProfileQuestionAnswer'
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Profiles]
+      summary: Delete one profile-question answer
+      description: Legal-gated idempotent delete scoped to the authenticated user's profile. If the deleted answer was selected, remaining selected positions are compacted while preserving order.
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list after deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me/profile/question-selections:
+    put:
+      tags: [Profiles]
+      summary: Replace public profile-question selection
+      description: Legal-gated full ordered replacement. The list may contain zero to three question ids. Every selected question must have a saved current answer for an active catalog definition. Validation is all-or-nothing; failed requests leave previous selected positions unchanged.
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProfileQuestionSelections'
+      responses:
+        '200':
+          description: Complete authoritative current-user profile-question answer list after selection replacement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileQuestionAnswersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -277,7 +666,7 @@ paths:
     post:
       tags: [Profiles]
       summary: Add a profile photo at a position
-      description: Multipart file upload is the only supported profile photo creation flow.
+      description: Multipart file upload is the only supported profile photo creation flow. Requires verified Firebase email. Server accepts actual JPEG or PNG only, rejects WebP and mismatched content types, normalizes accepted input to metadata-stripped image/jpeg, and applies the shared photo-upload concurrency and authenticated rate limits.
       requestBody:
         $ref: '#/components/requestBodies/AddPhoto'
       responses:
@@ -289,6 +678,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ProfilePhotoUploadBusy'
     get:
       tags: [Profiles]
       summary: List authenticated user's profile photos
@@ -346,6 +737,7 @@ paths:
     put:
       tags: [Profiles]
       summary: Replace a profile photo file by id
+      description: Requires verified Firebase email. Server accepts actual JPEG or PNG only, rejects WebP and mismatched content types, normalizes accepted input to metadata-stripped image/jpeg, and applies the shared photo-upload concurrency and authenticated rate limits.
       requestBody:
         $ref: '#/components/requestBodies/ReplacePhotoFile'
       responses:
@@ -357,6 +749,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ProfilePhotoUploadBusy'
   /api/matchmaking/queue:
     post:
       tags: [Matchmaking]
@@ -433,6 +827,7 @@ paths:
     post:
       tags: [Matches]
       summary: Submit first-chat continuation decision
+      description: APPROVED requires current legal requirements, the configured minimum elapsed first-chat time, and the configured minimum confirmed messages from both participants. REJECTED remains available without legal compliance or approval prerequisites.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -450,6 +845,7 @@ paths:
     post:
       tags: [Matches]
       summary: Submit visual decision
+      description: APPROVED requires current legal requirements to be satisfied. REJECTED remains available without legal compliance. Partner personal messages are optional and may remain unread before any visual decision.
       parameters:
         - $ref: '#/components/parameters/MatchId'
       requestBody:
@@ -513,6 +909,7 @@ paths:
     post:
       tags: [Chats]
       summary: Send chat message
+      description: Sends a TEXT message as the authenticated chat participant. `clientMessageId` is optional for legacy no-reply TEXT sends; when present it makes the TEXT send idempotent in the same `(chat, sender, clientMessageId)` namespace as audio. `replyTo` is optional and requires `clientMessageId`; V1 supports shallow replies to another participant's TEXT/AUDIO message in the same chat or to a same-chat first-chat guidance question snapshot. First chats preserve existing `MUTUAL_CANCEL` pending-request behavior; while exactly one first-chat participant has approved and the other remains pending, ordinary message sends from either participant are rejected with `FIRST_CHAT_DECISION_ONLY`. For second chats, sends cancel pending mutual-completion or partner-inactivity requests before expiry; at or after partner-inactivity expiry the lifecycle transition commits and the message is rejected without insertion. Exact idempotent replay returns the original canonical message before ordinary mutable eligibility checks; key reuse with different content, target or message type returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -533,6 +930,7 @@ paths:
     get:
       tags: [Chats]
       summary: List chat messages
+      description: Without a cursor, returns the legacy JSON array containing the most recent bounded page in chronological order. With `after` or `afterMessageId`, returns `ChatMessagesResponse` with messages strictly after the cursor ordered by `sentAt ASC, id ASC`; `hasMore` is true when additional rows exist beyond the returned page. Response formats are preserved for compatibility.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - name: after
@@ -545,6 +943,15 @@ paths:
           required: false
           schema: { type: string, format: uuid }
           description: Alias for `after`.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+          description: Maximum number of messages returned. Initial legacy reads fetch the most recent `limit` messages and return them chronologically. Incremental reads fetch at most `limit` messages after the cursor and use `limit + 1` internally to compute `hasMore`.
       responses:
         '200':
           description: Messages. Without a cursor this is the legacy array; with a cursor this is ChatMessagesResponse.
@@ -556,15 +963,134 @@ paths:
                     items:
                       $ref: '#/components/schemas/ChatMessageResponse'
                   - $ref: '#/components/schemas/ChatMessagesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/ChatNotFound'
         '409':
           $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/chats/{chatId}/messages/{messageId}/reaction:
+    put:
+      tags: [Chats]
+      summary: Put chat message reaction
+      description: Persists one irreversible `HEART` reaction on a message sent by the other chat participant. `HEART` is currently the only supported type. New reactions are accepted only for messages in the caller's latest incoming block ordered by `(sentAt, id)`; own messages sent after that block do not invalidate it, while a newer incoming block supersedes older unreacted incoming messages. Repeating `PUT HEART` on an already-hearted message is idempotent and returns the canonical message even after the block expires or the chat later becomes read-only. Reactions are metadata only and do not count as conversational activity, update `sentAt`, reset inactivity, extend deadlines, trigger notifications, affect reliability/penalties, alter scheduling/Home state, or create chat-message side effects.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        $ref: '#/components/requestBodies/PutMessageReaction'
+      responses:
+        '200':
+          description: Updated canonical message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatAvailabilityConflict'
+  /api/chats/{chatId}/audio-messages:
+    post:
+      tags: [Chats]
+      summary: Send chat audio message
+      description: Sends an AUDIO message into the existing ordered chat stream. Requires multipart `file` and client-generated UUID `clientMessageId`. An optional shallow reply target is represented by `replyToType` plus `replyToTargetId`; both parts must be provided together, `replyToType` is `MESSAGE` or `GUIDANCE_QUESTION`, and the target follows the same availability rules as TEXT replies. Malformed or partial reply metadata returns `CHAT_MESSAGE_INVALID`; an unavailable reply target returns `CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE`. New messages return 201. An exact idempotent replay with the same accepted audio SHA-256 and the same direct reply target returns 200 before ordinary mutable eligibility checks; reusing the same `(chat, sender, clientMessageId)` with different audio bytes, direct reply target, or message type returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`. Server validation requires MPEG-4/M4A audio-only AAC with AAC codec configuration and at least one non-empty media sample; metadata-only declarations are rejected. Persisted `durationMillis` is rounded up from the MP4 timescale rational value. First-chat decision-only state rejects new audio with `FIRST_CHAT_DECISION_ONLY`.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, clientMessageId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: MPEG-4/M4A audio-only AAC file with media payload, max 2 MiB and max 60 seconds.
+                clientMessageId:
+                  type: string
+                  format: uuid
+                replyToType:
+                  allOf:
+                    - $ref: '#/components/schemas/ChatReplyTargetType'
+                  nullable: true
+                  description: Optional shallow reply target type. Must be provided together with `replyToTargetId`.
+                replyToTargetId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional direct reply target UUID. Must be provided together with `replyToType`.
+            encoding:
+              clientMessageId:
+                contentType: text/plain
+              replyToType:
+                contentType: text/plain
+              replyToTargetId:
+                contentType: text/plain
+      responses:
+        '200':
+          description: Existing message returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '201':
+          description: Created audio message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatAvailabilityConflict'
+        '502':
+          description: Audio object upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Audio upload pipeline is busy
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/chats/{chatId}/guidance/next-request:
+    post:
+      tags: [Chats]
+      summary: Request next first-chat guidance question
+      description: Authenticated first-chat participant requests the current guidance progression action. The request has no body. The next question activates, or final guidance completes, only after both participants have independently requested the action and each requester has met the configured weighted participation score for the active question interval. Ordinary authored TEXT characters count 1 point; authored TEXT characters directly replying to the current guidance question snapshot count with `directQuestionReplyMultiplier`; quoted preview text and AUDIO count 0. Partner request/readiness metadata is never returned. While a `MUTUAL_CANCEL` exit request is `PENDING`, guidance next requests are rejected with `CHAT_MUTUAL_CANCELLATION_PENDING` and guidance timestamps are not changed. First-chat decision-only state rejects next requests with `FIRST_CHAT_DECISION_ONLY`.
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          description: Current user-scoped first-chat guidance state after applying the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirstChatGuidanceResponse'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/FirstChatGuidanceConflict'
   /api/chats/{chatId}/exit-requests:
     post:
       tags: [Chats]
       summary: Request mutual chat cancellation
-      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict.
+      description: Idempotent for the same requester while their mutual cancellation request is pending. A new request returns 201 Created. A repeated request from the same requester returns 200 OK with the existing request and does not overwrite reason or details. A pending mutual request created by the partner remains a conflict. A pending mutual cancellation pauses new message sends and first-chat guidance advancement, while message reads, exit-request polling, acceptance, rejection, timeout, unilateral cancellation and safety cancellation remain available. First-chat decision-only state rejects new mutual-cancellation requests with `FIRST_CHAT_DECISION_ONLY`.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -623,7 +1149,7 @@ paths:
     post:
       tags: [Chats]
       summary: Reject mutual cancellation request
-      description: Rejects a pending mutual cancellation request and closes the chat. Future scoring may apply a lower penalty to the requester, but no penalty is applied today.
+      description: Rejects a pending mutual cancellation request and closes the chat without penalty.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
@@ -638,7 +1164,7 @@ paths:
     post:
       tags: [Chats]
       summary: Timeout mutual cancellation request
-      description: Resolves an unanswered mutual cancellation request after the configured timeout and closes the chat without penalty. This is not treated as a unilateral cancellation; if the requester calls it because the responder did not answer in time, the requester must not be penalized.
+      description: Resolves an unanswered mutual cancellation request after the configured timeout and closes the chat without penalty. This is not treated as a unilateral cancellation; if the requester calls it because the responder did not answer in time, the requester is not penalized.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - $ref: '#/components/parameters/ExitRequestId'
@@ -653,6 +1179,7 @@ paths:
     post:
       tags: [Chats]
       summary: Unilateral chat cancellation
+      description: Direct ordinary chat cancellation. In first-chat decision-only state this is rejected with `FIRST_CHAT_DECISION_ONLY`; final `REJECTED`, safety report and manual block remain available.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -670,7 +1197,7 @@ paths:
     post:
       tags: [Chats]
       summary: Safety/report chat cancellation
-      description: Closes the chat and creates a pending internal safety report. Reporting does not automatically penalize the reported participant; the response keeps penaltyApplied=false until an admin confirms the report separately.
+      description: Closes the chat with safety-report semantics and creates a pending internal safety report. Optional blockUser=true additionally creates or reuses a directional safety-report user block. Reporting does not automatically penalize the reported participant; the response keeps penaltyApplied=false until an admin confirms the report separately.
       parameters:
         - $ref: '#/components/parameters/ChatId'
       requestBody:
@@ -688,7 +1215,7 @@ paths:
     post:
       tags: [Safety]
       summary: Create a user safety report
-      description: Creates a user report for chat, visual profile, personal message or profile photo context without necessarily closing a chat. The backend validates the reporter/reported relationship from the referenced aggregate, creates or reuses a directional user block, and treats duplicates for the same reporter, reported user, context type and context id idempotently.
+      description: Creates a user report for chat, visual profile, personal message or profile photo context and contains the current pair interaction with safety-report semantics. Optional blockUser=true additionally creates or reuses a directional safety-report user block. Duplicates for the same reporter, reported user, context type and context id remain conflicts.
       requestBody:
         $ref: '#/components/requestBodies/CreateSafetyReport'
       responses:
@@ -749,6 +1276,58 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/review:
+    get:
+      tags: [Admin]
+      summary: List profile photos awaiting moderation review
+      description: Requires ROLE_ADMIN. Returns only current NEEDS_REVIEW moderation photos, ordered by createdAt ascending and limited to 100. Validation PENDING photos are not included unless moderationStatus is NEEDS_REVIEW. Each item includes photoVersion, which must be submitted as expectedPhotoVersion when resolving the review.
+      responses:
+        '200':
+          description: Profile photos awaiting human moderation review
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/profile-photos/{photoId}/moderation:
+    post:
+      tags: [Admin]
+      summary: Resolve a profile photo moderation review
+      description: Requires ROLE_ADMIN. Supports only NEEDS_REVIEW -> APPROVED and NEEDS_REVIEW -> REJECTED. The request must include expectedPhotoVersion from the reviewed queue item. Stale review snapshots return PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE and should be refreshed before review. Does not delete photos, create safety reports, create blocks, apply penalties or change semantic validation fields.
+      parameters:
+        - $ref: '#/components/parameters/PhotoId'
+      requestBody:
+        $ref: '#/components/requestBodies/AdminPhotoModerationResolution'
+      responses:
+        '200':
+          description: Updated profile photo moderation review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfilePhotoModerationReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Photo is not currently awaiting moderation review, or the submitted expectedPhotoVersion is stale. Stable code `PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE
+                error: Conflict
+                message: Profile photo is not awaiting moderation review
   /api/admin/safety-reports/{reportId}:
     get:
       tags: [Admin]
@@ -830,12 +1409,122 @@ paths:
     get:
       tags: [Connections]
       summary: Get visible second chat for connection
-      description: Returns the connection second chat. If no SECOND_CHAT exists and the confirmed second-chat window is open, this call idempotently creates and activates it. Before availableAt it returns conflict with SECOND_CHAT_NOT_AVAILABLE_YET. After expiresAt with no chat it returns conflict with SECOND_CHAT_EXPIRED.
+      description: Returns an already materialized visible second chat. This GET is side-effect free and no longer records attendance or creates the chat. Clients must call `POST /api/connections/{connectionId}/second-chat/join` to join. Before scheduledAt it returns `SECOND_CHAT_NOT_AVAILABLE_YET`; during the open entry window with no joined chat it returns `SECOND_CHAT_JOIN_REQUIRED`; after absolute expiration with no chat it returns `SECOND_CHAT_EXPIRED`.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       responses:
         '200':
           $ref: '#/components/responses/Chat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/join:
+    post:
+      tags: [Connections]
+      summary: Explicitly join scheduled second chat
+      description: Authenticated participant join. Classifies attendance as `ON_TIME` for `scheduledAt <= now < onTimeUntil` and `LATE` for `onTimeUntil <= now < entryClosesAt`. At `entryClosesAt` entry is closed and unresolved absences are resolved as no-shows.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/status:
+    get:
+      tags: [Connections]
+      summary: Get authoritative second-chat status
+      description: Side-effect-free status view with server-computed join eligibility, no-show compatibility fields, generic active resolution request, mutual-completion eligibility/cooldown, inactivity deadlines and read-only terminal metadata. Expired pending requests suppress invalid actions but polling does not mutate lifecycle state.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/no-show-claims:
+    post:
+      tags: [Connections]
+      summary: Create partner no-show claim
+      description: Starts a persisted 60-second partner no-show countdown when requester has joined, partner has not joined, and `onTimeUntil <= now < entryClosesAt`. Expiry is capped at `entryClosesAt`. Partner join before expiry cancels the claim.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/completion-requests:
+    post:
+      tags: [Connections]
+      summary: Create mutual-completion request
+      description: Requires both participants joined, `conversationStartedAt + 10 minutes`, at least one message from each participant, no pending resolution request, no requester cooldown and active second chat before absolute timeout. Countdown is 60 seconds capped by `timeoutAt`; same-requester active replay returns 200.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/completion-requests/{requestId}/decision:
+    post:
+      tags: [Connections]
+      summary: Respond to mutual-completion request
+      description: Only the persisted responder may accept or reject. `ACCEPTED` before expiry finishes the chat as `FINISHED / SECOND_CHAT_MUTUAL_COMPLETION`; at exact expiry the request becomes `TIMED_OUT` and the response is rejected after the timeout commit.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecondChatCompletionDecisionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/connections/{connectionId}/second-chat/inactivity-claims:
+    post:
+      tags: [Connections]
+      summary: Create partner-inactivity claim
+      description: Latest-message author may claim after `max(lastMessageAt, conversationStartedAt) + 5 minutes` and before `max(lastMessageAt, conversationStartedAt) + 10 minutes`. The request references the server-selected latest message. Any message before expiry cancels the claim; at exact expiry the silent responder is no-show-after-join and the chat becomes read-only abandoned.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '201':
+          $ref: '#/components/responses/SecondChatAttendance'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -871,10 +1560,23 @@ paths:
           $ref: '#/components/responses/Negotiation'
         '404':
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
+  /api/connections/{connectionId}/scheduling-availability:
+    get:
+      tags: [Connections]
+      summary: Get current user's second-chat scheduling unavailable windows
+      description: Side-effect-free authenticated read. Verifies the current user belongs to the connection, excludes that connection from conflicts, and returns only this user's unavailable windows derived from confirmed `SECOND_CHAT_SCHEDULED` and `SECOND_CHAT_AVAILABLE` connections. Window bounds are symmetric and inclusive around each confirmed start.
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SchedulingAvailability'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/connections/{connectionId}/proposals:
     post:
       tags: [Connections]
-      summary: Submit ordered scheduling proposal list for current round
+      summary: Submit ordered scheduling proposal list for expected current round
+      description: Submits at most one ordered proposal list per participant per round. Existing partner proposals in the same round do not make submission invalid. `expectedRoundNumber` must match the locked current negotiation round. Any proposed instant inside the configured inclusive conflict window around another confirmed second-chat start for the submitting user returns `SCHEDULING_SLOT_CONFLICT`. Automatic overlap confirmation also returns opaque `SCHEDULING_SLOT_CONFLICT` when the selected second-chat commitment is not viable for either participant under an effective account ban.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
       requestBody:
@@ -914,6 +1616,7 @@ paths:
     post:
       tags: [Connections]
       summary: Accept partner proposal and schedule second chat
+      description: Accepts a pending partner proposal only if the proposal belongs to the path connection, belongs to the current round, its proposed instant is still strictly in the future, and it is outside the configured inclusive conflict window for both participants. A persisted proposal may remain `PENDING` after its proposed time passes; accepting it returns `SCHEDULING_PROPOSAL_NOT_AVAILABLE`, but it remains visible and rejectable.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
         - $ref: '#/components/parameters/ProposalId'
@@ -927,22 +1630,51 @@ paths:
   /api/connections/{connectionId}/negotiation/rejections:
     post:
       tags: [Connections]
-      summary: Explicitly reject current scheduling round
+      summary: Reject pending partner scheduling proposals
+      description: Rejects only the partner's pending proposals in the expected current round. A single rejection does not end the round; the round advances only after both participants submitted a list in the round and no pending proposal remains. This progression action requires current legal requirements to be satisfied.
       parameters:
         - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        $ref: '#/components/requestBodies/RejectPartnerProposals'
       responses:
         '200':
           $ref: '#/components/responses/Negotiation'
         '404':
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
         '409':
-          $ref: '#/components/responses/SchedulingRoundRejectionConflict'
+          $ref: '#/components/responses/SchedulingPartnerProposalRejectionConflict'
+  /api/matches/{matchId}/block:
+    post:
+      summary: Durably block the other participant in a match
+      description: Creates a directional MANUAL block and immediately contains active interactions for the pair. No request body is required.
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: A new directional block was created
+        '200':
+          description: The same directional block already existed
+        '403':
+          description: The authenticated user is not a match participant
+        '409':
+          description: Interaction conflict, including USER_PAIR_BLOCKED
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: Firebase ID token
+    firebaseAppCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: Firebase App Check token for Android-facing API requests.
   parameters:
     MatchId:
       name: matchId
@@ -1003,6 +1735,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateMatchFiltersRequest'
+    PatchAffinityAnswers:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PatchAffinityAnswersRequest'
+    UpsertProfileQuestionAnswer:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpsertProfileQuestionAnswerRequest'
+    UpdateProfileQuestionSelections:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProfileQuestionSelectionsRequest'
     AddPhoto:
       required: true
       content:
@@ -1052,6 +1802,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SendMessageRequest'
+    PutMessageReaction:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PutMessageReactionRequest'
     ChatExitRequestCreate:
       required: true
       content:
@@ -1088,12 +1844,30 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SafetyReportPenaltyRequest'
+    AdminPhotoModerationResolution:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminPhotoModerationResolutionRequest'
     AddProposal:
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AddProposalRequest'
+    RejectPartnerProposals:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RejectPartnerProposalsRequest'
+    RecordLegalDocumentAction:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordLegalDocumentActionRequest'
   responses:
     Profile:
       description: Profile
@@ -1137,12 +1911,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ConnectionResponse'
+    SecondChatAttendance:
+      description: Authoritative second-chat attendance state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecondChatAttendanceResponse'
     Negotiation:
       description: Negotiation
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/NegotiationResponse'
+    SchedulingAvailability:
+      description: Current user's unavailable second-chat scheduling windows
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulingAvailabilityResponse'
     BadRequest:
       description: Invalid request
       content:
@@ -1150,17 +1936,57 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Missing or invalid bearer token
+      description: Missing or invalid Firebase ID token or Firebase App Check token
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missingAppCheckToken:
+              value:
+                code: MISSING_APP_CHECK_TOKEN
+                error: Unauthorized
+                message: Missing Firebase App Check token
+            invalidAppCheckToken:
+              value:
+                code: INVALID_APP_CHECK_TOKEN
+                error: Unauthorized
+                message: Invalid Firebase App Check token
+            missingAuthorizationHeader:
+              value:
+                code: MISSING_AUTHORIZATION_HEADER
+                error: Unauthorized
+                message: Missing Authorization header
+    AppCheckUnavailable:
+      description: Firebase App Check verification infrastructure is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            appCheckVerificationUnavailable:
+              value:
+                code: APP_CHECK_VERIFICATION_UNAVAILABLE
+                error: Service Unavailable
+                message: Firebase App Check verification is temporarily unavailable
     Forbidden:
       description: Authenticated user is not allowed to access this resource
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            temporarilyBanned:
+              value:
+                code: ACCOUNT_TEMPORARILY_BANNED
+                error: Forbidden
+                message: Account is temporarily banned
+                expiresAt: '2026-09-01T12:00:00Z'
+            permanentlyBanned:
+              value:
+                code: ACCOUNT_PERMANENTLY_BANNED
+                error: Forbidden
+                message: Account is permanently banned
     NotFound:
       description: Resource not found
       content:
@@ -1168,13 +1994,35 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
-      description: Domain conflict or invalid state transition
+      description: Domain conflict or invalid state transition. Only operations protected by the legal gate may also return stable code `LEGAL_ACTION_REQUIRED` when current legal document actions are required before continuing; reuse of this response by another operation does not make that operation legal-gated.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
+    ProfilePhotoUploadBusy:
+      description: Profile photo upload or replacement capacity is temporarily exhausted. Stable code `PROFILE_PHOTO_UPLOAD_BUSY`; response includes `Retry-After`.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            format: int64
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: PROFILE_PHOTO_UPLOAD_BUSY
+            error: Service Unavailable
+            message: Profile photo upload capacity is temporarily exhausted. Please retry later.
     ChatMessageInvalid:
-      description: Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`.
+      description: "Invalid chat message or chat-action text. Stable code: `CHAT_MESSAGE_INVALID`."
       content:
         application/json:
           schema:
@@ -1184,7 +2032,7 @@ components:
             error: Bad Request
             message: Chat message is invalid
     ChatNotFound:
-      description: Chat not found. Stable code: `CHAT_NOT_FOUND`.
+      description: "Chat not found. Stable code: `CHAT_NOT_FOUND`."
       content:
         application/json:
           schema:
@@ -1194,12 +2042,17 @@ components:
             error: Not Found
             message: Chat was not found
     ChatAvailabilityConflict:
-      description: Chat is not currently readable or writable.
+      description: Chat is not currently readable or writable. First-chat ordinary conversation and unilateral-cancellation writes may also return `FIRST_CHAT_DECISION_ONLY`; message sends and new reactions may also return `CHAT_MUTUAL_CANCELLATION_PENDING`; message sends may return `CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE` or `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`; new reactions may return `CHAT_MESSAGE_REACTION_NOT_AVAILABLE`; active chat participation writes may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             chatNotAvailable:
               value:
                 code: CHAT_NOT_AVAILABLE
@@ -1210,13 +2063,85 @@ components:
                 code: CHAT_EXPIRED
                 error: Conflict
                 message: Chat has expired
-    ChatDecisionConflict:
-      description: First-chat continuation decision is not currently available.
+            mutualCancellationPending:
+              value:
+                code: CHAT_MUTUAL_CANCELLATION_PENDING
+                error: Conflict
+                message: A mutual cancellation request is pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
+            messageReactionNotAvailable:
+              value:
+                code: CHAT_MESSAGE_REACTION_NOT_AVAILABLE
+                error: Conflict
+                message: Chat message reaction is not available
+            messageReplyTargetNotAvailable:
+              value:
+                code: CHAT_MESSAGE_REPLY_TARGET_NOT_AVAILABLE
+                error: Conflict
+                message: Chat message reply target is not available
+            messageIdempotencyConflict:
+              value:
+                code: CHAT_MESSAGE_IDEMPOTENCY_CONFLICT
+                error: Conflict
+                message: Client message id was already used with a different message payload
+    FirstChatGuidanceConflict:
+      description: First-chat guidance cannot be advanced in the current state. Requesting the next guidance question may also return `CHAT_MUTUAL_CANCELLATION_PENDING`, `FIRST_CHAT_DECISION_ONLY` or `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
+            participationRequired:
+              value:
+                code: FIRST_CHAT_GUIDANCE_PARTICIPATION_REQUIRED
+                error: Conflict
+                message: Minimum participation is required before requesting another question
+            alreadyRequested:
+              value:
+                code: FIRST_CHAT_GUIDANCE_NEXT_ALREADY_REQUESTED
+                error: Conflict
+                message: Next question has already been requested
+            completed:
+              value:
+                code: FIRST_CHAT_GUIDANCE_COMPLETED
+                error: Conflict
+                message: First-chat guidance is completed
+            chatNotAvailable:
+              value:
+                code: CHAT_NOT_AVAILABLE
+                error: Conflict
+                message: Chat is not available
+            mutualCancellationPending:
+              value:
+                code: CHAT_MUTUAL_CANCELLATION_PENDING
+                error: Conflict
+                message: A mutual cancellation request is pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
+    ChatDecisionConflict:
+      description: First-chat continuation decision is not currently available. APPROVED may also return `LEGAL_ACTION_REQUIRED`, `FIRST_CHAT_APPROVAL_TOO_EARLY` or `FIRST_CHAT_APPROVAL_PARTICIPATION_REQUIRED`; REJECTED remains available without legal compliance or approval prerequisites.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             decisionNotAvailable:
               value:
                 code: CHAT_DECISION_NOT_AVAILABLE
@@ -1227,11 +2152,16 @@ components:
                 code: CHAT_DECISION_ALREADY_SUBMITTED
                 error: Conflict
                 message: Chat decision was already submitted
-            minimumMessagesRequired:
+            approvalTooEarly:
               value:
-                code: CHAT_MIN_MESSAGES_REQUIRED
+                code: FIRST_CHAT_APPROVAL_TOO_EARLY
                 error: Conflict
-                message: Minimum chat messages are required before approval
+                message: More conversation time is required before continuing
+            approvalParticipationRequired:
+              value:
+                code: FIRST_CHAT_APPROVAL_PARTICIPATION_REQUIRED
+                error: Conflict
+                message: Both participants need to take part in the conversation before continuing
             mutualCancellationPending:
               value:
                 code: CHAT_MUTUAL_CANCELLATION_PENDING
@@ -1255,7 +2185,7 @@ components:
                 error: Not Found
                 message: Chat exit request was not found
     ChatExitRequestCreateConflict:
-      description: Mutual chat cancellation request cannot be created in the current chat state.
+      description: Mutual chat cancellation request cannot be created in the current chat state. First-chat decision-only state returns `FIRST_CHAT_DECISION_ONLY`.
       content:
         application/json:
           schema:
@@ -1276,8 +2206,13 @@ components:
                 code: CHAT_EXIT_REQUEST_ALREADY_PENDING
                 error: Conflict
                 message: A chat exit request is already pending
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     ChatExitRequestActionConflict:
-      description: Chat exit request cannot be accepted, rejected, or timed out in the current state.
+      description: Chat exit request cannot be accepted, rejected, or timed out in the current state. First-chat decision-only state returns `FIRST_CHAT_DECISION_ONLY` for ordinary exit mutations.
       content:
         application/json:
           schema:
@@ -1298,8 +2233,13 @@ components:
                 code: CHAT_EXIT_REQUEST_NOT_AVAILABLE
                 error: Conflict
                 message: Chat exit request is not available
+            firstChatDecisionOnly:
+              value:
+                code: FIRST_CHAT_DECISION_ONLY
+                error: Conflict
+                message: Only a final first-chat decision is available now
     SchedulingInvalidProposals:
-      description: Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`.
+      description: "Invalid scheduling proposal list. Stable code: `SCHEDULING_INVALID_PROPOSALS`."
       content:
         application/json:
           schema:
@@ -1321,7 +2261,7 @@ components:
                 error: Not Found
                 message: Scheduling negotiation was not found
     SchedulingProposalNotFound:
-      description: Scheduling proposal not found. Stable code: `SCHEDULING_PROPOSAL_NOT_AVAILABLE`.
+      description: "Scheduling proposal not found. Stable code: `SCHEDULING_PROPOSAL_NOT_AVAILABLE`."
       content:
         application/json:
           schema:
@@ -1331,12 +2271,17 @@ components:
             error: Not Found
             message: Scheduling proposal was not found
     SchedulingProposalSubmissionConflict:
-      description: Scheduling proposal submission is not currently available.
+      description: Scheduling proposal submission is not currently available. Submitting scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE
@@ -1352,13 +2297,28 @@ components:
                 code: SCHEDULING_PROPOSALS_ALREADY_SUBMITTED
                 error: Conflict
                 message: Scheduling proposals were already submitted for this round
+            roundChanged:
+              value:
+                code: SCHEDULING_ROUND_CHANGED
+                error: Conflict
+                message: Scheduling round changed; refresh negotiation and proposals before retrying
+            slotConflict:
+              value:
+                code: SCHEDULING_SLOT_CONFLICT
+                error: Conflict
+                message: The selected time is not available for scheduling
     SchedulingProposalAcceptanceConflict:
-      description: Scheduling proposal cannot be accepted in the current flow state.
+      description: Scheduling proposal cannot be accepted in the current flow state. This includes non-pending proposals, proposals outside the current round, proposals from another connection, proposals whose own proposed instant is no longer strictly in the future, proposal instants that conflict with another confirmed second chat for either participant, and slots that are not viable for either participant under an effective account ban. Accepting partner proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE
@@ -1379,23 +2339,43 @@ components:
                 code: SCHEDULING_CANNOT_ACCEPT_OWN_PROPOSAL
                 error: Conflict
                 message: Users cannot accept their own scheduling proposal
-    SchedulingRoundRejectionConflict:
-      description: Scheduling round cannot be rejected in the current flow state.
+            slotConflict:
+              value:
+                code: SCHEDULING_SLOT_CONFLICT
+                error: Conflict
+                message: The selected time is not available for scheduling
+    SchedulingPartnerProposalRejectionConflict:
+      description: Partner scheduling proposals cannot be rejected in the current flow state. Rejecting partner scheduling proposals may also return `LEGAL_ACTION_REQUIRED`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            legalActionRequired:
+              value:
+                code: LEGAL_ACTION_REQUIRED
+                error: Conflict
+                message: Current legal document actions are required before continuing
             schedulingNotAvailable:
               value:
                 code: SCHEDULING_NOT_AVAILABLE
                 error: Conflict
                 message: Scheduling is not available
-            roundNotRejectable:
+            schedulingExpired:
               value:
-                code: SCHEDULING_ROUND_NOT_REJECTABLE
+                code: SCHEDULING_EXPIRED
                 error: Conflict
-                message: Scheduling round is not rejectable
+                message: Scheduling has expired
+            roundChanged:
+              value:
+                code: SCHEDULING_ROUND_CHANGED
+                error: Conflict
+                message: Scheduling round changed; refresh negotiation and proposals before retrying
+            partnerProposalsNotAvailable:
+              value:
+                code: SCHEDULING_PARTNER_PROPOSALS_NOT_AVAILABLE
+                error: Conflict
+                message: Partner scheduling proposals are not available for rejection
   schemas:
     PingResponse:
       type: object
@@ -1423,9 +2403,14 @@ components:
         code: { type: string, example: PROFILE_NOT_ACTIVE }
         error: { type: string, example: Conflict }
         message: { type: string, nullable: true }
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Present only for `ACCOUNT_TEMPORARILY_BANNED`.
     UserResponse:
       type: object
-      required: [id, status, createdAt]
+      required: [id, status, createdAt, passwordManagementAllowed]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email, nullable: true }
@@ -1433,6 +2418,17 @@ components:
         deletedAt: { type: string, format: date-time, nullable: true }
         deletionFinalizesAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+        passwordManagementAllowed:
+          type: boolean
+          description: True only for accounts whose immutable Reals auth origin is EMAIL_PASSWORD.
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
     RegisterPushTokenRequest:
       type: object
       required: [token, platform]
@@ -1449,6 +2445,94 @@ components:
       required: [registered]
       properties:
         registered: { type: boolean, example: true }
+    NotificationPreferenceRequest:
+      type: object
+      required: [activityEnabled, remindersEnabled, availabilityEnabled]
+      properties:
+        activityEnabled:
+          type: boolean
+          nullable: false
+          description: Enables configurable activity notifications.
+          example: true
+        remindersEnabled:
+          type: boolean
+          nullable: false
+          description: Enables configurable reminder notifications.
+          example: false
+        availabilityEnabled:
+          type: boolean
+          nullable: false
+          description: Enables availability notifications. Currently maps to MATCHMAKING_AVAILABLE for Visual Advancement Cap recovery.
+          example: true
+    NotificationPreferenceResponse:
+      type: object
+      required: [activityEnabled, remindersEnabled, availabilityEnabled]
+      properties:
+        activityEnabled:
+          type: boolean
+          example: true
+        remindersEnabled:
+          type: boolean
+          example: false
+        availabilityEnabled:
+          type: boolean
+          example: true
+    CurrentLegalDocumentsResponse:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrentLegalDocumentResponse'
+    CurrentLegalDocumentResponse:
+      type: object
+      required: [type, version, url, requiredAction]
+      properties:
+        type: { $ref: '#/components/schemas/LegalDocumentType' }
+        version: { type: string }
+        url: { type: string }
+        requiredAction: { $ref: '#/components/schemas/LegalDocumentAction' }
+    LegalStatusResponse:
+      type: object
+      required: [requirementsSatisfied, documents]
+      properties:
+        requirementsSatisfied:
+          type: boolean
+          description: True only when every current configured document version has the configured required action recorded.
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/LegalDocumentStatusResponse'
+    LegalDocumentStatusResponse:
+      type: object
+      required: [type, version, requiredAction, recordedAction, actedAt, satisfied]
+      properties:
+        type: { $ref: '#/components/schemas/LegalDocumentType' }
+        version: { type: string }
+        requiredAction: { $ref: '#/components/schemas/LegalDocumentAction' }
+        recordedAction:
+          allOf:
+            - $ref: '#/components/schemas/LegalDocumentAction'
+          nullable: true
+        actedAt: { type: string, format: date-time, nullable: true }
+        satisfied: { type: boolean }
+    RecordLegalDocumentActionRequest:
+      type: object
+      required: [documentType, documentVersion, action]
+      properties:
+        documentType: { $ref: '#/components/schemas/LegalDocumentType' }
+        documentVersion: { type: string }
+        action: { $ref: '#/components/schemas/LegalDocumentAction' }
+    LegalDocumentActionResponse:
+      type: object
+      required: [id, documentType, documentVersion, action, actedAt]
+      properties:
+        id: { type: string, format: uuid }
+        documentType: { $ref: '#/components/schemas/LegalDocumentType' }
+        documentVersion: { type: string }
+        action: { $ref: '#/components/schemas/LegalDocumentAction' }
+        actedAt: { type: string, format: date-time }
     HomeResponse:
       type: object
       required: [matchmaking, activeInteractionsSummary, pendingActions, nextSteps, passiveNotices]
@@ -1479,6 +2563,10 @@ components:
       properties:
         version: { type: integer, format: int64, minimum: 0 }
         dirty: { type: boolean }
+        nextRefreshAt:
+          type: string
+          format: date-time
+          nullable: true
         serverTime: { type: string, format: date-time }
     HomePendingStateResponse:
       type: object
@@ -1500,20 +2588,26 @@ components:
         serverTime: { type: string, format: date-time }
     HomeActiveInteractionsSummaryResponse:
       type: object
-      required: [activeInitialCount, activeConnectionCount, pendingSchedulingConnectionCount, actionableConnectionCount]
+      required: [activeInitialCount, activeConnectionCount, hasPendingSchedulingConnection, actionableConnectionCount]
       properties:
-        activeInitialCount: { type: integer, format: int32, minimum: 0 }
+        activeInitialCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Visible pending initial-stage actions for the current user. It does not count an interaction while the current user is only waiting for the other person's hidden decision.
         activeConnectionCount:
           type: integer
           format: int32
           minimum: 0
-          description: Visible/revealed active connections, excluding SCHEDULING_PENDING.
-        pendingSchedulingConnectionCount:
+          description: Visible active/actionable connection next steps. Recent SECOND_CHAT_EXPIRED history is returned in nextSteps[] but is not counted here.
+        hasPendingSchedulingConnection:
+          type: boolean
+          description: True when at least one non-dismissed, non-blocked connection is internally waiting for scheduling preparation. This is intentionally boolean to avoid exposing exact internal counts.
+        actionableConnectionCount:
           type: integer
           format: int32
           minimum: 0
-          description: Unrevealed pending scheduling coordinations created after mutual visual approval. These still occupy internal capacity/locks and are surfaced only as SCHEDULING_PREPARING passive notices until scheduling is activated.
-        actionableConnectionCount: { type: integer, format: int32, minimum: 0 }
+          description: Visible active/actionable connection next steps. Recent SECOND_CHAT_EXPIRED history is returned in nextSteps[] but is not counted here.
     HomeMatchmakingResponse:
       type: object
       required: [inQueue, canSearch]
@@ -1530,8 +2624,13 @@ components:
       properties:
         code:
           type: string
-          enum: [PROFILE_REQUIRED, PROFILE_NOT_ACTIVE, ACTIVE_MATCH_LIMIT_REACHED, ACTIVE_CONNECTION_LIMIT_REACHED, ACTIVE_PENALTY]
+          enum: [PROFILE_REQUIRED, PROFILE_NOT_ACTIVE, ACTIVE_MATCH_LIMIT_REACHED, ACTIVE_CONNECTION_LIMIT_REACHED, ACTIVE_PENALTY, VISUAL_ADVANCEMENT_LIMIT_REACHED]
         message: { type: string }
+        nextAvailableAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative backend timestamp when search may be attempted again for rolling-window blocked reasons. Populated for VISUAL_ADVANCEMENT_LIMIT_REACHED and null or absent for existing reasons without a natural retry time.
     HomePendingActionResponse:
       type: object
       required: [type, matchId]
@@ -1539,6 +2638,16 @@ components:
         type: { $ref: '#/components/schemas/HomePendingActionType' }
         matchId: { type: string, format: uuid }
         chatId: { type: string, format: uuid, nullable: true }
+        visualStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative start of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative expiration of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
         partner:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
@@ -1550,6 +2659,16 @@ components:
         type: { $ref: '#/components/schemas/HomePendingActionType' }
         matchId: { type: string, format: uuid }
         chatId: { type: string, format: uuid, nullable: true }
+        visualStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative start of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
+        visualExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative expiration of the currently actionable visual-review phase; null for pending actions that are not VISUAL_REVIEW.
     HomeNextStepResponse:
       type: object
       required: [type, connectionId, matchId]
@@ -1565,6 +2684,16 @@ components:
           allOf:
             - $ref: '#/components/schemas/HomeChatResponse'
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the current ScheduleNegotiation.createdAt used as the scheduling progress start; null for non-scheduling next steps.
+        schedulingExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the parent Connection.schedulingExpiresAt used as the scheduling progress end; null for non-scheduling next steps.
     HomeNextStepLiteResponse:
       type: object
       required: [type, connectionId, matchId]
@@ -1576,11 +2705,26 @@ components:
           allOf:
             - $ref: '#/components/schemas/HomePendingSecondChatLiteResponse'
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the current ScheduleNegotiation.createdAt used as the scheduling progress start; null for non-scheduling next steps.
+        schedulingExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: For SCHEDULING next steps, the parent Connection.schedulingExpiresAt used as the scheduling progress end; null for non-scheduling next steps.
     HomePendingSecondChatLiteResponse:
       type: object
       properties:
         chatId: { type: string, format: uuid, nullable: true }
         availableAt: { type: string, format: date-time, nullable: true }
+        entryClosesAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative current-user second-chat entry cutoff. A participant who has not joined may enter only while serverTime is before this timestamp.
         expiresAt: { type: string, format: date-time, nullable: true }
         readOnlyUntil: { type: string, format: date-time, nullable: true }
         durationMinutes:
@@ -1588,16 +2732,19 @@ components:
           format: int64
           minimum: 1
           nullable: true
+        myAttendanceStatus:
+          allOf:
+            - $ref: '#/components/schemas/SecondChatAttendanceStatus'
+          nullable: true
     HomePassiveNoticeResponse:
       type: object
-      required: [type, count]
+      required: [type]
       properties:
         type: { $ref: '#/components/schemas/HomePassiveNoticeType' }
-        count: { type: integer, format: int32, minimum: 1 }
     HomeChatResponse:
       type: object
-      description: Second-chat navigation metadata. For SECOND_CHAT_SCHEDULED, chatId/chatType/chatStatus may be null because the chat row is created when the entry window opens. availableAt is the agreed second-chat start time; clients may enable entry 10 minutes before it. For SECOND_CHAT_READ_ONLY, chatStatus is EXPIRED and readOnlyUntil defines the end of read-only visibility.
-      required: [availableAt, expiresAt, durationMinutes]
+      description: Second-chat navigation metadata. For SECOND_CHAT_SCHEDULED, chatId/chatType/chatStatus may be null because the chat row is created when the entry window opens. availableAt is the agreed second-chat start time; clients may enable entry at or after it. entryClosesAt is the authoritative current-user entry cutoff. SECOND_CHAT_EXPIRED means the current user did not join before entryClosesAt and the item is retained only as recent history. For SECOND_CHAT_READ_ONLY, an actual terminal chat exists and readOnlyUntil defines the end of read-only visibility.
+      required: [availableAt, entryClosesAt, expiresAt, durationMinutes, myAttendanceStatus]
       properties:
         chatId: { type: string, format: uuid, nullable: true }
         chatType:
@@ -1612,6 +2759,10 @@ components:
           type: string
           format: date-time
           description: Agreed second-chat start time in ISO-8601 format. GET /api/connections/{connectionId}/chat can materialize the chat at or after this time.
+        entryClosesAt:
+          type: string
+          format: date-time
+          description: Authoritative current-user second-chat entry cutoff. A participant who has not joined may enter only while serverTime is before this timestamp.
         expiresAt:
           type: string
           format: date-time
@@ -1626,6 +2777,8 @@ components:
           format: int64
           minimum: 1
           description: Configured maximum second-chat duration in minutes.
+        myAttendanceStatus:
+          $ref: '#/components/schemas/SecondChatAttendanceStatus'
         partner:
           allOf:
             - $ref: '#/components/schemas/PartnerSummaryResponse'
@@ -1639,36 +2792,66 @@ components:
         displayName: { type: string }
     CreateProfileRequest:
       type: object
-      required: [displayName, birthDate, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [displayName, birthDate, gender, lookingForGenders, intention, city, countryCode, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$' }
         birthDate: { type: string, format: date }
         gender: { $ref: '#/components/schemas/Gender' }
-        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$' }
-        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
+          description: ISO 3166-1 alpha-2 country code. Input is trimmed and normalized to uppercase; display names are not accepted. Clients should obtain allowed values from `GET /api/reference/countries`.
+        bio: { type: string, maxLength: 1000, pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$', nullable: true }
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
     UpdateProfileRequest:
       type: object
       properties:
-        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        bio: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        city: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        country: { type: string, minLength: 1, maxLength: 100, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
-        intention:
-          allOf: [{ $ref: '#/components/schemas/Intention' }]
+        displayName: { type: string, minLength: 2, maxLength: 100, pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$', nullable: true }
+        bio: { type: string, maxLength: 1000, pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$', nullable: true }
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           nullable: true
-        lookingForGender:
-          allOf: [{ $ref: '#/components/schemas/LookingForGender' }]
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029<>]*$'
           nullable: true
+          description: Optional ISO 3166-1 alpha-2 country code. Null preserves the existing country code; non-null input is trimmed, uppercased and validated.
     UpdateMatchFiltersRequest:
       type: object
-      required: [preferredMinAge, preferredMaxAge, maxDistanceKm]
+      required: [intention, lookingForGenders, preferredMinAge, preferredMaxAge, maxDistanceKm]
       properties:
+        intention: { $ref: '#/components/schemas/Intention' }
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         preferredMinAge: { type: integer, minimum: 18, maximum: 99 }
         preferredMaxAge: { type: integer, minimum: 18, maximum: 99 }
         maxDistanceKm: { type: integer, minimum: 1, maximum: 1000 }
@@ -1679,6 +2862,7 @@ components:
         file:
           type: string
           format: binary
+          description: Actual JPEG or PNG bytes only. WebP and other formats are rejected server-side.
         position: { type: integer, minimum: 1, maximum: 9 }
     ReplacePhotoFileRequest:
       type: object
@@ -1687,9 +2871,16 @@ components:
         file:
           type: string
           format: binary
+          description: Actual JPEG or PNG bytes only. WebP and other formats are rejected server-side.
     ReorderProfilePhotosRequest:
       type: object
       required: [placements]
+      example:
+        placements:
+          - photoId: 11111111-1111-1111-1111-111111111111
+            position: 1
+          - photoId: 22222222-2222-2222-2222-222222222222
+            position: 4
       properties:
         placements:
           type: array
@@ -1710,26 +2901,211 @@ components:
           description: Final user-facing position. Holes across the set are allowed.
     ProfileResponse:
       type: object
-      required: [id, userId, displayName, birthDate, age, identityVerified, identityVerificationStatus, gender, lookingForGender, intention, city, country, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
+      required: [id, userId, displayName, birthDate, age, authenticityVerified, authenticityVerificationStatus, gender, lookingForGenders, intention, city, countryCode, preferredMinAge, preferredMaxAge, maxDistanceKm, status, photoCount, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         displayName: { type: string }
         birthDate: { type: string, format: date }
         age: { type: integer }
-        identityVerified: { type: boolean }
-        identityVerificationStatus: { $ref: '#/components/schemas/IdentityVerificationStatus' }
+        authenticityVerified: { type: boolean }
+        authenticityVerificationStatus: { $ref: '#/components/schemas/ProfileAuthenticityVerificationStatus' }
         gender: { $ref: '#/components/schemas/Gender' }
-        lookingForGender: { $ref: '#/components/schemas/LookingForGender' }
+        lookingForGenders:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Gender'
         intention: { $ref: '#/components/schemas/Intention' }
-        city: { type: string }
-        country: { type: string }
+        city:
+          type: string
+          description: Free-text city value.
+        countryCode:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Canonical uppercase ISO 3166-1 alpha-2 country code.
         bio: { type: string, nullable: true }
         preferredMinAge: { type: integer }
         preferredMaxAge: { type: integer }
         maxDistanceKm: { type: integer }
         status: { $ref: '#/components/schemas/ProfileStatus' }
         photoCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CountryReferenceResponse:
+      type: object
+      required: [code, displayName]
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Canonical uppercase ISO 3166-1 alpha-2 country code to submit as profile `countryCode`.
+        displayName:
+          type: string
+          description: Spanish country display name from the Java runtime locale data.
+    AffinityQuestionCatalogResponse:
+      type: object
+      required: [catalogVersion, categories, questions]
+      properties:
+        catalogVersion:
+          type: string
+          description: Server-authoritative affinity catalog version.
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityQuestionCategoryResponse' }
+        questions:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityQuestionResponse' }
+    AffinityQuestionCategoryResponse:
+      type: object
+      required: [id, title, displayOrder]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        displayOrder: { type: integer }
+    AffinityQuestionResponse:
+      type: object
+      required: [id, semanticVersion, contentVersion, categoryId, primaryTopic, topicTags, answerType, prompt, options]
+      properties:
+        id: { type: string }
+        semanticVersion:
+          type: integer
+          description: Compatibility semantics version. Stored answers with older semantic versions are not evaluated under newer semantics.
+        contentVersion:
+          type: integer
+          description: Wording-only version. Content-only changes do not invalidate stored answers.
+        categoryId: { type: string }
+        primaryTopic: { type: string }
+        topicTags:
+          type: array
+          items: { type: string }
+        answerType: { $ref: '#/components/schemas/AffinityAnswerType' }
+        prompt: { type: string }
+        options:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityAnswerOptionResponse' }
+    AffinityAnswerOptionResponse:
+      type: object
+      required: [code, label, displayOrder]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        displayOrder: { type: integer }
+    PatchAffinityAnswersRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          maxItems: 100
+          description: Partial idempotent set/upsert list. Duplicate question ids are rejected.
+          items: { $ref: '#/components/schemas/PatchAffinityAnswerRequest' }
+    PatchAffinityAnswerRequest:
+      type: object
+      required: [questionId, answerCode]
+      properties:
+        questionId: { type: string, maxLength: 96 }
+        answerCode: { type: string, maxLength: 96 }
+    AffinityAnswersResponse:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items: { $ref: '#/components/schemas/AffinityAnswerResponse' }
+    AffinityAnswerResponse:
+      type: object
+      required: [questionId, questionSemanticVersion, answerCode, createdAt, updatedAt]
+      properties:
+        questionId: { type: string }
+        questionSemanticVersion: { type: integer }
+        answerCode: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProfileQuestionCatalogResponse:
+      type: object
+      required: [catalogVersion, questions]
+      properties:
+        catalogVersion:
+          type: string
+          description: Server-authoritative profile-question catalog version.
+        questions:
+          type: array
+          description: Active profile questions in catalog order.
+          items: { $ref: '#/components/schemas/ProfileQuestionResponse' }
+    ProfileQuestionResponse:
+      type: object
+      required: [id, semanticVersion, contentVersion, prompt, displayOrder]
+      properties:
+        id:
+          type: string
+          maxLength: 64
+          pattern: '^[A-Z0-9_]+$'
+        semanticVersion:
+          type: integer
+          minimum: 1
+          description: Semantics version. Stored answers with older semantic versions are private stale answers and cannot be selected or exposed publicly.
+        contentVersion:
+          type: integer
+          minimum: 1
+          description: Wording-only version. Content-only changes do not invalidate answers.
+        prompt:
+          type: string
+          description: Single-line Spanish prompt.
+        displayOrder:
+          type: integer
+          minimum: 1
+    UpsertProfileQuestionAnswerRequest:
+      type: object
+      required: [answer]
+      properties:
+        answer:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Single-line plain-text answer after server-side trimming. Blank answers, markup and control characters are rejected.
+    UpdateProfileQuestionSelectionsRequest:
+      type: object
+      required: [questionIds]
+      properties:
+        questionIds:
+          type: array
+          maxItems: 3
+          description: Full ordered public selection replacement. Empty clears the public selection without deleting saved answers.
+          items:
+            type: string
+            maxLength: 64
+            pattern: '^[A-Z0-9_]+$'
+    ProfileQuestionAnswersResponse:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          description: All private saved answers for the current user, including unselected and stale answers.
+          items: { $ref: '#/components/schemas/ProfileQuestionAnswerResponse' }
+    ProfileQuestionAnswerResponse:
+      type: object
+      required: [questionId, questionSemanticVersion, answer, current, createdAt, updatedAt]
+      properties:
+        questionId: { type: string }
+        questionSemanticVersion: { type: integer }
+        answer: { type: string, maxLength: 160 }
+        selectedPosition:
+          type: integer
+          minimum: 1
+          maximum: 3
+          nullable: true
+        current:
+          type: boolean
+          description: True only when the question exists, is active and the stored semantic version equals the current catalog semantic version.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     PhotoResponse:
@@ -1745,10 +3121,10 @@ components:
         isFullBody: { type: boolean }
         validationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoValidationStatus' }]
-          description: For multipart MVP uploads, VALIDATED means technical upload validation passed and does not mean real moderation passed.
+          description: Technical and semantic photo-validation status. Outside prod, provider none is used even if sightengine is configured, and the MVP shortcut may return VALIDATED after technical validation. In prod with provider none, technical validation alone returns PENDING and does not establish person/full-body semantics. With provider sightengine in prod, real face presence is used only as an MVP isPersonPhoto signal; at least one real face validates person-photo semantics, artificial faces do not count, and successful analysis still leaves isFullBody=false.
         moderationStatus:
           allOf: [{ $ref: '#/components/schemas/PhotoModerationStatus' }]
-          description: Content moderation status. With provider none, APPROVED is a permissive MVP result and does not represent external safety review.
+          description: Content moderation status. With provider none outside prod, including when sightengine is configured outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine in dev or prod, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Sexual suggestive includes concerning suggestive_classes such as lingerie and visibly_undressed, excludes ordinary swimwear-like classes such as bikini, and defaults to a 0.50 review threshold with no reject threshold. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
     VisualProfileResponse:
       type: object
       required:
@@ -1756,6 +3132,8 @@ components:
         - displayName
         - age
         - photos
+        - profileQuestions
+        - affinityIndicators
         - myPersonalMessageSubmitted
         - partnerPersonalMessageSubmitted
         - partnerPersonalMessageRead
@@ -1767,7 +3145,17 @@ components:
         bio: { type: string, nullable: true }
         photos:
           type: array
+          description: Partner profile photos visible to this external match context. Includes only photos whose moderationStatus is APPROVED; excluded NEEDS_REVIEW or REJECTED photos do not have read URLs generated for this response.
           items: { $ref: '#/components/schemas/PhotoResponse' }
+        profileQuestions:
+          type: array
+          description: Live selected current public profile-question answers loaded only after visual-profile access succeeds. Always present, maximum three, ordered by contiguous response position. Does not include stale, inactive, missing or unselected answers.
+          maxItems: 3
+          items: { $ref: '#/components/schemas/PublicProfileQuestionResponse' }
+        affinityIndicators:
+          type: array
+          description: Privacy-safe positive shared affinity category indicators snapshotted when the first chat was initialized. Empty when there is no eligible evidence. Items expose only category id and title; exact answers, questions, scores, percentages and conversation metadata are never included.
+          items: { $ref: '#/components/schemas/VisualAffinityIndicatorResponse' }
         myPersonalMessageSubmitted:
           type: boolean
           description: True when the authenticated user has already submitted their visual personal message for this match.
@@ -1779,12 +3167,43 @@ components:
           description: True when no partner personal message exists, or when the partner message exists and the authenticated user has fetched/read it.
         decisionRequiresPartnerPersonalMessageRead:
           type: boolean
-          description: True when the partner has submitted a personal message and the authenticated user must fetch/read it before making a visual decision.
+          description: Temporarily retained for backward-compatible response shape. Always false; partner personal-message reads are no longer a visual-decision prerequisite.
         visualExpiresAt:
           type: string
           format: date-time
           nullable: true
           description: Visual review deadline used by clients for advisory countdowns; backend remains the source of truth.
+    PublicProfileQuestionResponse:
+      type: object
+      required: [questionId, prompt, answer, position]
+      additionalProperties: false
+      properties:
+        questionId:
+          type: string
+          maxLength: 64
+        prompt:
+          type: string
+          description: Current catalog prompt for the selected question.
+        answer:
+          type: string
+          maxLength: 160
+        position:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: Contiguous public response position after filtering invalid stale selections.
+    VisualAffinityIndicatorResponse:
+      type: object
+      required:
+        - categoryId
+        - title
+      properties:
+        categoryId:
+          type: string
+          description: Stable affinity category id.
+        title:
+          type: string
+          description: Spanish category title snapshotted from the catalog when the first chat was initialized.
     EnqueueMatchmakingRequest:
       type: object
       required: [latitude, longitude]
@@ -1827,7 +3246,7 @@ components:
       type: object
       required: [message]
       properties:
-        message: { type: string, minLength: 1, maxLength: 280, pattern: '^[^\p{Cntrl}<>]*$' }
+        message: { type: string, minLength: 1, maxLength: 280, pattern: '^[^\\p{Cntrl}<>]*$' }
     PartnerMessageResponse:
       type: object
       required: [message]
@@ -1845,39 +3264,211 @@ components:
         startedAt: { type: string, format: date-time }
         availableAt: { type: string, format: date-time, nullable: true }
         activatedAt: { type: string, format: date-time, nullable: true }
+        conversationStartedAt: { type: string, format: date-time, nullable: true }
         timeoutAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time, nullable: true }
         readOnlyUntil: { type: string, format: date-time, nullable: true }
         lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessageSenderId: { type: string, format: uuid, nullable: true }
+        audioPolicy:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+          nullable: true
         inactivityExpiresAt:
           type: string
           format: date-time
           nullable: true
-          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply.
+          description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
         - type: object
-          required: [partner, myDecision, partnerDecision]
+          required: [partner, myDecision, partnerDecision, serverTime]
           properties:
             partner: { $ref: '#/components/schemas/PartnerSummaryResponse' }
             myDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
             partnerDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
+            serverTime:
+              type: string
+              format: date-time
+              description: Backend timestamp captured while building this first-chat response.
+            guidance:
+              allOf:
+                - $ref: '#/components/schemas/FirstChatGuidanceResponse'
+              nullable: true
+              description: Nullable for legacy first-chat rows created before guidance existed. New first chats initialize guidance.
+            audioPolicy:
+              allOf:
+                - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+              nullable: true
+    ChatAudioPolicyResponse:
+      type: object
+      required: [enabled, maxDurationMillis, maxFileSizeBytes]
+      properties:
+        enabled: { type: boolean }
+        unavailableReason:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioUnavailableReason'
+          nullable: true
+        enabledAt: { type: string, format: date-time, nullable: true }
+        maxDurationMillis: { type: integer, format: int64, example: 60000 }
+        maxFileSizeBytes: { type: integer, format: int64, example: 2097152 }
+        remainingMessages:
+          type: integer
+          nullable: true
+          description: First-chat remaining per-user audio messages; null means unlimited second-chat audio.
+    FirstChatGuidanceQuestionResponse:
+      type: object
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          description: Stable source/catalog question id.
+        instanceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Stable `conversation_prompt_snapshots.id` for this chat question instance. New first chats return a real UUID; legacy rows without snapshots may return null.
+        text: { type: string }
+    FirstChatGuidanceResponse:
+      type: object
+      required:
+        - question
+        - questionOrdinal
+        - maxQuestions
+        - requiredCharacters
+        - requiredParticipationScore
+        - directQuestionReplyMultiplier
+        - canRequestNext
+        - myNextRequested
+        - completed
+      properties:
+        question:
+          $ref: '#/components/schemas/FirstChatGuidanceQuestionResponse'
+        questionOrdinal:
+          type: integer
+          minimum: 1
+          maximum: 3
+        maxQuestions:
+          type: integer
+          example: 3
+        requiredCharacters:
+          type: integer
+          example: 60
+          description: Legacy compatibility field equal to the ordinary-character count needed to satisfy `requiredParticipationScore`.
+        requiredParticipationScore:
+          type: integer
+          example: 60
+        directQuestionReplyMultiplier:
+          type: integer
+          example: 2
+        progressionAction:
+          allOf:
+            - $ref: '#/components/schemas/FirstChatGuidanceProgressionAction'
+          nullable: true
+          description: Current action the user can request after reaching score; null when guidance is completed.
+        canRequestNext:
+          type: boolean
+          description: Eligibility for the authenticated user only.
+        myNextRequested:
+          type: boolean
+          description: Whether the authenticated user has requested continuation for the current question.
+        completed:
+          type: boolean
+          description: True only after the terminal guidance completion state has been persisted (`completedAt != null`). The final question remains active and incomplete until both participants reach score and request `COMPLETE`.
     SendMessageRequest:
       type: object
       required: [content]
       properties:
-        content: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        clientMessageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Client-generated idempotency key. Optional for legacy no-reply TEXT sends; required when `replyTo` is present.
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          pattern: '^[^\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F<>]*$'
+          description: Plain-text chat content. Line breaks are allowed and normalized to LF by the backend.
+        replyTo:
+          allOf:
+            - $ref: '#/components/schemas/ChatReplyTargetRequest'
+          nullable: true
+          description: Optional shallow quoted-reply target. Requires `clientMessageId`.
+    ChatReplyTargetRequest:
+      type: object
+      required: [type, targetId]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatReplyTargetType'
+        targetId:
+          type: string
+          format: uuid
+    PutMessageReactionRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatMessageReactionType'
     ChatMessageResponse:
       type: object
-      required: [id, chatSessionId, senderId, content, sentAt]
+      required: [id, chatSessionId, senderId, messageType, sentAt]
       properties:
         id: { type: string, format: uuid }
         chatSessionId: { type: string, format: uuid }
         senderId: { type: string, format: uuid }
-        content: { type: string }
+        clientMessageId: { type: string, format: uuid, nullable: true }
+        messageType: { $ref: '#/components/schemas/ChatMessageType' }
+        content: { type: string, nullable: true }
+        audio:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageAudioResponse'
+          nullable: true
+        reactionType:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageReactionType'
+          nullable: true
+        replyTo:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageReplyResponse'
+          nullable: true
+          description: Server-derived shallow preview of the direct reply target. Never contains nested reply metadata or target reaction metadata.
         sentAt: { type: string, format: date-time }
+    ChatMessageReplyResponse:
+      type: object
+      required: [type, targetId]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChatReplyTargetType'
+        targetId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Present for MESSAGE targets, null for GUIDANCE_QUESTION.
+        messageType:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageType'
+          nullable: true
+          description: Present for MESSAGE targets, null for GUIDANCE_QUESTION.
+        previewText:
+          type: string
+          nullable: true
+          description: TEXT target content or immutable guidance prompt text. Null for AUDIO targets.
+    ChatMessageAudioResponse:
+      type: object
+      required: [url, durationMillis, contentType, sizeBytes]
+      properties:
+        url:
+          type: string
+          description: Fresh backend-generated read URL. Storage bucket and object key are never exposed.
+        durationMillis: { type: integer, format: int64, maximum: 60000 }
+        contentType: { type: string, example: audio/mp4 }
+        sizeBytes: { type: integer, format: int64, maximum: 2097152 }
     ChatMessagesResponse:
       type: object
       required: [messages, hasMore, serverTime]
@@ -1886,7 +3477,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChatMessageResponse'
-        hasMore: { type: boolean }
+        hasMore:
+          type: boolean
+          description: True when an incremental request has additional messages beyond the returned page.
         serverTime: { type: string, format: date-time }
     ChatExitRequestCreateRequest:
       type: object
@@ -1895,7 +3488,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$', nullable: true }
     ChatCancellationRequest:
       type: object
       properties:
@@ -1903,7 +3496,7 @@ components:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: NO_LONGER_INTERESTED
           nullable: true
-        details: { type: string, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$', nullable: true }
+        details: { type: string, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$', nullable: true }
     ChatSafetyCancellationRequest:
       type: object
       required: [reason, details]
@@ -1911,7 +3504,11 @@ components:
         reason:
           allOf: [{ $ref: '#/components/schemas/ChatExitReason' }]
           default: INAPPROPRIATE_BEHAVIOR
-        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
+        blockUser:
+          type: boolean
+          default: false
+          description: When true, also creates or reuses a permanent directional user block from reporter to reported with source SAFETY_REPORT. Omitted or false only creates the report and safety-report containment.
     CreateSafetyReportRequest:
       type: object
       required: [reportedUserId, contextType, reason, details]
@@ -1923,7 +3520,11 @@ components:
         connectionId: { type: string, format: uuid, nullable: true }
         profilePhotoId: { type: string, format: uuid, nullable: true }
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
-        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        details: { type: string, minLength: 1, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
+        blockUser:
+          type: boolean
+          default: false
+          description: When true, also creates or reuses a permanent directional user block from reporter to reported with source SAFETY_REPORT. Omitted or false only creates the report and safety-report containment.
     SafetyReportResponse:
       type: object
       required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, status, createdAt]
@@ -1974,9 +3575,43 @@ components:
         activeConnectionLocks: { type: integer, format: int64, minimum: 0 }
         oldestQueueEntryEnteredAt: { type: string, format: date-time, nullable: true }
         oldestActiveLockCreatedAt: { type: string, format: date-time, nullable: true }
+    AdminProfilePhotoModerationReviewResponse:
+      type: object
+      required: [photoId, profileId, userId, displayName, position, readUrl, photoVersion, validationStatus, moderationStatus, isPersonPhoto, isFullBody, createdAt]
+      properties:
+        photoId: { type: string, format: uuid }
+        profileId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        position: { type: integer }
+        readUrl:
+          type: string
+          description: Current backend-generated photo read URL. Storage bucket and key are not exposed.
+        photoVersion:
+          type: integer
+          format: int64
+          description: Current photo row version. Submit this as expectedPhotoVersion when resolving the reviewed photo.
+        validationStatus:
+          $ref: '#/components/schemas/PhotoValidationStatus'
+        moderationStatus:
+          $ref: '#/components/schemas/PhotoModerationStatus'
+        isPersonPhoto: { type: boolean }
+        isFullBody: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    AdminPhotoModerationResolutionRequest:
+      type: object
+      required: [expectedPhotoVersion, decision]
+      properties:
+        expectedPhotoVersion:
+          type: integer
+          format: int64
+          description: Version from the queue item the admin reviewed. Stale versions are rejected with PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE.
+        decision:
+          $ref: '#/components/schemas/AdminPhotoModerationDecision'
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     AdminSafetyReportResponse:
       type: object
-      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, createdAt]
+      required: [id, reporterUserId, reportedUserId, matchId, contextType, reason, details, status, priorityReview, createdAt]
       properties:
         id: { type: string, format: uuid }
         reporterUserId: { type: string, format: uuid }
@@ -1989,6 +3624,7 @@ components:
         reason: { $ref: '#/components/schemas/SafetyReportReason' }
         details: { type: string }
         status: { $ref: '#/components/schemas/SafetyReportStatus' }
+        priorityReview: { type: boolean, readOnly: true }
         createdAt: { type: string, format: date-time }
         reviewedAt: { type: string, format: date-time, nullable: true }
         reviewedByUserId: { type: string, format: uuid, nullable: true }
@@ -2023,15 +3659,21 @@ components:
         status: { $ref: '#/components/schemas/UserStatus' }
     AdminChatMessageResponse:
       type: object
-      required: [id, chatSessionId, senderId, content, sentAt]
+      required: [id, chatSessionId, senderId, messageType, sentAt]
       properties:
         id: { type: string, format: uuid }
         chatSessionId: { type: string, format: uuid }
         senderId: { type: string, format: uuid }
-        content: { type: string }
+        messageType: { $ref: '#/components/schemas/ChatMessageType' }
+        content: { type: string, nullable: true }
+        audio:
+          allOf:
+            - $ref: '#/components/schemas/ChatMessageAudioResponse'
+          nullable: true
         sentAt: { type: string, format: date-time }
     AdminPenaltyResponse:
       type: object
+      description: Administrative account-ban row. Temporary rows are effective only while active and server time is before expiresAt; permanent rows are effective while active and have no expiresAt. Confirmed permanent-ban creation fully contains existing active engagements. Confirmed temporary-ban creation removes matchmaking queue entries and selectively contains engagements whose useful window is not viable after expiry plus the configured resume margin; expiry does not reopen closed history.
       required: [id, userId, reason, type, createdAt, active]
       properties:
         id: { type: string, format: uuid }
@@ -2046,7 +3688,7 @@ components:
     SafetyReportDismissRequest:
       type: object
       properties:
-        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     SafetyReportPenaltyRequest:
       type: object
       required: [type, reason]
@@ -2058,8 +3700,8 @@ components:
           minimum: 1
           nullable: true
           description: Required for TEMPORARY_BAN and rejected for PERMANENT_BAN.
-        reason: { type: string, minLength: 1, maxLength: 255, pattern: '^[^\p{Cntrl}<>]*$' }
-        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\p{Cntrl}<>]*$' }
+        reason: { type: string, minLength: 1, maxLength: 255, pattern: '^[^\\p{Cntrl}<>]*$' }
+        notes: { type: string, nullable: true, maxLength: 1000, pattern: '^[^\\p{Cntrl}<>]*$' }
     ConnectionResponse:
       type: object
       required: [id, matchId, userAId, userBId, state, schedulingExpiresAt, createdAt, updatedAt]
@@ -2079,15 +3721,103 @@ components:
         dismissed:
           type: boolean
           description: True when the current user's Home should hide this connection's second-chat next step.
+    SecondChatResolutionRequestResponse:
+      type: object
+      required: [id, type, requesterUserId, responderUserId, status, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/SecondChatResolutionRequestType' }
+        requesterUserId: { type: string, format: uuid }
+        responderUserId: { type: string, format: uuid }
+        referenceMessageId: { type: string, format: uuid, nullable: true }
+        status: { $ref: '#/components/schemas/SecondChatResolutionRequestStatus' }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    SecondChatCompletionDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+    SecondChatAttendanceResponse:
+      type: object
+      required:
+        - connectionId
+        - scheduledAt
+        - onTimeUntil
+        - entryClosesAt
+        - absoluteExpiresAt
+        - serverTime
+        - myAttendanceStatus
+        - partnerAttendanceStatus
+        - canJoin
+        - canClaimPartnerNoShow
+      properties:
+        connectionId: { type: string, format: uuid }
+        chatId: { type: string, format: uuid, nullable: true }
+        scheduledAt: { type: string, format: date-time, example: '2026-07-24T20:00:00Z' }
+        onTimeUntil: { type: string, format: date-time, example: '2026-07-24T20:10:00Z' }
+        entryClosesAt: { type: string, format: date-time, example: '2026-07-24T20:20:00Z' }
+        absoluteExpiresAt: { type: string, format: date-time, example: '2026-07-24T22:00:00Z' }
+        conversationStartedAt: { type: string, format: date-time, nullable: true }
+        serverTime: { type: string, format: date-time }
+        myAttendanceStatus: { $ref: '#/components/schemas/SecondChatAttendanceStatus' }
+        myJoinedAt: { type: string, format: date-time, nullable: true }
+        partnerAttendanceStatus: { $ref: '#/components/schemas/SecondChatAttendanceStatus' }
+        partnerJoinedAt: { type: string, format: date-time, nullable: true }
+        canJoin:
+          type: boolean
+          description: Server-authoritative eligibility for the authenticated user.
+        canClaimPartnerNoShow:
+          type: boolean
+          description: Server-authoritative eligibility for the authenticated user.
+        activeNoShowClaim:
+          allOf:
+            - $ref: '#/components/schemas/SecondChatResolutionRequestResponse'
+          nullable: true
+        activeResolutionRequest:
+          allOf:
+            - $ref: '#/components/schemas/SecondChatResolutionRequestResponse'
+          nullable: true
+        chatStatus: { $ref: '#/components/schemas/ChatStatus' }
+        endedReason: { type: string, nullable: true, example: SECOND_CHAT_MUTUAL_COMPLETION }
+        endedAt: { type: string, format: date-time, nullable: true }
+        readOnlyUntil: { type: string, format: date-time, nullable: true }
+        mutualCompletionEligibleAt: { type: string, format: date-time, nullable: true }
+        canRequestMutualCompletion: { type: boolean }
+        mutualCompletionCooldownUntil: { type: string, format: date-time, nullable: true }
+        inactivityClaimableAt: { type: string, format: date-time, nullable: true }
+        inactivityClosesAt: { type: string, format: date-time, nullable: true }
+        canClaimPartnerInactivity: { type: boolean }
+        mustRespondToPartner: { type: boolean }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessageSenderId: { type: string, format: uuid, nullable: true }
+        audioPolicy:
+          allOf:
+            - $ref: '#/components/schemas/ChatAudioPolicyResponse'
+          nullable: true
     AddProposalRequest:
       type: object
-      required: [proposedDateTimes]
+      required: [expectedRoundNumber, proposedDateTimes]
       properties:
+        expectedRoundNumber:
+          type: integer
+          minimum: 1
+          description: Current negotiation round observed by the client. Mutations with stale values return `SCHEDULING_ROUND_CHANGED`.
         proposedDateTimes:
           type: array
           minItems: 1
           maxItems: 3
           items: { type: string, format: date-time }
+    RejectPartnerProposalsRequest:
+      type: object
+      required: [expectedRoundNumber]
+      properties:
+        expectedRoundNumber:
+          type: integer
+          minimum: 1
+          description: Current negotiation round observed by the client. Mutations with stale values return `SCHEDULING_ROUND_CHANGED`.
     ScheduleProposalResponse:
       type: object
       required: [id, connectionId, userId, roundNumber, preferenceOrder, proposedDateTime, status, createdAt]
@@ -2114,24 +3844,59 @@ components:
         chatId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    SchedulingAvailabilityResponse:
+      type: object
+      required: [conflictWindowMinutes, unavailableWindows, serverTime]
+      properties:
+        conflictWindowMinutes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Configured symmetric inclusive window size around confirmed second-chat starts.
+        unavailableWindows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchedulingUnavailableWindowResponse'
+        serverTime:
+          type: string
+          format: date-time
+          description: Backend timestamp used to omit already-ended unavailable windows.
+    SchedulingUnavailableWindowResponse:
+      type: object
+      required: [startsAt, endsAt]
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+          description: Inclusive lower bound of the unavailable window.
+        endsAt:
+          type: string
+          format: date-time
+          description: Inclusive upper bound of the unavailable window.
     Gender:
       type: string
       enum: [MALE, FEMALE, NON_BINARY, OTHER]
-    LookingForGender:
-      type: string
-      enum: [MEN, WOMEN, EVERYONE, OTHER]
     Intention:
       type: string
       enum: [DATE, FRIENDSHIP, CASUAL]
     ProfileStatus:
       type: string
       enum: [DRAFT, ACTIVE, INACTIVE]
-    IdentityVerificationStatus:
+    ProfileAuthenticityVerificationStatus:
       type: string
-      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW]
+      enum: [NOT_STARTED, PENDING, VERIFIED, REJECTED, NEEDS_REVIEW, STALE]
+    AffinityAnswerType:
+      type: string
+      enum: [SINGLE_CHOICE, ORDINAL_SCALE]
     UserStatus:
       type: string
       enum: [ACTIVE, DELETED]
+    LegalDocumentType:
+      type: string
+      enum: [TERMS_OF_USE, PRIVACY_NOTICE, COMMUNITY_GUIDELINES]
+    LegalDocumentAction:
+      type: string
+      enum: [ACCEPTED, ACKNOWLEDGED]
     PhotoStorageProvider:
       type: string
       enum: [S3]
@@ -2141,6 +3906,9 @@ components:
     PhotoModerationStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, NEEDS_REVIEW]
+    AdminPhotoModerationDecision:
+      type: string
+      enum: [APPROVED, REJECTED]
     MatchState:
       type: string
       enum: [CHAT_ACTIVE, VISUAL_PHASE, VISUAL_APPROVED, CHAT_REJECTED, VISUAL_REJECTED, EXPIRED]
@@ -2156,15 +3924,39 @@ components:
     ChatType:
       type: string
       enum: [FIRST_CHAT, SECOND_CHAT]
+    ChatMessageType:
+      type: string
+      enum: [TEXT, AUDIO]
+    ChatMessageReactionType:
+      type: string
+      enum: [HEART]
+    ChatReplyTargetType:
+      type: string
+      enum: [MESSAGE, GUIDANCE_QUESTION]
+    FirstChatGuidanceProgressionAction:
+      type: string
+      enum: [NEXT_QUESTION, COMPLETE]
+    ChatAudioUnavailableReason:
+      type: string
+      enum: [FEATURE_DISABLED, CHAT_NOT_WRITABLE, GUIDANCE_NOT_AVAILABLE, GUIDANCE_REQUIRED, LIMIT_REACHED, WAITING_FOR_BOTH, WAITING_DELAY]
     ChatStatus:
       type: string
       enum: [AVAILABLE, ACTIVE, CANCELLED, EXPIRED, ABANDONED, CLOSED, FINISHED]
+    SecondChatAttendanceStatus:
+      type: string
+      enum: [PENDING, ON_TIME, LATE, NO_SHOW]
+    SecondChatResolutionRequestType:
+      type: string
+      enum: [PARTNER_NO_SHOW, MUTUAL_COMPLETION, PARTNER_INACTIVITY]
+    SecondChatResolutionRequestStatus:
+      type: string
+      enum: [PENDING, CANCELLED, COMPLETED, ACCEPTED, REJECTED, TIMED_OUT]
     HomePendingActionType:
       type: string
       enum: [FIRST_CHAT, VISUAL_REVIEW]
     HomeNextStepType:
       type: string
-      enum: [SCHEDULING, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT_READ_ONLY]
+      enum: [SCHEDULING, SECOND_CHAT_SCHEDULED, SECOND_CHAT_AVAILABLE, SECOND_CHAT_EXPIRED, SECOND_CHAT_READ_ONLY]
     HomePassiveNoticeType:
       type: string
       enum: [SCHEDULING_PREPARING]
@@ -2176,13 +3968,13 @@ components:
       enum: [PENDING, ACCEPTED, REJECTED, TIMED_OUT]
     ChatExitReason:
       type: string
-      enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+      enum: [NO_LONGER_INTERESTED, INAPPROPRIATE_BEHAVIOR, HARASSMENT, CHILD_SAFETY_CONCERN, OTHER]
     SafetyReportStatus:
       type: string
       enum: [PENDING, DISMISSED, CONFIRMED]
     SafetyReportReason:
       type: string
-      enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, OTHER]
+      enum: [INAPPROPRIATE_BEHAVIOR, HARASSMENT, CHILD_SAFETY_CONCERN, OTHER]
     SafetyReportContextType:
       type: string
       enum: [CHAT, VISUAL_PROFILE, PERSONAL_MESSAGE, PROFILE_PHOTO]

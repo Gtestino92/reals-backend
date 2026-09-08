@@ -1,0 +1,29 @@
+meta {
+  name: 42b User B Reject Partner Proposals Round 1 Opens Round 2
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{alternateConnectionSchedulingFailedId}}/negotiation/rejections
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 1
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body.status !== "PENDING" || body.roundNumber !== 2) {
+    throw new Error(`Expected PENDING round 2, got ${body.status} round ${body.roundNumber}`);
+  }
+}

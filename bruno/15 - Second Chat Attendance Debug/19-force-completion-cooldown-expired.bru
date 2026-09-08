@@ -1,0 +1,11 @@
+meta {
+  name: 19 Force Completion Cooldown Expired
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/second-chat-resolution-requests/{{completionRequestId}}/completion-cooldown-expired
+  body: none
+  auth: none
+}

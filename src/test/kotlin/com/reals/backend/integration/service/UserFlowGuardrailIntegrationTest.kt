@@ -3,7 +3,6 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.Intention
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.domain.StoredObject
@@ -24,6 +23,8 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
@@ -43,10 +44,10 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             displayName = "Draft",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.OTHER,
-            lookingForGender = LookingForGender.EVERYONE,
+            lookingForGenders = Gender.entries.toSet(),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             bio = null,
             preferredMinAge = 18,
             preferredMaxAge = 99,
@@ -62,12 +63,13 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `adding a photo to an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-add-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Add Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
@@ -81,7 +83,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         )
 
-        profileService.uploadPhoto(
+        profilePhotoService.uploadPhoto(
             profileId = profile.id,
             position = 5,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -92,16 +94,17 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `replacing a photo in an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-replace-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Replace Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
-        val photo = profileService.getPhotos(profile.id).first()
+        val photo = profilePhotoService.getPhotos(profile.id).first()
 
         stubStorageUpload(
             StoredObject(
@@ -112,7 +115,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         )
 
-        profileService.replacePhoto(
+        profilePhotoService.replacePhoto(
             profileId = profile.id,
             photoId = photo.id,
             contentType = MediaType.IMAGE_JPEG_VALUE,
@@ -123,18 +126,19 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `deleting a photo from an active profile moves it back to draft`() {
         val userId = createActiveProfile(
             email = "active-delete-photo-${UUID.randomUUID()}@example.com",
             displayName = "Active Delete Photo",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)
             ?: error("Profile was not created")
 
-        val photo = profileService.getPhotos(profile.id)[0]
-        profileService.deletePhoto(
+        val photo = profilePhotoService.getPhotos(profile.id)[0]
+        profilePhotoService.deletePhoto(
             profileId = profile.id,
             photoId = photo.id
         )
@@ -143,34 +147,35 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `user cannot delete a photo from another profile`() {
         val ownerUserId = createActiveProfile(
             email = "photo-owner-${UUID.randomUUID()}@example.com",
             displayName = "Photo Owner",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val otherUserId = createActiveProfile(
             email = "photo-other-${UUID.randomUUID()}@example.com",
             displayName = "Photo Other",
             gender = Gender.MALE,
-            lookingForGender = LookingForGender.WOMEN
+            lookingForGenders = setOf(Gender.FEMALE)
         )
         val ownerProfile = profileService.findByUserId(ownerUserId)
             ?: error("Owner profile was not created")
         val otherProfile = profileService.findByUserId(otherUserId)
             ?: error("Other profile was not created")
-        val ownerPhoto = profileService.getPhotos(ownerProfile.id).first()
+        val ownerPhoto = profilePhotoService.getPhotos(ownerProfile.id).first()
 
         val exception = assertThrows<DomainNotFoundException> {
-            profileService.deletePhoto(
+            profilePhotoService.deletePhoto(
                 profileId = otherProfile.id,
                 photoId = ownerPhoto.id
             )
         }
 
         assertEquals(DomainErrorCode.PROFILE_PHOTO_NOT_FOUND, exception.code)
-        assertTrue(profileService.getPhotos(ownerProfile.id).any { it.id == ownerPhoto.id })
+        assertTrue(profilePhotoService.getPhotos(ownerProfile.id).any { it.id == ownerPhoto.id })
     }
 
     @Test
@@ -181,10 +186,10 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             displayName = "Draft Queue",
             birthDate = LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             bio = null,
             preferredMinAge = 18,
             preferredMaxAge = 99,
@@ -253,22 +258,18 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
     }
 
     @Test
-    fun `visual decision requires reading partner personal message when present`() {
+    fun `visual decision does not require reading partner personal message when present`() {
         val setup = createMatchWithFirstChat()
 
         chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
         chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
 
         visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Me caiste bien")
 
-        val exception = assertThrows<DomainConflictException> {
-            visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
-        }
-        assertEquals(DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ, exception.code)
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
 
         assertEquals("Me caiste bien", visualReviewService.getPartnerMessage(setup.matchId, setup.userAId))
-
-        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
     }
 
     @Test
@@ -290,7 +291,8 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             schedulingService.addProposal(
                 connectionId = setup.connectionId,
                 userId = stranger.id,
-                proposedDateTime = futureHalfHourSlot()
+                proposedDateTime = futureHalfHourSlot(),
+                expectedRoundNumber = 1
             )
         }
     }
@@ -301,11 +303,13 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         val exception = assertThrows<DomainConflictException> {
             schedulingService.acceptProposal(
+                connectionId = setup.connectionId,
                 proposalId = proposal.id,
                 acceptorUserId = setup.userAId
             )
@@ -319,10 +323,12 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
         val proposal = schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userAId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         val negotiation = schedulingService.acceptProposal(
+            connectionId = setup.connectionId,
             proposalId = proposal.id,
             acceptorUserId = setup.userBId
         )
@@ -340,6 +346,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             schedulingService.addProposals(
                 connectionId = setup.connectionId,
                 userId = setup.userAId,
+                expectedRoundNumber = 1,
                 proposedDateTimes = listOf(
                     slot,
                     slot.plusHours(1),
@@ -353,6 +360,18 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
 
     private fun stubStorageUpload(storedObject: StoredObject) {
         Mockito.`when`(
+            storageService.profilePhotoBucket()
+        ).thenReturn(storedObject.bucket)
+
+        Mockito.`when`(
+            storageService.profilePhotoObjectKey(
+                anyUuid(),
+                anyUuid(),
+                eqString(MediaType.IMAGE_JPEG_VALUE)
+            )
+        ).thenReturn(storedObject.key)
+
+        Mockito.`when`(
             storageService.uploadProfilePhoto(
                 anyUuid(),
                 anyUuid(),
@@ -361,7 +380,7 @@ class UserFlowGuardrailIntegrationTest : BaseIT() {
             )
         ).thenReturn(storedObject)
 
-        Mockito.`when`(storageService.getReadUrl(storedObject.key))
+        Mockito.`when`(storageService.getReadUrl(storedObject.bucket, storedObject.key))
             .thenReturn("http://localhost:9000/test-bucket/${storedObject.key}")
     }
 

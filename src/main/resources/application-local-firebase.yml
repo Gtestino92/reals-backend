@@ -25,23 +25,18 @@ logging:
 
 storage:
   s3:
+    credentials-mode: ${STORAGE_S3_CREDENTIALS_MODE:${S3_CREDENTIALS_MODE:STATIC}}
     endpoint: ${STORAGE_S3_ENDPOINT:${S3_ENDPOINT:http://localhost:9000}}
     presigned-url-endpoint: ${STORAGE_S3_PRESIGNED_URL_ENDPOINT:${S3_PRESIGNED_URL_ENDPOINT:http://localhost:9000}}
     region: ${STORAGE_S3_REGION:${S3_REGION:us-east-1}}
-    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET:reals-profile-photos}}
+    bucket: ${STORAGE_S3_BUCKET:${S3_PROFILE_PHOTOS_BUCKET:reals-media}}
     access-key-id: ${STORAGE_S3_ACCESS_KEY_ID:${S3_ACCESS_KEY_ID:reals}}
     secret-access-key: ${STORAGE_S3_SECRET_ACCESS_KEY:${S3_SECRET_ACCESS_KEY:reals-password}}
-    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:http://localhost:9000/reals-profile-photos}}
+    session-token: ${STORAGE_S3_SESSION_TOKEN:${S3_SESSION_TOKEN:}}
+    public-base-url: ${STORAGE_S3_PUBLIC_BASE_URL:${S3_PUBLIC_BASE_URL:http://localhost:9000/reals-media}}
     path-style-access-enabled: ${STORAGE_S3_PATH_STYLE_ACCESS_ENABLED:${S3_PATH_STYLE_ACCESS_ENABLED:true}}
     signed-url-duration-minutes: ${STORAGE_S3_SIGNED_URL_DURATION_MINUTES:${S3_SIGNED_URL_DURATION_MINUTES:15}}
     read-url-mode: ${STORAGE_S3_READ_URL_MODE:${S3_READ_URL_MODE:PRESIGNED}}
-
-  profile-photos:
-    max-size-bytes: 5242880
-    allowed-content-types:
-      - image/jpeg
-      - image/png
-      - image/webp
 
 scheduler:
   enabled: false
@@ -54,6 +49,12 @@ scheduler:
     fixed-delay: 120000
   second-chat-reminder-job:
     fixed-delay: 60000
+  visual-review-reminder-job:
+    fixed-delay: 1800000
+  matchmaking-availability-notification-job:
+    fixed-delay: 300000
+    batch-size: 100
+    discovery-batch-size: 100
   match-expiration-job:
     fixed-delay: 300000
     max-chat-duration: PT20M
@@ -62,6 +63,8 @@ scheduler:
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
     fixed-delay: 600000
+  user-reliability-cleanup-job:
+    fixed-delay: 3600000
   visual-phase-expiration-job:
     fixed-delay: 300000
   scheduling-timeout-job:
@@ -76,16 +79,87 @@ notifications:
     # Comma-separated lead times in minutes. Keep multiple values in descending
     # order for readability, for example: 120,10. Values must be positive.
     minutes-before: 10
+  visual-review-reminder:
+    remaining-percentage: 40
 
 matchmaking:
   candidate-pair-limit: 5
   min-compatibility-score: 0.20
   early-accept-compatibility-score: 0.90
+  allow-active-pair-duplicates: ${MATCHMAKING_ALLOW_ACTIVE_PAIR_DUPLICATES:true}
+  exclude-previous-pairing: ${MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING:false}
+  previous-pairing-cooldown-days: 30
+  first-chat-expiration-cooldown-days: 7
+  first-chat-decision-mismatch-cooldown-days: 7
+  ranking:
+    mode: ${MATCHMAKING_RANKING_MODE:PROBABILISTIC_WEIGHTED}
+    compatibility-temperature: ${MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE:0.20}
+    reliability-similarity-scale: ${MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE:2.0}
+    waiting-relaxation-period-hours: ${MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS:72.0}
+    maximum-similarity-scale-multiplier: ${MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER:3.0}
+    affinity:
+      mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:SHADOW}
+      max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
+      full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
+      full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
+      category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
+
+engagement:
+  max-active-matches: ${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}
+  max-active-connections: ${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}
+  reliability-capacity:
+    match:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MIN:${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_MAX:${ENGAGEMENT_MAX_ACTIVE_MATCHES:100}}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_REWARD_SCALE:20}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_MATCH_PENALTY_SCALE:10}
+    connection:
+      min: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MIN:${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}}
+      max: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX:${ENGAGEMENT_MAX_ACTIVE_CONNECTIONS:100}}
+      reward-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE:30}
+      penalty-scale: ${ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE:10}
+
+user-reliability:
+  enabled: true
+  base-score: 100
+  full-weight-days: 10
+  half-weight-days: 10
+  expiration-days: 20
+  first-chat:
+    min-participation-messages-per-user: 2
+    min-participation-minutes: 5
+  second-chat:
+    on-time-window-minutes: ${CHAT_SECOND_CHAT_ON_TIME_WINDOW_MINUTES:10}
+    entry-window-minutes: ${CHAT_SECOND_CHAT_ENTRY_WINDOW_MINUTES:20}
+    no-show-claim-countdown-seconds: ${CHAT_SECOND_CHAT_NO_SHOW_CLAIM_COUNTDOWN_SECONDS:60}
+    mutual-completion:
+      minimum-conversation-minutes: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_MINIMUM_CONVERSATION_MINUTES:10}
+      request-countdown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUEST_COUNTDOWN_SECONDS:60}
+      requester-cooldown-seconds: ${CHAT_SECOND_CHAT_MUTUAL_COMPLETION_REQUESTER_COOLDOWN_SECONDS:60}
+    inactivity:
+      claimable-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIMABLE_AFTER_MINUTES:5}
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INACTIVITY_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+      claim-countdown-seconds: ${CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS:60}
+    initial-silence:
+      automatic-close-after-minutes: ${CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES:10}
+  matchmaking:
+    max-modifier: 0.05
 
 firebase:
   service-account-path: ./secrets/reals-backend-firebase-credentials-dev.json
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   service-account-base64: ${FIREBASE_SERVICE_ACCOUNT_BASE64:}
+
+local-dev:
+  firebase:
+    email-auto-verification-enabled: ${LOCAL_DEV_FIREBASE_EMAIL_AUTO_VERIFICATION_ENABLED:true}
+
+security:
+  app-check:
+    mode: ${FIREBASE_APP_CHECK_MODE:DISABLED}
+    project-number: ${FIREBASE_PROJECT_NUMBER:}
+    allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
+    jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
 
 profile:
   photos:
@@ -93,3 +167,16 @@ profile:
     required-count: 4
     min-person-photos: 1
     min-full-body-photos: 1
+
+chat:
+  audio:
+    enabled: true
+  first-chat:
+    approval:
+      min-elapsed-minutes: ${CHAT_FIRST_CHAT_APPROVAL_MIN_ELAPSED_MINUTES:0}
+      min-messages-per-user: ${CHAT_FIRST_CHAT_APPROVAL_MIN_MESSAGES_PER_USER:0}
+    guidance:
+      required-participation-score: 60
+      direct-question-reply-multiplier: 2
+    audio:
+      required-answered-guidance-questions: 1

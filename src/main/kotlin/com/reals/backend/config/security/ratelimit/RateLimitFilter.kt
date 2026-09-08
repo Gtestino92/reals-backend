@@ -1,25 +1,23 @@
 package com.reals.backend.config.security.ratelimit
 
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.core.Ordered
-import org.springframework.core.annotation.Order
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
-import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
-import java.util.HexFormat
 import java.util.concurrent.TimeUnit
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 class RateLimitFilter(
-    private val properties: RateLimitProperties
+    private val properties: RateLimitProperties,
+    private val ruleResolver: RateLimitRuleResolver,
+    private val environmentExposurePolicy: EnvironmentExposurePolicy
 ) : OncePerRequestFilter() {
 
     private val buckets = Caffeine.newBuilder()
@@ -35,8 +33,16 @@ class RateLimitFilter(
         val path = request.normalizedPath()
 
         return request.method.equals("OPTIONS", ignoreCase = true) ||
-            !path.startsWith("/api/") ||
-            path == "/api/ping"
+            !path.isPreAuthRateLimitedPath() ||
+            path == "/api/ping" ||
+            (
+                request.method.equals("GET", ignoreCase = true) &&
+                    path == "/api/legal/documents/current"
+            ) ||
+            (
+                environmentExposurePolicy.localDevEndpointsAllowed() &&
+                    path.startsWith("/api/local-dev/")
+            )
     }
 
     override fun doFilterInternal(
@@ -45,8 +51,8 @@ class RateLimitFilter(
         filterChain: FilterChain
     ) {
         val now = Instant.now()
-        val rule = resolveRule(request)
-        val bucketKey = "${rule.id}:${request.clientIdentity()}"
+        val rule = preAuthenticationRule(request)
+        val bucketKey = rateLimitKey(request, rule)
         val bucket = buckets.get(bucketKey) { _ ->
             TokenBucket(
                 capacity = rule.capacity,
@@ -72,81 +78,17 @@ class RateLimitFilter(
         }
     }
 
-    private fun resolveRule(request: HttpServletRequest): RateLimitRule {
-        val path = request.normalizedPath()
-        val method = request.method.uppercase()
+    internal fun rateLimitKey(request: HttpServletRequest, rule: RateLimitRule = preAuthenticationRule(request)): String =
+        "pre-auth:${rule.id}:ip:${request.remoteAddr ?: "unknown"}"
 
-        return when {
-            method == "POST" && path == "/api/me/provision" ->
-                RateLimitRule(
-                    id = "provision",
-                    capacity = properties.provisionCapacity,
-                    refillTokens = properties.provisionRefillTokens,
-                    refillPeriodSeconds = properties.provisionRefillPeriodSeconds
-                )
-
-            method == "POST" &&
-                path.startsWith("/api/chats/") &&
-                path.endsWith("/messages") ->
-                RateLimitRule(
-                    id = "messages",
-                    capacity = properties.messageCapacity,
-                    refillTokens = properties.messageRefillTokens,
-                    refillPeriodSeconds = properties.messageRefillPeriodSeconds
-                )
-
-            method in PROFILE_PHOTO_MUTATION_METHODS &&
-                path.startsWith("/api/me/profile/photos") ->
-                RateLimitRule(
-                    id = "profile-photos",
-                    capacity = properties.profilePhotoCapacity,
-                    refillTokens = properties.profilePhotoRefillTokens,
-                    refillPeriodSeconds = properties.profilePhotoRefillPeriodSeconds
-                )
-
-            method == "POST" && path == "/api/safety/reports" ->
-                RateLimitRule(
-                    id = "safety-reports",
-                    capacity = properties.safetyReportCapacity,
-                    refillTokens = properties.safetyReportRefillTokens,
-                    refillPeriodSeconds = properties.safetyReportRefillPeriodSeconds
-                )
-
-            else ->
-                RateLimitRule(
-                    id = "default",
-                    capacity = properties.defaultCapacity,
-                    refillTokens = properties.defaultRefillTokens,
-                    refillPeriodSeconds = properties.defaultRefillPeriodSeconds
-                )
-        }
-    }
-
-    private fun HttpServletRequest.clientIdentity(): String {
-        val bearerToken = getHeader(HttpHeaders.AUTHORIZATION)
-            ?.trim()
-            ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
-            ?.substringAfter(" ")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-
-        if (bearerToken != null) {
-            return "bearer:${sha256Prefix(bearerToken)}"
-        }
-
-        return "ip:${remoteAddr ?: "unknown"}"
-    }
-
-    private fun HttpServletRequest.normalizedPath(): String =
-        servletPath.ifBlank {
-            requestURI.removePrefix(contextPath)
-        }
-
-    private fun sha256Prefix(value: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-
-        return HexFormat.of().formatHex(digest).take(32)
+    internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
+        val group = ruleResolver.resolveGroup(request)
+        return RateLimitRule(
+            id = group.id,
+            capacity = properties.preAuthCapacity,
+            refillTokens = properties.preAuthRefillTokens,
+            refillPeriodSeconds = properties.preAuthRefillPeriodSeconds
+        )
     }
 
     private fun writeRateLimitExceeded(
@@ -161,13 +103,10 @@ class RateLimitFilter(
             """{"code":"RATE_LIMIT_EXCEEDED","error":"Too Many Requests","message":"Too many requests. Try again later."}"""
         )
     }
+
+    private fun String.isPreAuthRateLimitedPath(): Boolean =
+        startsWith("/api/") ||
+            this == "/actuator/info" ||
+            this == "/actuator/metrics" ||
+            startsWith("/actuator/metrics/")
 }
-
-private data class RateLimitRule(
-    val id: String,
-    val capacity: Int,
-    val refillTokens: Int,
-    val refillPeriodSeconds: Long
-)
-
-private val PROFILE_PHOTO_MUTATION_METHODS = setOf("POST", "PUT", "DELETE")

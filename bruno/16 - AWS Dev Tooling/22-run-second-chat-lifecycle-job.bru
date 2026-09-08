@@ -1,0 +1,21 @@
+meta {
+  name: 22 Run Second Chat Lifecycle Job
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/second-chat-lifecycle/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "SecondChatLifecycleJob") {
+    throw new Error("Expected SecondChatLifecycleJob to run.");
+  }
+}

@@ -1,0 +1,33 @@
+meta {
+  name: 57 Restore User B Compatibility
+  type: http
+  seq: 57
+}
+
+put {
+  url: {{baseUrl}}/api/me/profile/match-filters
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{alternateUserBId}}
+}
+
+body:json {
+  {
+    "intention": "DATE",
+    "lookingForGenders": ["FEMALE"],
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (JSON.stringify(body.lookingForGenders) !== JSON.stringify(["FEMALE"])) {
+    throw new Error(`Expected user B lookingForGenders [FEMALE], got ${body.lookingForGenders}`);
+  }
+}

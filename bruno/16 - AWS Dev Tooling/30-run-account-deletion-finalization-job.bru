@@ -1,0 +1,21 @@
+meta {
+  name: 30 Run Account Deletion Finalization Job
+  type: http
+  seq: 30
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/account-deletion-finalization/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "AccountDeletionFinalizationJob") {
+    throw new Error("Expected AccountDeletionFinalizationJob to run.");
+  }
+}

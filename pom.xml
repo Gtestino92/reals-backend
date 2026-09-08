@@ -14,7 +14,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.6</version>
+        <version>4.0.8</version>
         <relativePath/>
     </parent>
 
@@ -34,8 +34,9 @@
         <java.version>21</java.version>
         <kotlin.version>2.3.21</kotlin.version>
         <kotlin.compiler.jvmTarget>21</kotlin.compiler.jvmTarget>
-        <tomcat.version>11.0.22</tomcat.version>
-        <netty.version>4.2.13.Final</netty.version>
+        <tomcat.version>11.0.25</tomcat.version>
+        <netty.version>4.2.17.Final</netty.version>
+        <httpcore5.version>5.4.3</httpcore5.version>
         <resilience4j.version>2.4.0</resilience4j.version>
         <testcontainers.version>1.21.3</testcontainers.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -65,6 +66,18 @@
 
     <dependencyManagement>
         <dependencies>
+
+            <dependency>
+                <groupId>org.apache.httpcomponents.core5</groupId>
+                <artifactId>httpcore5</artifactId>
+                <version>${httpcore5.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.httpcomponents.core5</groupId>
+                <artifactId>httpcore5-h2</artifactId>
+                <version>${httpcore5.version}</version>
+            </dependency>
 
             <dependency>
                 <groupId>io.github.resilience4j</groupId>
@@ -144,6 +157,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
@@ -170,7 +188,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.11</version>
+            <version>42.7.13</version>
         </dependency>
 
         <dependency>
@@ -207,6 +225,12 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>3.2.4</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.drewnoakes</groupId>
+            <artifactId>metadata-extractor</artifactId>
+            <version>2.19.0</version>
         </dependency>
 
         <!-- ========================================= -->
@@ -297,6 +321,17 @@
 
         <sourceDirectory>src/main/kotlin</sourceDirectory>
         <testSourceDirectory>src/test/kotlin</testSourceDirectory>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>legal-documents</directory>
+                <targetPath>legal-documents</targetPath>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
 
         <plugins>
 
@@ -409,6 +444,14 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                        <exclude>**/*Postgres*IntegrationTest.java</exclude>
+                        <exclude>**/ProfileCountryCodeMigrationTest.java</exclude>
+                        <exclude>**/MatchmakingCandidateQueryIndexesMigrationTest.java</exclude>
+                    </excludes>
+                </configuration>
             </plugin>
 
             <plugin>
@@ -419,5 +462,35 @@
         </plugins>
 
     </build>
+
+    <profiles>
+        <profile>
+            <id>postgres-it</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <includes>
+                                <include>**/*PostgresIT.java</include>
+                                <include>**/*Postgres*IntegrationTest.java</include>
+                                <include>**/ProfileCountryCodeMigrationTest.java</include>
+                                <include>**/MatchmakingCandidateQueryIndexesMigrationTest.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

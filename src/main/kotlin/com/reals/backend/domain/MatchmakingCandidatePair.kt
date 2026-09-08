@@ -1,6 +1,12 @@
 package com.reals.backend.domain
 
+import java.time.OffsetDateTime
 import java.util.UUID
+
+data class MatchmakingAnchor(
+    val queueEntryId: UUID,
+    val userId: UUID
+)
 
 data class MatchmakingCandidatePair(
     val userAId: UUID,
@@ -11,8 +17,8 @@ data class MatchmakingCandidatePair(
     val userBLongitude: Double
 )
 
-data class ScoredMatchmakingCandidatePair(
-    val pair: MatchmakingCandidatePair,
-    val score: Double,
-    val order: Int
+data class MatchmakingPartnerCandidate(
+    val partnerQueueEntryId: UUID,
+    val partnerEnteredAt: OffsetDateTime,
+    val pair: MatchmakingCandidatePair
 )

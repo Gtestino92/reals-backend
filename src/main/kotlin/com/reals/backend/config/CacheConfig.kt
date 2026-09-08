@@ -53,5 +53,5 @@ object CacheNames {
 
     const val PROFILES = "profiles" // Profile data by userId
     const val ACTIVE_LOCKS = "activeLocks" // ActiveInteractionLock by userId
-    const val ACTIVE_PENALTY = "activePenalties" // Whether a user has an active penalty
+    const val ACTIVE_PENALTY = "activePenalties" // Whether a user has an effective account ban
 }

@@ -1,0 +1,39 @@
+meta {
+  name: 29 Counterpart Reject Partner Scheduling Proposals
+  type: http
+  seq: 44
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{counterpartConnectionId}}/negotiation/rejections
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{firebase_counterpart_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 1
+  }
+}
+
+script:post-response {
+  const status = res.getStatus();
+  const body = res.getBody();
+  if (status !== 200) {
+    throw new Error(`Expected 200 OK, got ${status}: ${JSON.stringify(body)}`);
+  }
+  if (!body || !body.id) {
+    throw new Error(`Expected scheduling negotiation response after partner proposal rejection, got: ${JSON.stringify(body)}`);
+  }
+  bru.setEnvVar("negotiationId", body.id);
+}
+
+docs {
+  Rejects only the partner's pending scheduling proposals for expected round 1. A single rejection does not necessarily advance the round; refresh negotiation and proposals after this request.
+}

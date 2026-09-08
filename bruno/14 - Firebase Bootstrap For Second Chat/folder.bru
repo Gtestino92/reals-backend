@@ -1,0 +1,30 @@
+meta {
+  name: 14 - Firebase Bootstrap For Second Chat
+  seq: 15
+}
+
+docs {
+  Fixed accounts:
+  - User A: gtestino1992@gmail.com
+  - User B: android.counterpart@example.com
+  
+  Set these secrets manually in the active Bruno environment:
+  - firebase_api_key
+  - firebase_password
+  - firebase_counterpart_password
+  
+  This folder deliberately avoids using firebase_email and
+  firebase_counterpart_email as request inputs because those generic names
+  may already exist at request, folder or collection scope.
+  
+  Dedicated variables:
+  - second_chat_user_a_email
+  - second_chat_user_a_id_token
+  - second_chat_user_a_uid
+  - second_chat_user_b_email
+  - second_chat_user_b_id_token
+  - second_chat_user_b_uid
+  
+  Compatibility aliases are also populated, but subsequent requests in this
+  package use the dedicated variables directly.
+}

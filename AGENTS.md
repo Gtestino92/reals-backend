@@ -1,166 +1,293 @@
-# Agent Instructions
+# Repository Agent Rules
 
-This repository is the backend for Reals, a structured dating / connection product. The backend is a Kotlin + Spring Boot modular monolith with explicit state transitions. Preserve the state-machine architecture when making changes.
+These instructions apply to the entire repository. Follow user instructions and
+any more-specific nested `AGENTS.md` files first.
 
-## Stack
+## 1. Authority And Repository Inspection
 
-- Kotlin 2.3.21 on Java 21.
-- Spring Boot 4.0.6.
-- Spring Web, Security, Data JPA, JDBC, Cache and WebFlux WebClient.
-- H2 for local `local-firebase` and `local-nodb` development.
-- PostgreSQL is the supported non-local database driver. Do not add another database driver unless a concrete environment needs it.
-- Flyway migrations live under `src/main/resources/db/migration`; local H2 profiles disable Flyway and use Hibernate `ddl-auto: update`.
-- ShedLock protects scheduler jobs when a `LockProvider` bean exists.
-- Firebase Admin dependency and Firebase auth classes exist. The default local profile uses Firebase auth; local no-auth testing uses `local-nodb` or `local-postgres`.
+- Treat current code and canonical repository docs as the source of truth.
+- Do not infer architecture only from prompts, reports, handoffs, or memory.
+- Use `development` as the comparison base unless the user names another base.
+- Before concrete changes, verify branch, fetch refs, inspect `git status
+  --short`, compare with the base, and inspect actual affected files.
+- Inspect affected tests, relevant workflows, and canonical docs before changing
+  behavior, contracts, configuration, lifecycle, or local tooling.
+- Search all callers and related state-transition entry points before changing
+  shared behavior; prefer `rg` and `rg --files`.
 
-## Local Development
+## 2. Git And Publication Safety
 
-- Default active Spring profile: `local-firebase`.
-- Default local database: H2 file database at `./data/realsdb`.
-- H2 console: `http://localhost:8080/h2-console`.
-- H2 JDBC URL: `jdbc:h2:file:./data/realsdb`.
-- Local Firebase auth expects `./secrets/reals-backend-firebase-credentials-dev.json` and a real Firebase ID token.
-- Local no-auth profiles `local-nodb` and `local-postgres` use `DevAutoAuthFilter`, which injects user `00000000-0000-0000-0000-000000000001` with `ROLE_USER`.
-- Sanity endpoint: `GET /api/ping`.
-- Maven CLI may not be installed on the target machine. Prefer IntelliJ IDEA run/build actions unless the user explicitly confirms CLI availability.
-- Work branches created or renamed by agents must use the `feature/` prefix unless the user explicitly asks for another branch type.
+- Do not create commits unless the user explicitly asks after review or
+  validation.
+- Do not push to any remote branch unless the user explicitly asks for that
+  exact push.
+- Never push directly to `development` unless explicitly asked to push to
+  `development`.
+- Do not merge, deploy, open a PR, or modify cloud infrastructure unless
+  explicitly requested.
+- Do not report a commit, push, merge, deployment, PR, or clean working tree
+  unless it was actually observed.
+- Final reports must describe the currently observed repository state.
+- When starting a new development task from `development`, create/use a focused
+  feature branch whose name starts with `feature/`. This is not required when
+  applying a patch on an already-active feature branch.
+- A feature branch should track its same-named remote branch by task completion
+  or publication time, for example `feature/example` ->
+  `origin/feature/example`. Do not leave a feature branch with upstream
+  `origin/development`; use `development` only as the base.
+- Standing authorization: when the only missing step for a new development task
+  is creating the same-named remote feature branch and setting it as upstream,
+  agents may run the branch-bootstrap push needed for that exact purpose, with
+  no implementation changes included in that push.
+- After creating a feature branch from `development`, verify the upstream before
+  making code changes. If the same-named remote branch already exists, set
+  upstream to that branch immediately. If it does not exist, unset any inherited
+  upstream and continue local implementation unless the user has asked to publish
+  the branch. Do not block local implementation merely because the same-named
+  remote branch does not exist yet. Before final delivery, publication, or any
+  push, verify whether the same-named upstream exists or clearly report that it
+  still needs to be created. Never continue substantial implementation work on a
+  feature branch whose upstream is `origin/development`.
 
-## Architecture Rules
+## 3. Scope And Architecture
 
-- Controllers are thin HTTP adapters.
-- DTOs live under `src/main/kotlin/com/reals/backend/controller/dto`.
-- Services own business rules and state transitions.
-- `ChatService` owns chat creation, activation, messages, first-chat approval decisions and timeout/abandonment endings.
-- `ChatExitService` owns mutual cancellation, unilateral cancellation, safety-report cancellation and cancellation penalties.
-- Repositories are Spring Data JPA persistence adapters only.
-- Schedulers call services and must not duplicate transition logic.
-- Domain classes under `domain` represent persisted entities and enums.
-- Matching-specific logic belongs under `service.matching`.
-- Reputation-specific logic belongs under `service.reputation`.
-- Identity-verification-specific logic belongs under `service.identity`.
-- Configuration belongs under `config`.
+- Prefer the smallest coherent change that solves the requested problem.
+- Follow existing controller, service, repository, DTO, mapper, configuration,
+  and test patterns.
+- Keep domain transition logic in services, not controllers, unless an existing
+  path clearly uses another pattern.
+- Avoid broad refactors and parallel abstractions that duplicate responsibility.
+- Preserve unrelated first-chat, authentication, legal, profile, matchmaking,
+  scheduling, safety, and account-lifecycle behavior.
+- Avoid changing public contracts, navigation-equivalent backend flows, database
+  schemas, or global architecture unless required.
+- Stop and explain before making a substantially broader change than requested.
 
-Use this flow unless there is a strong reason not to:
+## 4. State-Machine Analysis Before Implementation
 
-```text
-Controller -> Service -> Repository
-```
+- For statuses, lifecycle phases, expiration, scheduling, claims, approvals,
+  cancellation, cleanup, or terminal outcomes, determine the transition model
+  before coding.
+- Identify owner aggregate, valid source states, valid target states, terminal
+  states, transition precedence, authoritative timestamps, and exact boundary
+  semantics.
+- Identify the idempotency key, uniqueness mechanism, or replay guard.
+- Identify every HTTP write, message write, scheduler, local tool, or cleanup
+  path capable of causing the same transition.
+- Identify scheduler/manual-write interaction and read-only cleanup behavior.
+- Keep a transition/race checklist in working notes even when no file is added.
+- Before applying a requested action, evaluate under the authoritative lock
+  whether an earlier lifecycle transition is already due.
+- A requested action must not bypass an already-due terminal outcome.
 
-Do not mutate domain state directly from controllers, schedulers or repositories.
+## 5. Exact Time-Boundary Rules
 
-## Domain Invariants
+- Use explicit comparison semantics for every deadline.
+- State whether equality belongs to the allowed side or the expired side.
+- Default lifecycle rules to allowed only while `now < deadline` and due or
+  expired when `now >= deadline`.
+- Test immediately before the boundary, exact equality, and immediately after.
+- Use the authoritative backend clock or an injected/explicit test clock.
+- Do not use arbitrary sleeps in tests.
+- Do not derive a phase deadline from a timestamp belonging to an earlier phase.
+- Clamp or derive clocks from the correct phase start when earlier data may
+  exist.
 
-- The product is anonymous-first and state-driven.
-- Do not add swipe behavior, popularity ranking, ELO, visible reputation badges, reveal quotas, WebSockets, notifications or ML scoring unless explicitly requested.
-- Do not silently create missing domain objects unless the service method clearly owns that behavior.
-- Validate state transitions in services with clear failures.
-- Terminal states should not be mutated except by explicit, justified service methods.
-- Active engagement limits are counted from `ActiveEngagementLock`, not inferred from `Match` or `Connection` state.
+## 6. Canonical Lifecycle Calculations
 
-## Core Flow
+- Keep each lifecycle rule consistent across write validation, status
+  eligibility, scheduler candidate selection, locked scheduler revalidation,
+  cleanup, tests, and documentation.
+- Prefer one focused helper or policy for calculations shared inside a layer.
+- Repository candidate queries may be broad enough to find possible work.
+- Final transition execution must always be revalidated under lock.
+- Query predicates and locked validation must not use contradictory deadline
+  formulas.
 
-- A `Profile` starts as `DRAFT`; only `ACTIVE` profiles can enter matchmaking.
-- `MatchmakingService.enqueue` validates eligibility and queues the current user.
-- `MatchmakingService.findCandidatePairs` finds candidate pairs.
-- `MatchService.createMatch` creates the `Match`, creates `MATCH` locks for both users and removes both users from the queue.
-- `ChatService.startFirstChat` starts the anonymous first chat separately.
-- Mutual first-chat approval moves the match from `CHAT_ACTIVE` to `VISUAL_PHASE` and initializes `VisualReview`.
-- First-chat rejection is unilateral cancellation: it moves the match to `CHAT_REJECTED`, releases locks and evaluates cancellation penalties.
-- Mutual chat cancellation closes without penalty; safety cancellation records a report and penalizes the reported participant.
-- Mutual visual approval moves the match to `VISUAL_APPROVED`, creates a `Connection`, upgrades locks to `CONNECTION` and initializes scheduling.
-- Any visual rejection moves the match to `VISUAL_REJECTED` and releases locks.
-- Scheduling confirmation moves the connection to `SECOND_CHAT_SCHEDULED`; `ScheduledSecondChatStartJob` makes the second chat `AVAILABLE` when `confirmedDateTime` is due, and user entry or first message activates it.
-- Scheduling proposals are for the second chat inside the app, not for an in-person meeting outside the app.
-- Scheduling proposal submissions are ordered lists of 1 to `scheduling.max-proposals-per-round` unique future half-hour slots per user per round. Overlaps auto-confirm by lowest combined preference order, then earliest agreed slot. If there is no overlap, a participant must explicitly reject the round to open the next one.
-- Closing or expiring a connection releases `CONNECTION` locks.
+## 7. Transaction Boundaries And HTTP Errors
 
-## State Machines
+- Never mutate state that must commit and then throw an unchecked domain
+  exception from the same transaction merely to produce an HTTP error.
+- If a request-triggered operation commits a lifecycle outcome that makes the
+  requested action invalid, return a typed success/rejection result.
+- Let the transactional service commit the lifecycle outcome; map rejected
+  results to HTTP/domain errors only after the transactional call returns.
+- Do not use broad `@Transactional(noRollbackFor = [...])` for domain runtime
+  exceptions.
+- Do not rely on self-invoked `REQUIRES_NEW`; Spring proxy semantics do not
+  apply to self-invocation.
+- Do not catch an exception inside a transactional integration test and assume
+  preceding mutations will commit.
+- Failures discovered before mutation may use normal domain exceptions.
 
-Allowed `MatchState` transitions:
+## 8. Lock Ordering And Concurrency
 
-- `CHAT_ACTIVE -> VISUAL_PHASE`
-- `CHAT_ACTIVE -> CHAT_REJECTED`
-- `CHAT_ACTIVE -> EXPIRED`
-- `VISUAL_PHASE -> VISUAL_APPROVED`
-- `VISUAL_PHASE -> VISUAL_REJECTED`
-- `VISUAL_PHASE -> EXPIRED`
+- Identify the aggregate lock for every stateful transition.
+- Use one deterministic lock order across HTTP writes, scheduled jobs, message
+  writes, request expiry, and cleanup.
+- Never introduce the reverse lock order in another path.
+- Lock before terminal eligibility decisions and re-read mutable state after
+  obtaining the lock.
+- Reason about request versus scheduler, response versus expiration, message
+  versus inactivity, duplicate request, repeated scheduler, and competing
+  terminal-transition races.
+- Prefer database constraints as the final concurrency backstop where practical.
+- Document lock order in code or canonical architecture docs when not obvious.
 
-Allowed `ChatStatus` transitions:
+## 9. Idempotency And Side Effects
 
-- `AVAILABLE -> ACTIVE`
-- `ACTIVE -> FINISHED`
-- `ACTIVE -> CANCELLED`
-- `ACTIVE -> EXPIRED`
-- `ACTIVE -> ABANDONED`
+- Lifecycle transitions and scheduler retries must be replay-safe.
+- Duplicate HTTP requests must not extend deadlines or create duplicate rows
+  unless explicitly required.
+- Reliability, audit, notification, and Home-invalidation side effects must
+  occur at most once per logical event.
+- Reuse existing uniqueness and idempotency mechanisms.
+- Terminal transitions must preserve their original terminal reason during
+  read-only cleanup.
+- Repeated processing of a terminal aggregate should become a no-op.
 
-Allowed `ConnectionState` transitions:
+## 10. Read Endpoints And Status Contracts
 
-- `SCHEDULING_PHASE -> SECOND_CHAT_SCHEDULED -> SECOND_CHAT_AVAILABLE -> SECOND_CHAT`
-- `SCHEDULING_PHASE -> CLOSED`
-- `SECOND_CHAT_AVAILABLE -> CLOSED`
-- `SECOND_CHAT -> CLOSED`
+- Keep GET and status endpoints side-effect free unless explicitly designed
+  otherwise.
+- Polling must not materialize entities, join users, award scores, or resolve
+  lifecycle transitions.
+- Status eligibility must use the current authoritative backend time.
+- Due-but-not-yet-persisted transitions must disable already-invalid actions.
+- Read responses must not claim that a transition was persisted when it was not.
+- Do not trust clients to announce expiry or terminal state.
 
-Allowed scheduling transitions:
+## 11. Database Migrations
 
-- `NegotiationStatus.PENDING -> CONFIRMED`
-- `NegotiationStatus.PENDING -> FAILED`
-- `ProposalStatus.PENDING -> ACCEPTED`
-- `ProposalStatus.PENDING -> REJECTED`
+- Use a new Flyway migration for schema changes.
+- Never edit a migration that may already have been applied.
+- Inspect the latest migration number before creating a migration.
+- Add appropriate foreign keys, uniqueness constraints, and indexes.
+- Use database constraints for invariants that must survive concurrent
+  application instances.
+- Consider existing data and nullability before adding non-null columns.
+- Keep persistence enums and migration values synchronized.
+- Update fixtures and local deterministic helpers when schema changes require
+  it.
 
-## Configured Limits
+## 12. API And Compatibility
 
-From `application.yml`:
+- Prefer additive contract changes when practical.
+- Preserve existing response fields unless removal is explicitly approved.
+- Preserve unknown-enum compatibility where existing contracts use it.
+- Use server-authoritative timestamps for client countdowns.
+- Add focused error codes for distinct conflicts; do not overload unrelated
+  domain errors.
+- Keep controllers thin and inspect affected consumers, DTO mappings, OpenAPI,
+  and docs before contract changes.
 
-- `engagement.max-active-matches: 5`
-- `engagement.max-active-connections: 2`
-- `chat.first-chat.duration-minutes: 1440`
-- `chat.first-chat.min-messages-per-user: 0`
-- `chat.first-chat.min-messages-before-free-cancel: 0`
-- `chat.visual-phase.duration-minutes: 1440`
-- `chat.second-chat.duration-minutes: 2880`
-- `chat.second-chat.min-messages-before-free-cancel: 0`
-- `scheduling.negotiation-duration-minutes: 2880`
-- `scheduling.max-rounds: 3`
-- `scheduling.max-proposals-per-round: 3`
-- default profile photos: required `9`, max `9`, min person `3`, min full-body `1`
+## 13. Documentation And Local Tooling
 
-From local H2 profiles:
+- When behavior or contracts change, inspect affected canonical docs and local
+  tooling.
+- Treat pre-existing Bruno and local-tooling modifications as user-owned local
+  state. Do not include, normalize, reorder, or rewrite them in unrelated
+  features; modify Bruno only when the task explicitly requires it.
+- Update architecture, configuration, API, OpenAPI, domain, state-machine,
+  user-flow, reliability, lifecycle/manual test, local-development, and Bruno
+  sources as applicable.
+- Documentation must describe exact boundary and terminal semantics.
+- Do not edit every document for every task; update only affected canonical
+  sources.
 
-- local profile photos: required `4`, max `9`, min person `1`, min full-body `1`
+## 14. Testing Strategy
 
-## Coding Style
+- Never run unfiltered `./mvnw test`.
+- Never run `./mvnw clean test`.
+- Never run `clean` merely as routine validation.
+- Run only exact affected test classes or focused test methods.
+- For native SQL, JDBC-specific queries, scalar projections, or custom
+  projections involving date/time values, verify the actual
+  PostgreSQL/Hibernate/JDBC materialized type with a real database integration
+  test; do not assume the entity mapping type.
+- PostgreSQL `timestamptz` native scalars may materialize as `Instant` even
+  when the entity property is `OffsetDateTime`; convert explicitly at the
+  application boundary rather than relying on casts.
+- Require a real database check when introducing native date/time scalar
+  queries, changing temporal projections, or relying on timezone/offset
+  behavior.
+- If complete-suite execution is genuinely required, stop, explain why, and ask
+  the user to run it or leave it to CI.
+- Cover success, rejection, temporal boundaries, idempotent replay, duplicate
+  calls, stale candidates, scheduler replay, competing transitions, and
+  unrelated behavior when relevant.
 
-- Use Kotlin idioms and constructor injection.
-- Use `@Transactional` on services that mutate state.
-- Use `OffsetDateTime` for persisted timestamps.
-- Prefer explicit parameter names in service calls when it improves readability.
-- Keep methods focused on one business action.
-- Avoid broad refactors while making narrow behavior changes.
-- Do not introduce dependencies unless necessary and consistent with the project.
+## 15. Transaction-Commit Integration Tests
 
-## Testing And Verification
+- Spring transactional integration tests can observe uncommitted state.
+- Catching a runtime exception inside a test transaction does not prove that
+  preceding mutations will commit.
+- When an endpoint must persist a lifecycle transition and then return a
+  conflict, cross the real transaction boundary.
+- Use a pattern equivalent to `@Transactional(propagation =
+  Propagation.NOT_SUPPORTED)`.
+- Create committed fixture setup through `TransactionTemplate`.
+- Then perform the HTTP request, assert the conflict, and verify database state
+  in a new transaction.
+- Do not require this pattern when no mutation must survive the error.
 
-- Do not run Maven or Docker commands unless the user explicitly requests it. Prefer telling the user the exact Maven or Docker command to run outside IntelliJ IDEA, then use their reported output to continue.
-- Integration tests live under `src/test/kotlin/com/reals/backend/integration` and use the `test` Spring profile with H2 in-memory.
-- Shared integration fixtures belong under `integration/support`; keep base classes out of the concrete test package levels.
-- Prefer service-level integration tests for business rules that depend on JPA, transactions, repositories or schema.
-- Use controller integration tests for HTTP contract coverage: routing, JSON shape, status codes, exception mapping and current-user resolution.
-- Important areas to test when touched: state transitions, invalid transitions, engagement limits, queue behavior, scheduling confirmation/failure, profile activation, penalties and scheduler-triggered expiration.
-- If automated tests cannot be run, state that clearly and describe the manual/code-level verification performed.
+## 16. Scheduler Rules
 
-## Documentation
+- Lifecycle jobs must process bounded batches with deterministic ordering.
+- Revalidate every candidate transactionally and skip stale candidates.
+- Tolerate repeated execution and multiple application instances.
+- Preserve one terminal winner and explicit precedence between processors.
+- Avoid loading all due rows into memory.
+- Do not treat control actions as conversational or business activity unless the
+  relevant feature explicitly defines them that way.
 
-- Canonical docs live under `docs/`.
-- `docs/architecture.md` explains structure and ownership.
-- `docs/domain.md` explains entities, enums and invariants.
-- `docs/state-machine.md` lists allowed transitions.
-- `docs/user-flow.md` explains the product/backend flow.
-- `docs/local-development.md` explains local setup.
-- `docs/api.md` summarizes current controllers and endpoints.
-- `docs/testing.md` explains the test strategy and how to run tests.
-- `docs/technical-debt-mvp.md` lists known non-implemented or undecided behavior for mvp.
-- `docs/technical-debt-prod.md` lists known non-implemented or undecided behavior for prod.
+## 17. Text Encoding And User-Visible Strings
 
-## When Unsure
+- Treat every repository text file as UTF-8.
+- Preserve valid Unicode characters directly, including Spanish accents, `ñ`,
+  `ü`, `¿`, and `¡`.
+- Never introduce mojibake such as `Ã¡`, `Ã©`, `Ã­`, `Ã³`, `Ãº`, `Ã±`,
+  `Â¿`, `Â¡`, malformed smart quotes, or the Unicode replacement character
+  `�`.
+- When editing files on Windows, use tools and APIs that read and write UTF-8
+  explicitly. Do not use shell redirection or file-writing commands whose
+  encoding depends on the platform default.
+- Do not encode valid Spanish text as Latin-1, Windows-1252, escaped byte
+  sequences, or already-corrupted UTF-8 text.
+- Do not convert an entire file's encoding, line endings, formatting, or
+  unrelated contents merely to edit one string.
+- Before completion, inspect every newly added or modified user-visible string
+  in the final diff and confirm that accented characters appear correctly in the
+  source file.
+- Search added lines for common mojibake markers using an equivalent command to
+  `git diff --unified=0 | rg "^\+.*(Ã|Â|â€|�)"`.
+- Inspect and correct every match unless the malformed text is intentionally
+  present in an encoding-specific test fixture or documentation example.
+- Do not perform global replacement of suspected mojibake without determining
+  the intended original text.
 
-Preserve the current explicit state flow. Ask before changing product behavior, authentication model, persistence schema, matching criteria, trust-score behavior or local development assumptions.
+## 18. Validation Before Completion
+
+- Run `./mvnw -DskipTests compile` when code or configuration changes require
+  compilation validation.
+- Run focused exact tests appropriate to the change.
+- Run `git diff --check`.
+- Inspect added and modified text for malformed Unicode or mojibake.
+- Inspect `git status --short`, `git diff --stat`, and the final diff for
+  accidental unrelated changes.
+- Inspect changed migration and contract files when present.
+- Confirm current branch and comparison base before final reporting.
+- Do not claim validation passed unless its output was actually observed.
+
+## 19. Final Report
+
+- Report current branch and comparison base.
+- Report root cause or design rationale.
+- Report files changed.
+- Report migration and contract changes, or state that none were made.
+- Report transaction and lock approach for lifecycle changes.
+- Report exact validation commands and observed results.
+- Report tests not run and remaining manual scenarios.
+- Include `git status --short` and `git diff --stat`.
+- Explicitly confirm that no commit, push, merge, deploy, or PR was performed
+  unless the user requested it.

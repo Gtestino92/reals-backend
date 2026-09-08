@@ -1,0 +1,15 @@
+meta {
+  name: 14 Force Resolution Request Expired
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/timeouts/second-chat-resolution-requests/{{resolutionRequestId}}/expire-now
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  resolutionRequestId: f844ce96-0ba1-4249-8a17-c81bb1716f3b
+}

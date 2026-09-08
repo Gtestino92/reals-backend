@@ -1,0 +1,21 @@
+meta {
+  name: 25 Run Match Expiration Job
+  type: http
+  seq: 25
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/match-expiration/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "MatchExpirationJob") {
+    throw new Error("Expected MatchExpirationJob to run.");
+  }
+}

@@ -1,0 +1,42 @@
+meta {
+  name: 00 Admin Firebase Sign In
+  type: http
+  seq: 0
+}
+
+post {
+  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{firebase_admin_email}}",
+    "password": "{{firebase_admin_password}}",
+    "returnSecureToken": true
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || !body.idToken || !body.localId || !body.email) {
+    throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
+  }
+
+  const expectedEmail = bru.getEnvVar("firebase_admin_email");
+  if (expectedEmail && body.email !== expectedEmail) {
+    throw new Error(`Expected admin Firebase email ${expectedEmail}, got ${body.email}.`);
+  }
+
+  bru.setEnvVar("firebase_admin_id_token", body.idToken);
+  bru.setEnvVar("firebase_admin_uid", body.localId);
+
+  if (body.refreshToken) {
+    bru.setEnvVar("firebase_admin_refresh_token", body.refreshToken);
+  }
+}

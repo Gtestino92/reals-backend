@@ -6,7 +6,9 @@ import com.reals.backend.domain.Penalty
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.PenaltyRepository
-import com.reals.backend.service.reputation.TrustScoreEvaluator
+import com.reals.backend.repository.UserRepository
+import com.reals.backend.service.exception.DomainConflictException
+import com.reals.backend.service.exception.DomainErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -18,46 +20,34 @@ import java.util.*
 class PenaltyService(
     private val penaltyRepository: PenaltyRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
-    private val trustScoreEvaluator: TrustScoreEvaluator,
     private val auditEventService: AuditEventService,
-    private val homeStateInvalidationService: HomeStateInvalidationService
+    private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val userOperationalContainmentService: UserOperationalContainmentService,
+    private val accountBanPolicyService: AccountBanPolicyService,
+    private val userRepository: UserRepository
 ) {
 
-    fun hasActivePenalty(userId: UUID): Boolean {
-        return penaltyRepository.existsByUserIdAndActiveTrue(userId)
-    }
-
-    /**
-     * Creates a penalty for abandoning the second chat.
-     * Base duration is [baseDurationHours]. Effective duration is scaled by the user's
-     * trust score: lower score -> longer penalty (progressive enforcement).
-     */
-    fun createAbandonmentPenalty(
+    @Transactional(readOnly = true)
+    fun hasEffectiveBan(
         userId: UUID,
-        baseDurationHours: Long = 24
-    ): Penalty =
-        createPenalty(
-            userId = userId,
-            reason = "Abandoned second chat",
-            baseDurationHours = baseDurationHours
-        )
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): Boolean =
+        resolveEffectiveBan(userId = userId, now = now) != null
 
-    fun createCancellationPenalty(
+    @Transactional(readOnly = true)
+    fun resolveEffectiveBan(
         userId: UUID,
-        baseDurationHours: Long = 24
-    ): Penalty =
-        createPenalty(
-            userId = userId,
-            reason = "Cancelled chat before minimum engagement",
-            baseDurationHours = baseDurationHours
-        )
+        now: OffsetDateTime = OffsetDateTime.now()
+    ): EffectiveAccountBan? =
+        accountBanPolicyService.resolveEffectiveBan(userId = userId, now = now)
 
     fun createTemporaryPenalty(
         userId: UUID,
         reason: String,
         duration: Duration,
         sourceReportId: UUID? = null,
-        appliedByUserId: UUID? = null
+        appliedByUserId: UUID? = null,
+        now: OffsetDateTime = OffsetDateTime.now()
     ): Penalty {
         require(!duration.isZero && !duration.isNegative) {
             "Temporary penalty duration must be positive"
@@ -71,10 +61,11 @@ class PenaltyService(
                 userId = userId,
                 reason = reason.trim(),
                 type = PenaltyType.TEMPORARY_BAN,
-                expiresAt = OffsetDateTime.now().plus(duration),
+                expiresAt = now.plus(duration),
                 sourceReportId = sourceReportId,
                 appliedByUserId = appliedByUserId
-            )
+            ),
+            now = now
         )
     }
 
@@ -82,10 +73,24 @@ class PenaltyService(
         userId: UUID,
         reason: String,
         sourceReportId: UUID? = null,
-        appliedByUserId: UUID? = null
+        appliedByUserId: UUID? = null,
+        now: OffsetDateTime = OffsetDateTime.now()
     ): Penalty {
         require(reason.isNotBlank()) {
             "Penalty reason is required"
+        }
+        lockPenalizedUser(userId)
+        penaltyRepository.flush()
+        if (
+            penaltyRepository.findEffectiveBans(
+                userId = userId,
+                now = now
+            ).any { it.type == PenaltyType.PERMANENT_BAN }
+        ) {
+            throw DomainConflictException(
+                code = DomainErrorCode.ACTIVE_PENALTY,
+                message = "User already has an active permanent penalty"
+            )
         }
 
         return savePenalty(
@@ -96,32 +101,19 @@ class PenaltyService(
                 expiresAt = null,
                 sourceReportId = sourceReportId,
                 appliedByUserId = appliedByUserId
-            )
+            ),
+            now = now
         )
     }
 
-    private fun createPenalty(
-        userId: UUID,
-        reason: String,
-        baseDurationHours: Long
+    private fun savePenalty(
+        penalty: Penalty,
+        now: OffsetDateTime
     ): Penalty {
-
-        val score = trustScoreEvaluator.evaluate(userId)
-        val effectiveHours =
-            (baseDurationHours * score.penaltyMultiplier()).toLong()
-
-        val penalty = Penalty(
-            userId = userId,
-            reason = reason,
-            type = PenaltyType.TEMPORARY_BAN,
-            expiresAt = OffsetDateTime.now().plusHours(effectiveHours)
-        )
-
-        return savePenalty(penalty)
-    }
-
-    private fun savePenalty(penalty: Penalty): Penalty {
         validatePenaltyShape(penalty)
+        if (penalty.type != PenaltyType.PERMANENT_BAN) {
+            lockPenalizedUser(penalty.userId)
+        }
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
         val saved = penaltyRepository.save(penalty)
         auditEventService.record(
@@ -140,7 +132,34 @@ class PenaltyService(
             userId = saved.userId,
             reason = "penalty_applied"
         )
+        when (val effectiveBan = resolveEffectiveBan(userId = saved.userId, now = now)) {
+            null -> Unit
+            else ->
+                when (effectiveBan.type) {
+                    PenaltyType.PERMANENT_BAN ->
+                        userOperationalContainmentService.containUser(
+                            userId = saved.userId,
+                            reason = UserOperationalContainmentReason.ACCOUNT_BAN,
+                            now = now,
+                            actorUserId = saved.appliedByUserId
+                        )
+
+                    PenaltyType.TEMPORARY_BAN ->
+                        userOperationalContainmentService.containTemporarilyBannedUser(
+                            userId = saved.userId,
+                            effectiveBanExpiresAt = requireNotNull(effectiveBan.expiresAt),
+                            now = now,
+                            actorUserId = saved.appliedByUserId
+                        )
+                }
+        }
         return saved
+    }
+
+    private fun lockPenalizedUser(userId: UUID) {
+        check(userRepository.findAllByIdForUpdate(listOf(userId)).size == 1) {
+            "Cannot apply penalty to missing user $userId"
+        }
     }
 
     private fun validatePenaltyShape(penalty: Penalty) {
@@ -181,3 +200,8 @@ class PenaltyService(
         return expired
     }
 }
+
+data class EffectiveAccountBan(
+    val type: PenaltyType,
+    val expiresAt: OffsetDateTime?
+)

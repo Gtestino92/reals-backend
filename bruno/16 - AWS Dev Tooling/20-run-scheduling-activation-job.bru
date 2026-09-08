@@ -1,0 +1,21 @@
+meta {
+  name: 20 Run Scheduling Activation Job
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/api/local-dev/jobs/scheduling-activation/run
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+}
+
+script:post-response {
+  if (res.getBody().job !== "SchedulingActivationJob") {
+    throw new Error("Expected SchedulingActivationJob to run.");
+  }
+}

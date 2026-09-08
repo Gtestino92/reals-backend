@@ -1,0 +1,36 @@
+meta {
+  name: 04 Create Profile B
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/me/profile
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{timeoutUserBId}}
+}
+
+body:json {
+  {
+    "displayName": "Timeout B",
+    "birthDate": "1994-09-22",
+    "gender": "MALE",
+    "lookingForGenders": ["FEMALE"],
+    "intention": "DATE",
+    "city": "Buenos Aires",
+    "countryCode": "AR",
+    "bio": "Timeout outcomes B.",
+    "preferredMinAge": 18,
+    "preferredMaxAge": 99,
+    "maxDistanceKm": 50
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("timeoutProfileBId", res.getBody().id);
+}

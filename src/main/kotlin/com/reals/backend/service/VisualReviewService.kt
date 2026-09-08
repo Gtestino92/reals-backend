@@ -1,14 +1,18 @@
 package com.reals.backend.service
 
 import com.reals.backend.domain.*
+import com.reals.backend.repository.VisualReviewAffinityIndicatorRepository
 import com.reals.backend.repository.VisualReviewRepository
 import com.reals.backend.service.exception.DomainConflictException
 import com.reals.backend.service.exception.DomainErrorCode
+import com.reals.backend.service.notification.MatchmakingAvailabilityNotificationService
+import com.reals.backend.service.reliability.UserReliabilityScoreService
 import com.reals.backend.validation.PlainText
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -17,12 +21,22 @@ import java.util.UUID
 class VisualReviewService(
 
     private val visualReviewRepository: VisualReviewRepository,
+    private val visualReviewAffinityIndicatorRepository: VisualReviewAffinityIndicatorRepository,
     private val matchService: MatchService,
     private val connectionService: ConnectionService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
+    private val homeStatusService: HomeStatusService,
+    private val userReliabilityScoreService: UserReliabilityScoreService,
+    private val userBlockService: UserBlockService,
+    private val visualResourceAccessPolicy: VisualResourceAccessPolicy,
+    private val visualReviewAvailabilityPolicy: VisualReviewAvailabilityPolicy,
+    private val matchmakingAvailabilityNotificationService: MatchmakingAvailabilityNotificationService,
 
     @param:Value("\${chat.visual-phase.duration-minutes:1440}")
-    private val visualPhaseDurationMinutes: Long
+    private val visualPhaseDurationMinutes: Long,
+
+    @param:Value("\${notifications.visual-review-reminder.remaining-percentage:40}")
+    private val visualReviewReminderRemainingPercentage: Long
 ) {
 
     private companion object {
@@ -39,8 +53,21 @@ class VisualReviewService(
     fun visualExpiresAt(matchId: UUID): OffsetDateTime? =
         findByMatchIdOrNull(matchId)?.expiresAt
 
-    fun initializeForMatch(matchId: UUID): VisualReview {
+    fun requireVisualContentAccess(
+        matchId: UUID,
+        userId: UUID
+    ): VisualResourceAccess =
+        visualResourceAccessPolicy.requireCanAccess(
+            matchId = matchId,
+            requestingUserId = userId
+        )
+
+    fun initializeForMatch(
+        matchId: UUID,
+        preResolutionPairReliabilityScore: Double? = null
+    ): VisualReview {
         val match = matchService.findByIdOrThrow(matchId)
+        userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
 
         val existing = visualReviewRepository.findByMatchId(matchId)
 
@@ -48,19 +75,80 @@ class VisualReviewService(
             return existing
         }
 
-        val review = visualReviewRepository.save(
+        val now = OffsetDateTime.now()
+        val availableAt = visualReviewAvailabilityPolicy.availableAt(
+            now = now,
+            pairReliabilityScore = preResolutionPairReliabilityScore
+        )
+        val expiresAt = availableAt.plusMinutes(visualPhaseDurationMinutes)
+        val review = visualReviewRepository.saveAndFlush(
             VisualReview(
                 matchId = matchId,
-                expiresAt = OffsetDateTime.now()
-                    .plusMinutes(visualPhaseDurationMinutes)
+                expiresAt = expiresAt,
+                availableAt = availableAt,
+                reminderEligibleAt = visualReviewReminderEligibleAt(availableAt),
+                createdAt = now,
+                updatedAt = now
             )
+        )
+        matchmakingAvailabilityNotificationService.reconcileAfterVisualAdvancementCreated(
+            userIds = listOf(match.userAId, match.userBId),
+            now = now
+        )
+        homeStatusService.scheduleNextRefreshAtForBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            nextRefreshAt = availableAt
         )
         homeStateInvalidationService.bumpBoth(
             userAId = match.userAId,
             userBId = match.userBId,
-            reason = "visual_review_available"
+            reason = "visual_review_initialized"
         )
         return review
+    }
+
+    private fun visualReviewReminderEligibleAt(availableAt: OffsetDateTime): OffsetDateTime {
+        require(visualReviewReminderRemainingPercentage in 1..99) {
+            "notifications.visual-review-reminder.remaining-percentage must be greater than 0 and less than 100"
+        }
+
+        val elapsedPercentage = 100L - visualReviewReminderRemainingPercentage
+        val durationSeconds = Duration.ofMinutes(visualPhaseDurationMinutes).seconds
+        val elapsedSeconds = durationSeconds * elapsedPercentage / 100L
+
+        return availableAt.plusSeconds(elapsedSeconds)
+    }
+
+    fun expireVisualReview(matchId: UUID): Boolean {
+        val match = matchService.findByIdOrThrow(matchId)
+        if (match.state != MatchState.VISUAL_PHASE) {
+            return false
+        }
+
+        val review = findByMatchIdOrThrow(matchId)
+        val now = OffsetDateTime.now()
+        val expiresAt = review.expiresAt
+        if (expiresAt == null || expiresAt.isAfter(now)) {
+            return false
+        }
+
+        if (review.userAVisualDecision == null) {
+            userReliabilityScoreService.recordEvent(
+                userId = match.userAId,
+                eventType = UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION,
+                relatedMatchId = match.id
+            )
+        }
+        if (review.userBVisualDecision == null) {
+            userReliabilityScoreService.recordEvent(
+                userId = match.userBId,
+                eventType = UserReliabilityEventType.VISUAL_REVIEW_EXPIRED_NO_DECISION,
+                relatedMatchId = match.id
+            )
+        }
+
+        return matchService.expireMatch(matchId)
     }
 
     fun recordDecision(
@@ -73,8 +161,16 @@ class VisualReviewService(
             matchId = matchId,
             userId = userId
         )
+        if (decision == VisualDecision.APPROVED) {
+            userBlockService.requirePairNotBlocked(match.userAId, match.userBId)
+        }
         val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
             ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
+        val now = OffsetDateTime.now()
+
+        if (match.state == MatchState.VISUAL_PHASE) {
+            requireVisualReviewAvailable(review, now)
+        }
 
         val existingDecision =
             review.decisionFor(
@@ -102,18 +198,12 @@ class VisualReviewService(
         }
 
         if (match.state == MatchState.VISUAL_PHASE) {
-            requireVisualReviewNotExpired(review)
+            requireVisualReviewNotExpired(review, now)
         }
 
         check(match.state == MatchState.VISUAL_PHASE) {
             "Match is not in visual phase"
         }
-
-        requirePartnerMessageReadBeforeDecisionIfPresent(
-            match = match,
-            review = review,
-            userId = userId
-        )
 
         review.recordDecisionFor(
             userId = userId,
@@ -122,7 +212,7 @@ class VisualReviewService(
             decision = decision
         )
 
-        review.updatedAt = OffsetDateTime.now()
+        review.updatedAt = now
         visualReviewRepository.save(review)
 
         matchService.releaseMatchLockForUser(
@@ -142,18 +232,10 @@ class VisualReviewService(
         userId: UUID,
         message: String
     ) {
+        val access = requireVisualContentAccess(matchId, userId)
+        val match = access.match
+        val review = access.review
         val normalizedMessage = normalizePersonalMessage(message)
-
-        val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
-
-        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
-            "Personal messages are only available during visual review or scheduling"
-        }
-
-        if (match.state == MatchState.VISUAL_PHASE) {
-            requireVisualReviewNotExpired(review)
-        }
 
         when (userId) {
 
@@ -179,18 +261,20 @@ class VisualReviewService(
 
         review.updatedAt = OffsetDateTime.now()
         visualReviewRepository.save(review)
+        userReliabilityScoreService.recordEvent(
+            userId = userId,
+            eventType = UserReliabilityEventType.VISUAL_PERSONAL_MESSAGE_SUBMITTED,
+            relatedMatchId = match.id
+        )
     }
 
     fun getPartnerMessage(
         matchId: UUID,
         requestingUserId: UUID
     ): String? {
-        val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
-
-        check(match.state == MatchState.VISUAL_PHASE || match.state == MatchState.VISUAL_APPROVED) {
-            "Partner message is only available during visual review or scheduling"
-        }
+        val access = requireVisualContentAccess(matchId, requestingUserId)
+        val match = access.match
+        val review = access.review
 
         val message = when (requestingUserId) {
             match.userAId -> {
@@ -222,8 +306,9 @@ class VisualReviewService(
         matchId: UUID,
         userId: UUID
     ): Boolean {
-        val match = matchService.findByIdOrThrow(matchId)
-        val review = findByMatchIdOrThrow(matchId)
+        val access = requireVisualContentAccess(matchId, userId)
+        val match = access.match
+        val review = access.review
 
         return when (userId) {
             match.userAId -> review.personalMessageA != null
@@ -238,41 +323,72 @@ class VisualReviewService(
         matchId: UUID,
         userId: UUID
     ): VisualReviewPersonalMessageStatus {
-        val match = matchService.findByIdForUserOrThrow(
-            matchId = matchId,
-            userId = userId
-        )
-        val review = findByMatchIdOrThrow(matchId)
+        val access = requireVisualContentAccess(matchId, userId)
 
         return personalMessageStatusFor(
-            match = match,
-            review = review,
+            match = access.match,
+            review = access.review,
             userId = userId
         )
     }
 
-    private fun requirePartnerMessageReadBeforeDecisionIfPresent(
-        match: Match,
-        review: VisualReview,
-        userId: UUID
-    ) {
-        val status = personalMessageStatusFor(
-            match = match,
-            review = review,
-            userId = userId
+    fun getAffinityIndicators(matchId: UUID): List<VisualReviewAffinityIndicator> =
+        visualReviewAffinityIndicatorRepository.findByMatchIdOrderByOrdinal(matchId)
+
+    fun makeAvailableNowForLocalDev(matchId: UUID): VisualReview {
+        val match = matchService.findByIdOrThrow(matchId)
+        if (match.state != MatchState.VISUAL_PHASE) {
+            throw DomainConflictException(
+                code = DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE,
+                message = "Match is not in visual phase"
+            )
+        }
+
+        val review = visualReviewRepository.findByMatchIdForUpdate(matchId)
+            ?: throw NoSuchElementException("VisualReview not found for match: $matchId")
+        val now = OffsetDateTime.now()
+        requireVisualReviewNotExpired(review, now)
+
+        if (!now.isBefore(review.availableAt)) {
+            return review
+        }
+
+        review.availableAt = now
+        review.expiresAt = now.plusMinutes(visualPhaseDurationMinutes)
+        review.reminderEligibleAt = visualReviewReminderEligibleAt(now)
+        review.updatedAt = now
+        val saved = visualReviewRepository.save(review)
+
+        homeStateInvalidationService.bumpBoth(
+            userAId = match.userAId,
+            userBId = match.userBId,
+            reason = "local_dev_visual_review_available_now"
         )
 
-        if (status.decisionRequiresPartnerPersonalMessageRead) {
+        return saved
+    }
+
+    fun makeAvailableNowForTest(matchId: UUID): VisualReview =
+        makeAvailableNowForLocalDev(matchId)
+
+    private fun requireVisualReviewAvailable(
+        review: VisualReview,
+        now: OffsetDateTime
+    ) {
+        if (now.isBefore(review.availableAt)) {
             throw DomainConflictException(
-                code = DomainErrorCode.VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ,
-                message = "Read the partner personal message before making a visual decision."
+                code = DomainErrorCode.VISUAL_CONTENT_NOT_AVAILABLE,
+                message = "Visual review is not available"
             )
         }
     }
 
-    private fun requireVisualReviewNotExpired(review: VisualReview) {
+    private fun requireVisualReviewNotExpired(
+        review: VisualReview,
+        now: OffsetDateTime = OffsetDateTime.now()
+    ) {
         review.expiresAt?.let { expiresAt ->
-            if (!OffsetDateTime.now().isBefore(expiresAt)) {
+            if (!now.isBefore(expiresAt)) {
                 throw DomainConflictException(
                     code = DomainErrorCode.VISUAL_REVIEW_EXPIRED,
                     message = "Visual review has expired"
@@ -307,8 +423,8 @@ class VisualReviewService(
         return VisualReviewPersonalMessageStatus(
             partnerPersonalMessageSubmitted = partnerMessageSubmitted,
             partnerPersonalMessageRead = partnerMessageRead,
-            decisionRequiresPartnerPersonalMessageRead =
-                partnerMessageSubmitted && !partnerMessageRead
+            // Retained for backward-compatible response shape; no longer blocks visual decisions.
+            decisionRequiresPartnerPersonalMessageRead = false
         )
     }
 

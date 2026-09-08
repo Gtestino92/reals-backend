@@ -1,0 +1,75 @@
+meta {
+  name: 00 Setup Second Chat Firebase Users
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/api/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const requiredSecretVars = [
+    "firebase_api_key",
+    "firebase_password",
+    "firebase_counterpart_password"
+  ];
+
+  requiredSecretVars.forEach((name) => {
+    const value = (bru.getEnvVar(name) || "").trim();
+    if (!value || value.startsWith("paste-")) {
+      throw new Error(`Set ${name} in the active Bruno environment before running this folder.`);
+    }
+  });
+
+  const userAEmail = "gtestino1992@gmail.com";
+  const userBEmail = "android.counterpart@example.com";
+
+  const clearEnvVars = (names) =>
+    names.forEach((name) => bru.setEnvVar(name, "", { persist: true }));
+
+  clearEnvVars([
+    "second_chat_user_a_id_token",
+    "second_chat_user_a_uid",
+    "second_chat_user_b_id_token",
+    "second_chat_user_b_uid",
+    "firebase_id_token",
+    "firebase_uid",
+    "firebase_counterpart_id_token",
+    "firebase_counterpart_uid",
+    "userAId",
+    "userBId",
+    "androidUserId",
+    "counterpartUserId",
+    "matchId",
+    "counterpartMatchId",
+    "connectionId",
+    "counterpartConnectionId",
+    "secondChatId",
+    "completionRequestId",
+    "inactivityRequestId",
+    "secondChatScheduledAt"
+  ]);
+
+  bru.setEnvVar("second_chat_user_a_email", userAEmail, { persist: true });
+  bru.setEnvVar("second_chat_user_b_email", userBEmail, { persist: true });
+
+  // Compatibility aliases for other existing collection requests.
+  bru.setEnvVar("firebase_email", userAEmail, { persist: true });
+  bru.setEnvVar("firebase_counterpart_email", userBEmail, { persist: true });
+
+  // Runtime variables have highest precedence during a folder run.
+  bru.setVar("second_chat_user_a_email", userAEmail);
+  bru.setVar("second_chat_user_b_email", userBEmail);
+  bru.setVar("firebase_email", userAEmail);
+  bru.setVar("firebase_counterpart_email", userBEmail);
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (!body || body.status !== "ok") {
+    throw new Error("Expected backend ping response before second-chat Firebase bootstrap.");
+  }
+}

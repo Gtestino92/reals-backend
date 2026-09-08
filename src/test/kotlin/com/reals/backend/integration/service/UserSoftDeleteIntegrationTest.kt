@@ -57,7 +57,8 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
         schedulingService.addProposal(
             connectionId = setup.connectionId,
             userId = setup.userBId,
-            proposedDateTime = futureHalfHourSlot()
+            proposedDateTime = futureHalfHourSlot(),
+            expectedRoundNumber = 1
         )
 
         userService.deleteUser(setup.userAId)
@@ -105,7 +106,7 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "soft-delete-queued@example.com",
             displayName = "Queued Delete",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
         enqueueForMatchmaking(userId)
 
@@ -120,16 +121,16 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "soft-delete-profile-${UUID.randomUUID()}@example.com",
             displayName = "Profile Delete",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
-        val photosBeforeDelete = profileService.getPhotos(profile.id)
+        val photosBeforeDelete = profilePhotoService.getPhotos(profile.id)
 
         userService.deleteUser(userId)
 
         val deletedProfile = profileService.findByIdOrThrow(profile.id)
         assertEquals(ProfileStatus.DRAFT, deletedProfile.status)
-        assertEquals(photosBeforeDelete.map { it.id }, profileService.getPhotos(profile.id).map { it.id })
+        assertEquals(photosBeforeDelete.map { it.id }, profilePhotoService.getPhotos(profile.id).map { it.id })
     }
 
     @Test
@@ -138,7 +139,7 @@ class UserSoftDeleteIntegrationTest : BaseIT() {
             email = "reactivate-${UUID.randomUUID()}@example.com",
             displayName = "Reactivate",
             gender = com.reals.backend.domain.Gender.FEMALE,
-            lookingForGender = com.reals.backend.domain.LookingForGender.MEN
+            lookingForGenders = setOf(com.reals.backend.domain.Gender.MALE)
         )
 
         userService.deleteUser(userId)

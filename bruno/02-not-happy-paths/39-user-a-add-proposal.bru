@@ -1,0 +1,27 @@
+meta {
+  name: 39 User A Add Proposal
+  type: http
+  seq: 39
+}
+
+post {
+  url: {{baseUrl}}/api/connections/{{negativeConnectionId}}/proposals
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Dev-User-Id: {{negativeUserAId}}
+}
+
+body:json {
+  {
+    "expectedRoundNumber": 1,
+    "proposedDateTimes": ["{{negativeSecondChatDateTime}}"]
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("negativeProposalAId", res.getBody()[0].id);
+}

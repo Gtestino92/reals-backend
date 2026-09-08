@@ -3,38 +3,46 @@ package com.reals.backend.integration.service
 import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Gender
-import com.reals.backend.domain.LookingForGender
 import com.reals.backend.domain.ProfileStatus
 import com.reals.backend.integration.BaseIT
+import com.reals.backend.service.S3StorageService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.util.UUID
 
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
 
+    @MockitoBean
+    private lateinit var storageService: S3StorageService
+
     @Test
-    fun `identity verification records audit event`() {
+    fun `profile authenticity verification records audit event`() {
         val userId = createActiveProfile(
             email = "identity-audit-${UUID.randomUUID()}@example.com",
             displayName = "Identity Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
 
-        profileService.verifyIdentity(profile.id)
+        profileService.verifyProfileAuthenticity(profile.id)
 
         val event = auditEventRepository.findAll()
             .single {
-                it.eventType == AuditEventType.IDENTITY_VERIFICATION_UPDATED &&
+                it.eventType == AuditEventType.PROFILE_AUTHENTICITY_VERIFICATION_UPDATED &&
                     it.aggregateType == AuditAggregateType.PROFILE &&
                     it.aggregateId == profile.id
             }
         assertEquals(userId, event.actorUserId)
         assertTrue(event.metadataJson!!.contains("oldStatus"))
         assertTrue(event.metadataJson!!.contains("VERIFIED"))
+        assertTrue(event.metadataJson!!.contains("authenticityVerified"))
     }
 
     @Test
@@ -45,10 +53,10 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             displayName = "Activation Audit",
             birthDate = java.time.LocalDate.of(1995, 1, 1),
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN,
+            lookingForGenders = setOf(Gender.MALE),
             intention = com.reals.backend.domain.Intention.DATE,
             city = "Buenos Aires",
-            country = "AR",
+            countryCode = "AR",
             preferredMinAge = 18,
             preferredMaxAge = 99,
             maxDistanceKm = 50
@@ -58,7 +66,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
                 com.reals.backend.domain.ProfilePhoto(
                     profileId = profile.id,
                     storageProvider = com.reals.backend.domain.PhotoStorageProvider.S3,
-                    storageBucket = "reals-profile-photos-test",
+                    storageBucket = "reals-media-test",
                     storageKey = "audit/profile/${profile.id}/${index + 1}.jpg",
                     position = index + 1,
                     isPersonPhoto = index == 0,
@@ -89,12 +97,12 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "photo-delete-audit-${UUID.randomUUID()}@example.com",
             displayName = "Photo Delete Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
         val profile = profileService.findByUserId(userId)!!
         val photo = profilePhotoRepository.findByProfileId(profile.id).first()
 
-        profileService.deletePhoto(profile.id, photo.id)
+        profilePhotoService.deletePhoto(profile.id, photo.id)
 
         val event = auditEventRepository.findAll()
             .single {
@@ -114,7 +122,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "account-audit-${UUID.randomUUID()}@example.com",
             displayName = "Account Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         userService.deleteUser(userId)
@@ -148,7 +156,7 @@ class SafetyAuditSideEffectsIntegrationTest : BaseIT() {
             email = "penalty-audit-${UUID.randomUUID()}@example.com",
             displayName = "Penalty Audit",
             gender = Gender.FEMALE,
-            lookingForGender = LookingForGender.MEN
+            lookingForGenders = setOf(Gender.MALE)
         )
 
         val penalty = penaltyService.createTemporaryPenalty(

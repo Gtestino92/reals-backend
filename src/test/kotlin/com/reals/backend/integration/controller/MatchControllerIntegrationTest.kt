@@ -1,11 +1,17 @@
 package com.reals.backend.integration.controller
 
 import com.reals.backend.domain.ChatContinueDecision
+import com.reals.backend.domain.ConnectionState
+import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.PhotoModerationStatus
+import com.reals.backend.domain.UserBlockSource
+import com.reals.backend.domain.VisualDecision
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -27,9 +33,9 @@ class MatchControllerIntegrationTest : ControllerIT() {
 
     @BeforeEach
     fun stubPhotoReadUrls() {
-        Mockito.`when`(storageService.getReadUrl(anyString()))
+        Mockito.`when`(storageService.getReadUrl(anyString(), anyString()))
             .thenAnswer { invocation ->
-                "http://localhost:9000/reals-profile-photos-test/${invocation.arguments[0]}"
+                "http://localhost:9000/${invocation.arguments[0]}/${invocation.arguments[1]}"
             }
     }
 
@@ -42,18 +48,48 @@ class MatchControllerIntegrationTest : ControllerIT() {
             decision = ChatContinueDecision.APPROVED
         )
 
-        mockMvc.perform(
+        val beforeRequest = OffsetDateTime.now()
+        val result = mockMvc.perform(
             get("/api/matches/${setup.matchId}/chat")
                 .with(authenticatedAs(setup.userAId))
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id", equalTo(setup.firstChatId.toString())))
             .andExpect(jsonPath("$.expiresAt").exists())
-            .andExpect(jsonPath("$.inactivityExpiresAt").exists())
+            .andExpect(jsonPath("$.inactivityExpiresAt").doesNotExist())
             .andExpect(jsonPath("$.partner.userId", equalTo(setup.userBId.toString())))
             .andExpect(jsonPath("$.partner.displayName", equalTo("Match B")))
             .andExpect(jsonPath("$.myDecision", equalTo("APPROVED")))
             .andExpect(jsonPath("$.partnerDecision", equalTo("PENDING")))
+            .andExpect(jsonPath("$.serverTime").exists())
+            .andExpect(jsonPath("$.serverTime").isNotEmpty())
+            .andExpect(jsonPath("$.guidance.question.id").exists())
+            .andExpect(jsonPath("$.guidance.question.text").exists())
+            .andExpect(jsonPath("$.guidance.question.answerCode").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.conversationKind").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.conversationPotential").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.categoryId").doesNotExist())
+            .andExpect(jsonPath("$.guidance.question.semanticVersion").doesNotExist())
+            .andExpect(jsonPath("$.guidance.questionOrdinal", equalTo(1)))
+            .andExpect(jsonPath("$.guidance.maxQuestions", equalTo(3)))
+            .andExpect(jsonPath("$.guidance.question.instanceId").exists())
+            .andExpect(jsonPath("$.guidance.requiredCharacters", equalTo(60)))
+            .andExpect(jsonPath("$.guidance.requiredParticipationScore", equalTo(60)))
+            .andExpect(jsonPath("$.guidance.directQuestionReplyMultiplier", equalTo(2)))
+            .andExpect(jsonPath("$.guidance.progressionAction", equalTo("NEXT_QUESTION")))
+            .andExpect(jsonPath("$.guidance.canRequestNext", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.myNextRequested", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.completed", equalTo(false)))
+            .andExpect(jsonPath("$.guidance.partnerNextRequested").doesNotExist())
+            .andExpect(jsonPath("$.guidance.partnerEligible").doesNotExist())
+            .andReturn()
+        val afterRequest = OffsetDateTime.now()
+
+        val serverTime = OffsetDateTime.parse(
+            objectMapper.readTree(result.response.contentAsString).get("serverTime").asString()
+        )
+        assertFalse(serverTime.toInstant().isBefore(beforeRequest.toInstant()))
+        assertFalse(serverTime.toInstant().isAfter(afterRequest.toInstant()))
     }
 
     @Test
@@ -160,6 +196,84 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `visual profile is denied after visual expiration even before scheduler runs`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewRepository.updateExpiresAtByMatchId(setup.matchId, OffsetDateTime.now().minusSeconds(1))
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_EXPIRED")))
+    }
+
+    @Test
+    fun `visual profile is denied before visual review availability`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+    }
+
+    @Test
+    fun `visual profile is denied after visual approval with closed connection`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+        visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+        val connection = connectionRepository.findByMatchId(setup.matchId)
+            ?: error("Connection was not created")
+        connection.state = ConnectionState.CLOSED
+        connectionRepository.saveAndFlush(connection)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+    }
+
+    @Test
+    fun `partner message read is denied for blocked pair and does not mark read`() {
+        val setup = createMatchInVisualPhase()
+        visualReviewService.recordPersonalMessage(setup.matchId, setup.userBId, "Mensaje B")
+        userBlockService.blockUser(setup.userAId, setup.userBId, UserBlockSource.MANUAL)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/personal-messages/partner")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("USER_PAIR_BLOCKED")))
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageBReadByAAt)
+    }
+
+    @Test
+    fun `personal message write is denied for rejected visual match`() {
+        val setup = createMatchInVisualPhase()
+        val match = matchService.findByIdOrThrow(setup.matchId)
+        match.state = MatchState.VISUAL_REJECTED
+        matchRepository.saveAndFlush(match)
+
+        mockMvc.perform(
+            put("/api/matches/${setup.matchId}/personal-messages/me")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"message":"No debe guardarse"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+
+        assertNull(visualReviewService.findByMatchIdOrThrow(setup.matchId).personalMessageA)
+    }
+
+    @Test
     fun `visual profile returns myPersonalMessageSubmitted false before message`() {
         val setup = createMatchInVisualPhase()
         val partnerProfile = profileService.findByUserId(setup.userBId)!!
@@ -175,13 +289,46 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(true)))
             .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
             .andExpect(jsonPath("$.visualExpiresAt").exists())
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(0)))
             .andExpect(
                 jsonPath(
                     "$.photos[0].url",
-                    equalTo("http://localhost:9000/reals-profile-photos-test/$expectedFirstPhotoKey")
+                    equalTo("http://localhost:9000/reals-media-test/$expectedFirstPhotoKey")
                 )
             )
             .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))
+    }
+
+    @Test
+    fun `visual profile exposes only approved partner photos and resolves only included urls`() {
+        val setup = createMatchInVisualPhase()
+        val partnerProfile = profileService.findByUserId(setup.userBId)!!
+        val photos = profilePhotoRepository.findByProfileId(partnerProfile.id)
+            .sortedBy { it.position }
+        val approvedFirst = photos[0]
+        val needsReview = photos[1]
+        val rejected = photos[2]
+        val approvedSecond = photos[3]
+        needsReview.moderationStatus = PhotoModerationStatus.NEEDS_REVIEW
+        rejected.moderationStatus = PhotoModerationStatus.REJECTED
+        profilePhotoRepository.saveAllAndFlush(listOf(needsReview, rejected))
+        Mockito.clearInvocations(storageService)
+
+        mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.photos.length()", equalTo(2)))
+            .andExpect(jsonPath("$.photos[0].id", equalTo(approvedFirst.id.toString())))
+            .andExpect(jsonPath("$.photos[0].moderationStatus", equalTo("APPROVED")))
+            .andExpect(jsonPath("$.photos[1].id", equalTo(approvedSecond.id.toString())))
+            .andExpect(jsonPath("$.photos[1].moderationStatus", equalTo("APPROVED")))
+
+        Mockito.verify(storageService).getReadUrl(approvedFirst.storageBucket!!, approvedFirst.storageKey)
+        Mockito.verify(storageService).getReadUrl(approvedSecond.storageBucket!!, approvedSecond.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl(needsReview.storageBucket!!, needsReview.storageKey)
+        Mockito.verify(storageService, Mockito.never()).getReadUrl(rejected.storageBucket!!, rejected.storageKey)
     }
 
     @Test
@@ -208,6 +355,48 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `visual profile returns symmetric privacy safe affinity indicators`() {
+        val setup = createAnsweredMatchWithFirstChat("visual-affinity-indicators")
+        chatService.recordChatDecision(setup.matchId, setup.userAId, ChatContinueDecision.APPROVED)
+        chatService.recordChatDecision(setup.matchId, setup.userBId, ChatContinueDecision.APPROVED)
+        visualReviewService.makeAvailableNowForTest(setup.matchId)
+
+        val userAResponse = mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userAId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(1)))
+            .andExpect(jsonPath("$.affinityIndicators[0].categoryId", equalTo("CINEMA_SERIES_AND_STORIES")))
+            .andExpect(jsonPath("$.affinityIndicators[0].title").exists())
+            .andExpect(jsonPath("$.affinityIndicators[0].answerCode").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].answerLabel").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].questionId").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].semanticVersion").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].conversationKind").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].conversationPotential").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].score").doesNotExist())
+            .andExpect(jsonPath("$.affinityIndicators[0].percentage").doesNotExist())
+            .andReturn()
+
+        val userBResponse = mockMvc.perform(
+            get("/api/matches/${setup.matchId}/visual-profile")
+                .with(authenticatedAs(setup.userBId))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.affinityIndicators.length()", equalTo(1)))
+            .andExpect(jsonPath("$.affinityIndicators[0].categoryId", equalTo("CINEMA_SERIES_AND_STORIES")))
+            .andExpect(jsonPath("$.affinityIndicators[0].title").exists())
+            .andReturn()
+
+        val userAIndicator = objectMapper.readTree(userAResponse.response.contentAsString).get("affinityIndicators").first()
+        val userBIndicator = objectMapper.readTree(userBResponse.response.contentAsString).get("affinityIndicators").first()
+
+        assertEquals(2, userAIndicator.size())
+        assertEquals(userAIndicator, userBIndicator)
+    }
+
+    @Test
     fun `myPersonalMessageSubmitted is scoped to current user`() {
         val setup = createMatchInVisualPhase()
 
@@ -227,7 +416,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(false)))
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
 
         mockMvc.perform(
             put("/api/matches/${setup.matchId}/personal-messages/me")
@@ -245,7 +434,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.myPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
     }
 
     @Test
@@ -267,7 +456,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.partnerPersonalMessageSubmitted", equalTo(true)))
             .andExpect(jsonPath("$.partnerPersonalMessageRead", equalTo(false)))
-            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(true)))
+            .andExpect(jsonPath("$.decisionRequiresPartnerPersonalMessageRead", equalTo(false)))
 
         val review = visualReviewRepository.findByMatchId(setup.matchId)
             ?: error("Expected visual review")
@@ -299,7 +488,7 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `visual decision approval before reading partner message returns stable conflict code`() {
+    fun `visual decision approval succeeds before reading partner message`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -316,14 +505,12 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"decision":"APPROVED"}""")
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
-            .andExpect(
-                jsonPath(
-                    "$.message",
-                    equalTo("Read the partner personal message before making a visual decision.")
-                )
-            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
@@ -346,7 +533,21 @@ class MatchControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `visual decision rejection before reading partner message returns stable conflict code`() {
+    fun `visual decision before visual review availability returns stable conflict code`() {
+        val setup = createMatchInDelayedVisualPhase()
+
+        mockMvc.perform(
+            post("/api/matches/${setup.matchId}/visual-decision")
+                .with(authenticatedAs(setup.userAId))
+                .contentType(jsonContentType)
+                .content("""{"decision":"APPROVED"}""")
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("VISUAL_CONTENT_NOT_AVAILABLE")))
+    }
+
+    @Test
+    fun `visual decision rejection succeeds before reading partner message`() {
         val setup = createMatchInVisualPhase()
 
         mockMvc.perform(
@@ -363,14 +564,12 @@ class MatchControllerIntegrationTest : ControllerIT() {
                 .contentType(jsonContentType)
                 .content("""{"decision":"REJECTED"}""")
         )
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.code", equalTo("VISUAL_REVIEW_PARTNER_MESSAGE_NOT_READ")))
-            .andExpect(
-                jsonPath(
-                    "$.message",
-                    equalTo("Read the partner personal message before making a visual decision.")
-                )
-            )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.state", equalTo(MatchState.VISUAL_PHASE.name)))
+
+        val review = visualReviewRepository.findByMatchId(setup.matchId)
+            ?: error("Expected visual review")
+        assertNull(review.personalMessageBReadByAAt)
     }
 
     @Test
@@ -522,5 +721,31 @@ class MatchControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error", equalTo("Bad Request")))
+    }
+
+    private fun createAnsweredMatchWithFirstChat(emailPrefix: String): MatchFixture {
+        val userA = createActiveProfile(
+            email = "$emailPrefix-a-${java.util.UUID.randomUUID()}@example.com",
+            displayName = "Match A",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        val userB = createActiveProfile(
+            email = "$emailPrefix-b-${java.util.UUID.randomUUID()}@example.com",
+            displayName = "Match B",
+            gender = Gender.MALE,
+            lookingForGenders = setOf(Gender.FEMALE)
+        )
+        answerAffinityQuestion(userA, "CINEMA_IMPORTANCE_001", "VERY_IMPORTANT")
+        answerAffinityQuestion(userB, "CINEMA_IMPORTANCE_001", "IMPORTANT")
+        val match = matchService.createMatch(userA, userB)
+        val chat = chatService.startFirstChat(match.id)
+
+        return MatchFixture(
+            userAId = userA,
+            userBId = userB,
+            matchId = match.id,
+            firstChatId = chat.id
+        )
     }
 }
