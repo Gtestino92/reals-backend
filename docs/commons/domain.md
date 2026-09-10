@@ -429,7 +429,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Only `ACTIVE` profiles can enter matchmaking.
 - Activation validates photo requirements from `profile.photos.*`.
 - `authenticityVerificationStatus` is the richer persisted profile authenticity verification state and is the source of truth. `authenticityVerified` remains a compatibility boolean projected from that status with the invariant `authenticityVerified == (authenticityVerificationStatus == VERIFIED)`.
-- Default shared photo requirements are 9 photos, 3 person photos and 1 full-body photo. Production temporarily defaults minimum full-body photos to 0 until a real full-body detector exists.
+- Default shared photo requirements are 9 photos, 3 person photos and 1 full-body photo. Production defaults required photos to 4 while keeping the maximum allowed photos at 9, and temporarily defaults minimum full-body photos to 0 until a real full-body detector exists.
 - Local and test profiles override required photos to 4, min person to 1 and min full-body to 1.
 - Birth date and gender are immutable after creation.
 - Editable fields include display name, bio, city, country code, intention and looking-for gender.

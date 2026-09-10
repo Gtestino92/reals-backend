@@ -166,7 +166,7 @@ scheduling:
 profile:
   photos:
     max-count: 9
-    required-count: 9
+    required-count: ${PROFILE_PHOTOS_REQUIRED_COUNT:4}
     min-person-photos: 3
     min-full-body-photos: ${PROFILE_MIN_FULL_BODY_PHOTOS:0}
     require-moderation-approval-for-activation: ${PROFILE_PHOTO_REQUIRE_MODERATION_APPROVAL_FOR_ACTIVATION:true}
