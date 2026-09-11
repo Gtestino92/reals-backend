@@ -9,6 +9,38 @@ import org.springframework.mock.env.MockEnvironment
 class ProductionProfilePhotoConfigurationTest {
 
     @Test
+    fun `production maximum photos remains nine`() {
+        val environment = environmentFromYaml("application-prod.yml")
+
+        assertEquals(
+            9,
+            environment.getProperty("profile.photos.max-count", Int::class.java)
+        )
+    }
+
+    @Test
+    fun `production default required photos is four`() {
+        val environment = environmentFromYaml("application-prod.yml")
+
+        assertEquals(
+            4,
+            environment.getProperty("profile.photos.required-count", Int::class.java)
+        )
+    }
+
+    @Test
+    fun `production required photos can be overridden`() {
+        val environment = environmentFromYaml("application-prod.yml").apply {
+            setProperty("PROFILE_PHOTOS_REQUIRED_COUNT", "6")
+        }
+
+        assertEquals(
+            6,
+            environment.getProperty("profile.photos.required-count", Int::class.java)
+        )
+    }
+
+    @Test
     fun `dev default minimum full-body photos is one`() {
         val environment = environmentFromYaml("application-dev.yml")
 
