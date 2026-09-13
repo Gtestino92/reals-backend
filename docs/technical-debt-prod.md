@@ -178,13 +178,13 @@ read as an architecture document or changelog.
   cache currently.
 - Review the feedback loop between reliability and opportunity access so low
   scores do not create unfair permanent starvation.
-- Observe probabilistic ranking and affinity shadow metrics before enabling
-  experimental ranking modes in production. Global, dev and prod defaults remain
-  `LEGACY_EARLY_ACCEPT`; `local-firebase` defaults to
-  `PROBABILISTIC_WEIGHTED` with affinity `SHADOW`.
-- Define fairness/market-liquidity guardrails for waiting-time relaxation,
-  reliability similarity and affinity influence before turning affinity
-  ranking `ACTIVE`.
+- Monitor enabled probabilistic ranking, user reliability and active affinity
+  weighting with production data. Dev and prod defaults now use
+  `PROBABILISTIC_WEIGHTED` with affinity `ACTIVE`; `local-firebase` remains
+  `PROBABILISTIC_WEIGHTED` with affinity `SHADOW` for local observation.
+- Calibrate fairness/market-liquidity guardrails for waiting-time relaxation,
+  reliability similarity and bounded affinity influence as real usage data
+  accumulates.
 
 ### Unverified and inactive account cleanup
 
