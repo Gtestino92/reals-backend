@@ -9,7 +9,7 @@ import org.springframework.mock.env.MockEnvironment
 class MatchmakingProfileConfigurationTest {
 
     @Test
-    fun `dev defaults to probabilistic ranking shadow affinity and enabled reliability`() {
+    fun `dev defaults to probabilistic ranking active affinity and enabled reliability`() {
         val environment = environmentFromYaml("application-dev.yml")
 
         assertEquals(
@@ -17,7 +17,7 @@ class MatchmakingProfileConfigurationTest {
             environment.getProperty("matchmaking.ranking.mode")
         )
         assertEquals(
-            "SHADOW",
+            "ACTIVE",
             environment.getProperty("matchmaking.ranking.affinity.mode")
         )
         assertEquals(
@@ -44,20 +44,42 @@ class MatchmakingProfileConfigurationTest {
     }
 
     @Test
-    fun `dev affinity can be overridden to active for manual validation`() {
+    fun `dev reliability can be disabled by rollback override`() {
         val environment = environmentFromYaml("application-dev.yml").apply {
-            setProperty("MATCHMAKING_RANKING_AFFINITY_MODE", "ACTIVE")
+            setProperty("USER_RELIABILITY_ENABLED", "false")
         }
 
         assertEquals(
-            "ACTIVE",
-            environment.getProperty("matchmaking.ranking.affinity.mode")
+            false,
+            environment.getProperty("user-reliability.enabled", Boolean::class.java)
         )
     }
 
     @Test
-    fun `prod defaults remain legacy ranking and affinity off`() {
+    fun `prod defaults to probabilistic ranking active affinity and enabled reliability`() {
         val environment = environmentFromYaml("application-prod.yml")
+
+        assertEquals(
+            "PROBABILISTIC_WEIGHTED",
+            environment.getProperty("matchmaking.ranking.mode")
+        )
+        assertEquals(
+            "ACTIVE",
+            environment.getProperty("matchmaking.ranking.affinity.mode")
+        )
+        assertEquals(
+            true,
+            environment.getProperty("user-reliability.enabled", Boolean::class.java)
+        )
+    }
+
+    @Test
+    fun `prod ranking affinity and reliability defaults can be explicitly overridden`() {
+        val environment = environmentFromYaml("application-prod.yml").apply {
+            setProperty("MATCHMAKING_RANKING_MODE", "LEGACY_EARLY_ACCEPT")
+            setProperty("MATCHMAKING_RANKING_AFFINITY_MODE", "OFF")
+            setProperty("USER_RELIABILITY_ENABLED", "false")
+        }
 
         assertEquals(
             "LEGACY_EARLY_ACCEPT",
@@ -67,22 +89,9 @@ class MatchmakingProfileConfigurationTest {
             "OFF",
             environment.getProperty("matchmaking.ranking.affinity.mode")
         )
-    }
-
-    @Test
-    fun `prod ranking and affinity defaults can be explicitly overridden`() {
-        val environment = environmentFromYaml("application-prod.yml").apply {
-            setProperty("MATCHMAKING_RANKING_MODE", "PROBABILISTIC_WEIGHTED")
-            setProperty("MATCHMAKING_RANKING_AFFINITY_MODE", "SHADOW")
-        }
-
         assertEquals(
-            "PROBABILISTIC_WEIGHTED",
-            environment.getProperty("matchmaking.ranking.mode")
-        )
-        assertEquals(
-            "SHADOW",
-            environment.getProperty("matchmaking.ranking.affinity.mode")
+            false,
+            environment.getProperty("user-reliability.enabled", Boolean::class.java)
         )
     }
 

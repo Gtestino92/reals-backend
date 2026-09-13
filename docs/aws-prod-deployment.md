@@ -11,6 +11,18 @@ includes a dedicated backend EC2 instance, private PostgreSQL RDS, private
 profile-photo S3 bucket, DNS, HTTPS/TLS, Nginx in front of the backend,
 production Firebase configuration and enforced Firebase App Check.
 
+Production application defaults enable the already implemented matchmaking
+ranking system: `matchmaking.ranking.mode=PROBABILISTIC_WEIGHTED`,
+`user-reliability.enabled=true` and
+`matchmaking.ranking.affinity.mode=ACTIVE`. Affinity changes candidate weights
+within the configured bounds and is never a hard eligibility filter. No ML
+model is involved. Runtime rollback controls are
+`MATCHMAKING_RANKING_AFFINITY_MODE=OFF`,
+`MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT` and
+`USER_RELIABILITY_ENABLED=false`; because affinity `ACTIVE` is incompatible
+with legacy ranking, disable affinity before or together with switching ranking
+back to legacy.
+
 ## Current Shape
 
 ```text
