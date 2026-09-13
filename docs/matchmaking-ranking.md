@@ -256,6 +256,11 @@ FIFO partner window.
 
 ## Examples
 
+The arithmetic examples below use scale `10` for readability and match the
+current prod default. Shared, hosted `dev` and `local-firebase` default to
+scale `2.0`; `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` can override
+the active environment default.
+
 Reliability gap with scale `10` and no waiting:
 
 | Pair scores | Gap | Reliability log-weight | Relative factor |
@@ -300,7 +305,7 @@ Properties:
 | --- | ---: | --- |
 | `matchmaking.ranking.mode` | `LEGACY_EARLY_ACCEPT` | Hosted AWS `dev` and `local-firebase` default to `PROBABILISTIC_WEIGHTED`; prod remains `LEGACY_EARLY_ACCEPT`. |
 | `matchmaking.ranking.compatibility-temperature` | `0.20` | Must be finite and greater than `0`. Lower values make compatibility differences stronger. |
-| `matchmaking.ranking.reliability-similarity-scale` | `10.0` | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. |
+| `matchmaking.ranking.reliability-similarity-scale` | `2.0` shared/dev/local-firebase; `10.0` prod | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` overrides the active environment default. |
 | `matchmaking.ranking.waiting-relaxation-period-hours` | `72.0` | Must be finite and greater than `0`. Controls how quickly waiting relaxes similarity. |
 | `matchmaking.ranking.maximum-similarity-scale-multiplier` | `3.0` | Must be finite and at least `1`. Caps waiting relaxation. |
 | `matchmaking.ranking.affinity.mode` | `OFF` | `OFF`, `SHADOW` or `ACTIVE`; hosted AWS `dev` and `local-firebase` default to `SHADOW`; prod remains `OFF`. |

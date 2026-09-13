@@ -162,7 +162,7 @@ Non-sensitive runtime configuration:
 | `MATCHMAKING_FIRST_CHAT_DECISION_MISMATCH_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat `FIRST_CHAT_DECISION_MISMATCH`. Defaults to `7`; must be non-negative. |
 | `MATCHMAKING_RANKING_MODE` | no | Matchmaking partner ranking mode. Defaults to `LEGACY_EARLY_ACCEPT` globally/prod and `PROBABILISTIC_WEIGHTED` in hosted `dev` and `local-firebase`. |
 | `MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE` | no | Probabilistic compatibility temperature. Defaults to `0.20`; must be finite and greater than `0`. |
-| `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Defaults to `10.0`; must be finite and greater than `0`. |
+| `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Shared, hosted `dev` and `local-firebase` default to `2.0`; prod defaults to `10.0`. This environment variable overrides the active profile's default and must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS` | no | Hours for each `+1` waiting relaxation multiplier before the cap. Defaults to `72.0`; must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER` | no | Maximum waiting relaxation multiplier. Defaults to `3.0`; must be finite and at least `1`. |
 | `MATCHMAKING_RANKING_AFFINITY_MODE` | no | Private affinity ranking mode: `OFF`, `SHADOW` or `ACTIVE`. Defaults to `OFF` globally/prod and `SHADOW` in hosted `dev` and `local-firebase`. `SHADOW` emits diagnostics but does not affect selection; `ACTIVE` requires `PROBABILISTIC_WEIGHTED` and applies affinity weighting. |
