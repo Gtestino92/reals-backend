@@ -1,8 +1,8 @@
 # DEV External Provider Smoke Checklist
 
-Use this checklist before production deployment to prove the hosted `dev`
-environment can exercise the real external providers that production depends
-on. These are manual smoke tests against DEV only. Do not use production
+Use this checklist when validating that the hosted `dev` environment can
+exercise the real external providers that production depends on. These are
+manual smoke tests against DEV only. Do not use production
 Firebase projects, users, buckets, Sightengine credentials, device tokens or
 data.
 

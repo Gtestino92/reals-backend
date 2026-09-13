@@ -429,20 +429,20 @@ runtime shape intentionally changes.
 
 ## Production Deployment
 
-Do not reuse the dev workflow or role for production. The prepared production
-workflow and production rollback/Flyway policy are documented in
+Do not reuse the dev workflow or role for production. The operational
+production workflow and production rollback/Flyway policy are documented in
 `docs/aws-prod-deployment.md`.
 
-Before the first production deployment, the team must still:
+For each reviewed production promotion, the team must:
 
 1. Review commits exclusive to `master`.
 2. Reconcile branch divergence intentionally.
 3. Create a reviewed promotion from `development` to `master`.
 4. Validate Flyway migrations, backups, and rollback implications.
-5. Configure the separate GitHub Environment `prod`.
-6. Configure a separate AWS OIDC deployment role.
-7. Configure separate EC2/runtime variables and required reviewers.
-8. Deploy an immutable SHA, never `master` or `latest`.
+5. Keep the separate GitHub Environment `prod`, AWS OIDC deployment role,
+   EC2/runtime variables and required reviewers aligned with the current
+   production environment.
+6. Deploy an immutable SHA, never `master`, `development` or `latest`.
 
 When release versioning is introduced, prefer an immutable release tag such as
 `v1.0.0`. Until then, an exact SHA known to belong to the reviewed production
