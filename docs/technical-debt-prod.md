@@ -11,27 +11,21 @@ read as an architecture document or changelog.
   `docs/operational-state-model.md`, deployment docs and `docs/commons/*`.
 - If this document conflicts with code, migrations, configuration or canonical
   current-state docs, treat this document as stale and update it.
-- P0 means required before first production deployment or public exposure. P1
-  means required before meaningful public beta or traffic. P2 means scale or
-  operational hardening triggered by evidence. P3 means future product or
-  architecture evolution that should not delay initial production.
+- P0 means required before broader public exposure or unresolved enough to keep
+  as an explicit production risk after the initial production deployment. P1
+  means required before meaningful public beta or sustained traffic. P2 means
+  scale or operational hardening triggered by evidence. P3 means future product
+  or architecture evolution that should not block the current single-instance
+  production path.
 - This document intentionally omits work that is already implemented unless a
   short implemented-foundation note prevents confusion about remaining debt.
 
-## P0 - required before first production/public exposure
+## P0 - required before broader public exposure
 
 ### Production environment and release boundary
 
-- Create a production GitHub Environment with manual approval, production-only
-  secrets and production-only deployment variables.
-- Create a separate production AWS OIDC role and trust policy; do not reuse the
-  dev SSM target or dev deployment role.
-- Define the production runtime shape separately from AWS dev: hostname/TLS,
-  Nginx or load-balancer boundary, JVM/container settings, private PostgreSQL,
-  S3 bucket, Firebase project, App Check mode, allowed app ids and readiness
-  checks.
-- Promote immutable `master` ancestor SHAs only through the prepared
-  `Deploy AWS Prod` workflow; do not deploy `latest`, `master` or
+- Continue promoting immutable `master` ancestor SHAs only through the
+  operational `Deploy AWS Prod` workflow; do not deploy `latest`, `master` or
   `development` tags.
 - Complete the real production backup/restore procedure and restore drill. The
   repository workflow intentionally performs application rollback only and never
@@ -54,13 +48,6 @@ read as an architecture document or changelog.
 
 ### Production photo analysis and activation
 
-- Configure and smoke-test the production photo-analysis provider before users
-  can activate profiles. Startup now rejects `prod` unless the configured
-  provider is `sightengine`; operators still need an environment-level smoke
-  test with real media before opening traffic.
-- Verify Sightengine credentials, account plan and model access for
-  `face-analysis`, `nudity-2.1`, `violence`, `gore-2.0` and
-  `offensive-2.0` in the actual production environment.
 - Keep the current provider boundaries explicit: Sightengine moderation and real
   face presence are not legal identity verification, facial recognition, face
   matching, liveness, age assurance, minor detection or full-body detection.
@@ -101,10 +88,10 @@ read as an architecture document or changelog.
 
 ### Rate-limit and edge configuration
 
-- Configure the production reverse proxy or load balancer so the servlet
-  container receives the real client IP only from trusted infrastructure. The
-  pre-auth limiter keys on `request.remoteAddr` and does not trust arbitrary
-  forwarded-IP headers.
+- Verify and maintain the production Nginx/reverse-proxy client-IP boundary so
+  the servlet container receives the real client IP only from trusted
+  infrastructure. The pre-auth limiter keys on `request.remoteAddr` and does
+  not trust arbitrary forwarded-IP headers.
 - Review public capacities for provisioning, password reset, message sends,
   profile-photo uploads/replacements and safety reports before opening traffic.
 - Keep the current Caffeine limiter limitation explicit: it is per-instance. A
@@ -156,6 +143,17 @@ read as an architecture document or changelog.
 - Decide how stale prepared pushes should be handled when a user completes the
   action after preparation but before transport.
 
+### Play distribution and App Check attestation
+
+- Complete Google Play distribution testing with Play Integrity-backed App
+  Check before claiming production distribution coverage. The manually validated
+  Android `prodDebug` path used a registered App Check debug token and is not
+  Play Integrity evidence.
+- Register and verify the production Android app/signing configuration required
+  by Firebase App Check and Google Play for the chosen distribution channel.
+- Keep backend App Check enforcement enabled in `prod` while ensuring approved
+  distribution builds can obtain valid non-debug App Check tokens.
+
 ### Safety and moderation operations
 
 - Provide production-grade backoffice UX/tooling for the implemented backend
@@ -198,14 +196,16 @@ read as an architecture document or changelog.
   accounts. Photo upload and replacement now require verified email; profile
   creation/editing and match-filter edits remain allowed before verification.
 
-### Production smoke and manual validation
+### Production smoke coverage
 
-- Build a production smoke plan that covers readiness, authenticated requests,
-  Firebase App Check, profile photo upload/replacement, profile activation,
-  matchmaking, Home polling, chat reads, notifications, safety reporting and
-  account deletion request/reactivation/finalization paths.
-- Keep smoke checks public only for readiness/ping. `/actuator/info` and
-  `/actuator/metrics/**` must remain admin-only.
+- Preserve the current manually validated production coverage for readiness,
+  authenticated requests, Firebase App Check, profile/photo operations,
+  profile activation and security denial checks.
+- Extend and document recurring production smoke coverage for matchmaking, Home
+  polling, chat reads, notifications, safety reporting and account-deletion
+  request/reactivation/finalization paths.
+- Keep automated public smoke checks limited to readiness/ping.
+  `/actuator/info` and `/actuator/metrics/**` must remain admin-only.
 
 ## P2 - scale/operational hardening triggered by evidence
 
@@ -328,7 +328,16 @@ read as an architecture document or changelog.
 - Account deletion request containment, 30-day recovery and Firebase/local
   finalization are implemented. The remaining debt is final purge,
   anonymization and retention policy after recovery.
-- AWS dev deployment is implemented through GitHub Actions, GHCR immutable SHA
-  images, GitHub OIDC, SSM Run Command, private RDS/S3, Nginx, readiness checks
-  and host-side automatic application-image rollback. Production deployment is a
-  separate P0 design and approval boundary.
+- AWS dev and prod deployments are implemented through GitHub Actions, GHCR
+  immutable SHA images, GitHub OIDC, SSM Run Command, EC2 Docker replacement,
+  readiness checks and host-side automatic application-image rollback.
+- Production is deployed in `us-east-2` with a dedicated EC2 backend instance,
+  private PostgreSQL RDS, private S3 profile-photo bucket, DNS/HTTPS/TLS,
+  Nginx, production Firebase configuration and enforced backend Firebase App
+  Check. `Deploy AWS Prod` deployments and production Flyway migrations have
+  succeeded.
+- Production has been manually validated for Android `prodDebug` with a
+  registered App Check debug token, authenticated auth/profile/photo flows,
+  activation, Sightengine-backed real photo uploads and security denial checks
+  for missing/invalid Auth/App Check and normal-user access to admin/Actuator
+  surfaces. This does not prove Google Play / Play Integrity distribution.
