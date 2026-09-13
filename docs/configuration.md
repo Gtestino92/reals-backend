@@ -160,12 +160,12 @@ Non-sensitive runtime configuration:
 | `MATCHMAKING_PREVIOUS_PAIRING_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for explicit chat rejection, visual rejection, visual-review expiration and closed connections. Defaults to `30`; must be non-negative. |
 | `MATCHMAKING_FIRST_CHAT_EXPIRATION_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat absolute timeout or inactivity abandonment. Defaults to `7`; must be non-negative. |
 | `MATCHMAKING_FIRST_CHAT_DECISION_MISMATCH_COOLDOWN_DAYS` | no | Dev/prod cooldown in days for first-chat `FIRST_CHAT_DECISION_MISMATCH`. Defaults to `7`; must be non-negative. |
-| `MATCHMAKING_RANKING_MODE` | no | Matchmaking partner ranking mode. Defaults to `LEGACY_EARLY_ACCEPT` globally/dev/prod and `PROBABILISTIC_WEIGHTED` in `local-firebase`. |
+| `MATCHMAKING_RANKING_MODE` | no | Matchmaking partner ranking mode. Defaults to `LEGACY_EARLY_ACCEPT` in shared config and `PROBABILISTIC_WEIGHTED` in hosted `dev`, prod and `local-firebase`. Use this variable as a rollback switch when needed. |
 | `MATCHMAKING_RANKING_COMPATIBILITY_TEMPERATURE` | no | Probabilistic compatibility temperature. Defaults to `0.20`; must be finite and greater than `0`. |
-| `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Defaults to `10.0`; must be finite and greater than `0`. |
+| `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` | no | Probabilistic reliability-gap scale. Shared, hosted `dev` and `local-firebase` default to `2.0`; prod defaults to `10.0`. This environment variable overrides the active profile's default and must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_WAITING_RELAXATION_PERIOD_HOURS` | no | Hours for each `+1` waiting relaxation multiplier before the cap. Defaults to `72.0`; must be finite and greater than `0`. |
 | `MATCHMAKING_RANKING_MAXIMUM_SIMILARITY_SCALE_MULTIPLIER` | no | Maximum waiting relaxation multiplier. Defaults to `3.0`; must be finite and at least `1`. |
-| `MATCHMAKING_RANKING_AFFINITY_MODE` | no | Private affinity ranking mode: `OFF`, `SHADOW` or `ACTIVE`. Defaults to `OFF` globally/dev/prod and `SHADOW` in `local-firebase`. `ACTIVE` requires `PROBABILISTIC_WEIGHTED`. |
+| `MATCHMAKING_RANKING_AFFINITY_MODE` | no | Private affinity ranking mode: `OFF`, `SHADOW` or `ACTIVE`. Defaults to `OFF` in shared config, `ACTIVE` in hosted `dev` and prod, and `SHADOW` in `local-firebase`. `SHADOW` emits diagnostics but does not affect selection; `ACTIVE` requires `PROBABILISTIC_WEIGHTED` and applies affinity weighting. Disable affinity before or together with rollback to legacy ranking. |
 | `MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT` | no | Maximum multiplicative affinity adjustment. Defaults to `0.10`; must be finite and in `[0.0, 0.25]`. |
 | `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS` | no | Shared ranking-enabled question count for full global affinity confidence. Defaults to `12`; must be positive. |
 | `MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES` | no | Ranking-evidence category count for full global affinity confidence. Defaults to `4`; must be positive. |
@@ -180,7 +180,7 @@ Non-sensitive runtime configuration:
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_MAX` | no | Maximum reliability-derived Connection admission cap. Default `6`. |
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_REWARD_SCALE` | no | Positive reliability scale for Connection capacity. Default `30`, intentionally more conservative than Match. |
 | `ENGAGEMENT_RELIABILITY_CAPACITY_CONNECTION_PENALTY_SCALE` | no | Negative reliability scale for Connection capacity. Default `10`. |
-| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `true` in `dev` and `local-firebase`, `false` elsewhere. |
+| `USER_RELIABILITY_ENABLED` | no | Enables the internal user reliability event system and bounded matchmaking modifier. Defaults to `true` in hosted `dev`, prod and `local-firebase`, `false` in shared config. |
 | `USER_RELIABILITY_BASE_SCORE` | no | Base reliability score used when recomputing from active events. Defaults to `100`. |
 | `USER_RELIABILITY_FULL_WEIGHT_DAYS` | no | Number of days reliability events count at full weight. Defaults to `10`. |
 | `USER_RELIABILITY_HALF_WEIGHT_DAYS` | no | Number of days reliability events count at half weight after the full-weight window. Defaults to `10`. |
@@ -677,7 +677,9 @@ and object keys are not logged.
 
 `matchmaking.min-compatibility-score` has mode-specific semantics. In `LEGACY_EARLY_ACCEPT`, it applies to the combined legacy score: raw compatibility plus the bounded legacy reliability modifier. This preserves the pre-refactor behavior. In `PROBABILISTIC_WEIGHTED`, it applies only to raw compatibility before reliability similarity and Gumbel randomness are applied. `matchmaking.early-accept-compatibility-score` is used only by `LEGACY_EARLY_ACCEPT`; probabilistic mode ignores it and ranks every candidate that passes the raw compatibility minimum in a weighted permutation without replacement. See `docs/matchmaking-ranking.md` for formulas and calibration notes.
 
-`matchmaking.ranking.affinity` is private affinity evidence for probabilistic ranking. `OFF` performs no answer loading or evaluation. `SHADOW` batch-loads answers for the bounded candidate window and records aggregate low-cardinality observations without changing order. `ACTIVE` adds the bounded affinity log-weight to `PROBABILISTIC_WEIGHTED` only and is rejected with `LEGACY_EARLY_ACCEPT`. The default rollback is `MATCHMAKING_RANKING_AFFINITY_MODE=OFF`.
+Hosted `dev` and prod both default `matchmaking.ranking.mode` to `PROBABILISTIC_WEIGHTED` and enable `user-reliability.enabled`. No ML model is involved; the ranking path uses configured formulas and Gumbel weighted ordering. Production keeps its current ranking parameters, including `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE=10.0` by default; shared, hosted `dev` and `local-firebase` keep `2.0` where currently configured.
+
+`matchmaking.ranking.affinity` is private affinity evidence for probabilistic ranking. `OFF` performs no answer loading or evaluation. `SHADOW` batch-loads answers for the bounded candidate window and records aggregate low-cardinality observations without changing order or selected pairs. Hosted `dev` and prod default to `ACTIVE`, which adds the bounded affinity log-weight to `PROBABILISTIC_WEIGHTED`; with the default `max-relative-adjustment=0.10`, the affinity factor remains bounded to `[0.90, 1.10]`. Affinity is never a hard eligibility filter. Rollback controls are `MATCHMAKING_RANKING_AFFINITY_MODE=OFF`, `MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT` and `USER_RELIABILITY_ENABLED=false`; because `ACTIVE` is rejected with `LEGACY_EARLY_ACCEPT`, disable affinity before or together with switching ranking back to legacy.
 
 `matchmaking.visual-advancement.max-per-window` and
 `matchmaking.visual-advancement.window-hours` control the rolling cap on new
@@ -749,6 +751,10 @@ management:
   metrics:
     enable:
       all: false
+      hikaricp: true
+      http.server.requests: true
+      jvm: true
+      process: true
       reals: true
   endpoints:
     web:
@@ -759,6 +765,22 @@ management:
 Public unauthenticated Actuator access is limited to `/actuator/health` and
 `/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
 `/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
+
+Enabled standard meter families:
+
+- `http.server.requests`: Spring MVC request metrics with count, duration,
+  status and outcome tags for basic API failure and latency diagnosis.
+- `jvm.*`: JVM memory, GC, thread, classloader and related runtime meters for
+  diagnosing heap pressure, GC pressure and thread exhaustion.
+- `process.*`: process runtime meters such as uptime/start time and process CPU
+  signals.
+- `hikaricp.*`: Hikari pool active, idle, pending, max/min capacity and related
+  pool gauges/timers for database saturation diagnosis.
+
+Unrelated standard meter families remain disabled by the `all: false` default
+unless they are explicitly listed above. The backend does not expose a new
+Actuator endpoint for metrics; it only broadens the meter names available through
+the existing secured `/actuator/metrics` surface.
 
 Current custom application meters:
 
@@ -825,6 +847,9 @@ Current custom application meters:
   runs. Tags: `mode=monitor|enforced`, `outcome=missing|valid|invalid|unavailable`,
   `endpoint_group=api|admin|legal|profile-photo|provision`, and bounded
   `exception` class or `none`.
+- `reals.rate_limit.requests`: counter for in-memory rate-limit decisions. Tags:
+  `phase=pre_auth|post_auth`, `group=default|provision|password-reset|messages|profile-photo-uploads|safety-reports`,
+  and `outcome=allowed|rejected`.
 
 These meters intentionally avoid user ids, chat ids, match ids, aggregate ids,
 cursor ids, raw paths, object keys, tokens, JWT claims, HTTP status and raw

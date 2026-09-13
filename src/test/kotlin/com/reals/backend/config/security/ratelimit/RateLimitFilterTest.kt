@@ -3,6 +3,7 @@ package com.reals.backend.config.security.ratelimit
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.FirebasePrincipal
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -59,6 +60,39 @@ class RateLimitFilterTest {
 
         assertEquals(200, runPreAuth(filter, provisionRequest("10.0.0.1", "invalid-token")))
         assertEquals(200, runPreAuth(filter, provisionRequest("10.0.0.2", "invalid-token")))
+    }
+
+    @Test
+    fun `pre auth records rate limit decisions by group and outcome`() {
+        val registry = SimpleMeterRegistry()
+        val filter = RateLimitFilter(
+            properties,
+            resolver,
+            exposurePolicy,
+            MicrometerRateLimitMetrics(registry)
+        )
+
+        assertEquals(200, runPreAuth(filter, provisionRequest("10.0.0.1", "invalid-token-1")))
+        assertEquals(429, runPreAuth(filter, provisionRequest("10.0.0.1", "invalid-token-2")))
+
+        assertEquals(
+            1.0,
+            registry.get(MicrometerRateLimitMetrics.REQUESTS)
+                .tag("phase", "pre_auth")
+                .tag("group", "provision")
+                .tag("outcome", "allowed")
+                .counter()
+                .count()
+        )
+        assertEquals(
+            1.0,
+            registry.get(MicrometerRateLimitMetrics.REQUESTS)
+                .tag("phase", "pre_auth")
+                .tag("group", "provision")
+                .tag("outcome", "rejected")
+                .counter()
+                .count()
+        )
     }
 
     @Test
@@ -143,6 +177,40 @@ class RateLimitFilterTest {
         assertEquals(200, runPostAuth(filter, apiRequest("10.0.0.1", "token-1", "/api/me")))
         assertEquals(429, runPostAuth(filter, apiRequest("10.0.0.1", "token-2", "/api/me")))
         assertEquals("post-auth:default:user:$userId", filter.rateLimitKey(resolver.resolve(apiRequest()), filter.principalIdentity()!!))
+    }
+
+    @Test
+    fun `post auth records rate limit decisions by group and outcome`() {
+        val registry = SimpleMeterRegistry()
+        val filter = PostAuthenticationRateLimitFilter(
+            properties,
+            resolver,
+            exposurePolicy,
+            MicrometerRateLimitMetrics(registry)
+        )
+        setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "firebase-user", null, false))
+
+        assertEquals(200, runPostAuth(filter, safetyReportRequest("10.0.0.1", "token-1")))
+        assertEquals(429, runPostAuth(filter, safetyReportRequest("10.0.0.1", "token-2")))
+
+        assertEquals(
+            1.0,
+            registry.get(MicrometerRateLimitMetrics.REQUESTS)
+                .tag("phase", "post_auth")
+                .tag("group", "safety-reports")
+                .tag("outcome", "allowed")
+                .counter()
+                .count()
+        )
+        assertEquals(
+            1.0,
+            registry.get(MicrometerRateLimitMetrics.REQUESTS)
+                .tag("phase", "post_auth")
+                .tag("group", "safety-reports")
+                .tag("outcome", "rejected")
+                .counter()
+                .count()
+        )
     }
 
     @Test

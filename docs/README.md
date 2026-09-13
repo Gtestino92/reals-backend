@@ -13,7 +13,7 @@ should not preserve completed work as history.
 - `dev-deployment.md`: current AWS dev deployment shape, GHCR image, PostgreSQL, Firebase and runtime checks.
 - `dev-smoke-checklist.md`: manual DEV smoke checklist for external providers and admin/safety readiness.
 - `aws-dev-deployment.md`: manual AWS dev deployment workflow, OIDC/SSM setup and rollback behavior.
-- `aws-prod-deployment.md`: prepared manual AWS production deployment workflow, rollback modes and Flyway N-1 policy.
+- `aws-prod-deployment.md`: operational manual AWS production deployment workflow, rollback modes and Flyway N-1 policy.
 - `lifecycle-job-manual-test-plan.md`: manual checks for lifecycle jobs.
 - `local-development.md`: local profiles, H2/PostgreSQL, auth and run notes.
 - `matchmaking-ranking.md`: matching ranking modes and calibration notes.

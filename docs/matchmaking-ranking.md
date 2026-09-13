@@ -30,6 +30,8 @@ already run.
 - No deterministic segregation by reliability band.
 - No automatic rejection solely due to reliability distance.
 - No Android/user-facing score exposure in this task.
+- No ML model; ranking uses the deterministic formulas and configured weights
+  documented here.
 
 ## Ranking Modes
 
@@ -44,9 +46,9 @@ already run.
   log-weights, adds Gumbel noise and sorts into a complete weighted permutation
   without replacement.
 
-Global, dev and prod defaults remain `LEGACY_EARLY_ACCEPT`. The
-`local-firebase` profile defaults to `PROBABILISTIC_WEIGHTED` for manual
-experimentation and can be switched with `MATCHMAKING_RANKING_MODE`.
+Hosted AWS `dev`, prod and `local-firebase` default to
+`PROBABILISTIC_WEIGHTED`. The shared default remains `LEGACY_EARLY_ACCEPT`.
+Each environment can be switched with `MATCHMAKING_RANKING_MODE`.
 
 `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` only affects
 `LEGACY_EARLY_ACCEPT`. Probabilistic ranking uses individual reliability-score
@@ -108,12 +110,12 @@ logWeight = compatibilityLogWeight + reliabilityLogWeight
 Log space avoids underflow when weights become very small and makes the
 components additive.
 
-## Affinity Shadow Ranking
+## Affinity Ranking
 
 `matchmaking.ranking.affinity.mode` controls private affinity evidence:
 
 - `OFF`: does not load affinity answers, evaluate affinity or emit affinity
-  metrics/logs. This is the global, dev and prod default.
+  metrics/logs. This is the shared default.
 - `SHADOW`: only in `PROBABILISTIC_WEIGHTED`, batch-loads affinity answers for
   the bounded partner window, evaluates hypothetical factors and records
   privacy-safe logs and metrics. It does not change eligibility, weights,
@@ -122,10 +124,16 @@ components additive.
   `SHADOW` and adds affinity log-weight to the actual probabilistic weight.
   `ACTIVE` is rejected with `LEGACY_EARLY_ACCEPT`.
 
-`local-firebase` defaults affinity to `SHADOW` because it already defaults
-ranking to `PROBABILISTIC_WEIGHTED`. Affinity observation requires
-probabilistic ranking mode; under legacy mode shadow affinity remains dormant
-and does not query answers. Roll back by setting affinity mode to `OFF`.
+Hosted AWS `dev` and prod default affinity to `ACTIVE`, so affinity modifies
+probabilistic candidate weights by default. `local-firebase` remains `SHADOW`
+for local observation. Affinity is never a hard eligibility filter: it does not
+override gender/preferences, intention, age, distance/location, blocks,
+penalties, active-pair restrictions, historical cooldowns, active engagement
+capacity, visual advancement caps or queue locking. Affinity observation and
+weighting require probabilistic ranking mode; `ACTIVE` is incompatible with
+`LEGACY_EARLY_ACCEPT`, so rollback must set
+`MATCHMAKING_RANKING_AFFINITY_MODE=OFF` before or together with switching
+`MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT`.
 
 Affinity answers are private. Matchmaking does not log, serialize or expose
 answer codes, question-answer pairs, user ids, profile ids, match ids,
@@ -248,6 +256,11 @@ FIFO partner window.
 
 ## Examples
 
+The arithmetic examples below use scale `10` for readability and match the
+current prod default. Shared, hosted `dev` and `local-firebase` default to
+scale `2.0`; `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` can override
+the active environment default.
+
 Reliability gap with scale `10` and no waiting:
 
 | Pair scores | Gap | Reliability log-weight | Relative factor |
@@ -290,12 +303,12 @@ Properties:
 
 | Property | Default | Notes |
 | --- | ---: | --- |
-| `matchmaking.ranking.mode` | `LEGACY_EARLY_ACCEPT` | `local-firebase` defaults to `PROBABILISTIC_WEIGHTED`. |
+| `matchmaking.ranking.mode` | `LEGACY_EARLY_ACCEPT` shared; `PROBABILISTIC_WEIGHTED` dev/prod/local-firebase | `MATCHMAKING_RANKING_MODE` overrides the active environment default. |
 | `matchmaking.ranking.compatibility-temperature` | `0.20` | Must be finite and greater than `0`. Lower values make compatibility differences stronger. |
-| `matchmaking.ranking.reliability-similarity-scale` | `10.0` | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. |
+| `matchmaking.ranking.reliability-similarity-scale` | `2.0` shared/dev/local-firebase; `10.0` prod | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. `MATCHMAKING_RANKING_RELIABILITY_SIMILARITY_SCALE` overrides the active environment default. |
 | `matchmaking.ranking.waiting-relaxation-period-hours` | `72.0` | Must be finite and greater than `0`. Controls how quickly waiting relaxes similarity. |
 | `matchmaking.ranking.maximum-similarity-scale-multiplier` | `3.0` | Must be finite and at least `1`. Caps waiting relaxation. |
-| `matchmaking.ranking.affinity.mode` | `OFF` | `OFF`, `SHADOW` or `ACTIVE`; `local-firebase` defaults to `SHADOW`. |
+| `matchmaking.ranking.affinity.mode` | `OFF` shared; `ACTIVE` dev/prod; `SHADOW` local-firebase | `OFF`, `SHADOW` or `ACTIVE`; `MATCHMAKING_RANKING_AFFINITY_MODE` overrides the active environment default. `ACTIVE` requires `PROBABILISTIC_WEIGHTED`. |
 | `matchmaking.ranking.affinity.max-relative-adjustment` | `0.10` | Must be finite and in `[0.0, 0.25]`. |
 | `matchmaking.ranking.affinity.full-confidence-shared-questions` | `12` | Positive integer. |
 | `matchmaking.ranking.affinity.full-confidence-categories` | `4` | Positive integer. |
@@ -322,14 +335,22 @@ Examples:
 MATCHMAKING_RANKING_MODE=PROBABILISTIC_WEIGHTED
 ```
 
+Rollback:
+
 ```text
+MATCHMAKING_RANKING_AFFINITY_MODE=OFF
 MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT
+USER_RELIABILITY_ENABLED=false
 ```
+
+`MATCHMAKING_RANKING_AFFINITY_MODE=ACTIVE` is incompatible with
+`MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT`, so disable affinity before or
+together with ranking rollback.
 
 ## Calibration
 
-Initial defaults are hypotheses, not empirically calibrated production truth.
-Before production rollout, inspect:
+Enabled defaults are still hypotheses, not empirically calibrated production
+truth. Continue inspecting:
 
 - distribution of effective reliability scores;
 - reliability gaps of formed pairs;

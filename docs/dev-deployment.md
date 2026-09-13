@@ -90,6 +90,17 @@ Profile-photo moderation defaults to the no-op compatibility provider in DEV.
 Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` plus Sightengine credentials
 only for an explicit real-provider smoke run.
 
+Matchmaking in AWS dev is the staged validation path for the already
+implemented probabilistic weighted ranking system. DEV defaults
+`matchmaking.ranking.mode=PROBABILISTIC_WEIGHTED`,
+`user-reliability.enabled=true` and
+`matchmaking.ranking.affinity.mode=ACTIVE`; affinity modifies candidate weights
+within its bounded adjustment but is never a hard eligibility filter. No ML
+model is involved. Roll back with `MATCHMAKING_RANKING_AFFINITY_MODE=OFF`,
+`MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT` and
+`USER_RELIABILITY_ENABLED=false`; disable affinity before or together with
+switching ranking back to legacy.
+
 Minimum backend runtime environment in `/etc/reals/backend.env`:
 
 ```text

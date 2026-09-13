@@ -1,10 +1,27 @@
 # AWS Production Deployment Runbook
 
-This repository contains a prepared, manually triggered AWS production backend
-deployment workflow. The workflow is ready for repository review, but it does
-not create AWS infrastructure and it will fail clearly until the production
-GitHub Environment, OIDC role, EC2 host, database, storage, runtime env file and
-public base URL exist.
+This repository contains the manually triggered AWS production backend
+deployment workflow currently used for Reals production. The workflow deploys
+immutable GHCR images to the existing production EC2 host through SSM, validates
+public readiness and ping, and preserves application-image rollback semantics.
+
+The workflow does not create AWS infrastructure. The current production
+infrastructure is operator-managed outside this repository in `us-east-2` and
+includes a dedicated backend EC2 instance, private PostgreSQL RDS, private
+profile-photo S3 bucket, DNS, HTTPS/TLS, Nginx in front of the backend,
+production Firebase configuration and enforced Firebase App Check.
+
+Production application defaults enable the already implemented matchmaking
+ranking system: `matchmaking.ranking.mode=PROBABILISTIC_WEIGHTED`,
+`user-reliability.enabled=true` and
+`matchmaking.ranking.affinity.mode=ACTIVE`. Affinity changes candidate weights
+within the configured bounds and is never a hard eligibility filter. No ML
+model is involved. Runtime rollback controls are
+`MATCHMAKING_RANKING_AFFINITY_MODE=OFF`,
+`MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT` and
+`USER_RELIABILITY_ENABLED=false`; because affinity `ACTIVE` is incompatible
+with legacy ranking, disable affinity before or together with switching ranking
+back to legacy.
 
 ## Current Shape
 
@@ -61,9 +78,9 @@ replacing the container.
 
 ## GitHub Environment `prod`
 
-Create a GitHub Environment named `prod`.
+The workflow uses a GitHub Environment named `prod`.
 
-Required environment configuration:
+Required environment configuration that must remain present:
 
 | Name | Secret | Purpose |
 | --- | --- | --- |
@@ -76,12 +93,12 @@ The workflow fails during configuration validation if any required value is
 missing. Do not hardcode ARNs, instance IDs, domains, passwords or secrets in
 the workflow.
 
-Required reviewers should be configured in the GitHub Environment before real
-production use.
+Required reviewers should remain configured in the GitHub Environment before
+operator-approved production use.
 
 ## AWS and EC2 Requirements
 
-Production must use a separate AWS OIDC role, separate EC2 target and separate
+Production uses a separate AWS OIDC role, separate EC2 target and separate
 runtime configuration from dev. The workflow resolves exactly one running EC2
 instance by:
 
@@ -92,8 +109,8 @@ instance-state-name=running
 
 Zero matches or multiple matches fail the deployment before SSM execution.
 
-The EC2 host must already have Docker, SSM managed-instance connectivity,
-permission to pull `ghcr.io/gtestino92/reals-backend`, and a readable
+The EC2 host must have Docker, SSM managed-instance connectivity, permission to
+pull `ghcr.io/gtestino92/reals-backend`, and a readable
 `/etc/reals/backend.env`. Application secrets belong in the host/runtime secret
 source, not in GitHub Actions.
 
@@ -302,18 +319,45 @@ raw container logs or raw HTTP response bodies. When primary failure markers
 exist, `Deployment stage` and `Error code` describe the original failed new
 deployment rather than later rollback health-check activity.
 
-## Pending Before Real Production
+## Current Production State
 
-The repository mechanism is prepared, but real production deployment still
-requires:
+Implemented and deployed:
 
-- GitHub Environment `prod` with approval and required variables.
-- Production AWS OIDC role and least-privilege permissions.
-- Production EC2 target with unique `Name` tag and SSM connectivity.
-- Production RDS PostgreSQL and backup/restore procedure.
-- Production S3 bucket and IAM runtime access.
-- Production `BACKEND_BASE_URL`.
-- Production `/etc/reals/backend.env`.
-- Host-level GHCR read access when required.
-- DNS/TLS/edge configuration.
-- Production Firebase/App Check/Play Integrity work when separately approved.
+- AWS production infrastructure exists in `us-east-2`.
+- The production backend runs on its dedicated EC2 instance.
+- Production PostgreSQL RDS exists and is private.
+- The production profile-photo S3 bucket exists and is private.
+- Production DNS, HTTPS/TLS and Nginx are configured and working.
+- The production Firebase project/configuration exists.
+- Firebase App Check is enforced by the backend in `prod`.
+- `Deploy AWS Prod` deployments have succeeded.
+- Production Flyway migrations execute successfully.
+- Production Sightengine photo analysis has been exercised successfully with
+  real profile-photo uploads.
+
+Manually validated:
+
+- Android `prodDebug` has been tested against production with a registered App
+  Check debug token.
+- Authenticated production flows have been exercised, including authentication,
+  profile/photo operations and profile activation.
+- Security checks have been exercised for Auth/App Check requirements and
+  normal-user denial of admin and protected Actuator endpoints.
+
+Still pending operational work:
+
+- Complete and document the production database/object-store backup and restore
+  drill. This repository still performs application rollback only and never
+  automatic database rollback.
+- Publish legally reviewed public legal documents and finalize data-retention,
+  purge/anonymization and backup-retention policy.
+- Configure production-grade observability: metrics backend, alerting,
+  dashboards, log retention and operational incident runbooks.
+- Define production-grade admin/backoffice and safety operations, including
+  access model, escalation ownership and evidence handling.
+- Broaden FCM operational observability and retry/backoff policy.
+- Complete Google Play / Play Integrity distribution validation before claiming
+  production distribution coverage. The `prodDebug` App Check debug-token smoke
+  is not Play Integrity evidence.
+- Treat additional scaling work as evidence-triggered, not part of this current
+  single-instance deployment path.

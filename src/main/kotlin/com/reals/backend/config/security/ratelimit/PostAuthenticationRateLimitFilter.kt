@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 class PostAuthenticationRateLimitFilter(
     private val properties: RateLimitProperties,
     private val ruleResolver: RateLimitRuleResolver,
-    private val environmentExposurePolicy: EnvironmentExposurePolicy
+    private val environmentExposurePolicy: EnvironmentExposurePolicy,
+    private val rateLimitMetrics: RateLimitMetrics = RateLimitMetrics.noop()
 ) : OncePerRequestFilter() {
 
     private val buckets = Caffeine.newBuilder()
@@ -73,12 +74,22 @@ class PostAuthenticationRateLimitFilter(
 
         when (val decision = bucket.tryConsume(now)) {
             is RateLimitDecision.Allowed -> {
+                rateLimitMetrics.recordDecision(
+                    phase = RateLimitMetrics.POST_AUTH,
+                    group = rule.id,
+                    outcome = RateLimitMetrics.ALLOWED
+                )
                 response.setHeader("X-RateLimit-Limit", rule.capacity.toString())
                 response.setHeader("X-RateLimit-Remaining", decision.remainingTokens.toString())
                 filterChain.doFilter(request, response)
             }
 
             is RateLimitDecision.Rejected -> {
+                rateLimitMetrics.recordDecision(
+                    phase = RateLimitMetrics.POST_AUTH,
+                    group = rule.id,
+                    outcome = RateLimitMetrics.REJECTED
+                )
                 writeRateLimitExceeded(response, decision.retryAfterSeconds)
             }
         }
