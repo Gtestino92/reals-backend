@@ -312,9 +312,11 @@ without user ids or raw-score tags. Capacity evaluation phases are
 `availability`, `final_match_admission` and internal `queue_reconciliation`.
 Scheduler Micrometer metrics under `reals.scheduler.job.*` record run outcomes,
 duration, item counts and bounded-batch backlog indicators without aggregate
-ids. Actuator exposes Micrometer meters in configured runtimes, but durable
-metrics retention requires an external registry/backend that is not introduced
-here.
+ids. Rate limiting emits aggregate `reals.rate_limit.requests` counters by
+phase, endpoint group and allowed/rejected outcome without client IPs, user ids
+or token values. Actuator exposes custom meters plus selected standard HTTP,
+JVM, process and Hikari pool meters in configured runtimes, but durable metrics
+retention requires an external registry/backend that is not introduced here.
 
 `Penalty` rows represent administrative account bans only. Temporary bans are
 effective while `active=true` and `now < expiresAt`; permanent bans are
