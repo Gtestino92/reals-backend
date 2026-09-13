@@ -30,6 +30,8 @@ already run.
 - No deterministic segregation by reliability band.
 - No automatic rejection solely due to reliability distance.
 - No Android/user-facing score exposure in this task.
+- No ML model; ranking uses the deterministic formulas and configured weights
+  documented here.
 
 ## Ranking Modes
 
@@ -44,9 +46,11 @@ already run.
   log-weights, adds Gumbel noise and sorts into a complete weighted permutation
   without replacement.
 
-Global, dev and prod defaults remain `LEGACY_EARLY_ACCEPT`. The
-`local-firebase` profile defaults to `PROBABILISTIC_WEIGHTED` for manual
-experimentation and can be switched with `MATCHMAKING_RANKING_MODE`.
+Global and prod defaults remain `LEGACY_EARLY_ACCEPT`. The hosted AWS `dev`
+profile is the staged validation environment and defaults to
+`PROBABILISTIC_WEIGHTED`; `local-firebase` keeps the same probabilistic default
+for local manual experimentation. Both can be switched with
+`MATCHMAKING_RANKING_MODE`.
 
 `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` only affects
 `LEGACY_EARLY_ACCEPT`. Probabilistic ranking uses individual reliability-score
@@ -113,7 +117,7 @@ components additive.
 `matchmaking.ranking.affinity.mode` controls private affinity evidence:
 
 - `OFF`: does not load affinity answers, evaluate affinity or emit affinity
-  metrics/logs. This is the global, dev and prod default.
+  metrics/logs. This is the global and prod default.
 - `SHADOW`: only in `PROBABILISTIC_WEIGHTED`, batch-loads affinity answers for
   the bounded partner window, evaluates hypothetical factors and records
   privacy-safe logs and metrics. It does not change eligibility, weights,
@@ -122,10 +126,14 @@ components additive.
   `SHADOW` and adds affinity log-weight to the actual probabilistic weight.
   `ACTIVE` is rejected with `LEGACY_EARLY_ACCEPT`.
 
-`local-firebase` defaults affinity to `SHADOW` because it already defaults
-ranking to `PROBABILISTIC_WEIGHTED`. Affinity observation requires
-probabilistic ranking mode; under legacy mode shadow affinity remains dormant
-and does not query answers. Roll back by setting affinity mode to `OFF`.
+Hosted AWS `dev` and `local-firebase` default affinity to `SHADOW` because they
+default ranking to `PROBABILISTIC_WEIGHTED`. This lets operators evaluate
+affinity evidence and existing privacy-safe diagnostics before affinity affects
+pair selection. Set `MATCHMAKING_RANKING_AFFINITY_MODE=ACTIVE` in dev only for
+the later manual test where affinity should influence actual weighting.
+Affinity observation requires probabilistic ranking mode; under legacy mode
+shadow affinity remains dormant and does not query answers. Roll back by
+setting affinity mode to `OFF`.
 
 Affinity answers are private. Matchmaking does not log, serialize or expose
 answer codes, question-answer pairs, user ids, profile ids, match ids,
@@ -290,12 +298,12 @@ Properties:
 
 | Property | Default | Notes |
 | --- | ---: | --- |
-| `matchmaking.ranking.mode` | `LEGACY_EARLY_ACCEPT` | `local-firebase` defaults to `PROBABILISTIC_WEIGHTED`. |
+| `matchmaking.ranking.mode` | `LEGACY_EARLY_ACCEPT` | Hosted AWS `dev` and `local-firebase` default to `PROBABILISTIC_WEIGHTED`; prod remains `LEGACY_EARLY_ACCEPT`. |
 | `matchmaking.ranking.compatibility-temperature` | `0.20` | Must be finite and greater than `0`. Lower values make compatibility differences stronger. |
 | `matchmaking.ranking.reliability-similarity-scale` | `10.0` | Must be finite and greater than `0`. Larger values make reliability gaps less punitive. |
 | `matchmaking.ranking.waiting-relaxation-period-hours` | `72.0` | Must be finite and greater than `0`. Controls how quickly waiting relaxes similarity. |
 | `matchmaking.ranking.maximum-similarity-scale-multiplier` | `3.0` | Must be finite and at least `1`. Caps waiting relaxation. |
-| `matchmaking.ranking.affinity.mode` | `OFF` | `OFF`, `SHADOW` or `ACTIVE`; `local-firebase` defaults to `SHADOW`. |
+| `matchmaking.ranking.affinity.mode` | `OFF` | `OFF`, `SHADOW` or `ACTIVE`; hosted AWS `dev` and `local-firebase` default to `SHADOW`; prod remains `OFF`. |
 | `matchmaking.ranking.affinity.max-relative-adjustment` | `0.10` | Must be finite and in `[0.0, 0.25]`. |
 | `matchmaking.ranking.affinity.full-confidence-shared-questions` | `12` | Positive integer. |
 | `matchmaking.ranking.affinity.full-confidence-categories` | `4` | Positive integer. |
@@ -324,6 +332,10 @@ MATCHMAKING_RANKING_MODE=PROBABILISTIC_WEIGHTED
 
 ```text
 MATCHMAKING_RANKING_MODE=LEGACY_EARLY_ACCEPT
+```
+
+```text
+MATCHMAKING_RANKING_AFFINITY_MODE=ACTIVE
 ```
 
 ## Calibration
