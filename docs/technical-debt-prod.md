@@ -111,10 +111,11 @@ read as an architecture document or changelog.
 ### Observability and alerting
 
 - Select and configure the production metrics/logging backend. The application
-  currently exposes request IDs, secured Actuator metrics and custom Micrometer
-  meters for reads, App Check, scheduler runs/backlog and push delivery
-  outcomes, but it does not configure Prometheus, Grafana, OTLP export,
-  distributed tracing or alert routing.
+  currently exposes request IDs, secured Actuator metrics, selected standard
+  HTTP/JVM/process/Hikari meters and custom Micrometer meters for reads, App
+  Check, rate limiting, scheduler runs/backlog, media cleanup, affinity
+  diagnostics and push delivery outcomes, but it does not configure Prometheus,
+  Grafana, OTLP export, distributed tracing or alert routing.
 - Add alerts for job failures, matchmaking backlog, stale active locks, failed
   media cleanup, failed notification delivery, DB connection saturation,
   repeated deadlocks, elevated auth/App Check failures, elevated rate limiting

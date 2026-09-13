@@ -751,6 +751,10 @@ management:
   metrics:
     enable:
       all: false
+      hikaricp: true
+      http.server.requests: true
+      jvm: true
+      process: true
       reals: true
   endpoints:
     web:
@@ -761,6 +765,22 @@ management:
 Public unauthenticated Actuator access is limited to `/actuator/health` and
 `/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
 `/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
+
+Enabled standard meter families:
+
+- `http.server.requests`: Spring MVC request metrics with count, duration,
+  status and outcome tags for basic API failure and latency diagnosis.
+- `jvm.*`: JVM memory, GC, thread, classloader and related runtime meters for
+  diagnosing heap pressure, GC pressure and thread exhaustion.
+- `process.*`: process runtime meters such as uptime/start time and process CPU
+  signals.
+- `hikaricp.*`: Hikari pool active, idle, pending, max/min capacity and related
+  pool gauges/timers for database saturation diagnosis.
+
+Unrelated standard meter families remain disabled by the `all: false` default
+unless they are explicitly listed above. The backend does not expose a new
+Actuator endpoint for metrics; it only broadens the meter names available through
+the existing secured `/actuator/metrics` surface.
 
 Current custom application meters:
 
@@ -827,6 +847,9 @@ Current custom application meters:
   runs. Tags: `mode=monitor|enforced`, `outcome=missing|valid|invalid|unavailable`,
   `endpoint_group=api|admin|legal|profile-photo|provision`, and bounded
   `exception` class or `none`.
+- `reals.rate_limit.requests`: counter for in-memory rate-limit decisions. Tags:
+  `phase=pre_auth|post_auth`, `group=default|provision|password-reset|messages|profile-photo-uploads|safety-reports`,
+  and `outcome=allowed|rejected`.
 
 These meters intentionally avoid user ids, chat ids, match ids, aggregate ids,
 cursor ids, raw paths, object keys, tokens, JWT claims, HTTP status and raw
