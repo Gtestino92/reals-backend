@@ -338,6 +338,43 @@ class RateLimitFilterTest {
         )
     }
 
+    @Test
+    fun `dedicated reset policy limits anonymous requests and ignores spoofed forwarding headers`() {
+        val configured = RateLimitProperties(passwordResetEnabled = true)
+        val filter = RateLimitFilter(configured, RateLimitRuleResolver(configured), exposurePolicy)
+        assertEquals(null, SecurityContextHolder.getContext().authentication)
+        repeat(10) { assertEquals(200, runPreAuth(filter, passwordResetRequest("10.0.0.1"))) }
+        val rejected = MockHttpServletResponse()
+        filter.doFilter(passwordResetRequest("10.0.0.1").apply {
+            addHeader("X-Forwarded-For", "203.0.113.10")
+            addHeader("Forwarded", "for=203.0.113.11")
+            addHeader("X-Real-IP", "203.0.113.12")
+        }, rejected, MockFilterChain())
+        assertEquals(429, rejected.status)
+        assertTrue(rejected.getHeader("Retry-After")!!.toLong() in 1..3600)
+        assertEquals("application/json", rejected.contentType?.substringBefore(';'))
+        assertTrue(rejected.contentAsString.contains("\"code\":\"RATE_LIMIT_EXCEEDED\""))
+        assertEquals(200, runPreAuth(filter, passwordResetRequest("10.0.0.2")))
+        assertEquals(600, filter.preAuthenticationRule(provisionRequest("10.0.0.1", "invalid")).capacity)
+        assertEquals(600, filter.preAuthenticationRule(passwordResetRequest("10.0.0.1").apply { method = "GET" }).capacity)
+        assertEquals(600, filter.preAuthenticationRule(passwordResetRequest("10.0.0.1").apply {
+            requestURI = "/api/auth/password-reset/other"
+        }).capacity)
+    }
+
+    @Test
+    fun `dedicated reset is opt in and local exemptions and disabled limiter are preserved`() {
+        assertFalse(RateLimitProperties().passwordResetEnabled)
+        assertEquals(properties.preAuthCapacity, preAuthFilter().preAuthenticationRule(passwordResetRequest("10.0.0.1")).capacity)
+        for (profile in listOf("local-firebase", "local-nodb")) {
+            val filter = RateLimitFilter(properties, resolver, EnvironmentExposurePolicy.forActiveProfiles(profile))
+            repeat(2) { assertEquals(200, runPreAuth(filter, apiRequest(path = "/api/local-dev/test"))) }
+        }
+        val disabled = properties.copy(enabled = false, passwordResetEnabled = true)
+        val filter = RateLimitFilter(disabled, RateLimitRuleResolver(disabled), exposurePolicy)
+        repeat(11) { assertEquals(200, runPreAuth(filter, passwordResetRequest("10.0.0.1"))) }
+    }
+
     private fun preAuthFilter(): RateLimitFilter =
         RateLimitFilter(properties, resolver, exposurePolicy)
 

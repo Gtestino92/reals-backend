@@ -13,6 +13,8 @@ import java.util.UUID
 @TestPropertySource(
     properties = [
         "security.rate-limit.enabled=true",
+        "security.rate-limit.password-reset-enabled=true",
+        "security.rate-limit.password-reset-capacity=1",
         "security.rate-limit.provision-capacity=1",
         "security.rate-limit.provision-refill-tokens=1",
         "security.rate-limit.provision-refill-period-seconds=60",
@@ -22,6 +24,25 @@ import java.util.UUID
     ]
 )
 class RateLimitIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `anonymous reset returns generic accepted then rate limit regardless of email and forwarded headers`() {
+        fun reset(email: String, ip: String) = post("/api/auth/password-reset")
+            .with { it.remoteAddr = ip; it }
+            .header("X-Forwarded-For", UUID.randomUUID().toString())
+            .contentType(jsonContentType)
+            .content("""{"email":"$email"}""")
+
+        mockMvc.perform(reset("unknown@example.com", "192.0.2.10"))
+            .andExpect(status().isAccepted)
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(""))
+        mockMvc.perform(reset("other@example.com", "192.0.2.10"))
+            .andExpect(status().isTooManyRequests)
+            .andExpect(header().exists("Retry-After"))
+            .andExpect(jsonPath("$.code", equalTo("RATE_LIMIT_EXCEEDED")))
+        mockMvc.perform(reset("unknown@example.com", "192.0.2.11"))
+            .andExpect(status().isAccepted)
+    }
 
     @Test
     fun `provision endpoint returns too many requests after limit is exceeded`() {

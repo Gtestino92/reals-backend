@@ -146,6 +146,10 @@ Non-sensitive runtime configuration:
 | `PROFILE_AUTHENTICITY_VERIFICATION_MIN_MATCHED_PERSON_PHOTOS` | no | Minimum current candidate person photos that must positively match the accepted live reference for automatic `VERIFIED`. Defaults to `3`; must be positive. This is separate from `profile.photos.min-person-photos`. |
 | `PROFILE_AUTHENTICITY_VERIFICATION_MAX_CONTRADICTORY_PERSON_PHOTOS` | no | Maximum current candidate person photos with contradictory facial evidence allowed for automatic `VERIFIED`. Defaults to `0`; must not be negative. Contradictions currently produce `NEEDS_REVIEW`, not automatic `REJECTED`. |
 | `RATE_LIMIT_ENABLED` | prod: yes | Enables the in-memory pre-auth and post-auth token-bucket limiters. Defaults to `true`; `prod` refuses to start when this is `false`. |
+| `RATE_LIMIT_PASSWORD_RESET_ENABLED` | no | `security.rate-limit.password-reset-enabled`, default `false` in every profile. Enable the dedicated anonymous reset IP bucket only after the trusted-proxy verification described in `docs/security-mvp.md`; otherwise the existing broad pre-auth quota applies. |
+| `RATE_LIMIT_PASSWORD_RESET_CAPACITY` | no | `security.rate-limit.password-reset-capacity`, default `10`; must be positive. |
+| `RATE_LIMIT_PASSWORD_RESET_REFILL_TOKENS` | no | `security.rate-limit.password-reset-refill-tokens`, default `10`; must be positive. |
+| `RATE_LIMIT_PASSWORD_RESET_REFILL_PERIOD_SECONDS` | no | `security.rate-limit.password-reset-refill-period-seconds`, default `3600`; must be positive. |
 | `RATE_LIMIT_SAFETY_REPORT_CAPACITY` | no | Token bucket capacity for `POST /api/safety/reports`. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_TOKENS` | no | Tokens refilled for safety report creation. Defaults to `5`. |
 | `RATE_LIMIT_SAFETY_REPORT_REFILL_PERIOD_SECONDS` | no | Safety report refill period in seconds. Defaults to `86400`. |
@@ -587,7 +591,12 @@ rate-limit bucket for photo upload and replacement is `profile-photo-uploads`,
 keyed by backend user id, with a default quota of 12 requests per 60 seconds.
 Delete, list and reorder do not consume that bucket; the broad pre-auth IP
 limiter is unchanged. Current rate-limit buckets are in-memory and
-single-instance.
+single-instance. Each filter cache has at most 100,000 buckets; per-entry idle
+expiration is `max(15 minutes, ceil(capacity / refillTokens) * refillPeriod)`.
+Tokens refill at exact period equality, in discrete batches. Restarts, capacity
+eviction and multiple replicas prevent a durable daily quota guarantee. See
+`docs/security-mvp.md` for the unverified production client-IP boundary and the
+activation prerequisites for the opt-in password-reset policy.
 
 Set `PROFILE_PHOTO_MODERATION_PROVIDER=sightengine` only in `prod` for
 production. DEV always uses the no-op provider path for profile-photo moderation
