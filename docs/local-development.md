@@ -44,67 +44,130 @@ Expected response:
 {"status":"ok"}
 ```
 
-## Testing From Another Device Or Network
+## Localhost, ADB Reverse And Explicit LAN Access
 
-The local docs and Bruno collection default to `localhost`, which only works
-from the same machine that runs the backend. When another device needs to call
-the local backend, use an address that is reachable from that device.
+Compose publishes only IPv4 loopback by default:
 
-Same LAN or same Wi-Fi:
+| Service | Host binding |
+| --- | --- |
+| Spring Boot | `127.0.0.1:8080` |
+| PostgreSQL | `127.0.0.1:5432` |
+| MinIO API | `127.0.0.1:9000` |
+| MinIO administration console | `127.0.0.1:9001` |
 
-```text
-http://<developer-machine-lan-ip>:8080
+`localhost` refers to the machine running the client. On the development host,
+use `http://localhost:8080` (or explicitly `http://127.0.0.1:8080`). If a tool
+resolves localhost only to IPv6 `::1`, select `127.0.0.1`; no IPv6 port is
+published. Container-to-container addresses remain `postgres:5432` and
+`http://minio:9000`; do not change them to localhost.
+
+### Web And Chrome Android Through ADB Reverse
+
+The existing host-run Vite `/api` proxy to `http://localhost:8080` continues to
+work. Firebase Authentication still verifies real tokens; no auth settings or
+Firebase credentials change with these bindings.
+
+For Chrome on a USB-connected Android device, keep the default Compose
+bindings and forward the development ports through ADB:
+
+```powershell
+adb reverse tcp:5173 tcp:5173
+adb reverse tcp:8080 tcp:8080
+adb reverse tcp:9000 tcp:9000
+adb reverse --list
 ```
 
-Example:
+Start Vite as usual on the host and open `http://localhost:5173` in phone Chrome.
+The browser calls the Vite proxy; media URLs using `127.0.0.1:9000` reach host
+MinIO through the reverse mapping. The 8080 mapping also supports a native
+Android debug build configured for `http://127.0.0.1:8080`. No LAN publication
+is needed. ADB requires an authorized device with USB debugging; mappings must
+be restored after disconnect/restart. Remove them when finished with
+`adb reverse --remove tcp:5173` (and likewise for 8080 and 9000).
 
-```text
-http://192.168.0.5:8080
+### Native Android On The Same LAN (Explicit Opt-In)
+
+Use only a trusted development LAN. `local-firebase` exposes development-only
+endpoints, including unauthenticated `/api/local-dev/**` mutations and an
+authenticated email-verification helper. It must never be deployed as a public
+environment, even though it verifies real Firebase ID tokens. Do not publish
+local profiles using router port forwarding or public tunnels; use a separately
+secured shared `dev` deployment for remote testing.
+
+In PowerShell, substitute the host's actual IPv4 LAN address (not the phone IP):
+
+```powershell
+$env:REALS_LOCAL_API_BIND_ADDRESS = '192.168.0.5'
+$env:STORAGE_S3_PRESIGNED_URL_ENDPOINT = 'http://192.168.0.5:9000'
+docker compose config --quiet
+docker compose up -d --no-deps backend minio
 ```
 
-Then update the client base URL:
+This assumes the stack has already been built/initialized with the normal
+`docker compose up -d --build backend` workflow. The opt-in publishes only
+8080 and 9000 on that specific host interface. PostgreSQL 5432 and the MinIO
+console 9001 stay on `127.0.0.1`; do not open firewall rules for those ports.
+Do not use `0.0.0.0` as a convenience default. Allow inbound TCP 8080/9000 only
+from the test device/trusted subnet in the Windows Private network firewall
+profile. Do not disable the firewall. A changed DHCP address requires updating
+both values and recreating backend/MinIO.
 
-- Bruno: set `baseUrl` in the ignored local environment file, for example
-  `bruno/reals-backend-happy-path/environments/local.bru`.
-- Android physical device: point the app's backend URL at the same LAN IP and
-  port.
-- Android Emulator on the same host: keep using emulator-specific host routing
-  such as `10.0.2.2` where documented below.
+Point the native Android debug backend URL to `http://192.168.0.5:8080` and
+use its existing development cleartext-network configuration. The presigner
+must use `http://192.168.0.5:9000` before generating URLs. Never replace the
+host, port, path or query in a returned presigned URL: the Host and request are
+part of the signature. Internal uploads still use `http://minio:9000`.
+Fetch fresh media responses after changing endpoints; old URLs keep their old
+host and expiry. A single presigner endpoint serves all clients, so switching
+to LAN mode also makes host clients use that LAN media address. With a specific
+LAN interface binding, use the LAN backend address on the host too; a Vite
+proxy targeting localhost needs the default mode. Use ADB reverse when testing
+Web and Android together through localhost.
 
-Windows/macOS/Linux firewall rules must allow inbound traffic to the backend
-port. With Docker Compose, the backend is already published as `8080:8080`, so
-the host port is `8080`.
+Return to the default mode in the same shell (also remove any opt-in persisted
+in an ignored backend `.env` or shell profile):
 
-Media URLs need the same treatment. If the client renders media from local
-MinIO, `STORAGE_S3_PRESIGNED_URL_ENDPOINT` must be reachable by that client:
-
-```text
-STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://<developer-machine-lan-ip>:9000
+```powershell
+Remove-Item Env:REALS_LOCAL_API_BIND_ADDRESS -ErrorAction SilentlyContinue
+Remove-Item Env:STORAGE_S3_PRESIGNED_URL_ENDPOINT -ErrorAction SilentlyContinue
+docker compose config --quiet
+docker compose up -d --no-deps backend minio
 ```
 
-If this stays as `http://localhost:9000`, another phone or computer will try to
-load MinIO from itself instead of from the backend developer machine. With
-Docker Compose, MinIO is already published as `9000:9000`.
+Environment variables affect Compose interpolation; no additional override file
+is required. Empty/unset variables use the defaults in `docker-compose.yml`.
+Never put Firebase secrets into these values or into tracked files.
 
-Different network or different router:
+### Applying And Verifying The Bindings On Windows Docker Desktop
 
-- Prefer a VPN or a tunnel such as Cloudflare Tunnel/ngrok for short manual
-  testing.
-- Port forwarding can work, but it exposes local services to the internet and
-  should be temporary and tightly controlled.
-- Do not expose `local-nodb`, `local-postgres`, or other local-dev tooling to
-  the public internet. Those profiles expose test helpers such as
-  `/api/local-dev/**`.
-- If the backend needs to be reachable for repeated Android testing outside the
-  developer LAN, prefer a real shared `dev` deployment instead of a local
-  machine behind a router.
+Editing Compose does not change existing containers. When ready for a brief
+local interruption, apply the default bindings to an existing initialized stack:
 
-Check reachability from the client network before debugging application logic:
-
-```http
-GET http://<reachable-host>:8080/api/ping
-GET http://<reachable-host>:8080/actuator/health/readiness
+```powershell
+docker compose config --quiet
+docker compose up -d --no-deps backend postgres minio
+docker compose ps
+curl.exe --fail http://127.0.0.1:8080/api/ping
+curl.exe --fail http://127.0.0.1:8080/actuator/health/readiness
+curl.exe --fail http://127.0.0.1:9000/minio/health/live
 ```
+
+Expect ping `{"status":"ok"}`, readiness success and MinIO HTTP 200. Check
+`docker compose ps`/`docker inspect` for all four loopback bindings and no
+`0.0.0.0` or `::` publications. Verify host PostgreSQL access with the existing
+local database client and open `http://127.0.0.1:9001` for the console. Existing
+named PostgreSQL and MinIO volumes are reused; do not run `down -v`, remove
+volumes or reset the database to apply networking changes.
+
+From a second LAN device, confirm all four host ports are inaccessible in
+default mode. In explicit LAN mode, verify ping/readiness on the LAN address,
+Firebase sign-in/provisioning and media upload/read in native Android; confirm
+5432/9001 remain inaccessible. Test a newly generated presigned URL unchanged
+and confirm successful media delivery without signature errors. Repeat Chrome
+Android through ADB reverse in default mode and verify Web API/media access.
+Docker Desktop forwarding, Windows firewall rules, Wi-Fi client isolation,
+VPNs and device configuration require these real-device checks; Compose config
+validation alone cannot prove network isolation or Android connectivity.
 
 ## H2 Console
 
@@ -386,8 +449,10 @@ local runtime override instead:
 STORAGE_S3_PRESIGNED_URL_ENDPOINT=http://10.0.2.2:9000
 ```
 
-Keep that override local. It is developer-machine specific and should not be
-committed to `docker-compose.yml`.
+Set it in the shell before recreating the backend, using the Compose
+`STORAGE_S3_PRESIGNED_URL_ENDPOINT` interpolation described above. Keep it
+local. Verify emulator host routing on Docker Desktop; ADB reverse is an
+alternative that retains the default loopback endpoint.
 
 Bruno tracked environment templates must contain placeholders only. Put real
 Firebase API keys, test-user passwords and tokens in ignored local environment
