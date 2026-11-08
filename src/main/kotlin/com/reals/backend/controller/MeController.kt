@@ -112,7 +112,8 @@ class MeController(
 
     @PostMapping("/api/me/provision")
     fun provisionMe(
-        authentication: Authentication
+        authentication: Authentication,
+        request: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<UserResponse> {
         val principal = authentication.principal
 
@@ -141,7 +142,8 @@ class MeController(
             firebaseUid = firebasePrincipal.uid,
             email = firebasePrincipal.email,
             emailVerified = firebasePrincipal.emailVerified,
-            signInProvider = firebasePrincipal.signInProvider
+            signInProvider = firebasePrincipal.signInProvider,
+            remoteAddr = request.remoteAddr
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(

@@ -864,3 +864,31 @@ These meters intentionally avoid user ids, chat ids, match ids, aggregate ids,
 cursor ids, raw paths, object keys, tokens, JWT claims, HTTP status and raw
 message count as tags. No Prometheus registry, OTLP exporter, distributed
 tracing or production Hibernate statistics are configured in this block.
+
+
+## Account provisioning limits
+
+Namespace: `security.account-provisioning-limit`. Independent from in-memory
+request rate limits. All profiles default to disabled, including production.
+
+| Environment variable | Property | Default / validation |
+|---|---|---|
+| `ACCOUNT_PROVISIONING_LIMIT_ENABLED` | `enabled` | `false` |
+| `ACCOUNT_PROVISIONING_LIMIT_DAILY_CAPACITY` | `daily-capacity` | `3`, positive |
+| `ACCOUNT_PROVISIONING_LIMIT_WEEKLY_CAPACITY` | `weekly-capacity` | `5`, at least daily capacity |
+| `ACCOUNT_PROVISIONING_LIMIT_DAILY_WINDOW_HOURS` | `daily-window-hours` | `24`, 1..8760 |
+| `ACCOUNT_PROVISIONING_LIMIT_WEEKLY_WINDOW_DAYS` | `weekly-window-days` | `7`, 1..365, covers daily window |
+| `ACCOUNT_PROVISIONING_LIMIT_HMAC_SECRET` | `hmac-secret` | no default key; Base64 of at least 32 random bytes required when enabled |
+| `ACCOUNT_PROVISIONING_LIMIT_CLEANUP_BATCH_SIZE` | `cleanup-batch-size` | `500`, 1..10000 |
+
+`scheduler.account-provisioning-cleanup-job.fixed-delay` defaults to `3600000`
+milliseconds; one batch per run, with ShedLock and PostgreSQL row locking. Enable
+normal scheduling for automatic retention. Disabled local/Firebase workflows need
+no key or quota table access. Never put a production key in source or logs.
+
+Activation requires the runtime ingress checks and rollout constraints in
+[security-mvp.md](security-mvp.md#persistent-account-provisioning-quota).
+`reals.account_provisioning` is a Micrometer counter with only
+`outcome=allowed|denied_daily|denied_weekly`; allowed increments after account
+creation commits (also when enforcement is disabled). Both denial counters
+increment if both windows reject. No identity/network labels are used.

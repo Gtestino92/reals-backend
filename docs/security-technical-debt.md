@@ -201,3 +201,22 @@ investigation and must not be reported as confirmed vulnerabilities.
 - Deployment dependency: disposable environment, test accounts and scan scope.
 - Acceptance: repeatable non-production scan, no real-user mutations, severity
   gates with reviewed exceptions and regression coverage for confirmed findings.
+
+
+## 14. Provisioning quota activation and follow-up
+
+- Priority: P1 before activation; advanced detection P2.
+- Trusted client IP: production ingress/Nginx/Docker/container trust remains
+  unverified. Complete the runtime checks in `security-mvp.md` before enabling
+  persistent provisioning quotas. Defaults intentionally remain disabled.
+- Tune 3/day and 5/week from real traffic and false-positive measurements; monitor
+  shared Wi-Fi, VPN, mobile CGNAT and IPv6 /64 grouping and rotating-prefix bypass.
+- Linked-account and ban-evasion detection remains deferred. IP quotas cannot
+  prove unique people or prevent all abuse.
+- Define HMAC key rotation/compromise procedures: changing keys resets effective
+  counters; coordinate all instances and retention/window changes.
+- Review Firebase identity lifecycle and Web/Android provisioning rejection UX.
+  Acceptance: 429 preserves the external identity/session, delays retries using
+  `Retry-After`, and never enters the backend application without provisioning.
+- Verify cleanup operation/retention when disabled or retired; automatic cleanup
+  currently runs only while enforcement and scheduling are enabled.

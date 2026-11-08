@@ -378,3 +378,71 @@ Revisit CSRF before introducing:
 - form login;
 - browser-managed sessions;
 - credentials automatically attached by browsers.
+
+
+## Persistent account provisioning quota
+
+`POST /api/me/provision` can enforce a persistent network-origin quota for new
+`users` rows: 3 in a rolling 24 hours AND 5 in a rolling 7 days by default.
+It is disabled in every profile by default, independently of the request token
+buckets. Existing UID provisioning, login, verified legacy linking, reactivation,
+conflicts and rolled-back creation do not consume it. Firebase identities are
+never deleted or disabled because of this quota.
+
+Only servlet `request.remoteAddr` is used. This feature never parses
+`X-Forwarded-For`, `Forwarded` or `X-Real-IP`. IPv4 uses all 32 bits; IPv4-mapped
+IPv6 is treated as IPv4; IPv6 uses the first 64 bits. Numeric spelling variants
+normalize to the same binary origin. Hostnames and scoped addresses are rejected.
+A stable HMAC-SHA256 of a family marker and origin bytes is stored; raw addresses,
+UIDs, emails and account IDs are absent from quota events and metric labels.
+HMAC pseudonymizes the origin; it is not irreversible anonymity if the key leaks.
+
+Transactions lock UID then HMAC origin using PostgreSQL transaction-scoped
+advisory locks before counting/inserting. UID/email uniqueness remains the final
+account-creation backstop. Account and event commit/rollback together. The backend
+uses PostgreSQL `clock_timestamp()` after acquiring the origin lock. An event
+counts only when `created_at > now - window`: at exact equality it expires.
+Retries re-read committed state in a new transaction and cannot double-charge.
+Cleanup deletes only events at or before the weekly cutoff, ordered by timestamp
+and ID, in bounded batches using `FOR UPDATE SKIP LOCKED`. Deleting a user does
+not remove quota history. No GET endpoint writes quota state.
+
+A denied new provisioning returns HTTP 429 with stable code
+`ACCOUNT_PROVISIONING_LIMIT_EXCEEDED`, a generic message and `Retry-After` in
+whole seconds (rounded up). The delay is the maximum of the expiry times needed
+to make each window's count strictly below its capacity, including when a lowered
+capacity requires several events to expire. It does not identify other accounts
+or expose which window was exhausted. New activity can change availability.
+Clients must retain the Firebase session/account, display a retryable provisioning
+state and retry this endpoint after the delay with a valid Firebase token. They
+must not treat Firebase registration as proof of a provisioned Reals account or
+loop immediate retries. Web/Android behavior still requires independent review.
+Successful response bodies and existing 200/201 semantics are preserved.
+
+Before production activation, verify the actual public ingress to Nginx/Docker
+and the servlet container, not just a local MockMvc request:
+
+1. Identify every proxy hop and ensure direct backend access is restricted.
+2. Verify ingress strips/replaces client forwarding headers and configure the
+   container to trust only known ingress hops through an independently reviewed
+   infrastructure change. No proxy configuration is introduced by this feature.
+3. From two independently known external IPs, verify distinct correct servlet
+   client addresses (not a shared proxy/container address). Repeat through the
+   actual TLS/production route with spoofed forwarding headers and confirm that
+   the resolved address cannot be changed by the caller. Check IPv4, IPv6 and
+   IPv4-mapped behavior where supported. Avoid persistent raw-IP debug logging.
+4. Supply a cryptographically random Base64 secret of at least 32 bytes, identical
+   across instances, and test invalid/missing-secret startup rejection when enabled.
+5. Verify Flyway V48, shared PostgreSQL connectivity, clock synchronization,
+   scheduling/cleanup health, 429 headers through ingress and client retry UX in
+   staging before enabling `ACCOUNT_PROVISIONING_LIMIT_ENABLED`.
+
+All instances must use identical capacities, windows, key and enabled state.
+Mixed enabled/disabled deployments allow uncounted creations. Changing the key
+starts fresh identifiers/counters. Increasing windows after cleanup cannot recover
+deleted history; plan such changes with a staged retention horizon. Disabling
+stops event collection and automatic cleanup; retained rows should be removed
+through a separately reviewed retention operation if the feature is retired.
+Shared Wi-Fi, VPNs, mobile CGNAT and IPv6 /64s can group unrelated users; IPv6
+prefix rotation and changing networks can bypass the quota. This MVP does not
+establish one account per person and does not replace ban-evasion detection.
