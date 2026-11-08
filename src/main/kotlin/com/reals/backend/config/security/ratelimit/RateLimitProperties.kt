@@ -8,6 +8,10 @@ data class RateLimitProperties(
     val preAuthCapacity: Int = 600,
     val preAuthRefillTokens: Int = 600,
     val preAuthRefillPeriodSeconds: Long = 60,
+    val passwordResetEnabled: Boolean = false,
+    val passwordResetCapacity: Int = 10,
+    val passwordResetRefillTokens: Int = 10,
+    val passwordResetRefillPeriodSeconds: Long = 3_600,
     val defaultCapacity: Int = 180,
     val defaultRefillTokens: Int = 180,
     val defaultRefillPeriodSeconds: Long = 60,
@@ -26,6 +30,7 @@ data class RateLimitProperties(
 ) {
     init {
         validateRule("pre-auth", preAuthCapacity, preAuthRefillTokens, preAuthRefillPeriodSeconds)
+        validateRule("password-reset", passwordResetCapacity, passwordResetRefillTokens, passwordResetRefillPeriodSeconds)
         validateRule("default", defaultCapacity, defaultRefillTokens, defaultRefillPeriodSeconds)
         validateRule("provision", provisionCapacity, provisionRefillTokens, provisionRefillPeriodSeconds)
         validateRule("messages", messageCapacity, messageRefillTokens, messageRefillPeriodSeconds)

@@ -1,6 +1,5 @@
 package com.reals.backend.config.security.ratelimit
 
-import com.github.benmanes.caffeine.cache.Caffeine
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -11,7 +10,6 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import java.time.Duration
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 @Component
 class RateLimitFilter(
@@ -21,10 +19,7 @@ class RateLimitFilter(
     private val rateLimitMetrics: RateLimitMetrics = RateLimitMetrics.noop()
 ) : OncePerRequestFilter() {
 
-    private val buckets = Caffeine.newBuilder()
-        .maximumSize(100_000)
-        .expireAfterAccess(15, TimeUnit.MINUTES)
-        .build<String, TokenBucket>()
+    private val buckets = tokenBucketCache()
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         if (!properties.enabled) {
@@ -94,6 +89,14 @@ class RateLimitFilter(
 
     internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
         val group = ruleResolver.resolveGroup(request)
+        if (group == RateLimitGroup.PASSWORD_RESET && properties.passwordResetEnabled) {
+            return RateLimitRule(
+                id = group.id,
+                capacity = properties.passwordResetCapacity,
+                refillTokens = properties.passwordResetRefillTokens,
+                refillPeriodSeconds = properties.passwordResetRefillPeriodSeconds
+            )
+        }
         return RateLimitRule(
             id = group.id,
             capacity = properties.preAuthCapacity,

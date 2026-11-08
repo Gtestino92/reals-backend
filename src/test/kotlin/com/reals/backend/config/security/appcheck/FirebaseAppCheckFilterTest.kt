@@ -125,6 +125,20 @@ class FirebaseAppCheckFilterTest {
     }
 
     @Test
+    fun `anonymous password reset still requires app check when enforced`() {
+        val missing = runFilter(filter(FirebaseAppCheckMode.ENFORCED),
+            MockHttpServletRequest("POST", "/api/auth/password-reset"))
+        assertEquals(401, missing.status)
+        assertTrue(missing.contentAsString.contains("MISSING_APP_CHECK_TOKEN"))
+        val valid = runFilter(filter(FirebaseAppCheckMode.ENFORCED,
+            FakeVerifier(FirebaseAppCheckVerificationResult.Valid("1:123:android:app"))),
+            MockHttpServletRequest("POST", "/api/auth/password-reset").apply {
+                addHeader("X-Firebase-AppCheck", "valid")
+            })
+        assertEquals(200, valid.status)
+    }
+
+    @Test
     fun `raw tokens are absent from logs`() {
         val logger = LoggerFactory.getLogger(FirebaseAppCheckFilter::class.java) as Logger
         val appender = ListAppender<ILoggingEvent>()

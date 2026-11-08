@@ -222,7 +222,8 @@ configured for the single-account-per-email model, but the backend still
 defends against unexpected same-email/different-UID collisions.
 
 `POST /api/auth/password-reset` is public with respect to Firebase bearer
-authentication and returns `202 Accepted` for every syntactically valid request.
+authentication and returns `202 Accepted` for every syntactically valid request
+that passes rate limiting and the applicable App Check policy.
 It remains under App Check when App Check is enforced and under the pre-auth
 rate limiter. The response never reveals account existence, auth origin,
 deletion state or Firebase delivery outcome. The backend sends a Firebase
@@ -255,7 +256,7 @@ only by endpoint group plus `request.remoteAddr`:
 
 It never uses bearer token text, bearer-token hashes or unverified Firebase
 claims. It uses dedicated broad quotas, not endpoint-specific user/business
-quotas. Current defaults are `security.rate-limit.pre-auth-capacity=600`,
+quotas, except for the opt-in password-reset policy below. Current defaults are `security.rate-limit.pre-auth-capacity=600`,
 `security.rate-limit.pre-auth-refill-tokens=600` and
 `security.rate-limit.pre-auth-refill-period-seconds=60`.
 
@@ -274,6 +275,52 @@ Production deployments must configure the trusted reverse proxy or servlet
 container so `request.remoteAddr` is the real client IP only when forwarded by
 trusted infrastructure. The application filter does not parse or trust arbitrary
 `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or similar request headers.
+
+Buckets expire after idle time equal to the greater of 15 minutes and
+`ceil(capacity / refillTokens) * refillPeriod`. Each entry uses its own policy;
+short-window entries do not inherit the safety-report retention period. Each
+filter cache remains capped at 100,000 entries. Refill is discrete: immediately
+before a period boundary no tokens are added; at equality (and after) the elapsed
+periods are credited up to capacity. Cache access renews idle retention, and
+bucket consumption/refill remains synchronized.
+
+The proposed dedicated pre-auth policy for exactly `POST /api/auth/password-reset`
+is capacity 10, refill 10 every 3600 seconds per `remoteAddr`, independent of
+email and authentication. `security.rate-limit.password-reset-enabled` defaults
+to `false` in all profiles, including prod, until the proxy boundary is verified.
+When disabled it falls back to the existing broad pre-auth policy (600/60s by
+default); unrelated groups keep that policy regardless of the reset switch.
+Rejected requests retain `429 RATE_LIMIT_EXCEEDED` and `Retry-After` in seconds.
+App Check and Firebase authentication filter ordering are unchanged.
+
+These are process-local token buckets, not strict durable daily/hourly quotas.
+Restarts and capacity eviction can reset available quota; multiple replicas
+multiply it. A burst can also straddle a discrete refill boundary. Distributed
+or durable quota enforcement remains deferred.
+
+### Client IP verification gap and activation prerequisite
+
+Repository evidence (`docs/aws-prod-deployment.md`, `docs/dev-deployment.md`,
+`ops/aws/deploy-backend.sh`) describes operator-managed Nginx in front of an
+EC2 Docker backend, with default port binding `127.0.0.1:8080:8080` and an external
+runtime env file. Helm values also describe an Nginx ingress, but do not prove
+the effective EC2 configuration. The actual Nginx configuration, runtime env
+file, and trusted proxy/container IP handling are not available in this repo.
+No explicit Spring forwarded-header strategy or trusted proxy valve is defined
+in the checked-in application configuration. Consequently `remoteAddr` cannot
+be proven to identify individual production clients; it may identify a shared
+proxy/Docker peer. No forwarded-header parsing or speculative proxy settings
+were added.
+
+Before setting `RATE_LIMIT_PASSWORD_RESET_ENABLED=true` in a hosted environment,
+operators must verify the effective ingress path and container configuration:
+only trusted infrastructure can reach the backend; the edge removes/replaces
+client-supplied forwarding headers; the servlet container resolves client IPs
+only through explicitly trusted proxy hops; two external clients produce distinct
+`remoteAddr` values; and spoofing forwarding headers cannot change that identity.
+This requires runtime evidence outside this change. Do not enable the stricter
+policy while all clients may share the proxy IP. Direct local tests may enable
+it explicitly. No infrastructure or deployment configuration is changed here.
 
 ## Visual Content Boundaries
 

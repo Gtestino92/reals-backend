@@ -9,6 +9,13 @@ class TokenBucket(
     private val refillPeriod: Duration,
     now: Instant
 ) {
+    internal val idleRetentionNanos: Long = try {
+        val periodsToFill = (capacity.toLong() + refillTokens - 1) / refillTokens
+        maxOf(Duration.ofMinutes(15), refillPeriod.multipliedBy(periodsToFill)).toNanos()
+    } catch (_: ArithmeticException) {
+        Long.MAX_VALUE
+    }
+
     private var availableTokens = capacity
     private var lastRefillAt = now
 
@@ -40,11 +47,10 @@ class TokenBucket(
             return
         }
 
-        val tokensToAdd = elapsedPeriods * refillTokens
-        availableTokens = minOf(
-            capacity,
-            availableTokens + tokensToAdd.toInt()
-        )
+        // Saturate before multiplication/narrowing, including after long idle periods.
+        val periodsToFill = (capacity.toLong() + refillTokens - 1) / refillTokens
+        val tokensToAdd = minOf(elapsedPeriods, periodsToFill) * refillTokens
+        availableTokens = minOf(capacity.toLong(), availableTokens.toLong() + tokensToAdd).toInt()
         lastRefillAt = lastRefillAt.plus(refillPeriod.multipliedBy(elapsedPeriods))
     }
 
