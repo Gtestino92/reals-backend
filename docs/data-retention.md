@@ -114,3 +114,16 @@ No retention duration is selected here. Separate product, privacy, legal, securi
 - application log, metric, cache, and rate-limit state retention
 
 Until those decisions are implemented, finalization after `deletionFinalizesAt` must be described as **coordinated Firebase Auth deletion and local identifier finalization/release**, not complete product-data purge or immediate physical erasure of all provider-managed copies.
+
+
+## Provisioning network quota events
+
+`account_provisioning_events` is `RETAIN_ANTI_ABUSE_OR_SAFETY`: UUID event ID,
+HMAC network-origin identifier and successful backend creation timestamp only.
+There is no user foreign key, UID, email or plaintext IP. Account deletion and
+reactivation leave these events intact so they cannot reset network quota.
+Only the configured rolling weekly horizon is evaluated. While enforcement and
+scheduling are enabled, an hourly bounded job removes expired records; backlog
+can extend physical retention until later batches. Disabling the feature pauses
+collection and cleanup; retirement requires a reviewed purge. HMAC rotation,
+backups and ingress logs require separate operational policies.

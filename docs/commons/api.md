@@ -812,3 +812,14 @@ Selected stable frontend-facing domain codes:
 ## Manual blocking
 
 `POST /api/matches/{matchId}/block` requires no body and returns block `id`, `source`, and `createdAt`: `201 Created` for a new directional block and `200 OK` for an idempotent replay. Manual blocking creates no report, penalty, or reliability event. A block in either direction excludes the pair and causes positive progression to fail with `409 USER_PAIR_BLOCKED`. Reads, rejection, exit, cancellation, and safety paths remain available. There is no unblock endpoint in the current MVP.
+
+
+### Provisioning quota rejection
+
+`POST /api/me/provision` may return 429 when opt-in persistent network quotas
+reject a new backend account. Body: `code=ACCOUNT_PROVISIONING_LIMIT_EXCEEDED`,
+`error=Too Many Requests`, generic `message`; `Retry-After` is an integer delay
+in seconds covering both rolling windows. Preserve the Firebase identity/session
+and retry provisioning after the delay; never delete the Firebase user or retry
+in a tight loop. Existing accounts/linking do not consume quota. Success body
+and 200/201 semantics remain unchanged. See `../security-mvp.md` for boundaries.

@@ -373,6 +373,14 @@ security:
     project-number: ${FIREBASE_PROJECT_NUMBER:}
     allowed-app-ids: ${FIREBASE_APP_CHECK_ALLOWED_APP_IDS:}
     jwks-uri: ${FIREBASE_APP_CHECK_JWKS_URI:https://firebaseappcheck.googleapis.com/v1/jwks}
+  account-provisioning-limit:
+    enabled: ${ACCOUNT_PROVISIONING_LIMIT_ENABLED:false}
+    daily-capacity: ${ACCOUNT_PROVISIONING_LIMIT_DAILY_CAPACITY:3}
+    weekly-capacity: ${ACCOUNT_PROVISIONING_LIMIT_WEEKLY_CAPACITY:5}
+    daily-window-hours: ${ACCOUNT_PROVISIONING_LIMIT_DAILY_WINDOW_HOURS:24}
+    weekly-window-days: ${ACCOUNT_PROVISIONING_LIMIT_WEEKLY_WINDOW_DAYS:7}
+    hmac-secret: ${ACCOUNT_PROVISIONING_LIMIT_HMAC_SECRET:}
+    cleanup-batch-size: ${ACCOUNT_PROVISIONING_LIMIT_CLEANUP_BATCH_SIZE:500}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
     pre-auth-capacity: ${RATE_LIMIT_PRE_AUTH_CAPACITY:600}

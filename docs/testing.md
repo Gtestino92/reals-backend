@@ -262,3 +262,21 @@ persisted delivery record was `SENT` because at least one provider delivery
 succeeded. This representative local smoke does not prove production delivery
 rates, Play Integrity behavior, all OEM background modes, retry behavior or any
 remote deployment.
+
+
+## Focused account provisioning quota verification
+
+```bash
+./mvnw -Dtest=AccountProvisioningLimiterTest,UserServiceProvisioningRetryTest,UserServiceIntegrationTest,MeControllerIntegrationTest test
+./mvnw -Ppostgres-it -Dtest=AccountProvisioningLimiterTest -Dit.test=AccountProvisioningPostgresIT verify
+```
+
+The PostgreSQL test crosses real commit boundaries and covers competing UIDs,
+same-UID replay across origins, both quotas, rollback, legacy linking,
+reactivation, HTTP spoofed forwarding headers, and bounded cleanup. Pure policy
+tests use fixed instants immediately before, at and after both deadlines.
+On Windows Docker Desktop, point process-local `DOCKER_HOST` at the endpoint
+returned by `docker context inspect`; older docker-java clients may also need
+`-Dapi.version=1.44` against recent engines. This is a local test-process override,
+not a production/container configuration change. Do not substitute H2 for these
+PostgreSQL transactional and timestamp checks.

@@ -58,6 +58,12 @@ class UserServiceProvisioningRetryTest {
             auditEventService = Mockito.mock(AuditEventService::class.java),
             homeStateInvalidationService = Mockito.mock(HomeStateInvalidationService::class.java),
             userNotificationPreferenceRepository = Mockito.mock(UserNotificationPreferenceRepository::class.java),
+            accountProvisioningLimiter = AccountProvisioningLimiter(
+                com.reals.backend.config.AccountProvisioningLimitProperties(),
+                ProvisioningNetworkOrigin(com.reals.backend.config.AccountProvisioningLimitProperties()),
+                Mockito.mock(org.springframework.jdbc.core.JdbcTemplate::class.java),
+                io.micrometer.core.instrument.simple.SimpleMeterRegistry()
+            ),
             transactionManager = transactionTemplate.transactionManager!!,
             accountDeletionRecoveryWindowDays = 30
         )

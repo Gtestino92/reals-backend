@@ -38,6 +38,7 @@ class UserService(
     private val auditEventService: AuditEventService,
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userNotificationPreferenceRepository: UserNotificationPreferenceRepository,
+    private val accountProvisioningLimiter: AccountProvisioningLimiter,
     transactionManager: PlatformTransactionManager,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
@@ -94,7 +95,8 @@ class UserService(
         firebaseUid: String,
         email: String? = null,
         emailVerified: Boolean = false,
-        signInProvider: FirebaseSignInProvider = FirebaseSignInProvider.PASSWORD
+        signInProvider: FirebaseSignInProvider = FirebaseSignInProvider.PASSWORD,
+        remoteAddr: String? = null
     ): User {
         require(firebaseUid.isNotBlank()) {
             "Firebase UID is required"
@@ -103,11 +105,11 @@ class UserService(
         val normalizedEmail = UserEmailNormalizer.normalizeOptional(email)
 
         return try {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider, remoteAddr)
         } catch (ex: DataIntegrityViolationException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider, remoteAddr)
         } catch (ex: OptimisticLockingFailureException) {
-            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider)
+            provisionFromFirebaseInNewTransaction(firebaseUid, normalizedEmail, emailVerified, signInProvider, remoteAddr)
         }
     }
 
@@ -115,14 +117,17 @@ class UserService(
         firebaseUid: String,
         normalizedEmail: String?,
         emailVerified: Boolean,
-        signInProvider: FirebaseSignInProvider
+        signInProvider: FirebaseSignInProvider,
+        remoteAddr: String?
     ): User =
         transactionTemplate.execute {
+            accountProvisioningLimiter.lockUid(firebaseUid)
             provisionFromFirebaseAttempt(
                 firebaseUid = firebaseUid,
                 normalizedEmail = normalizedEmail,
                 emailVerified = emailVerified,
-                signInProvider = signInProvider
+                signInProvider = signInProvider,
+                remoteAddr = remoteAddr
             )
         }
 
@@ -130,7 +135,8 @@ class UserService(
         firebaseUid: String,
         normalizedEmail: String?,
         emailVerified: Boolean,
-        signInProvider: FirebaseSignInProvider
+        signInProvider: FirebaseSignInProvider,
+        remoteAddr: String?
     ): User {
         val existingByFirebaseUid = userRepository.findByFirebaseUid(firebaseUid)
         if (existingByFirebaseUid != null) {
@@ -183,14 +189,16 @@ class UserService(
             }
         }
 
-        return userRepository.saveAndFlush(
-            User(
-                firebaseUid = firebaseUid,
-                email = normalizedEmail,
-                authOrigin = AuthOriginPolicy.originFor(signInProvider),
-                status = UserStatus.ACTIVE,
+        return accountProvisioningLimiter.create(remoteAddr) {
+            userRepository.saveAndFlush(
+                User(
+                    firebaseUid = firebaseUid,
+                    email = normalizedEmail,
+                    authOrigin = AuthOriginPolicy.originFor(signInProvider),
+                    status = UserStatus.ACTIVE,
+                )
             )
-        )
+        }
     }
 
     fun deleteUser(userId: UUID) {

@@ -98,6 +98,22 @@ paths:
                 $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: New backend account rejected by optional persistent network quota; retain Firebase identity and retry later
+          headers:
+            Retry-After:
+              description: Whole seconds rounded up until both rolling windows permit another account, subject to new activity
+              schema:
+                type: integer
+                format: int64
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ACCOUNT_PROVISIONING_LIMIT_EXCEEDED
+                error: Too Many Requests
+                message: Account provisioning temporarily unavailable; retry later
   /api/me:
     get:
       tags: [Me]

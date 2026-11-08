@@ -49,6 +49,12 @@ class GlobalExceptionHandler {
         val message: String?
     )
 
+    @ExceptionHandler(com.reals.backend.service.AccountProvisioningLimitExceeded::class)
+    fun handleProvisioningLimit(ex: com.reals.backend.service.AccountProvisioningLimitExceeded): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(ErrorResponse("ACCOUNT_PROVISIONING_LIMIT_EXCEEDED", "Too Many Requests", "Account provisioning temporarily unavailable; retry later"))
+
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValid(
         ex: MethodArgumentNotValidException

@@ -360,3 +360,17 @@ These are not current backend behavior:
 - gamified reputation badges
 
 Do not introduce these as side effects of refactors.
+
+
+## Persistent provisioning admission
+
+`MeController` passes the servlet client address into `UserService`'s existing
+transaction/retry flow. `AccountProvisioningLimiter` serializes enabled attempts
+by UID then HMAC network origin using transaction-scoped PostgreSQL advisory
+locks. Only the new-user branch checks rolling quotas and inserts an event in
+the same transaction as `users`. Existing identity/linking paths bypass quota
+checks. No other path acquires these advisory locks in reverse order. Unique
+Firebase UID/email constraints still handle identity races. The cleanup job only
+locks expired event rows and never locks users or origins. See
+[security-mvp.md](security-mvp.md#persistent-account-provisioning-quota) for exact
+window boundaries, privacy, rollout and ingress verification requirements.
