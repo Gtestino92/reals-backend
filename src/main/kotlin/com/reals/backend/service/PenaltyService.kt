@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.adminauth.AdminGrantRevocationService
+import com.reals.backend.adminauth.AdminGrantRevocationReason
 import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.Penalty
@@ -24,7 +26,8 @@ class PenaltyService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userOperationalContainmentService: UserOperationalContainmentService,
     private val accountBanPolicyService: AccountBanPolicyService,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val adminGrantRevocationService: AdminGrantRevocationService
 ) {
 
     @Transactional(readOnly = true)
@@ -114,6 +117,9 @@ class PenaltyService(
         if (penalty.type != PenaltyType.PERMANENT_BAN) {
             lockPenalizedUser(penalty.userId)
         }
+        adminGrantRevocationService.revokeOutstandingUnderUserLock(
+            penalty.userId, AdminGrantRevocationReason.ACCOUNT_BAN_APPLIED, penalty.appliedByUserId
+        )
         matchmakingQueueRepository.deleteByUserId(penalty.userId)
         val saved = penaltyRepository.save(penalty)
         auditEventService.record(

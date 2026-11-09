@@ -69,8 +69,7 @@ class SecurityConfig(
             // Allow H2 console frames (only active on local-nodb profile)
             .headers { headers ->
                 headers.addHeaderWriter { request, response ->
-                    if (request.requestURI.removePrefix(request.contextPath).startsWith("/api/admin"))
-                        response.setHeader("Cache-Control", "no-store")
+                    request.preventAdministrativeCaching(response)
                 }
                 headers.addHeaderWriter(
                     XFrameOptionsHeaderWriter(

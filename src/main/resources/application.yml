@@ -388,6 +388,9 @@ security:
     pre-auth-refill-tokens: ${RATE_LIMIT_PRE_AUTH_REFILL_TOKENS:600}
     pre-auth-refill-period-seconds: ${RATE_LIMIT_PRE_AUTH_REFILL_PERIOD_SECONDS:60}
     # Enable only after verifying trusted client IP resolution at the reverse proxy/container.
+    admin-mfa-capacity: ${RATE_LIMIT_ADMIN_MFA_CAPACITY:10}
+    admin-mfa-refill-tokens: ${RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS:10}
+    admin-mfa-refill-period-seconds: ${RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS:600}
     password-reset-enabled: ${RATE_LIMIT_PASSWORD_RESET_ENABLED:false}
     password-reset-capacity: ${RATE_LIMIT_PASSWORD_RESET_CAPACITY:10}
     password-reset-refill-tokens: ${RATE_LIMIT_PASSWORD_RESET_REFILL_TOKENS:10}

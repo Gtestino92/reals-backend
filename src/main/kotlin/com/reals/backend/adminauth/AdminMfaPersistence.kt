@@ -37,6 +37,10 @@ class AdminAccessGrant(
 
 interface AdminMfaStateRepository : JpaRepository<AdminMfaState, UUID>
 interface AdminAccessGrantRepository : JpaRepository<AdminAccessGrant, String> {
+    @Modifying(flushAutomatically = true)
+    @Query("update AdminAccessGrant g set g.revokedAt = :now where g.userId = :userId and g.revokedAt is null and g.expiresAt > :now")
+    fun revokeOutstanding(@Param("userId") userId: UUID, @Param("now") now: Instant): Int
+
     fun findFirst100ByExpiresAtLessThanEqualOrderByExpiresAtAscTokenHashAsc(now: Instant): List<AdminAccessGrant>
 
     @Modifying

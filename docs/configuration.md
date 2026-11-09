@@ -897,3 +897,17 @@ ADMIN_MFA_TOTP_SECRET and ADMIN_MFA_SECRET_VERSION are required to enable admini
 See the [exact variable limits, defaults and offline operator procedure](admin-auth.md#configuration).
 These values are injected via existing protected configuration; no infrastructure changes are included.
 Empty configuration denies administration; malformed nonempty configuration fails startup.
+
+The TOTP verification network limiter uses the existing `security.rate-limit` configuration:
+
+| Environment variable | Property suffix | Default |
+| --- | --- | --- |
+| RATE_LIMIT_ADMIN_MFA_CAPACITY | admin-mfa-capacity | 10 |
+| RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS | admin-mfa-refill-tokens | 10 |
+| RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS | admin-mfa-refill-period-seconds | 600 |
+
+All three must be positive, following the existing limiter validation. Defaults preserve the
+previous network rule. `RATE_LIMIT_ENABLED=false` disables only the general network/user limiter;
+PostgreSQL TOTP failed-attempt, replay and lockout protections remain active.
+Ban application and deletion requests permanently revoke existing live admin grants. Ban expiry
+and account reactivation require new TOTP verification; neither restores grants. See the runbook.

@@ -71,6 +71,7 @@ class AdminMfaPostgresIT : PostgresITBase() {
     private fun verifyHttp(code: String) = mvc.perform(post("/api/admin-auth/verify")
         .header("Authorization", "Bearer google").header("X-Firebase-AppCheck", "web")
         .contentType("application/json").content("""{"code":"$code"}"""))
+        .andExpect(header().string("Cache-Control", "no-store"))
     private fun issue() = access.verify(identity, code()).value!!
 
     @Test fun `real chain requires MFA on all admin controllers and password cannot reuse grant`() {
@@ -229,6 +230,148 @@ class AdminMfaPostgresIT : PostgresITBase() {
         tx.executeWithoutResult { cleanup.cleanup() }
         assertEquals(1, grants.count())
         assertEquals(auditCount, jdbcTemplate.queryForObject("select count(*) from audit_events", Long::class.java))
+    }
+
+    @Test fun `early admin authentication authorization and body errors remain no store`() {
+        mvc.perform(get("/api/admin-auth/status").header("X-Firebase-AppCheck", "web"))
+            .andExpect(status().isUnauthorized).andExpect(header().string("Cache-Control", "no-store"))
+        mvc.perform(get("/api/admin/diagnostics/matchmaking").header("Authorization", "Bearer google").header("X-Firebase-AppCheck", "web"))
+            .andExpect(status().isForbidden).andExpect(header().string("Cache-Control", "no-store"))
+        mvc.perform(post("/api/admin-auth/verify").header("Authorization", "Bearer google").header("X-Firebase-AppCheck", "web")
+            .contentType("application/json").content("{}"))
+            .andExpect(status().isBadRequest).andExpect(header().string("Cache-Control", "no-store"))
+    }
+
+    private fun revocationEvents(): Int = jdbcTemplate.queryForObject(
+        "select count(*) from audit_events where event_type='ADMIN_GRANT_REVOKED'", Int::class.java)!!
+
+    @Test fun `temporary suspension permanently revokes old grant and permits fresh TOTP after expiry`() {
+        val old = issue()
+        `when`(clock.instant()).thenReturn(now.plusSeconds(60))
+        penaltyService.createTemporaryPenalty(identity.userId, "short suspension", Duration.ofSeconds(120),
+            now = OffsetDateTime.ofInstant(now.plusSeconds(60), ZoneOffset.UTC))
+        assertNotNull(grants.findById(sha256(old.grant)).get().revokedAt)
+        assertEquals("ADMIN_ACCESS_DENIED", access.grantError(identity, old.grant))
+        assertEquals("ADMIN_ACCESS_DENIED", access.verify(identity, code(now.plusSeconds(60))).error)
+        for (second in listOf(179L, 180L, 181L)) {
+            `when`(clock.instant()).thenReturn(now.plusSeconds(second))
+            assertEquals(if (second < 180) "ADMIN_ACCESS_DENIED" else "ADMIN_GRANT_REVOKED", access.grantError(identity, old.grant))
+        }
+        assertNotNull(access.verify(identity, code(now.plusSeconds(181))).value)
+        assertEquals(1, revocationEvents())
+    }
+
+    @Test fun `permanent and repeated restrictions revoke multiple grants with one bounded event`() {
+        val first = issue()
+        `when`(clock.instant()).thenReturn(now.plusSeconds(30))
+        val second = access.verify(identity, code(now.plusSeconds(30))).value!!
+        penaltyService.createPermanentPenalty(identity.userId, "permanent suspension")
+        val revokedAt = grants.findById(sha256(first.grant)).get().revokedAt
+        assertNotNull(revokedAt)
+        assertEquals(revokedAt, grants.findById(sha256(second.grant)).get().revokedAt)
+        `when`(clock.instant()).thenReturn(now.plusSeconds(60))
+        penaltyService.createTemporaryPenalty(identity.userId, "repeat", Duration.ofMinutes(1))
+        assertEquals(revokedAt, grants.findById(sha256(first.grant)).get().revokedAt)
+        assertEquals(1, revocationEvents())
+        assertEquals("ACCOUNT_BAN_APPLIED", mapper.readTree(jdbcTemplate.queryForObject(
+            "select metadata_json from audit_events where event_type='ADMIN_GRANT_REVOKED'", String::class.java)).get("reason").asText())
+    }
+
+    @Test fun `expired grants preserve boundary and users without grants do not emit revocation events`() {
+        val grant = issue()
+        `when`(clock.instant()).thenReturn(now.plusSeconds(900))
+        penaltyService.createTemporaryPenalty(identity.userId, "expired grant", Duration.ofSeconds(30),
+            now = OffsetDateTime.ofInstant(now.plusSeconds(900), ZoneOffset.UTC))
+        assertNull(grants.findById(sha256(grant.grant)).get().revokedAt)
+        assertEquals(0, revocationEvents())
+        `when`(clock.instant()).thenReturn(now.plusSeconds(930))
+        assertEquals("ADMIN_GRANT_EXPIRED", access.grantError(identity, grant.grant))
+        val ordinary = userRepository.saveAndFlush(User(email = "ordinary@example.invalid"))
+        penaltyService.createPermanentPenalty(ordinary.id, "ordinary user")
+        assertEquals(0, revocationEvents())
+    }
+
+    @Test fun `penalty rollback also rolls back grant revocation and audit`() {
+        val grant = issue()
+        val tx = org.springframework.transaction.support.TransactionTemplate(transactionManager)
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            tx.executeWithoutResult {
+                penaltyService.createPermanentPenalty(identity.userId, "rolled back")
+                throw IllegalStateException("force rollback")
+            }
+        }
+        assertNull(grants.findById(sha256(grant.grant)).get().revokedAt)
+        assertNull(access.grantError(identity, grant.grant))
+        assertEquals(0, revocationEvents())
+        assertEquals(0, jdbcTemplate.queryForObject("select count(*) from penalties", Int::class.java))
+    }
+
+    @Test fun `deletion and reactivation retain revocation and require fresh TOTP`() {
+        val grant = issue()
+        val step = states.findById(identity.userId).get().lastAcceptedStep
+        userService.deleteUser(identity.userId)
+        assertNotNull(grants.findById(sha256(grant.grant)).get().revokedAt)
+        assertEquals("ADMIN_ACCESS_DENIED", access.grantError(identity, grant.grant))
+        userService.reactivateUser(identity.userId)
+        assertEquals("ADMIN_GRANT_REVOKED", access.grantError(identity, grant.grant))
+        assertEquals(step, states.findById(identity.userId).get().lastAcceptedStep)
+        assertEquals("ADMIN_MFA_INVALID_CODE", access.verify(identity, code()).error)
+        `when`(clock.instant()).thenReturn(now.plusSeconds(30))
+        assertNotNull(access.verify(identity, code(now.plusSeconds(30))).value)
+        assertEquals(1, revocationEvents())
+        assertEquals("ACCOUNT_DELETION_REQUESTED", mapper.readTree(jdbcTemplate.queryForObject(
+            "select metadata_json from audit_events where event_type='ADMIN_GRANT_REVOKED'", String::class.java)).get("reason").asText())
+    }
+
+    @Test fun `issuance winning user lock is revoked by waiting penalty transaction`() {
+        val tx = org.springframework.transaction.support.TransactionTemplate(transactionManager)
+        val issued = CountDownLatch(1)
+        val penaltyStarted = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val issuing = pool.submit<AdminGrantResponse> {
+                tx.execute {
+                    val grant = access.verify(identity, code()).value!!
+                    issued.countDown()
+                    check(penaltyStarted.await(20, TimeUnit.SECONDS))
+                    grant
+                }!!
+            }
+            val banning = pool.submit {
+                check(issued.await(20, TimeUnit.SECONDS))
+                penaltyStarted.countDown()
+                penaltyService.createPermanentPenalty(identity.userId, "concurrent ban")
+            }
+            val grant = issuing.get(30, TimeUnit.SECONDS)
+            banning.get(30, TimeUnit.SECONDS)
+            assertNotNull(grants.findById(sha256(grant.grant)).get().revokedAt)
+            assertEquals(1, revocationEvents())
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun `penalty winning user lock rejects concurrent issuance`() {
+        val tx = org.springframework.transaction.support.TransactionTemplate(transactionManager)
+        val banned = CountDownLatch(1)
+        val verificationStarted = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val banning = pool.submit {
+                tx.executeWithoutResult {
+                    penaltyService.createPermanentPenalty(identity.userId, "concurrent ban")
+                    banned.countDown()
+                    check(verificationStarted.await(20, TimeUnit.SECONDS))
+                }
+            }
+            val issuing = pool.submit<AdminResult> {
+                check(banned.await(20, TimeUnit.SECONDS))
+                verificationStarted.countDown()
+                access.verify(identity, code())
+            }
+            banning.get(30, TimeUnit.SECONDS)
+            assertEquals("ADMIN_ACCESS_DENIED", issuing.get(30, TimeUnit.SECONDS).error)
+            assertEquals(0, grants.count())
+            assertEquals(0, revocationEvents())
+        } finally { pool.shutdownNow() }
     }
 
     @TestConfiguration class Filters {

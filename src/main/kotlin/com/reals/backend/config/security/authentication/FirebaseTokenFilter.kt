@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.authentication
 
+import com.reals.backend.config.security.preventAdministrativeCaching
 import com.reals.backend.adminauth.*
 import com.reals.backend.config.security.appcheck.FirebaseAppCheckFilter
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
@@ -65,6 +66,7 @@ class FirebaseTokenFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        request.preventAdministrativeCaching(response)
         val path = request.servletPath.ifBlank { request.requestURI.removePrefix(request.contextPath) }
         val administrativeRequest = path == "/api/admin-auth" || path.startsWith("/api/admin-auth/") ||
             path == "/api/admin" || path.startsWith("/api/admin/") || path.startsWith("/actuator/") ||

@@ -17,6 +17,27 @@ import kotlin.test.assertTrue
 class FirebaseAppCheckFilterTest {
 
     @Test
+    fun `early admin App Check errors are no store with unchanged errors`() {
+        for (path in listOf("/api/admin-auth/verify", "/api/admin/diagnostics/matchmaking")) {
+            for ((token, result, expectedStatus, expectedCode) in listOf(
+                arrayOf(null, FirebaseAppCheckVerificationResult.Invalid, 401, "MISSING_APP_CHECK_TOKEN"),
+                arrayOf("invalid", FirebaseAppCheckVerificationResult.Invalid, 401, "INVALID_APP_CHECK_TOKEN"),
+                arrayOf("unavailable", FirebaseAppCheckVerificationResult.Unavailable("TestFailure"), 503, "APP_CHECK_VERIFICATION_UNAVAILABLE")
+            )) {
+                val filter = FirebaseAppCheckFilter(FirebaseAppCheckProperties(mode = FirebaseAppCheckMode.ENFORCED),
+                    FirebaseAppCheckVerifier { result as FirebaseAppCheckVerificationResult }, null)
+                val request = MockHttpServletRequest("POST", path)
+                if (token != null) request.addHeader("X-Firebase-AppCheck", token)
+                val response = MockHttpServletResponse()
+                filter.doFilter(request, response, MockFilterChain())
+                assertEquals(expectedStatus, response.status)
+                assertEquals("no-store", response.getHeader("Cache-Control"))
+                assertTrue(response.contentAsString.contains(expectedCode as String))
+            }
+        }
+    }
+
+    @Test
     fun `disabled does not require header`() {
         val verifier = FakeVerifier(FirebaseAppCheckVerificationResult.Invalid)
         val response = runFilter(filter(FirebaseAppCheckMode.DISABLED, verifier), request())

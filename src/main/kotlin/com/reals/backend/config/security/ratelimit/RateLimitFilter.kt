@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.ratelimit
 
+import com.reals.backend.config.security.preventAdministrativeCaching
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -46,6 +47,7 @@ class RateLimitFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        request.preventAdministrativeCaching(response)
         val now = Instant.now()
         val rule = preAuthenticationRule(request)
         val bucketKey = rateLimitKey(request, rule)
@@ -89,7 +91,7 @@ class RateLimitFilter(
 
     internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
         if (request.normalizedPath() == "/api/admin-auth/verify") {
-            return RateLimitRule("admin-mfa", 10, 10, 600)
+            return RateLimitRule("admin-mfa", properties.adminMfaCapacity, properties.adminMfaRefillTokens, properties.adminMfaRefillPeriodSeconds)
         }
         val group = ruleResolver.resolveGroup(request)
         if (group == RateLimitGroup.PASSWORD_RESET && properties.passwordResetEnabled) {

@@ -86,6 +86,24 @@ unrevoke a grant; new issuance requires a fresh step. Reads do not create state 
 A request already authorized concurrently with revocation may complete; subsequent checks deny.
 Revoke at/after expiry is a no-op, preserving the already-due expiry outcome.
 
+Applying a temporary or permanent ban, or requesting account deletion, permanently revokes all
+outstanding grants for that user in the same transaction as the restriction. The existing user
+lock serializes issuance against restriction application; lock order remains user -> MFA state
+when needed -> grants. Revocation joins the caller transaction (MANDATORY) and uses the backend
+clock after that lock. Only revoked_at IS NULL and now < expires_at rows are updated. Rollback
+undoes both restriction and revocation. One ADMIN_GRANT_REVOKED audit event is recorded per logical
+operation when at least one row changes, with only ACCOUNT_BAN_APPLIED or ACCOUNT_DELETION_REQUESTED
+as reason metadata. Repeating restrictions leaves prior revocation timestamps and audit events intact.
+
+Temporary-ban expiry or lifting a penalty does not restore grants. Reactivating a deleted account
+does not restore grants either. Administrative access requires a new successful Google + TOTP
+verification after eligibility returns, with the usual auth freshness, replay and lockout rules.
+Expired grants retain expiration precedence; already revoked grants remain revoked. MFA state,
+accepted steps and lockouts are not reset by restriction, deletion request or reactivation.
+No database migration required. V49 remains unchanged; existing revoked_at storage is sufficient.
+On rollout, use the existing operator revocation procedure if restrictions were applied before
+this patch: the new integration does not replay historical restrictions or reset existing MFA state.
+
 Tokens use 32 SecureRandom bytes, URL-safe Base64 without padding; only SHA-256 hashes persist.
 Grants bind local user, UID, GOOGLE provider, verified auth_time, Web App ID and factor fingerprint.
 ID-token refresh preserves auth_time and never extends the absolute grant deadline. Valid only
@@ -95,8 +113,18 @@ or provisioning material is stored in PostgreSQL. Operators must never use human
 Hourly cleanup deletes at most 100 expired rows ordered by expiry and hash. It acquires no user
 lock and never restores access. Audit history follows the existing audit retention policy.
 
-Pre-auth network-origin throttling adds 10 attempts per 600 seconds for verify, using the existing
-remoteAddr-based limiter. It is defense in depth only; verify trusted proxy/IP attribution separately.
+Pre-auth network-origin throttling for verify uses the existing remoteAddr-based limiter:
+RATE_LIMIT_ADMIN_MFA_CAPACITY=10, RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS=10 and
+RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS=600 by default. All values must be positive.
+These configure security.rate-limit.admin-mfa-capacity/admin-mfa-refill-tokens/
+admin-mfa-refill-period-seconds. It is defense in depth only; verify trusted proxy/IP attribution
+separately. Disabling the general limiter does not disable persistent MFA attempt/replay/lockout controls.
+
+Administrative responses carry Cache-Control: no-store at pre-auth rate limiting, App Check,
+Firebase authentication, post-auth rate limiting and Spring Security authorization/controller
+boundaries, including early 400/401/403/429/503 responses. Existing error bodies and Retry-After
+headers are preserved. The shared helper only marks administrative paths or requests carrying
+a grant, without adding a filter or changing ordinary public API cache policy.
 PostgreSQL attempts/lockouts/replay state survive restarts and are shared by backend instances.
 
 ## Recovery, revocation and rotation

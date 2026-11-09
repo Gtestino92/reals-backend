@@ -285,3 +285,25 @@ Administrative MFA: exact classes `AdminTotpTest`, `FirebaseTokenFilterTest`,
 `AdminMfaPostgresIT` exercise TOTP, grant enforcement and committed PostgreSQL state.
 The PostgreSQL test requires Docker/Testcontainers; Firebase/App Check verification seams are
 mocked only within test configuration. See [manual external checks](admin-auth.md#validation-and-local-testing).
+
+Admin MFA correction regressions extend `AdminMfaPostgresIT` with committed PostgreSQL tests for
+short suspension expiry, permanent/repeated bans, multiple grants, expired-grant precedence,
+penalty rollback, both user-lock race orders, and deletion/reactivation without grant restoration.
+The same class still tests persistent failures while the general rate limiter is disabled.
+`FirebaseAppCheckFilterTest` and `RateLimitFilterTest` cover early no-store errors and configurable
+network limits; `RateLimitIntegrationTest` checks real-chain overrides and Retry-After.
+Run these exact classes plus affected deletion/penalty regressions, never the unrestricted suite.
+V49 is already applied and must remain byte-for-byte unchanged; these corrections need no migration.
+
+Focused correction validation (132 tests passed, including 19 real PostgreSQL tests):
+
+```powershell
+./mvnw.cmd -DskipTests compile
+./mvnw.cmd '-Dapi.version=1.44' '-Dtest=AdminMfaPostgresIT,AdminTotpTest,RateLimitFilterTest,FirebaseAppCheckFilterTest,FirebaseTokenFilterTest,RateLimitIntegrationTest,AccountDeletionRevocationIntegrationTest,AccountDeletionRetentionIntegrationTest,UserDeletionFinalizationIntegrationTest,SafetyPenaltyIntegrationTest,PenaltyAppealControllerIntegrationTest,UserServiceProvisioningRetryTest' test
+git diff --check
+```
+
+The Docker API override is local to the test process. No remote database was modified, and
+no existing migration or Flyway history was changed. This does not exercise separate deployed
+backend processes or real Firebase infrastructure; concurrency uses independent transactions
+against PostgreSQL. The unrestricted test suite was not run.

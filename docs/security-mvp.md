@@ -176,6 +176,16 @@ administrative authority has been removed. See [administrative authentication](a
 for exact enforcement, limits, rotation and operator setup. Actuator info/metrics and
 dev administrative tooling are denied pending equivalent App Check support.
 
+Temporary/permanent ban application and account deletion requests atomically revoke all
+unexpired, unrevoked admin grants under the existing user lock. Ban expiry, appeal approval
+and account reactivation never restore these grants; a fresh Google + TOTP verification is
+required. Expiration equality is preserved. A single bounded ADMIN_GRANT_REVOKED audit event
+records the non-sensitive restriction reason when rows change. No schema migration is needed.
+Administrative early filter rejections also use Cache-Control: no-store. The defense-in-depth
+TOTP IP limiter is configurable through RATE_LIMIT_ADMIN_MFA_CAPACITY,
+RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS and RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS (10/10/600);
+persistent administrator failures and lockouts remain independent of that limiter.
+
 Administrative account bans are enforced inside the Firebase authentication
 filter for existing `ACTIVE` backend users. A temporary ban blocks all protected
 API routes while it is effective. A permanent ban blocks normal API access with
