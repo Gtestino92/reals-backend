@@ -169,17 +169,12 @@ providers fail closed on real Firebase-token paths. The filter enforces:
 - `GOOGLE` origin with a `password` token returns `401 AUTH_METHOD_NOT_ALLOWED`,
   including for recoverably deleted accounts.
 
-`ROLE_ADMIN` is granted only when all conditions are true:
-
-- the verified Firebase UID resolves to a backend user;
-- that backend user is `ACTIVE`;
-- the backend user's persisted `firebaseUid` exactly matches the token UID;
-- the Firebase token email is verified;
-- the normalized Firebase token email is present in `BACKOFFICE_ADMIN_EMAILS`.
-
-The allowlist decision uses only the Firebase token email. The backend user's
-persisted local email is not a fallback for administrator authority, and an
-unprovisioned Firebase principal never receives `ROLE_ADMIN`.
+`ROLE_ADMIN` requires Google authentication, both UID and verified-email allowlists,
+a verified allowlisted Web App Check App ID, and an unexpired, unrevoked PostgreSQL
+MFA grant bound to the current Firebase authentication event and factor. Email-only
+administrative authority has been removed. See [administrative authentication](admin-auth.md)
+for exact enforcement, limits, rotation and operator setup. Actuator info/metrics and
+dev administrative tooling are denied pending equivalent App Check support.
 
 Administrative account bans are enforced inside the Firebase authentication
 filter for existing `ACTIVE` backend users. A temporary ban blocks all protected

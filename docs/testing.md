@@ -128,8 +128,7 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 `local-postgres`, `local-firebase` and `dev`. They are unauthenticated only in
 local execution profiles, including `local-firebase`, so Android/Firebase
 manual flows can process queued pairs and trigger jobs locally. In hosted
-`dev`, the same tooling requires an authenticated Firebase-backed `ROLE_ADMIN`
-user. Local-dev endpoints must not be enabled in production.
+`dev`, the same tooling is denied pending equivalent verified App Check support. Local-dev endpoints must not be enabled in production.
 
 `POST /api/me/local-dev/email-verification` is different: it is a local
 Firebase helper under the authenticated `/api/me/**` boundary, not the
@@ -280,3 +279,9 @@ returned by `docker context inspect`; older docker-java clients may also need
 `-Dapi.version=1.44` against recent engines. This is a local test-process override,
 not a production/container configuration change. Do not substitute H2 for these
 PostgreSQL transactional and timestamp checks.
+
+Administrative MFA: exact classes `AdminTotpTest`, `FirebaseTokenFilterTest`,
+`FirebaseTokenAuthenticationVerifierTest`, `DevAdminToolingControllerExposureDevTest` and
+`AdminMfaPostgresIT` exercise TOTP, grant enforcement and committed PostgreSQL state.
+The PostgreSQL test requires Docker/Testcontainers; Firebase/App Check verification seams are
+mocked only within test configuration. See [manual external checks](admin-auth.md#validation-and-local-testing).

@@ -47,6 +47,15 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `admin MFA network limit uses remote address and ignores spoofed forwarding headers`() {
+        val filter = preAuthFilter()
+        fun request() = MockHttpServletRequest("POST", "/api/admin-auth/verify").apply { remoteAddr = "192.0.2.1" }
+        repeat(10) { assertEquals(200, runPreAuth(filter, request())) }
+        assertEquals(429, runPreAuth(filter, request().apply { addHeader("X-Forwarded-For", "192.0.2.2") }))
+        assertEquals(200, runPreAuth(filter, request().apply { remoteAddr = "192.0.2.3" }))
+    }
+
+    @Test
     fun `pre auth uses same bucket for different invalid bearer values from same ip and group`() {
         val filter = preAuthFilter()
 

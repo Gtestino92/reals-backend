@@ -483,9 +483,9 @@ application.
 
 In `local-nodb`, `local-postgres` and `local-firebase`, these endpoints are
 available without authentication. In hosted `dev`, the same paths are
-registered but require `Authorization: Bearer <Firebase ID token>` for an
-active user with `ROLE_ADMIN`; that role is assigned through the existing
-`BACKOFFICE_ADMIN_EMAILS` allowlist. In `prod`, the real `Dev*` controllers are
+registered but denied pending equivalent verified App Check support. See
+[administrative authentication](admin-auth.md) for isolated local testing without production bypasses.
+In `prod`, the real `Dev*` controllers are
 not registered and Spring Security explicitly denies `/api/local-dev/**`, even
 if a local-dev handler is accidentally registered.
 

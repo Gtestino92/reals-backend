@@ -220,3 +220,13 @@ investigation and must not be reported as confirmed vulnerabilities.
   `Retry-After`, and never enters the backend application without provisioning.
 - Verify cleanup operation/retention when disabled or retired; automatic cleanup
   currently runs only while enforcement and scheduling are enabled.
+
+## Administrative MFA integration follow-up
+
+Backend Google + TOTP grants replace email-only ADMIN derivation; see [runbook](admin-auth.md).
+Web App Check initialization, Google reauthentication UX, in-memory grant handling and explicit
+logout revocation remain separate Web work. No backend bypass accommodates that unfinished work.
+Actuator info/metrics and dev administrative tooling are denied pending verified App Check support.
+Operational gates: verify real Firebase revocation, Web attestation, synchronized secret rollout,
+trusted client-IP attribution, and retention execution in the deployment. No physical-device identity
+is claimed. No automated recovery or administrator enrollment is offered.

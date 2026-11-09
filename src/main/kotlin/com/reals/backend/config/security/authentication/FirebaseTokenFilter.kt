@@ -1,5 +1,7 @@
 package com.reals.backend.config.security.authentication
 
+import com.reals.backend.adminauth.*
+import com.reals.backend.config.security.appcheck.FirebaseAppCheckFilter
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.google.firebase.auth.FirebaseAuthException
 import com.reals.backend.config.security.SecurityRoles
@@ -16,7 +18,6 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Profile
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -32,18 +33,10 @@ class FirebaseTokenFilter(
     private val userService: UserService,
     private val penaltyService: PenaltyService,
     private val firebaseTokenAuthenticationVerifier: FirebaseTokenAuthenticationVerifier,
-    @param:Value("\${backoffice.admin-emails:}")
-    private val adminEmailsProperty: String = ""
+    private val adminAccessService: AdminAccessService? = null
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(javaClass)
-    private val adminEmails: Set<String> =
-        adminEmailsProperty
-            .split(",")
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-            .toSet()
-
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.servletPath.ifBlank {
             request.requestURI.removePrefix(request.contextPath)
@@ -72,6 +65,11 @@ class FirebaseTokenFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        val path = request.servletPath.ifBlank { request.requestURI.removePrefix(request.contextPath) }
+        val administrativeRequest = path == "/api/admin-auth" || path.startsWith("/api/admin-auth/") ||
+            path == "/api/admin" || path.startsWith("/api/admin/") || path.startsWith("/actuator/") ||
+            path.startsWith("/api/local-dev/") || request.getHeader("X-Reals-Admin-Grant") != null
+        if (administrativeRequest) response.setHeader("Cache-Control", "no-store")
         val authHeader = request.getHeader("Authorization")
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -94,7 +92,14 @@ class FirebaseTokenFilter(
         }
 
         try {
-            val decoded = firebaseTokenAuthenticationVerifier.verify(token)
+            val adminAuth = path == "/api/admin-auth" || path.startsWith("/api/admin-auth/")
+            val privileged = path == "/api/admin" || path.startsWith("/api/admin/") ||
+                path == "/actuator/info" || path == "/actuator/metrics" || path.startsWith("/actuator/metrics/") ||
+                path.startsWith("/api/local-dev/")
+            val administrative = adminAuth || privileged || request.getHeader("X-Reals-Admin-Grant") != null
+            if (adminAuth || privileged) response.setHeader("Cache-Control", "no-store")
+            val decoded = if (administrative) firebaseTokenAuthenticationVerifier.verifyAdministrative(token)
+                else firebaseTokenAuthenticationVerifier.verify(token)
             val signInProvider = FirebaseSignInProvider.fromToken(decoded)
             if (signInProvider == null) {
                 SecurityContextHolder.clearContext()
@@ -181,6 +186,28 @@ class FirebaseTokenFilter(
                 return
             }
 
+            var adminGranted = false
+            if (administrative) {
+                val appId = request.getAttribute(FirebaseAppCheckFilter.VALID_APP_ID_ATTRIBUTE) as? String
+                val authTime = (decoded.claims["auth_time"] as? Number)?.toLong()
+                val identity = if (user != null && appId != null && authTime != null)
+                    AdminRequestIdentity(user.id, decoded.uid, decoded.email, decoded.isEmailVerified, signInProvider, authTime, appId)
+                    else null
+                val eligible = identity != null && adminAccessService?.eligible(identity) == true
+                if (eligible) {
+                    request.setAttribute("reals.admin.identity", identity)
+                    adminGranted = adminAccessService.grantError(identity, request.getHeader("X-Reals-Admin-Grant")) == null
+                }
+                if ((adminAuth && !eligible) || (privileged && !adminGranted)) {
+                    val code = if (!eligible) "ADMIN_ACCESS_DENIED" else
+                        adminAccessService.grantError(identity, request.getHeader("X-Reals-Admin-Grant")) ?: "ADMIN_MFA_REQUIRED"
+                    response.status = 403
+                    response.contentType = MediaType.APPLICATION_JSON_VALUE
+                    response.writer.write("""{"code":"$code","error":"Forbidden","message":"Administrative access is denied"}""")
+                    return
+                }
+            }
+
             SecurityContextHolder.getContext().authentication =
                 if (user == null) {
                     UsernamePasswordAuthenticationToken(
@@ -208,7 +235,7 @@ class FirebaseTokenFilter(
                             firebaseUid = decoded.uid,
                             firebaseEmail = decoded.email,
                             firebaseEmailVerified = decoded.isEmailVerified
-                        )
+                        ) + if (adminGranted) listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)) else emptyList()
                     )
                 }
         } catch (ex: FirebaseAuthException) {
@@ -222,6 +249,13 @@ class FirebaseTokenFilter(
                 code = "INVALID_TOKEN",
                 message = "Invalid or expired token"
             )
+            return
+        } catch (ex: RuntimeException) {
+            if (!administrativeRequest) throw ex
+            SecurityContextHolder.clearContext()
+            response.status = HttpServletResponse.SC_SERVICE_UNAVAILABLE
+            response.contentType = MediaType.APPLICATION_JSON_VALUE
+            response.writer.write("""{"code":"ADMIN_AUTHENTICATION_UNAVAILABLE","error":"Service Unavailable","message":"Administrative authentication is temporarily unavailable"}""")
             return
         }
 
@@ -263,25 +297,8 @@ class FirebaseTokenFilter(
         firebaseEmail: String?,
         firebaseEmailVerified: Boolean
     ): List<SimpleGrantedAuthority> {
-        val authorities =
-            mutableListOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
-
-        val normalizedFirebaseEmail = firebaseEmail
-            ?.trim()
-            ?.lowercase()
-            ?.takeIf { it.isNotBlank() }
-
-        if (
-            user.status == UserStatus.ACTIVE &&
-            user.firebaseUid == firebaseUid &&
-            firebaseEmailVerified &&
-            normalizedFirebaseEmail != null &&
-            normalizedFirebaseEmail in adminEmails
-        ) {
-            authorities += SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)
-        }
-
-        return authorities
+        // Eligibility alone never creates administrative authority.
+        return listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_USER))
     }
 
     private fun writeUnauthorized(

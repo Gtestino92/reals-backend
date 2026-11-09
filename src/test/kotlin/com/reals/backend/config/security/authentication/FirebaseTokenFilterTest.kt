@@ -52,13 +52,24 @@ class FirebaseTokenFilterTest {
         EnvironmentExposurePolicy.forActiveProfiles("prod"),
         userService,
         penaltyService,
-        firebaseTokenAuthenticationVerifier,
-        "admin@example.com"
+        firebaseTokenAuthenticationVerifier
     )
 
     @AfterEach
     fun clearSecurityContext() {
         SecurityContextHolder.clearContext()
+    }
+
+    @Test
+    fun `admin verification infrastructure failure is safe and fails closed`() {
+        `when`(firebaseTokenAuthenticationVerifier.verifyAdministrative("unavailable"))
+            .thenThrow(IllegalStateException("sensitive upstream detail"))
+        val response = MockHttpServletResponse()
+        prodFilter.doFilter(authorizedRequest("GET", "/api/admin/diagnostics/matchmaking", "unavailable"), response, MockFilterChain())
+        assertEquals(503, response.status)
+        assertTrue(response.contentAsString.contains("ADMIN_AUTHENTICATION_UNAVAILABLE"))
+        assertFalse(response.contentAsString.contains("sensitive upstream detail"))
+        assertEquals("no-store", response.getHeader("Cache-Control"))
     }
 
     @Test
@@ -95,7 +106,7 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
-    fun `active linked verified allowlisted firebase email receives user and admin authorities`() {
+    fun `active linked verified allowlisted firebase email receives only user authority`() {
         val authorities = adminFilter.authoritiesForActiveUser(
             user = user(firebaseUid = "firebase-admin", email = "local@example.com"),
             firebaseUid = "firebase-admin",
@@ -104,7 +115,7 @@ class FirebaseTokenFilterTest {
         ).map { it.authority }.toSet()
 
         assertTrue(SecurityRoles.ROLE_USER in authorities)
-        assertTrue(SecurityRoles.ROLE_ADMIN in authorities)
+        assertFalse(SecurityRoles.ROLE_ADMIN in authorities)
     }
 
     @Test
@@ -290,7 +301,7 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
-    fun `allowed google token preserves admin role behavior`() {
+    fun `allowed google token without grant receives only user authority`() {
         val decodedToken = decodedToken(
             uid = "firebase-admin-google",
             email = "admin@example.com",
@@ -317,7 +328,7 @@ class FirebaseTokenFilterTest {
         val authorities = SecurityContextHolder.getContext().authentication!!.authorities.map { it.authority }.toSet()
         assertEquals(200, response.status)
         assertTrue(SecurityRoles.ROLE_USER in authorities)
-        assertTrue(SecurityRoles.ROLE_ADMIN in authorities)
+        assertFalse(SecurityRoles.ROLE_ADMIN in authorities)
     }
 
     @Test

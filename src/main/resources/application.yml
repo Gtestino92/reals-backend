@@ -48,8 +48,9 @@ server:
   port: ${PORT:8080}
 
 backoffice:
-  # Comma-separated email allowlist. Matching active local users receive ROLE_ADMIN.
-  admin-emails: ""
+  admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
+  admin-uids: ${BACKOFFICE_ADMIN_UIDS:}
+  allowed-web-app-ids: ${BACKOFFICE_ALLOWED_WEB_APP_IDS:}
 
 scheduler:
   enabled: true
@@ -432,3 +433,12 @@ info:
     revision: ${IMAGE_REVISION:}
 
 kind: Application
+
+admin-mfa:
+  totp-secret: ${ADMIN_MFA_TOTP_SECRET:}
+  secret-version: ${ADMIN_MFA_SECRET_VERSION:}
+  grant-ttl-seconds: ${ADMIN_MFA_GRANT_TTL_SECONDS:900}
+  max-failed-attempts: ${ADMIN_MFA_MAX_FAILED_ATTEMPTS:5}
+  failure-window-seconds: ${ADMIN_MFA_FAILURE_WINDOW_SECONDS:600}
+  lockout-seconds: ${ADMIN_MFA_LOCKOUT_SECONDS:900}
+  max-auth-age-seconds: ${ADMIN_MFA_MAX_AUTH_AGE_SECONDS:300}

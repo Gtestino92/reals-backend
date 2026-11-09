@@ -88,6 +88,9 @@ class RateLimitFilter(
         "pre-auth:${rule.id}:ip:${request.remoteAddr ?: "unknown"}"
 
     internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
+        if (request.normalizedPath() == "/api/admin-auth/verify") {
+            return RateLimitRule("admin-mfa", 10, 10, 600)
+        }
         val group = ruleResolver.resolveGroup(request)
         if (group == RateLimitGroup.PASSWORD_RESET && properties.passwordResetEnabled) {
             return RateLimitRule(

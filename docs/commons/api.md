@@ -592,7 +592,7 @@ First-chat guidance is backend-owned for MVP:
 
 ## Admin Safety Reports
 
-All endpoints under `/api/admin/**` require `ROLE_ADMIN`. Firebase-authenticated users receive this role only when the verified Firebase UID resolves to an active backend user, the backend user's persisted `firebaseUid` matches the token UID, the Firebase token email is verified, and the normalized Firebase token email is listed in `backoffice.admin-emails`/`BACKOFFICE_ADMIN_EMAILS`. The backend user's persisted local email is not used as an allowlist fallback, and unprovisioned Firebase principals are never administrators.
+All endpoints under `/api/admin/**` require Google + TOTP administrative grants, both UID/email allowlists and verified Web App Check. See [Admin authentication contract](#administrative-authentication) and [operator runbook](../admin-auth.md).
 
 - `GET /api/admin/safety-reports?status=PENDING&source=USER&reportedUserId=...&reporterUserId=...`: list safety reports. `status` defaults to `PENDING`; other filters are optional. Summary DTOs omit report details, verdict notes, raw email and Firebase UID. They include non-null, read-only `priorityReview`, derived as `status == PENDING && reason == CHILD_SAFETY_CONCERN` and never persisted. After filtering, results are ordered by `priorityReview DESC`, then `createdAt DESC`, before the 100-result limit.
 - `POST /api/admin/safety-reports`: create an admin safety report. `contextType=USER` creates a general report about the reported user with `contextId = reportedUserId` and no match/chat context. Contextual admin reports can reference chat, visual profile, personal message or profile photo contexts. Admin-created reports are independent `ADMIN` reports that may coexist with a `USER` report for the same reporter, reported user, context type and context id. Admin-created reports do not auto-block, auto-close chats or auto-apply penalties; sanctions are applied only through explicit report confirmation.
@@ -677,8 +677,7 @@ These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`
 path name is retained for compatibility and must never be called by the Android
 application. In `local-nodb`, `local-postgres` and `local-firebase`, they are
 available without authentication. In hosted `dev`, they are registered but
-require `ROLE_ADMIN`; Firebase-authenticated users receive that role only under
-the Firebase-token-email allowlist rules documented for admin endpoints. In
+denied pending equivalent verified App Check support. In
 `prod`, the controllers are not registered and the route prefix is explicitly
 denied.
 
@@ -823,3 +822,41 @@ in seconds covering both rolling windows. Preserve the Firebase identity/session
 and retry provisioning after the delay; never delete the Firebase user or retry
 in a tight loop. Existing accounts/linking do not consume quota. Success body
 and 200/201 semantics remain unchanged. See `../security-mvp.md` for boundaries.
+
+## Administrative authentication
+
+All three endpoints require `Authorization: Bearer <Firebase ID token>`, Google sign-in,
+an existing active eligible backend user, and `X-Firebase-AppCheck` with a verified allowlisted
+Web App ID. X-Reals-Admin-Grant supplies the opaque token on privileged requests and revoke;
+it is optional on status and ignored for issuance. All responses use Cache-Control: no-store.
+No cookie session or sliding renewal. Ordinary USER authentication is preserved.
+
+| Method/path | Request | Success |
+| --- | --- | --- |
+| GET /api/admin-auth/status | No body; optional grant header | 200 {configured: boolean, grantValid: boolean} |
+| POST /api/admin-auth/verify | JSON {code: string}, exactly six ASCII digits (leading zero preserved) | 200 {grant: string, expiresAt: ISO-8601 UTC string} |
+| POST /api/admin-auth/revoke | No body; grant header | 204, empty body; absent/unknown/already revoked grants are idempotent no-ops for eligible callers |
+
+Status does not reveal identities, lockout state, secrets or hashes, and never creates state.
+Invalid supplied grants yield grantValid=false on status. Verify requires now < auth_time+300s
+(default); use Firebase reauthentication rather than token refresh. Successful verify consumes
+one time step. Grant validity is absolute (default 900 seconds); expiry equality is denied.
+
+Errors retain {code,error,message}. Authentication errors use existing Firebase 401 codes
+(MISSING_AUTHORIZATION_HEADER, MISSING_BEARER_TOKEN, INVALID_TOKEN, UNSUPPORTED_AUTH_PROVIDER,
+AUTH_METHOD_NOT_ALLOWED); AUTHENTICATION_REQUIRED is the security-chain fallback.
+App Check enforced-mode errors remain MISSING_APP_CHECK_TOKEN / INVALID_APP_CHECK_TOKEN (401)
+and APP_CHECK_VERIFICATION_UNAVAILABLE (503). In monitor/disabled mode unverified admin access
+still returns 403 ADMIN_ACCESS_DENIED. Ineligible identity/app/stale Google authentication returns
+403 ADMIN_ACCESS_DENIED. Missing factor returns 403 ADMIN_MFA_NOT_CONFIGURED for eligible callers.
+Verify invalid, malformed or replayed codes return 400 ADMIN_MFA_INVALID_CODE and count as failures;
+threshold/active lockout returns 429 ADMIN_MFA_RATE_LIMITED with Retry-After integer seconds.
+Malformed JSON uses existing 400 validation errors. Privileged requests return 403 ADMIN_MFA_REQUIRED
+for absent/malformed/forged grants, ADMIN_GRANT_EXPIRED or ADMIN_GRANT_REVOKED for matching stored
+grants, and ADMIN_ACCESS_DENIED for context/factor mismatches. After bounded expired-grant cleanup,
+removed grants return ADMIN_MFA_REQUIRED. No 409 state conflict is needed.
+General network limits may return 429 RATE_LIMIT_EXCEEDED. Existing account deletion and ban errors
+remain unchanged. Never display raw server exceptions or persist tokens. Actuator info/metrics
+and dev administrative local-dev routes are denied because their App Check paths are excluded.
+
+Administrative verification infrastructure failures also return 503 ADMIN_AUTHENTICATION_UNAVAILABLE, without raw exception details; retry with backoff.

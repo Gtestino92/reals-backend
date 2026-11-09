@@ -7,7 +7,7 @@ Production and shared development profiles should receive environment-specific v
 - `local-firebase`: local Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
-- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and `/api/local-dev/**` tooling registered for authenticated `ROLE_ADMIN` users.
+- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and `/api/local-dev/**` tooling registered but denied pending verified App Check support.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
 
@@ -31,11 +31,8 @@ they do not add a second execution profile.
 
 `/api/local-dev/**` is tooling for controlled Bruno/manual verification. It
 remains unauthenticated in `local-nodb`, `local-postgres` and
-`local-firebase`. Hosted `dev` registers the same paths but requires an
-authenticated `ROLE_ADMIN` user. Admin role assignment uses the existing
-Firebase-backed local user plus the verified Firebase token email in the
-`BACKOFFICE_ADMIN_EMAILS` allowlist. The persisted backend email is not an
-administrator allowlist fallback. `prod` and `test` deny the route prefix, and
+`local-firebase`. Hosted `dev` registers the same paths but denies them until equivalent verified App Check
+support exists. `prod` and `test` deny the route prefix, and
 `prod` does not register the real `Dev*` controllers.
 
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
@@ -773,7 +770,7 @@ management:
 
 Public unauthenticated Actuator access is limited to `/actuator/health` and
 `/actuator/health/**`. `/actuator/info`, `/actuator/metrics` and
-`/actuator/metrics/**` require the existing Firebase-backed `ROLE_ADMIN`.
+`/actuator/metrics/**` are denied pending equivalent verified App Check support.
 
 Enabled standard meter families:
 
@@ -892,3 +889,11 @@ Activation requires the runtime ingress checks and rollout constraints in
 `outcome=allowed|denied_daily|denied_weekly`; allowed increments after account
 creation commits (also when enforcement is disabled). Both denial counters
 increment if both windows reject. No identity/network labels are used.
+
+## Administrative Google + TOTP configuration
+
+Both BACKOFFICE_ADMIN_UIDS and BACKOFFICE_ADMIN_EMAILS, BACKOFFICE_ALLOWED_WEB_APP_IDS,
+ADMIN_MFA_TOTP_SECRET and ADMIN_MFA_SECRET_VERSION are required to enable administration.
+See the [exact variable limits, defaults and offline operator procedure](admin-auth.md#configuration).
+These values are injected via existing protected configuration; no infrastructure changes are included.
+Empty configuration denies administration; malformed nonempty configuration fails startup.
