@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
@@ -69,7 +70,7 @@ class EndpointExposureProdTest {
     }
 
     @Test
-    fun `actuator info requires admin in prod`() {
+    fun `actuator info denies admin in prod pending verified App Check support`() {
         mockMvc.perform(get("/actuator/info"))
             .andExpect(status().isUnauthorized)
 
@@ -77,11 +78,12 @@ class EndpointExposureProdTest {
             .andExpect(status().isForbidden)
 
         mockMvc.perform(get("/actuator/info").with(user("admin").roles("ADMIN")))
-            .andExpect(status().isOk)
+            .andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
     }
 
     @Test
-    fun `actuator metrics require admin in prod`() {
+    fun `actuator metrics deny admin in prod pending verified App Check support`() {
         mockMvc.perform(get("/actuator/metrics"))
             .andExpect(status().isUnauthorized)
 
@@ -89,7 +91,8 @@ class EndpointExposureProdTest {
             .andExpect(status().isForbidden)
 
         mockMvc.perform(get("/actuator/metrics").with(user("admin").roles("ADMIN")))
-            .andExpect(status().isOk)
+            .andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
     }
 
     @Test

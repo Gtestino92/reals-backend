@@ -2,12 +2,8 @@ package com.reals.backend.integration.controller
 
 import com.reals.backend.config.filter.RequestCorrelationIdFilter
 import com.reals.backend.integration.ControllerIT
-import com.reals.backend.service.ReadMetrics
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Timer
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -15,9 +11,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 class InfrastructureControllerIntegrationTest : ControllerIT() {
-
-    @Autowired
-    private lateinit var meterRegistry: MeterRegistry
 
     @Test
     fun `request correlation id is echoed in response`() {
@@ -57,7 +50,7 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
-    fun `actuator info requires admin role`() {
+    fun `actuator info denies admin pending verified App Check support`() {
         val user = userService.createUser("info-user-${UUID.randomUUID()}@example.com")
         val admin = userService.createUser("info-admin-${UUID.randomUUID()}@example.com")
 
@@ -74,19 +67,12 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
             get("/actuator/info")
                 .with(authenticatedAsAdmin(admin.id))
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.app.name", equalTo("reals-backend")))
-            .andExpect(jsonPath("$.image").exists())
+            .andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
     }
 
     @Test
-    fun `actuator metrics require admin role`() {
-        Timer.builder(ReadMetrics.HOME_LOAD)
-            .tag("variant", ReadMetrics.HOME_VARIANT_FULL)
-            .tag("outcome", "success")
-            .register(meterRegistry)
-            .record(java.time.Duration.ofMillis(1))
-
+    fun `actuator metrics deny admin pending verified App Check support`() {
         val user = userService.createUser("metrics-user-${UUID.randomUUID()}@example.com")
         val admin = userService.createUser("metrics-admin-${UUID.randomUUID()}@example.com")
 
@@ -103,20 +89,20 @@ class InfrastructureControllerIntegrationTest : ControllerIT() {
             get("/actuator/metrics")
                 .with(authenticatedAsAdmin(admin.id))
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.names").exists())
+            .andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
 
         mockMvc.perform(
-            get("/actuator/metrics/${ReadMetrics.HOME_LOAD}")
+            get("/actuator/metrics/jvm.memory.used")
                 .with(authenticatedAs(user.id))
         )
             .andExpect(status().isForbidden)
 
         mockMvc.perform(
-            get("/actuator/metrics/${ReadMetrics.HOME_LOAD}")
+            get("/actuator/metrics/jvm.memory.used")
                 .with(authenticatedAsAdmin(admin.id))
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.name", equalTo(ReadMetrics.HOME_LOAD)))
+            .andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
     }
 }
