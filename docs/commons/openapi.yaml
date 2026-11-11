@@ -24,6 +24,84 @@ tags:
   - name: Connections
   - name: Admin
 paths:
+  /api/admin-auth/status:
+    get:
+      tags: [Auth]
+      summary: Read MFA readiness and supplied grant validity without mutation
+      description: Requires an eligible active Google identity and verified allowlisted Web App ID. Optional X-Reals-Admin-Grant. No identity or factor details returned.
+      parameters:
+        - in: header
+          name: X-Reals-Admin-Grant
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Current readiness; invalid supplied grants return grantValid=false
+          headers:
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configured, grantValid]
+                properties:
+                  configured: { type: boolean }
+                  grantValid: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AdminAuthDenied' }
+        '429': { $ref: '#/components/responses/AdminMfaLimited' }
+        '503': { description: APP_CHECK_VERIFICATION_UNAVAILABLE or ADMIN_AUTHENTICATION_UNAVAILABLE; fail closed }
+  /api/admin-auth/verify:
+    post:
+      tags: [Auth]
+      summary: Consume a TOTP step and issue an absolute administrative grant
+      description: Requires eligible Google identity, verified allowlisted Web App Check and now strictly before verified auth_time plus max age (default 300 seconds). Replay and malformed codes count as failures. Firebase token refresh never changes auth_time or extends grants.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$', example: '012345' }
+      responses:
+        '200':
+          description: New grant; default absolute lifetime 900 seconds
+          headers:
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [grant, expiresAt]
+                properties:
+                  grant: { type: string, pattern: '^[A-Za-z0-9_-]{43}$' }
+                  expiresAt: { type: string, format: date-time }
+        '400': { description: 'ADMIN_MFA_INVALID_CODE for malformed, wrong or replayed code; malformed JSON uses existing validation errors', $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AdminAuthDenied' }
+        '429': { $ref: '#/components/responses/AdminMfaLimited' }
+        '503': { description: APP_CHECK_VERIFICATION_UNAVAILABLE or ADMIN_AUTHENTICATION_UNAVAILABLE; fail closed }
+  /api/admin-auth/revoke:
+    post:
+      tags: [Auth]
+      summary: Revoke the supplied administrative grant
+      description: Requires eligible Google identity and verified Web App Check. Missing, unknown, malformed or already revoked grants are idempotent no-ops. Normal Firebase authentication continues.
+      parameters:
+        - in: header
+          name: X-Reals-Admin-Grant
+          required: false
+          schema: { type: string }
+      responses:
+        '204':
+          description: Revoked or already unusable; no body
+          headers:
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AdminAuthDenied' }
+        '429': { $ref: '#/components/responses/AdminMfaLimited' }
+        '503': { description: APP_CHECK_VERIFICATION_UNAVAILABLE or ADMIN_AUTHENTICATION_UNAVAILABLE; fail closed }
   /api/ping:
     get:
       tags: [Health]
@@ -51,16 +129,11 @@ paths:
   /actuator/info:
     get:
       tags: [Health]
-      summary: Build and image metadata for authenticated administrators
-      security:
-        - bearerAuth: []
+      summary: Denied pending equivalent verified App Check support
       responses:
-        '200':
-          description: Application info
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InfoResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /api/auth/password-reset:
     post:
       tags: [Auth]
@@ -1256,6 +1329,10 @@ paths:
   /api/admin/safety-reports:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: List safety reports for backoffice review
       description: Requires ROLE_ADMIN. status defaults to PENDING.
       parameters:
@@ -1279,6 +1356,10 @@ paths:
   /api/admin/diagnostics/matchmaking:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: Get aggregate matchmaking diagnostics
       description: Requires ROLE_ADMIN. Returns aggregate queue and active-lock counts only; it does not expose user IDs, profile IDs, match IDs, connection IDs, coordinates or personal data.
       responses:
@@ -1295,6 +1376,10 @@ paths:
   /api/admin/profile-photos/review:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: List profile photos awaiting moderation review
       description: Requires ROLE_ADMIN. Returns only current NEEDS_REVIEW moderation photos, ordered by createdAt ascending and limited to 100. Validation PENDING photos are not included unless moderationStatus is NEEDS_REVIEW. Each item includes photoVersion, which must be submitted as expectedPhotoVersion when resolving the review.
       responses:
@@ -1313,6 +1398,10 @@ paths:
   /api/admin/profile-photos/{photoId}/moderation:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: Resolve a profile photo moderation review
       description: Requires ROLE_ADMIN. Supports only NEEDS_REVIEW -> APPROVED and NEEDS_REVIEW -> REJECTED. The request must include expectedPhotoVersion from the reviewed queue item. Stale review snapshots return PROFILE_PHOTO_MODERATION_REVIEW_NOT_AVAILABLE and should be refreshed before review. Does not delete photos, create safety reports, create blocks, apply penalties or change semantic validation fields.
       parameters:
@@ -1347,6 +1436,10 @@ paths:
   /api/admin/safety-reports/{reportId}:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: Get safety report detail
       description: Requires ROLE_ADMIN. Includes report data, user summaries, chat messages and associated penalty if present.
       parameters:
@@ -1365,6 +1458,10 @@ paths:
   /api/admin/safety-reports/{reportId}/dismissal:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: Dismiss pending safety report
       description: Requires ROLE_ADMIN. Does not create a penalty.
       parameters:
@@ -1389,6 +1486,10 @@ paths:
   /api/admin/safety-reports/{reportId}/penalty:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
+          firebaseAppCheck: []
+          adminGrant: []
       summary: Confirm safety report and apply penalty
       description: Requires ROLE_ADMIN. Temporary penalties require positive durationHours; permanent penalties must omit durationHours.
       parameters:
@@ -1682,6 +1783,11 @@ paths:
 
 components:
   securitySchemes:
+    adminGrant:
+      type: apiKey
+      in: header
+      name: X-Reals-Admin-Grant
+      description: Opaque Google + TOTP grant, bound to UID, auth_time, verified Web App ID and current factor; absolute expiry, no sliding renewal.
     bearerAuth:
       type: http
       scheme: bearer
@@ -1885,6 +1991,19 @@ components:
           schema:
             $ref: '#/components/schemas/RecordLegalDocumentActionRequest'
   responses:
+    AdminAuthDenied:
+      description: ADMIN_ACCESS_DENIED or ADMIN_MFA_NOT_CONFIGURED; privileged routes may return ADMIN_MFA_REQUIRED, ADMIN_GRANT_EXPIRED or ADMIN_GRANT_REVOKED. Responses are no-store. Existing account restrictions remain.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    AdminMfaLimited:
+      description: Persistent ADMIN_MFA_RATE_LIMITED or defense-in-depth RATE_LIMIT_EXCEEDED
+      headers:
+        Retry-After: { schema: { type: integer, minimum: 1 } }
+        Cache-Control: { schema: { type: string, enum: [no-store] } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     Profile:
       description: Profile
       content:

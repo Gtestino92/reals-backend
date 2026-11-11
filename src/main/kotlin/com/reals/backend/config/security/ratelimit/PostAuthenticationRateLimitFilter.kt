@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.ratelimit
 
+import com.reals.backend.config.security.preventAdministrativeCaching
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import com.reals.backend.config.security.authentication.FirebasePrincipal
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
@@ -49,6 +50,7 @@ class PostAuthenticationRateLimitFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        request.preventAdministrativeCaching(response)
         val principalIdentity = principalIdentity()
         if (principalIdentity == null) {
             filterChain.doFilter(request, response)

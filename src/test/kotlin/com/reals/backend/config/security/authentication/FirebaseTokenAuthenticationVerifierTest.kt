@@ -33,6 +33,16 @@ class FirebaseTokenAuthenticationVerifierTest {
     )
 
     @Test
+    fun `administrative verification never uses successful revocation cache`() {
+        val token = decodedToken()
+        `when`(firebaseAuth.verifyIdToken("admin", true)).thenReturn(token)
+        assertSame(token, verifier.verifyAdministrative("admin"))
+        assertSame(token, verifier.verifyAdministrative("admin"))
+        Mockito.verify(firebaseAuth, Mockito.times(2)).verifyIdToken("admin", true)
+        Mockito.verify(firebaseAuth, Mockito.never()).verifyIdToken("admin", false)
+    }
+
+    @Test
     fun `valid token is locally validated on every request while revocation check is cached`() {
         val decodedToken = decodedToken()
         `when`(firebaseAuth.verifyIdToken("valid-token", false))

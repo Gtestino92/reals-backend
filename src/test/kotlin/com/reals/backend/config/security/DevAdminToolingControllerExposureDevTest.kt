@@ -91,140 +91,18 @@ class DevAdminToolingControllerExposureDevTest {
     private lateinit var schedulingActivationJob: SchedulingActivationJob
 
     @Test
-    fun `dev admin can execute mapped matchmaking tooling and normal user cannot`() {
-        `when`(matchmakingProcessorService.process(maxPairsPerRun = 7))
-            .thenReturn(
-                MatchmakingProcessResult(
-                    candidatePairs = 0,
-                    matchesCreated = 0,
-                    failedPairs = 0,
-                    matches = emptyList()
-                )
-            )
-
-        mockMvc.perform(
-            post("/api/local-dev/matchmaking/process")
-                .param("maxPairsPerRun", "7")
-                .with(user("admin").roles("ADMIN"))
+    fun `dev tooling denies users and injected admin roles without verified App Check support`() {
+        val paths = listOf(
+            "/api/local-dev/matchmaking/process",
+            "/api/local-dev/pair-history/reset",
+            "/api/local-dev/timeouts/connections/${UUID.randomUUID()}/scheduling-available-now",
+            "/api/local-dev/jobs/scheduling-activation/run"
         )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.matchesCreated").value(0))
-
-        verify(matchmakingProcessorService).process(maxPairsPerRun = 7)
-
-        mockMvc.perform(
-            post("/api/local-dev/matchmaking/process")
-                .param("maxPairsPerRun", "7")
-                .with(user("normal").roles("USER"))
-        )
-            .andExpect(status().isForbidden)
-    }
-
-    @Test
-    fun `dev admin can execute pair history reset tooling and normal user cannot`() {
-        val userIdA = UUID.randomUUID()
-        val userIdB = UUID.randomUUID()
-        `when`(pairHistoryResetService.resetPairHistory(userIdA, userIdB))
-            .thenReturn(
-                LocalDevPairHistoryResetResult(
-                    matchesDeleted = 1,
-                    connectionsDeleted = 1,
-                    chatsDeleted = 2,
-                    reliabilityEventsDeleted = 3
-                )
-            )
-
-        mockMvc.perform(
-            post("/api/local-dev/pair-history/reset")
-                .contentType("application/json")
-                .content(
-                    """
-                    {
-                      "userIdA": "$userIdA",
-                      "userIdB": "$userIdB"
-                    }
-                    """.trimIndent()
-                )
-                .with(user("admin").roles("ADMIN"))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.matchesDeleted").value(1))
-            .andExpect(jsonPath("$.connectionsDeleted").value(1))
-            .andExpect(jsonPath("$.chatsDeleted").value(2))
-
-        verify(pairHistoryResetService).resetPairHistory(userIdA, userIdB)
-
-        mockMvc.perform(
-            post("/api/local-dev/pair-history/reset")
-                .contentType("application/json")
-                .content(
-                    """
-                    {
-                      "userIdA": "$userIdA",
-                      "userIdB": "$userIdB"
-                    }
-                    """.trimIndent()
-                )
-                .with(user("normal").roles("USER"))
-        )
-            .andExpect(status().isForbidden)
-    }
-
-    @Test
-    fun `dev admin can execute timeout tooling mutation and normal user cannot`() {
-        val connectionId = UUID.randomUUID()
-        `when`(
-            connectionRepository.updateSchedulingAvailableAt(
-                eqUuid(connectionId),
-                anyOffsetDateTime()
-            )
-        ).thenReturn(1)
-
-        mockMvc.perform(
-            post("/api/local-dev/timeouts/connections/$connectionId/scheduling-available-now")
-                .with(user("admin").roles("ADMIN"))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.target").value("connection-scheduling-availability"))
-            .andExpect(jsonPath("$.id").value(connectionId.toString()))
-
-        verify(connectionRepository).updateSchedulingAvailableAt(
-            eqUuid(connectionId),
-            anyOffsetDateTime()
-        )
-
-        mockMvc.perform(
-            post("/api/local-dev/timeouts/connections/$connectionId/scheduling-available-now")
-                .with(user("normal").roles("USER"))
-        )
-            .andExpect(status().isForbidden)
-    }
-
-    @Test
-    fun `dev admin can execute job tooling and normal user cannot`() {
-        mockMvc.perform(
-            post("/api/local-dev/jobs/scheduling-activation/run")
-                .with(user("admin").roles("ADMIN"))
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.job").value("SchedulingActivationJob"))
-
-        verify(schedulingActivationJob).run()
-
-        mockMvc.perform(
-            post("/api/local-dev/jobs/scheduling-activation/run")
-                .with(user("normal").roles("USER"))
-        )
-            .andExpect(status().isForbidden)
-    }
-
-    private fun anyOffsetDateTime(): OffsetDateTime {
-        Mockito.any(OffsetDateTime::class.java)
-        return OffsetDateTime.now()
-    }
-
-    private fun eqUuid(value: UUID): UUID {
-        Mockito.eq(value)
-        return value
+        for (role in listOf("USER", "ADMIN")) for (path in paths) {
+            mockMvc.perform(post(path).with(user("caller").roles(role)))
+                .andExpect(status().isForbidden)
+        }
+        Mockito.verifyNoInteractions(matchmakingProcessorService, pairHistoryResetService,
+            connectionRepository, schedulingActivationJob)
     }
 }

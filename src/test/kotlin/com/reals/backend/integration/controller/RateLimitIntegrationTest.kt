@@ -14,6 +14,9 @@ import java.util.UUID
     properties = [
         "security.rate-limit.enabled=true",
         "security.rate-limit.password-reset-enabled=true",
+        "security.rate-limit.admin-mfa-capacity=1",
+        "security.rate-limit.admin-mfa-refill-tokens=2",
+        "security.rate-limit.admin-mfa-refill-period-seconds=120",
         "security.rate-limit.password-reset-capacity=1",
         "security.rate-limit.provision-capacity=1",
         "security.rate-limit.provision-refill-tokens=1",
@@ -24,6 +27,18 @@ import java.util.UUID
     ]
 )
 class RateLimitIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `configured admin network limiter rejects early with no store and retry after`() {
+        fun request() = post("/api/admin-auth/verify").with { it.remoteAddr = "192.0.2.90"; it }
+        mockMvc.perform(request()).andExpect(status().isUnauthorized)
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(header().string("X-RateLimit-Limit", "1"))
+        mockMvc.perform(request()).andExpect(status().isTooManyRequests)
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(header().exists("Retry-After"))
+            .andExpect(jsonPath("$.code", equalTo("RATE_LIMIT_EXCEEDED")))
+    }
 
     @Test
     fun `anonymous reset returns generic accepted then rate limit regardless of email and forwarded headers`() {

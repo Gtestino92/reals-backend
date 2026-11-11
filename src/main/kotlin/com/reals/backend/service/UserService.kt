@@ -1,5 +1,7 @@
 package com.reals.backend.service
 
+import com.reals.backend.adminauth.AdminGrantRevocationService
+import com.reals.backend.adminauth.AdminGrantRevocationReason
 import com.reals.backend.domain.AuditAggregateType
 import com.reals.backend.domain.AuditEventType
 import com.reals.backend.domain.ProfileStatus
@@ -39,6 +41,7 @@ class UserService(
     private val homeStateInvalidationService: HomeStateInvalidationService,
     private val userNotificationPreferenceRepository: UserNotificationPreferenceRepository,
     private val accountProvisioningLimiter: AccountProvisioningLimiter,
+    private val adminGrantRevocationService: AdminGrantRevocationService,
     transactionManager: PlatformTransactionManager,
     @param:Value("\${account.deletion.recovery-window-days:30}")
     private val accountDeletionRecoveryWindowDays: Long,
@@ -209,6 +212,9 @@ class UserService(
 
         check(user.status == UserStatus.ACTIVE) { "Active user not found: $userId" }
 
+        adminGrantRevocationService.revokeOutstandingUnderUserLock(
+            userId, AdminGrantRevocationReason.ACCOUNT_DELETION_REQUESTED, userId
+        )
         accountDeletionService.closeActiveEngagementsForDeletedUser(
             userId = userId,
             now = now

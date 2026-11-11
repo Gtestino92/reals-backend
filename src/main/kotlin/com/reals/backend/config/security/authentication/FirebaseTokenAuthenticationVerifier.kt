@@ -27,6 +27,9 @@ class FirebaseTokenAuthenticationVerifier(
             .build()
 
     @Throws(FirebaseAuthException::class)
+    fun verifyAdministrative(token: String): FirebaseToken = firebaseAuth.verifyIdToken(token, true)
+
+    @Throws(FirebaseAuthException::class)
     fun verify(token: String): FirebaseToken {
         val decoded = firebaseAuth.verifyIdToken(token, false)
         val cacheKey = sha256Hex(token)

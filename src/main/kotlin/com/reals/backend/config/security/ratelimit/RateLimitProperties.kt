@@ -8,6 +8,9 @@ data class RateLimitProperties(
     val preAuthCapacity: Int = 600,
     val preAuthRefillTokens: Int = 600,
     val preAuthRefillPeriodSeconds: Long = 60,
+    val adminMfaCapacity: Int = 10,
+    val adminMfaRefillTokens: Int = 10,
+    val adminMfaRefillPeriodSeconds: Long = 600,
     val passwordResetEnabled: Boolean = false,
     val passwordResetCapacity: Int = 10,
     val passwordResetRefillTokens: Int = 10,
@@ -30,6 +33,7 @@ data class RateLimitProperties(
 ) {
     init {
         validateRule("pre-auth", preAuthCapacity, preAuthRefillTokens, preAuthRefillPeriodSeconds)
+        validateRule("admin-mfa", adminMfaCapacity, adminMfaRefillTokens, adminMfaRefillPeriodSeconds)
         validateRule("password-reset", passwordResetCapacity, passwordResetRefillTokens, passwordResetRefillPeriodSeconds)
         validateRule("default", defaultCapacity, defaultRefillTokens, defaultRefillPeriodSeconds)
         validateRule("provision", provisionCapacity, provisionRefillTokens, provisionRefillPeriodSeconds)

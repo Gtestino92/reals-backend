@@ -64,6 +64,7 @@ class UserServiceProvisioningRetryTest {
                 Mockito.mock(org.springframework.jdbc.core.JdbcTemplate::class.java),
                 io.micrometer.core.instrument.simple.SimpleMeterRegistry()
             ),
+            adminGrantRevocationService = Mockito.mock(com.reals.backend.adminauth.AdminGrantRevocationService::class.java),
             transactionManager = transactionTemplate.transactionManager!!,
             accountDeletionRecoveryWindowDays = 30
         )

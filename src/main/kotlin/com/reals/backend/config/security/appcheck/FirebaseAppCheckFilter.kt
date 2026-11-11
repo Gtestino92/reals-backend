@@ -1,5 +1,6 @@
 package com.reals.backend.config.security.appcheck
 
+import com.reals.backend.config.security.preventAdministrativeCaching
 import com.reals.backend.config.security.ratelimit.normalizedPath
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
@@ -42,6 +43,7 @@ class FirebaseAppCheckFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        request.preventAdministrativeCaching(response)
         val token = request.getHeader(HEADER_NAME)?.trim().orEmpty()
 
         if (token.isBlank()) {

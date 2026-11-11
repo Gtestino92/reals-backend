@@ -68,6 +68,9 @@ class SecurityConfig(
             }
             // Allow H2 console frames (only active on local-nodb profile)
             .headers { headers ->
+                headers.addHeaderWriter { request, response ->
+                    request.preventAdministrativeCaching(response)
+                }
                 headers.addHeaderWriter(
                     XFrameOptionsHeaderWriter(
                         XFrameOptionsHeaderWriter.XFrameOptionsMode.SAMEORIGIN
@@ -83,7 +86,7 @@ class SecurityConfig(
                         "/actuator/info",
                         "/actuator/metrics",
                         "/actuator/metrics/**"
-                    ).hasRole(SecurityRoles.ADMIN)
+                    ).denyAll() // App Check excludes Actuator; no administrative bypass.
 
                 when {
                     environmentExposurePolicy.localDevEndpointsAllowed() -> {
@@ -91,7 +94,7 @@ class SecurityConfig(
                         auth.requestMatchers("/api/local-dev/**").permitAll()
                     }
                     environmentExposurePolicy.devAdminToolingAllowed() -> {
-                        auth.requestMatchers("/api/local-dev/**").hasRole(SecurityRoles.ADMIN)
+                        auth.requestMatchers("/api/local-dev/**").denyAll() // No verified App Check on this path.
                     }
                     else -> {
                         auth.requestMatchers("/api/local-dev/**").denyAll()
@@ -108,6 +111,7 @@ class SecurityConfig(
                     .requestMatchers(HttpMethod.POST, "/api/auth/password-reset").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/me/provision")
                     .hasAnyRole(SecurityRoles.FIREBASE_AUTHENTICATED, SecurityRoles.USER)
+                    .requestMatchers("/api/admin-auth/**").hasRole(SecurityRoles.USER)
                     .requestMatchers("/api/admin/**").hasRole(SecurityRoles.ADMIN)
                     .requestMatchers("/api/**").hasRole(SecurityRoles.USER)
                     .anyRequest().denyAll()

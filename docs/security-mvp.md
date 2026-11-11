@@ -169,17 +169,22 @@ providers fail closed on real Firebase-token paths. The filter enforces:
 - `GOOGLE` origin with a `password` token returns `401 AUTH_METHOD_NOT_ALLOWED`,
   including for recoverably deleted accounts.
 
-`ROLE_ADMIN` is granted only when all conditions are true:
+`ROLE_ADMIN` requires Google authentication, both UID and verified-email allowlists,
+a verified allowlisted Web App Check App ID, and an unexpired, unrevoked PostgreSQL
+MFA grant bound to the current Firebase authentication event and factor. Email-only
+administrative authority has been removed. See [administrative authentication](admin-auth.md)
+for exact enforcement, limits, rotation and operator setup. Actuator info/metrics and
+dev administrative tooling are denied pending equivalent App Check support.
 
-- the verified Firebase UID resolves to a backend user;
-- that backend user is `ACTIVE`;
-- the backend user's persisted `firebaseUid` exactly matches the token UID;
-- the Firebase token email is verified;
-- the normalized Firebase token email is present in `BACKOFFICE_ADMIN_EMAILS`.
-
-The allowlist decision uses only the Firebase token email. The backend user's
-persisted local email is not a fallback for administrator authority, and an
-unprovisioned Firebase principal never receives `ROLE_ADMIN`.
+Temporary/permanent ban application and account deletion requests atomically revoke all
+unexpired, unrevoked admin grants under the existing user lock. Ban expiry, appeal approval
+and account reactivation never restore these grants; a fresh Google + TOTP verification is
+required. Expiration equality is preserved. A single bounded ADMIN_GRANT_REVOKED audit event
+records the non-sensitive restriction reason when rows change. No schema migration is needed.
+Administrative early filter rejections also use Cache-Control: no-store. The defense-in-depth
+TOTP IP limiter is configurable through RATE_LIMIT_ADMIN_MFA_CAPACITY,
+RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS and RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS (10/10/600);
+persistent administrator failures and lockouts remain independent of that limiter.
 
 Administrative account bans are enforced inside the Firebase authentication
 filter for existing `ACTIVE` backend users. A temporary ban blocks all protected

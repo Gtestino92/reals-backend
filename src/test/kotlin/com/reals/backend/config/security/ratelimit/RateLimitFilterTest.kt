@@ -47,6 +47,50 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `admin MFA configuration defaults overrides validation and early errors`() {
+        val defaults = RateLimitProperties()
+        assertEquals(RateLimitRule("admin-mfa", 10, 10, 600),
+            RateLimitFilter(defaults, RateLimitRuleResolver(defaults), exposurePolicy)
+                .preAuthenticationRule(MockHttpServletRequest("POST", "/api/admin-auth/verify")))
+        val custom = RateLimitProperties(adminMfaCapacity = 1, adminMfaRefillTokens = 2, adminMfaRefillPeriodSeconds = 120)
+        val filter = RateLimitFilter(custom, RateLimitRuleResolver(custom), exposurePolicy)
+        fun request() = MockHttpServletRequest("POST", "/api/admin-auth/verify")
+        assertEquals(RateLimitRule("admin-mfa", 1, 2, 120), filter.preAuthenticationRule(request()))
+        assertEquals(200, runPreAuth(filter, request()))
+        val rejected = MockHttpServletResponse()
+        filter.doFilter(request(), rejected, MockFilterChain())
+        assertEquals(429, rejected.status)
+        assertEquals("no-store", rejected.getHeader("Cache-Control"))
+        assertTrue(rejected.getHeader("Retry-After")!!.toLong() > 0)
+        assertTrue(rejected.contentAsString.contains("RATE_LIMIT_EXCEEDED"))
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RateLimitProperties(adminMfaCapacity = 0) }
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RateLimitProperties(adminMfaRefillTokens = -1) }
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RateLimitProperties(adminMfaRefillPeriodSeconds = 0) }
+    }
+
+    @Test
+    fun `post auth admin rate limit errors are no store and preserve retry after`() {
+        val filter = postAuthFilter()
+        setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "firebase-admin", null, true))
+        fun request() = MockHttpServletRequest("POST", "/api/admin-auth/verify")
+        assertEquals(200, runPostAuth(filter, request()))
+        val rejected = MockHttpServletResponse()
+        filter.doFilter(request(), rejected, MockFilterChain())
+        assertEquals(429, rejected.status)
+        assertEquals("no-store", rejected.getHeader("Cache-Control"))
+        assertTrue(rejected.getHeader("Retry-After")!!.toLong() > 0)
+    }
+
+    @Test
+    fun `admin MFA network limit uses remote address and ignores spoofed forwarding headers`() {
+        val filter = preAuthFilter()
+        fun request() = MockHttpServletRequest("POST", "/api/admin-auth/verify").apply { remoteAddr = "192.0.2.1" }
+        repeat(10) { assertEquals(200, runPreAuth(filter, request())) }
+        assertEquals(429, runPreAuth(filter, request().apply { addHeader("X-Forwarded-For", "192.0.2.2") }))
+        assertEquals(200, runPreAuth(filter, request().apply { remoteAddr = "192.0.2.3" }))
+    }
+
+    @Test
     fun `pre auth uses same bucket for different invalid bearer values from same ip and group`() {
         val filter = preAuthFilter()
 
