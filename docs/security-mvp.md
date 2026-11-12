@@ -239,6 +239,28 @@ are passwordless in Reals and never receive Reals password reset delivery.
 `passwordManagementAllowed` is derived from this immutable Reals origin, not
 from later Firebase provider-link metadata.
 
+Eligibility is checked in the request's read-only transaction at request time;
+only the normalized address is submitted to a dedicated Spring-managed executor.
+Firebase delivery never runs on the HTTP thread. Each instance has two workers
+and a queue of 32 deliveries, with immediate rejection on saturation (no
+caller-runs fallback). Rejection still returns the same empty `202` response.
+This removes the external-network timing difference, but does not promise
+constant-time database lookup, eligibility checks or task submission.
+
+Delivery is best effort: no durable queue, automatic retry, or delivery guarantee
+is provided by `202`. Saturation, process crashes and shutdown can lose emails;
+users may request another reset subject to the existing rate limits. Context
+close rejects new submissions and permits coordinated executor stopping; at bean
+destruction queued work is cancelled, running work is interrupted, and termination
+is awaited for at most 15 seconds. Blocking HTTP I/O may finish only at the existing
+Firebase connect/read timeouts (3/10 seconds by default). Queued requests retain
+request-time eligibility; account changes after acceptance are not revalidated.
+No lifecycle state, locks, tokens or credentials are created by this dispatcher.
+Submission/delivery warnings contain no addresses, credentials, upstream bodies
+or exception messages. The executor is dedicated and does not replace Boot's
+application executor. The dedicated IP quota remains disabled until trusted
+proxy attribution is verified as described below.
+
 `POST /api/me/local-dev/email-verification` is a local-only Firebase Admin
 helper for the `local-firebase` profile and must remain absent from hosted
 `dev` and `prod`. It requires a provisioned authenticated backend user with

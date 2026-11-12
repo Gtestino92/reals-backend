@@ -34,6 +34,7 @@ are intentionally deferred.
 
 - `POST /api/me/provision`: create or link the authenticated Firebase identity to a local backend user. This is the only Firebase flow endpoint that provisions a missing local user. The first successful Reals provisioning flow sets the immutable backend-owned `authOrigin`; later Firebase provider metadata or provider ordering does not rewrite it.
 - `POST /api/auth/password-reset`: public Firebase-bearer-optional password reset request. Body: `{ "email": "user@example.com" }`. Syntactically valid requests return `202 Accepted` with no account-existence, auth-origin, deletion-state or Firebase-delivery disclosure. App Check still applies when enforced.
+  Eligible delivery is asynchronous through a bounded in-memory executor; `202` does not guarantee email delivery. Saturation, failure or shutdown can lose requests without changing the response. See `docs/security-mvp.md` for limits and shutdown semantics.
 - `GET /api/me`: fetch the authenticated user.
 - `GET /api/me/home`: fetch the authenticated user's current app state for home/navigation. Includes profile status, matchmaking availability, active interaction counts, pending actions, next steps and passive notices. Home is an explicit navigation contract; clients should not infer actions from raw match or connection states.
 - `GET /api/me/home/status`: fetch the authenticated user's persisted Home `version`, `dirty` flag, nullable `nextRefreshAt` wake-up marker and `serverTime`. This is cheap and does not aggregate full Home state.

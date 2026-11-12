@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.timeout
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -67,7 +68,7 @@ class AuthControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isAccepted)
             .andExpect(content().string(""))
 
-        verify(passwordResetEmailDeliveryService).sendPasswordResetEmail(user.email!!)
+        verify(passwordResetEmailDeliveryService, timeout(5000)).sendPasswordResetEmail(user.email!!)
     }
 
     @Test
@@ -97,5 +98,6 @@ class AuthControllerIntegrationTest : ControllerIT() {
         )
             .andExpect(status().isAccepted)
             .andExpect(content().string(""))
+        verify(passwordResetEmailDeliveryService, timeout(5000)).sendPasswordResetEmail(user.email!!)
     }
 }
