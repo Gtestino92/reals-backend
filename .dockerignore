@@ -9,3 +9,7 @@ md_old
 *.log
 *firebase*credentials*.json
 *service-account*.json
+
+# Protected local environment must not enter the build context.
+.env
+.env.*
