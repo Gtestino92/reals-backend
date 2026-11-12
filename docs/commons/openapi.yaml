@@ -149,7 +149,7 @@ paths:
               $ref: '#/components/schemas/PasswordResetRequest'
       responses:
         '202':
-          description: Password reset request accepted generically
+          description: Password reset request accepted generically; best-effort asynchronous email delivery is not guaranteed, including on saturation or shutdown
         '400':
           $ref: '#/components/responses/BadRequest'
   /api/me/provision:

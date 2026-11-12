@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.spy
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import org.springframework.core.task.SyncTaskExecutor
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -16,7 +19,8 @@ class PasswordResetServiceTest {
 
     private val userRepository = mock(UserRepository::class.java)
     private val deliveryService = mock(PasswordResetEmailDeliveryService::class.java)
-    private val service = PasswordResetService(userRepository, deliveryService)
+    private val executor = spy(SyncTaskExecutor())
+    private val service = PasswordResetService(userRepository, deliveryService, executor)
     private val now = OffsetDateTime.parse("2026-08-11T12:00:00Z")
 
     @Test
@@ -86,6 +90,20 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    fun `unknown origin blank firebase uid and deleted account without deadline never submit delivery`() {
+        listOf(
+            user(authOrigin = null),
+            user(authOrigin = UserAuthOrigin.EMAIL_PASSWORD, firebaseUid = " "),
+            user(authOrigin = UserAuthOrigin.EMAIL_PASSWORD, status = UserStatus.DELETED)
+        ).forEach {
+            givenUser(it)
+            service.requestPasswordReset("user@example.com", now)
+        }
+
+        verifyNoDelivery()
+    }
+
+    @Test
     fun `deleted account at exact finalization deadline does not receive reset delivery`() {
         givenUser(
             user(
@@ -120,6 +138,7 @@ class PasswordResetServiceTest {
     }
 
     private fun verifyNoDelivery() {
+        verifyNoInteractions(executor)
         verify(deliveryService, never()).sendPasswordResetEmail(org.mockito.ArgumentMatchers.anyString())
     }
 
