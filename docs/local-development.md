@@ -405,6 +405,43 @@ The service-account file is mounted read-only inside the backend container.
 Automatic schedulers are disabled by the `local-firebase` profile so local
 manual testing stays deterministic.
 
+For real administrative Google + TOTP testing, configure the ignored root `.env`
+with `BACKOFFICE_ADMIN_UIDS`, `BACKOFFICE_ADMIN_EMAILS`,
+`BACKOFFICE_ALLOWED_WEB_APP_IDS`, `FIREBASE_PROJECT_NUMBER` and
+`FIREBASE_APP_CHECK_ALLOWED_APP_IDS`. Include the Web App ID in both App ID
+allowlists and retain the Android IDs in the general allowlist. Use the Firebase
+project number, not its textual project ID. Never commit actual identities or
+credentials. `.env` is also excluded from the Docker build context.
+
+Set `FIREBASE_APP_CHECK_MODE=MONITOR` for initial local integration. Administrative
+requests still require successfully verified Web App Check in this mode; missing
+or invalid attestation cannot authorize administration. Configure the Web provider
+in Firebase separately. Production requires `ENFORCED`.
+
+The operator must generate/register the TOTP factor offline using
+[the admin runbook](admin-auth.md#offline-initial-setup), then privately populate
+`ADMIN_MFA_TOTP_SECRET` and a new `ADMIN_MFA_SECRET_VERSION` in `.env`. Empty values
+leave administration disabled. Do not generate secrets in build commands or paste
+them into command arguments, logs, source files or tickets.
+
+Compose uses `.env` for interpolation; it does not automatically inject every key
+into the container. The backend environment explicitly forwards these variables.
+Shell variables take precedence over `.env`; clear unintended overrides privately.
+Validate without printing the resolved configuration, then rebuild/recreate only
+the backend (with PostgreSQL and MinIO already running):
+
+```powershell
+docker compose --env-file .env config --quiet
+docker compose --env-file .env up -d --build --force-recreate --no-deps backend
+```
+
+A container restart alone does not reload environment variables. Recreating the
+backend retains the PostgreSQL volume and persisted MFA replay/lockout state.
+Check readiness and Flyway V49 before testing the
+[Web verification sequence](web-admin-integration-handoff.md). Keep Firebase tokens,
+TOTP codes and returned grants out of terminal recordings and shared output; hold
+grants only in Web memory.
+
 Check the backend:
 
 ```powershell
