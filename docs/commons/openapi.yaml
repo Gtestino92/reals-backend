@@ -3262,10 +3262,13 @@ components:
           description: Content moderation status. With provider none outside prod, including when sightengine is configured outside prod, APPROVED is a permissive MVP result and does not represent external safety review. With provider none in prod, uploads persist NEEDS_REVIEW. With provider sightengine in dev or prod, Reals maps provider output to sexual explicit, sexual suggestive, violence/threat, gore and hate/extremism scores, then applies configurable policy to APPROVED, NEEDS_REVIEW or REJECTED. Sexual suggestive includes concerning suggestive_classes such as lingerie and visibly_undressed, excludes ordinary swimwear-like classes such as bikini, and defaults to a 0.50 review threshold with no reject threshold. Automatic provider moderation does not create safety reports, blocks, penalties or bans.
     VisualProfileResponse:
       type: object
+      description: Guarded partner profile. Exposes only user-declared city and canonical country code for location; excludes coordinates, queue/search location, distance and private matchmaking preferences. Existing visual-content access rules apply.
       required:
         - profileId
         - displayName
         - age
+        - city
+        - countryCode
         - photos
         - profileQuestions
         - affinityIndicators
@@ -3278,6 +3281,17 @@ components:
         displayName: { type: string }
         age: { type: integer }
         bio: { type: string, nullable: true }
+        city:
+          type: string
+          description: User-declared free-text profile city, not derived from search location.
+          example: Córdoba
+        countryCode:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Canonical uppercase ISO 3166-1 alpha-2 profile country code.
+          example: AR
         photos:
           type: array
           description: Partner profile photos visible to this external match context. Includes only photos whose moderationStatus is APPROVED; excluded NEEDS_REVIEW or REJECTED photos do not have read URLs generated for this response.

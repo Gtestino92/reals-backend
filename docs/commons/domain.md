@@ -435,6 +435,7 @@ Chats can end through approval/normal completion, timeout, inactivity abandonmen
 - Editable fields include display name, bio, city, country code, intention and looking-for gender.
 - `Profile.city` remains free text.
 - `Profile.countryCode` is a canonical uppercase ISO 3166-1 alpha-2 code stored in `profiles.country_code`.
+- Guarded visual-profile reads expose the partner's user-declared `city` and canonical `countryCode`. These descriptive fields do not represent a verified or current search location. Coordinates, queue/search location, distance, and private matchmaking preferences remain excluded.
 - Allowed profile country codes come from the backend country reference catalog. The catalog is built once from the Java runtime ISO country list with Spanish display names from `Locale.forLanguageTag("es")`, ordered by Spanish display name and country code, and retained as immutable in-memory reference data. Clients should fetch it through `GET /api/reference/countries` and submit the selected `code` as `countryCode`.
 - Profile country input is trimmed, uppercased and validated against that catalog. Display names and guessed mappings are not accepted.
 - Dynamic matchmaking filters include preferred minimum age, preferred maximum age and maximum distance in kilometers. They are required profile values. Preferred ages are enforced in the basic matchmaking query. Maximum distance is enforced from the current search location sent when a user enters the matchmaking queue.

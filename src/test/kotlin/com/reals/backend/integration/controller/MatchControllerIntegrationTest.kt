@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatContinueDecision
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.MatchmakingQueueEntry
 import com.reals.backend.domain.PhotoModerationStatus
 import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.domain.VisualDecision
@@ -193,6 +194,61 @@ class MatchControllerIntegrationTest : ControllerIT() {
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
             .andExpect(jsonPath("$.error", equalTo("Forbidden")))
+            .andExpect(jsonPath("$.city").doesNotExist())
+            .andExpect(jsonPath("$.countryCode").doesNotExist())
+            .andExpect(jsonPath("$.profileId").doesNotExist())
+    }
+
+    @Test
+    fun `visual profile exposes only declared partner location in visual and approved phases`() {
+        val setup = createMatchInVisualPhase()
+        val profileA = profileService.findByUserId(setup.userAId)!!
+        val profileB = profileService.findByUserId(setup.userBId)!!
+        profileService.updateProfile(profileA.id, city = "Córdoba", countryCode = " ar ")
+        profileService.updateProfile(profileB.id, city = "Montevideo", countryCode = " uy ")
+        // Private search coordinates deliberately differ from the declared cities.
+        matchmakingQueueRepository.saveAndFlush(
+            MatchmakingQueueEntry(userId = setup.userBId, latitude = 40.4168, longitude = -3.7038, accuracyMeters = 17)
+        )
+
+        val expectedFields = setOf(
+            "profileId", "displayName", "age", "bio", "city", "countryCode", "photos",
+            "profileQuestions", "affinityIndicators", "myPersonalMessageSubmitted",
+            "partnerPersonalMessageSubmitted", "partnerPersonalMessageRead",
+            "decisionRequiresPartnerPersonalMessageRead", "visualExpiresAt"
+        )
+        repeat(2) { phase ->
+            if (phase == 1) {
+                visualReviewService.recordDecision(setup.matchId, setup.userAId, VisualDecision.APPROVED)
+                visualReviewService.recordDecision(setup.matchId, setup.userBId, VisualDecision.APPROVED)
+            }
+            listOf(
+                Triple(setup.userAId, "Montevideo", "UY"),
+                Triple(setup.userBId, "Córdoba", "AR")
+            ).forEach { (requesterId, city, countryCode) ->
+                val result = mockMvc.perform(
+                    get("/api/matches/${setup.matchId}/visual-profile")
+                        .with(authenticatedAs(requesterId))
+                )
+                    .andExpect(status().isOk)
+                    .andExpect(jsonPath("$.city", equalTo(city)))
+                    .andExpect(jsonPath("$.countryCode", equalTo(countryCode)))
+                    .andExpect(jsonPath("$..latitude").doesNotExist())
+                    .andExpect(jsonPath("$..longitude").doesNotExist())
+                    .andExpect(jsonPath("$..accuracyMeters").doesNotExist())
+                    .andExpect(jsonPath("$..searchLocation").doesNotExist())
+                    .andExpect(jsonPath("$..distanceKm").doesNotExist())
+                    .andExpect(jsonPath("$..maxDistanceKm").doesNotExist())
+                    .andExpect(jsonPath("$..preferredMinAge").doesNotExist())
+                    .andExpect(jsonPath("$..preferredMaxAge").doesNotExist())
+                    .andExpect(jsonPath("$..lookingForGenders").doesNotExist())
+                    .andExpect(jsonPath("$..intention").doesNotExist())
+                    .andReturn()
+                // Explicit allowlist also rejects new aliases/nested containers for private data.
+                val response = objectMapper.readTree(result.response.contentAsString)
+                assertEquals(expectedFields, response.properties().map { it.key }.toSet())
+            }
+        }
     }
 
     @Test

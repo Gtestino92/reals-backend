@@ -197,7 +197,8 @@ data class PhotoResponse(
 /**
  * Partial profile revealed during the visual phase.
  * Contains only what should be visible at this stage:
- * display name, age, bio, and photos.
+ * display name, age, bio, declared city/country, photos, and public questions/affinities.
+ * Does not expose search location, coordinates, distance, or private preferences.
  * Does NOT expose userId to prevent cross-referencing outside the app.
  */
 data class VisualProfileResponse(
@@ -205,6 +206,8 @@ data class VisualProfileResponse(
     val displayName: String,
     val age: Int,
     val bio: String?,
+    val city: String,
+    val countryCode: String,
     val photos: List<PhotoResponse>,
     val profileQuestions: List<PublicProfileQuestionResponse>,
     val affinityIndicators: List<VisualAffinityIndicatorResponse>,
@@ -230,6 +233,8 @@ data class VisualProfileResponse(
             displayName = profile.displayName,
             age = Period.between(profile.birthDate, LocalDate.now()).years,
             bio = profile.bio,
+            city = profile.city,
+            countryCode = profile.countryCode,
             photos = photos.sortedBy { it.position },
             profileQuestions = profileQuestions.sortedBy { it.position },
             affinityIndicators = affinityIndicators.map { VisualAffinityIndicatorResponse.from(it) },
