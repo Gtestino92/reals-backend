@@ -83,6 +83,7 @@ Non-sensitive runtime configuration:
 | `SPRING_PROFILES_ACTIVE` | yes | Use `dev` or `prod` outside local development. |
 | `DATABASE_URL` | yes | JDBC URL, for example `jdbc:postgresql://host:5432/reals`. |
 | `DATABASE_USERNAME` | yes | PostgreSQL user. |
+| `REALS_CORS_ALLOWED_ORIGINS` | direct cross-origin web access only | Comma-separated allowlist of exact HTTPS origins for `/api/**`. Defaults to empty. See [Browser API access](#browser-api-access). |
 | `FIREBASE_APP_CHECK_MODE` | prod: yes, dev/local: no | `DISABLED`, `MONITOR` or `ENFORCED`. Defaults to `DISABLED` in `local-firebase`/`dev` and `ENFORCED` in `prod`; prod rejects any non-`ENFORCED` value. |
 | `FIREBASE_PROJECT_NUMBER` | prod and enabled App Check | Numeric Firebase project number used for App Check issuer and audience checks. This is not the Firebase project ID. |
 | `FIREBASE_APP_CHECK_ALLOWED_APP_IDS` | prod and enabled App Check | Comma-separated Firebase App IDs accepted from the App Check token subject. These are not Android package names. |
@@ -438,6 +439,27 @@ For AWS deployments, prefer `STORAGE_S3_CREDENTIALS_MODE=DEFAULT_CHAIN` and IAM
 roles for S3 access instead of long-lived access keys. EC2 instance profiles and
 ECS task roles can be consumed through the AWS SDK default chain; no access key
 should be injected for the preferred AWS deployment.
+
+## Browser API access
+
+Set `REALS_CORS_ALLOWED_ORIGINS` separately in each backend deployment environment
+that serves a cross-origin web client. For Railway Dev use:
+
+```dotenv
+REALS_CORS_ALLOWED_ORIGINS=https://reals-web.pages.dev
+```
+
+Use the exact serialized browser origin for each entry, including any non-default
+port. Separate multiple entries with commas. Surrounding whitespace is ignored.
+Paths (including a trailing slash), query strings, fragments, user information,
+wildcards, and HTTP origins are invalid and cause startup to fail.
+
+An empty or omitted value grants no browser origins cross-origin access.
+The policy applies only to `/api/**` and disables credentialed CORS. Firebase
+bearer authentication, App Check, and authorization still apply to actual
+requests. CORS governs browser access to cross-origin responses. Native Android
+and other clients that do not send an `Origin` header use the API as before.
+The same-origin Vite `/api` proxy works with the default empty allowlist.
 
 ## Helm Chart Location
 

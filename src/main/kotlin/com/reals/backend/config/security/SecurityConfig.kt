@@ -9,6 +9,7 @@ import com.reals.backend.config.security.ratelimit.RateLimitFilter
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -31,9 +32,12 @@ class SecurityConfig(
 
     @Bean
     fun securityFilterChain(
-        http: HttpSecurity
+        http: HttpSecurity,
+        environment: Environment
     ): SecurityFilterChain {
+        val apiCors = ApiCorsConfiguration(environment.getProperty("security.cors.allowed-origins", ""))
         http
+            .cors { it.configurationSource(apiCors) }
             // codeql[java/spring-disabled-csrf-protection]
             // Reals is a stateless API using Authorization bearer tokens, not cookie-based browser sessions.
             // Revisit before adding cookie auth, form login, browser sessions, or browser-attached credentials.
@@ -68,6 +72,7 @@ class SecurityConfig(
             }
             // Allow H2 console frames (only active on local-nodb profile)
             .headers { headers ->
+                headers.addHeaderWriter(apiCors::writeVaryOrigin)
                 headers.addHeaderWriter { request, response ->
                     request.preventAdministrativeCaching(response)
                 }
