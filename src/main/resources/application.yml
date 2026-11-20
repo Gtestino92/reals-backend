@@ -367,6 +367,8 @@ notifications:
     remaining-percentage: 40
 
 security:
+  cors:
+    allowed-origins: ${REALS_CORS_ALLOWED_ORIGINS:}
   firebase-auth:
     revocation-cache-ttl: ${FIREBASE_AUTH_REVOCATION_CACHE_TTL:PT60S}
   app-check:

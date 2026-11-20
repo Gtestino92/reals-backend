@@ -21,11 +21,21 @@ import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.FilterType
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpHeaders
 import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.security.web.FilterChainProxy
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.context.WebApplicationContext
 import kotlin.test.assertTrue
 
 @WebMvcTest(
@@ -64,6 +74,28 @@ class FirebaseAppCheckFilterOrderTest {
         assertTrue(appCheckIndex >= 0, "App Check filter must be present")
         assertTrue(firebaseIndex >= 0, "Firebase authentication filter must be present")
         assertTrue(appCheckIndex < firebaseIndex, "App Check must run before Firebase authentication")
+    }
+
+    @Test
+    fun `absent allowlist rejects preflights and preserves native and proxied authentication`(@Autowired context: WebApplicationContext) {
+        val mockMvc = MockMvcBuilders.webAppContextSetup(context)
+            .apply<DefaultMockMvcBuilder>(springSecurity())
+            .build()
+        mockMvc.perform(options("/api/me")
+            .header(HttpHeaders.ORIGIN, "https://reals-web.pages.dev")
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+            .andExpect(status().isForbidden)
+            .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+
+        listOf(null, "http://localhost:5173").forEach { origin ->
+            val request = post("/api/me/provision").apply {
+                if (origin != null) header(HttpHeaders.ORIGIN, origin)
+            }
+            mockMvc.perform(request)
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.code").value("MISSING_APP_CHECK_TOKEN"))
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+        }
     }
 
     @RestController
