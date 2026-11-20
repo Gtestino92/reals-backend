@@ -1,0 +1,38 @@
+meta {
+  name: 06 Verify Admin TOTP
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/admin-auth/verify
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+body:json {
+  {
+    "code": "{{?Enter the current admin TOTP code}}"
+  }
+}
+
+script:pre-request {
+  const token = bru.getVar("firebase_admin_id_token");
+  if (!token || bru.getVar("firebase_admin_status_token") !== token) {
+    throw new Error("Run 00 Validate Firebase Google ID Token and 05 Admin Status first.");
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (res.getStatus() !== 200 || !/^[A-Za-z0-9_-]{43}$/.test(body?.grant) ||
+      !Number.isFinite(Date.parse(body?.expiresAt))) {
+    throw new Error("TOTP verification failed. Check the response status and honor Retry-After if present.");
+  }
+  bru.setVar("firebase_admin_grant", body.grant);
+}

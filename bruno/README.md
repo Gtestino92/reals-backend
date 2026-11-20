@@ -30,18 +30,9 @@ The first request generates unique test emails and a future half-hour second-cha
 - `14 Second Chat Attendance Debug`: local-only second-chat attendance, no-show and conversation-lifecycle helpers, including forced join windows, explicit joins, no-show claims, mutual-completion requests, inactivity claims, forced request expiry, status inspection and lifecycle-job execution.
 - `16 AWS Dev Tooling`: hosted dev Firebase admin App Check exchange, sign-in/provision, authenticated `/api/local-dev/**` triggers, and admin moderation helpers.
 
-Hosted `dev` keeps the `/api/local-dev/**` path for compatibility, but requires
-`Authorization: Bearer {{firebase_admin_id_token}}` from an active Firebase user
-whose email is listed in `BACKOFFICE_ADMIN_EMAILS`. Local profiles keep
-`auth: none` for these tooling requests.
-
-When AWS DEV runs with Firebase App Check `ENFORCED`, ordinary protected Reals
-backend requests also send `X-Firebase-AppCheck: {{firebase_app_check_token}}`.
-Create an ignored personal `dev` environment, set `firebase_project_number`,
-`firebase_app_id`, and the already registered `firebase_app_check_debug_token`,
-then run `16 AWS Dev Tooling/00b Exchange Firebase App Check Debug Token`. The
-request stores the short-lived `firebase_app_check_token`; rerun it when the JWT
-expires. The debug token secret is sensitive and must never be committed.
+Hosted tooling requires the Dev enablement flag, a verified Google admin
+session, Web App Check and a recent TOTP grant. Local profiles keep their
+unauthenticated tooling. Follow the [Hosted Dev Tooling runbook](16%20-%20AWS%20Dev%20Tooling/README.md).
 
 ## Happy Path Covered Flow
 

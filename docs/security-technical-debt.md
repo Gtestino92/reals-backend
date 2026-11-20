@@ -226,7 +226,7 @@ investigation and must not be reported as confirmed vulnerabilities.
 Backend Google + TOTP grants replace email-only ADMIN derivation; see [runbook](admin-auth.md).
 Web App Check initialization, Google reauthentication UX, in-memory grant handling and explicit
 logout revocation remain separate Web work. No backend bypass accommodates that unfinished work.
-Actuator info/metrics and dev administrative tooling are denied pending verified App Check support.
+Actuator info/metrics are denied. Hosted Dev tooling requires explicit enablement and the same verified administrative credentials.
 Operational gates: verify real Firebase revocation, Web attestation, synchronized secret rollout,
 trusted client-IP attribution, and retention execution in the deployment. No physical-device identity
 is claimed. No automated recovery or administrator enrollment is offered.

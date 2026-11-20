@@ -6,11 +6,15 @@ import org.springframework.stereotype.Component
 
 @Component
 class EnvironmentExposurePolicy private constructor(
-    private val activeProfiles: Set<String>
+    private val activeProfiles: Set<String>,
+    private val remoteDevToolingEnabled: Boolean
 ) {
 
     @Autowired
-    constructor(environment: Environment) : this(environment.activeProfiles.toSet())
+    constructor(environment: Environment) : this(
+        environment.activeProfiles.toSet(),
+        environment.getProperty("local-dev.remote-tooling-enabled", Boolean::class.java, false)
+    )
 
     fun activeExecutionProfiles(): Set<String> =
         activeProfiles.intersect(EXECUTION_PROFILES)
@@ -41,7 +45,7 @@ class EnvironmentExposurePolicy private constructor(
         activeExecutionProfiles().any { it in LOCAL_EXECUTION_PROFILES }
 
     fun devAdminToolingAllowed(): Boolean =
-        activeExecutionProfiles() == setOf(DEV_PROFILE)
+        activeExecutionProfiles() == setOf(DEV_PROFILE) && remoteDevToolingEnabled
 
     fun h2ConsoleAllowed(): Boolean =
         activeExecutionProfiles() == setOf(LOCAL_NODB_PROFILE)
@@ -69,6 +73,6 @@ class EnvironmentExposurePolicy private constructor(
         )
 
         fun forActiveProfiles(vararg profiles: String): EnvironmentExposurePolicy =
-            EnvironmentExposurePolicy(profiles.toSet())
+            EnvironmentExposurePolicy(profiles.toSet(), remoteDevToolingEnabled = false)
     }
 }

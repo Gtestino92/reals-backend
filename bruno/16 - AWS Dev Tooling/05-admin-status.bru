@@ -1,0 +1,30 @@
+meta {
+  name: 05 Admin Status
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin-auth/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  X-Reals-Admin-Grant: {{firebase_admin_grant}}
+}
+
+script:pre-request {
+  bru.setVar("firebase_admin_status_token", "");
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (res.getStatus() !== 200 || body?.configured !== true || typeof body.grantValid !== "boolean") {
+    throw new Error("Administrative status failed. Check the Google identity, Web App Check and MFA configuration.");
+  }
+  bru.setVar("firebase_admin_status_token", bru.getVar("firebase_admin_id_token"));
+  if (!body.grantValid) bru.setVar("firebase_admin_grant", "");
+}

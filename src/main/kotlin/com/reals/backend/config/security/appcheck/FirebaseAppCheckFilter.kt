@@ -14,7 +14,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 class FirebaseAppCheckFilter(
     private val properties: FirebaseAppCheckProperties,
     private val verifier: FirebaseAppCheckVerifier,
-    private val meterRegistry: MeterRegistry?
+    private val meterRegistry: MeterRegistry?,
+    private val verifyDevTooling: Boolean = false
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -29,7 +30,7 @@ class FirebaseAppCheckFilter(
         return request.method.equals("OPTIONS", ignoreCase = true) ||
             !path.startsWith("/api/") ||
             path == "/api/ping" ||
-            path.startsWith("/api/local-dev/") ||
+            (!verifyDevTooling && (path == "/api/local-dev" || path.startsWith("/api/local-dev/"))) ||
             path == "/actuator/health" ||
             path.startsWith("/actuator/health/") ||
             path == "/actuator/info" ||

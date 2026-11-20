@@ -6,7 +6,10 @@ import com.reals.backend.config.security.authentication.FirebaseTokenFilter
 import com.reals.backend.config.security.appcheck.FirebaseAppCheckFilter
 import com.reals.backend.config.security.ratelimit.PostAuthenticationRateLimitFilter
 import com.reals.backend.config.security.ratelimit.RateLimitFilter
+import com.reals.backend.adminauth.AdminRequestIdentity
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
@@ -18,6 +21,9 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter
+import org.springframework.web.servlet.HandlerInterceptor
+import org.springframework.web.servlet.HandlerMapping
+import org.springframework.web.servlet.handler.MappedInterceptor
 
 @Configuration
 @EnableWebSecurity
@@ -29,6 +35,28 @@ class SecurityConfig(
     private val rateLimitFilter: RateLimitFilter?,
     private val postAuthenticationRateLimitFilter: PostAuthenticationRateLimitFilter?
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    @Bean
+    fun hostedDevToolingAudit(): MappedInterceptor = MappedInterceptor(
+        arrayOf("/api/local-dev/**"),
+        object : HandlerInterceptor {
+            override fun preHandle(request: HttpServletRequest, response: HttpServletResponse, handler: Any): Boolean {
+                if (environmentExposurePolicy.devAdminToolingAllowed()) {
+                    val identity = request.getAttribute("reals.admin.identity") as? AdminRequestIdentity
+                    if (identity != null) {
+                        log.info(
+                            "Hosted Dev tooling invoked actorUserId={} method={} route={}",
+                            identity.userId, request.method,
+                            request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE)
+                        )
+                    }
+                }
+                return true
+            }
+        }
+    )
 
     @Bean
     fun securityFilterChain(
@@ -99,7 +127,7 @@ class SecurityConfig(
                         auth.requestMatchers("/api/local-dev/**").permitAll()
                     }
                     environmentExposurePolicy.devAdminToolingAllowed() -> {
-                        auth.requestMatchers("/api/local-dev/**").denyAll() // No verified App Check on this path.
+                        auth.requestMatchers("/api/local-dev/**").hasRole(SecurityRoles.ADMIN)
                     }
                     else -> {
                         auth.requestMatchers("/api/local-dev/**").denyAll()

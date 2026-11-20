@@ -10,6 +10,6 @@ internal fun HttpServletRequest.preventAdministrativeCaching(response: HttpServl
     if (path == "/api/admin-auth" || path.startsWith("/api/admin-auth/") ||
         path == "/api/admin" || path.startsWith("/api/admin/") ||
         path == "/actuator/info" || path == "/actuator/metrics" || path.startsWith("/actuator/metrics/") ||
-        path.startsWith("/api/local-dev/") || getHeader("X-Reals-Admin-Grant") != null
+        path == "/api/local-dev" || path.startsWith("/api/local-dev/") || getHeader("X-Reals-Admin-Grant") != null
     ) response.setHeader("Cache-Control", "no-store")
 }

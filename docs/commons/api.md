@@ -678,10 +678,11 @@ These endpoints are profile-gated tooling for controlled Bruno/manual testing:
 These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`
 path name is retained for compatibility and must never be called by the Android
 application. In `local-nodb`, `local-postgres` and `local-firebase`, they are
-available without authentication. In hosted `dev`, they are registered but
-denied pending equivalent verified App Check support. In
-`prod`, the controllers are not registered and the route prefix is explicitly
-denied.
+available without authentication. Hosted `dev` requires
+`DEV_REMOTE_TOOLING_ENABLED=true` and the same Firebase Google bearer token,
+verified Web App Check and `X-Reals-Admin-Grant` as ordinary admin endpoints.
+Hosted tooling responses use `Cache-Control: no-store`. In `prod`, the
+controllers are absent and the route prefix is explicitly denied.
 
 Supported local job triggers:
 
@@ -859,6 +860,6 @@ grants, and ADMIN_ACCESS_DENIED for context/factor mismatches. After bounded exp
 removed grants return ADMIN_MFA_REQUIRED. No 409 state conflict is needed.
 General network limits may return 429 RATE_LIMIT_EXCEEDED. Existing account deletion and ban errors
 remain unchanged. Never display raw server exceptions or persist tokens. Actuator info/metrics
-and dev administrative local-dev routes are denied because their App Check paths are excluded.
+are denied. Enabled hosted Dev tooling uses the same administrative error codes.
 
 Administrative verification infrastructure failures also return 503 ADMIN_AUTHENTICATION_UNAVAILABLE, without raw exception details; retry with backoff.

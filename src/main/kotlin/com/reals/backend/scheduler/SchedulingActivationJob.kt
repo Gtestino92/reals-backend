@@ -30,7 +30,7 @@ class SchedulingActivationJob(
     @Scheduled(fixedDelayString = "\${scheduler.scheduling-activation-job.fixed-delay}")
     @SchedulerLock(
         name = "SchedulingActivationJob",
-        lockAtLeastFor = "PT30S",
+        lockAtLeastFor = "\${scheduler.scheduling-activation-job.lock-at-least-for:PT30S}",
         lockAtMostFor = "PT5M"
     )
     fun run() {

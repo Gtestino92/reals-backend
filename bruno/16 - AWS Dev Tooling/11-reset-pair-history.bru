@@ -12,6 +12,8 @@ post {
 
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  X-Reals-Admin-Grant: {{firebase_admin_grant}}
 }
 
 body:json {
@@ -24,10 +26,10 @@ body:json {
 script:post-response {
   const status = res.getStatus();
   if (status === 401) {
-    throw new Error("Expected admin Firebase bearer token. Run 00 Admin Firebase Sign In first.");
+    throw new Error("Check the Firebase Google ID token and Web App Check token.");
   }
   if (status === 403) {
-    throw new Error("Expected allowlisted active admin user. Run 01 Provision Admin User and verify BACKOFFICE_ADMIN_EMAILS.");
+    throw new Error("Check the hosted Dev flag and run 05 Admin Status to verify administrative access and grant validity.");
   }
   if (status !== 200) {
     throw new Error(`Expected 200 OK, got ${status}.`);

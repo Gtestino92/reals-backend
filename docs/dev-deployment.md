@@ -219,6 +219,43 @@ Rollout sequence:
 5. Inspect logs and `reals.app_check.requests` outcomes.
 6. Set `FIREBASE_APP_CHECK_MODE=ENFORCED` only after dev traffic is clean.
 
+## Railway Dev remote tooling
+
+Use `https://reals-backend-dev.up.railway.app` as the Bruno base URL. Configure
+the following in the Railway Dev service before running the tooling.
+
+```dotenv
+SPRING_PROFILES_ACTIVE=dev
+DEV_REMOTE_TOOLING_ENABLED=true
+BACKOFFICE_ADMIN_UIDS=<Firebase admin UID>
+BACKOFFICE_ADMIN_EMAILS=<verified admin email>
+BACKOFFICE_ALLOWED_WEB_APP_IDS=<Firebase Web App ID>
+ADMIN_MFA_TOTP_SECRET=<existing Base32 TOTP secret>
+ADMIN_MFA_SECRET_VERSION=<secret version>
+FIREBASE_PROJECT_NUMBER=<numeric Firebase project number>
+FIREBASE_APP_CHECK_ALLOWED_APP_IDS=<Firebase Web App ID plus existing allowed app IDs>
+FIREBASE_APP_CHECK_MODE=MONITOR
+```
+
+- Keep any existing `ENFORCED` setting. Either `MONITOR` or `ENFORCED`
+  verifies an explicitly supplied token for admin tooling. `DISABLED` cannot
+  establish an administrative identity. The App Check allowlist is
+  comma-separated. Include the same Dev Web App ID in both allowlists and
+  retain existing allowed client app IDs.
+- Confirm Google is linked to the existing Firebase UID in the same project,
+  the email is verified and the backend user is active and unrestricted.
+  Use the existing TOTP factor and protect its secret and version in Railway.
+- For Bruno debug exchange, use an already registered debug secret for the
+  allowlisted Web app. Keep the debug secret on the operator's workstation.
+- After rollout, follow the
+  [Bruno request order](../bruno/16%20-%20AWS%20Dev%20Tooling/README.md#request-order).
+  Verify read-only administrative status first and use Dev fixtures for job
+  checks. Hosted tooling responses are `no-store`. Invocations log the
+  verified internal actor ID, HTTP method and route template.
+- The default flag is false. Missing admin identity allowlists, MFA
+  configuration or verified App Check prevent privileged execution.
+  Production denies the tooling even when the flag is true.
+
 ## GHCR Image
 
 GitHub Actions publishes images on pushes to `development` and `master`:

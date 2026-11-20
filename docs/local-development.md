@@ -519,9 +519,9 @@ execute system-level mutations or jobs and must never be called by the Android
 application.
 
 In `local-nodb`, `local-postgres` and `local-firebase`, these endpoints are
-available without authentication. In hosted `dev`, the same paths are
-registered but denied pending equivalent verified App Check support. See
-[administrative authentication](admin-auth.md) for isolated local testing without production bypasses.
+available without authentication. Hosted `dev` requires an explicit opt-in,
+verified Google administrator identity, verified Web App Check and a current
+TOTP grant. See [administrative authentication](admin-auth.md).
 In `prod`, the real `Dev*` controllers are
 not registered and Spring Security explicitly denies `/api/local-dev/**`, even
 if a local-dev handler is accidentally registered.
