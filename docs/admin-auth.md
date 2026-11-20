@@ -23,9 +23,11 @@ BACKOFFICE_ALLOWED_WEB_APP_IDS accepts only Firebase `1:<number>:web:<id>` ident
 A Web App ID identifies an application, not one computer or physical device.
 
 All /api/admin/** routes use the same boundary, including moderation, appeals and diagnostics.
-Actuator info/metrics and dev administrative /api/local-dev/** are explicitly denied because
-those paths are excluded from App Check. Production local tooling remains denied. Existing
-local-only tooling stays local-only and never obtains ADMIN. No frontend accommodation bypass exists.
+Hosted `dev` applies the same boundary to `/api/local-dev/**` when
+`DEV_REMOTE_TOOLING_ENABLED=true`. The flag defaults to false. Local execution
+profiles keep their unauthenticated tooling. Production tooling and Actuator
+info/metrics are explicitly denied. The hosted Dev rollout checklist is in
+[Dev deployment](dev-deployment.md#railway-dev-remote-tooling).
 
 ## Configuration
 

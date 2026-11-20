@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @WebMvcTest(
     controllers = [EndpointExposureProdTest.ProbeController::class],
+    properties = ["local-dev.remote-tooling-enabled=true"],
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,

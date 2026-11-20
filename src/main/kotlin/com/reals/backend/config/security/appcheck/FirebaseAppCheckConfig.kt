@@ -31,9 +31,13 @@ class FirebaseAppCheckConfig {
     fun firebaseAppCheckFilter(
         properties: FirebaseAppCheckProperties,
         verifier: FirebaseAppCheckVerifier,
-        meterRegistryProvider: ObjectProvider<MeterRegistry>
+        meterRegistryProvider: ObjectProvider<MeterRegistry>,
+        environmentExposurePolicy: EnvironmentExposurePolicy
     ): FirebaseAppCheckFilter =
-        FirebaseAppCheckFilter(properties, verifier, meterRegistryProvider.getIfAvailable())
+        FirebaseAppCheckFilter(
+            properties, verifier, meterRegistryProvider.getIfAvailable(),
+            verifyDevTooling = environmentExposurePolicy.devAdminToolingAllowed()
+        )
 
     @Bean
     @ConditionalOnBean(FirebaseAppCheckFilter::class)

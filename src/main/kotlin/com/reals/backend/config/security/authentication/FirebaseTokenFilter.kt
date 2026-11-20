@@ -70,7 +70,8 @@ class FirebaseTokenFilter(
         val path = request.servletPath.ifBlank { request.requestURI.removePrefix(request.contextPath) }
         val administrativeRequest = path == "/api/admin-auth" || path.startsWith("/api/admin-auth/") ||
             path == "/api/admin" || path.startsWith("/api/admin/") || path.startsWith("/actuator/") ||
-            path.startsWith("/api/local-dev/") || request.getHeader("X-Reals-Admin-Grant") != null
+            path == "/api/local-dev" || path.startsWith("/api/local-dev/") ||
+            request.getHeader("X-Reals-Admin-Grant") != null
         if (administrativeRequest) response.setHeader("Cache-Control", "no-store")
         val authHeader = request.getHeader("Authorization")
 
@@ -97,7 +98,7 @@ class FirebaseTokenFilter(
             val adminAuth = path == "/api/admin-auth" || path.startsWith("/api/admin-auth/")
             val privileged = path == "/api/admin" || path.startsWith("/api/admin/") ||
                 path == "/actuator/info" || path == "/actuator/metrics" || path.startsWith("/actuator/metrics/") ||
-                path.startsWith("/api/local-dev/")
+                path == "/api/local-dev" || path.startsWith("/api/local-dev/")
             val administrative = adminAuth || privileged || request.getHeader("X-Reals-Admin-Grant") != null
             if (adminAuth || privileged) response.setHeader("Cache-Control", "no-store")
             val decoded = if (administrative) firebaseTokenAuthenticationVerifier.verifyAdministrative(token)
@@ -196,16 +197,16 @@ class FirebaseTokenFilter(
                     AdminRequestIdentity(user.id, decoded.uid, decoded.email, decoded.isEmailVerified, signInProvider, authTime, appId)
                     else null
                 val eligible = identity != null && adminAccessService?.eligible(identity) == true
+                var grantError: String? = "ADMIN_ACCESS_DENIED"
                 if (eligible) {
                     request.setAttribute("reals.admin.identity", identity)
-                    adminGranted = adminAccessService.grantError(identity, request.getHeader("X-Reals-Admin-Grant")) == null
+                    grantError = adminAccessService.grantError(identity, request.getHeader("X-Reals-Admin-Grant"))
+                    adminGranted = grantError == null
                 }
                 if ((adminAuth && !eligible) || (privileged && !adminGranted)) {
-                    val code = if (!eligible) "ADMIN_ACCESS_DENIED" else
-                        adminAccessService.grantError(identity, request.getHeader("X-Reals-Admin-Grant")) ?: "ADMIN_MFA_REQUIRED"
                     response.status = 403
                     response.contentType = MediaType.APPLICATION_JSON_VALUE
-                    response.writer.write("""{"code":"$code","error":"Forbidden","message":"Administrative access is denied"}""")
+                    response.writer.write("""{"code":"$grantError","error":"Forbidden","message":"Administrative access is denied"}""")
                     return
                 }
             }

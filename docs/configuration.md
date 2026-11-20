@@ -7,7 +7,7 @@ Production and shared development profiles should receive environment-specific v
 - `local-firebase`: local Firebase auth, PostgreSQL datasource for local Docker runs and schedulers disabled.
 - `local-nodb`: local H2 file database, dev auto-auth and schedulers disabled.
 - `local-postgres`: local PostgreSQL, dev auto-auth, Flyway enabled and schedulers disabled.
-- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and `/api/local-dev/**` tooling registered but denied pending verified App Check support.
+- `dev`: external database, Firebase auth, Flyway enabled by default, schedulers enabled by default and `/api/local-dev/**` tooling denied by default with an explicit hosted Dev opt-in.
 - `prod`: external database, Flyway enabled, schedulers enabled.
 - `test`: H2 in-memory test profile under `src/test/resources`.
 
@@ -31,8 +31,9 @@ they do not add a second execution profile.
 
 `/api/local-dev/**` is tooling for controlled Bruno/manual verification. It
 remains unauthenticated in `local-nodb`, `local-postgres` and
-`local-firebase`. Hosted `dev` registers the same paths but denies them until equivalent verified App Check
-support exists. `prod` and `test` deny the route prefix, and
+`local-firebase`. Hosted `dev` requires `DEV_REMOTE_TOOLING_ENABLED=true`, a
+verified Google administrator session, verified Web App Check and a current
+TOTP grant. `prod` and `test` deny the route prefix, and
 `prod` does not register the real `Dev*` controllers.
 
 The H2 console is accessible only with `local-nodb`; Spring Security explicitly
@@ -201,23 +202,23 @@ Non-sensitive runtime configuration:
 | `CHAT_SECOND_CHAT_INACTIVITY_CLAIM_COUNTDOWN_SECONDS` | no | Manual partner-inactivity countdown, capped by automatic inactivity and absolute timeout. Defaults to `60`. |
 | `CHAT_SECOND_CHAT_INITIAL_SILENCE_AUTOMATIC_CLOSE_AFTER_MINUTES` | no | Delay after both participants joined before closing an empty second chat for initial silence. Defaults to `10`. |
 | `USER_RELIABILITY_MATCHMAKING_MAX_MODIFIER` | no | Maximum absolute reliability modifier applied after compatibility scoring in `LEGACY_EARLY_ACCEPT` mode when reliability is enabled. Defaults to `0.05`. |
-| `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `60000`. |
+| `SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for queued-user matchmaking. Defaults to `15000`. |
 | `SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN` | no | Dev/prod upper bound for pairs processed per matchmaking run. Defaults to `10`. |
-| `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `60000`. |
-| `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for no-show, conversation requests, inactivity, absolute timeout and read-only cleanup. Defaults to `120000`. |
+| `SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY` | no | Cadence in milliseconds for first-chat absolute timeout expiration. Defaults to `30000` in Dev and `60000` in prod. |
+| `SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY` | no | Cadence in milliseconds for no-show, conversation requests, inactivity, absolute timeout and read-only cleanup. Defaults to `30000` in Dev and `120000` in prod. |
 | `SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatReminderNotificationJob`. Defaults to `60000`, which gives a 1-minute reminder pickup window. |
-| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatStartNotificationJob`. Defaults to `240000`, which leaves scheduler slack inside the five-minute start-notification delivery window. Must remain lower than `NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES * 60000`. |
+| `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `SecondChatStartNotificationJob`. Defaults to `60000` in Dev and `240000` in prod, inside the five-minute start-notification delivery window. Must remain lower than `NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES * 60000`. |
 | `SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_BATCH_SIZE` | no | Dev/prod bounded batch size for `SecondChatStartNotificationJob`. Defaults to `100`. |
 | `SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for `VisualReviewReminderNotificationJob`. Defaults to `1800000`, so due visual-review reminders are picked up about every 30 minutes. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for stale match expiration fallback. Defaults to `300000`. |
 | `SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION` | no | Dev/prod ISO-8601 duration for first-chat match expiration fallback. Defaults to `PT20M`. |
-| `SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for inactivity abandonment checks. Defaults to `60000`. |
+| `SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY` | no | Cadence in milliseconds for inactivity abandonment checks. Defaults to `30000` in Dev and `60000` in prod. |
 | `SCHEDULER_INACTIVITY_CHECK_JOB_INACTIVITY_THRESHOLD_MINUTES` | no | Legacy fallback for first-chat inactivity threshold. Prefer `CHAT_FIRST_CHAT_INACTIVITY_THRESHOLD_MINUTES`. |
-| `SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for normalizing expired temporary account-ban rows. Defaults to `600000`. |
+| `SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY` | no | Cadence in milliseconds for normalizing expired temporary account-ban rows. Defaults to `60000` in Dev and `600000` in prod. |
 | `SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for deleting expired reliability events. Defaults to `3600000`. |
-| `SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for visual phase expiration. Defaults to `300000`. |
-| `SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for scheduling negotiation timeout cleanup. Defaults to `900000`. |
-| `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Cadence in milliseconds for enabling deferred scheduling. Defaults to `60000` in base/dev profiles and `21600000` in prod. |
+| `SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY` | no | Cadence in milliseconds for visual phase expiration. Defaults to `60000` in Dev and `300000` in prod. |
+| `SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY` | no | Cadence in milliseconds for scheduling negotiation timeout cleanup. Defaults to `60000` in Dev and `900000` in prod. |
+| `SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY` | no | Cadence in milliseconds for enabling deferred scheduling. Defaults to `15000` in Dev, `21600000` in prod and `60000` in base. |
 | `SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY` | no | Dev/prod cadence in milliseconds for finalized recoverable account deletion cleanup. Defaults to `3600000`. |
 | `NOTIFICATIONS_SECOND_CHAT_REMINDER_MINUTES_BEFORE` | no | Comma-separated positive lead-time list for confirmed second-chat reminders, for example `120,10`. Defaults to `10`; keep multiple values in descending order for readability. |
 | `NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES` | no | Latest allowed initiation time after confirmed second-chat start. Defaults to `5`; eligibility is `confirmedDateTime <= now <= confirmedDateTime + value`. |
@@ -480,24 +481,25 @@ Do not commit real credentials in any `application-*.yml` file.
 
 ## Scheduler Cadences
 
-Dev and prod use the same MVP scheduler defaults:
+Dev and prod use the following fixed-delay defaults. Values are in milliseconds.
 
-| Job | Default | Operational purpose |
-| --- | --- | --- |
-| `MatchmakingJob` | `60000` ms, `10` pairs/run | Keep queued users moving into first chats. |
-| `SchedulingActivationJob` | `60000` ms | Make scheduling actionable shortly after the deferred availability time. |
-| `SecondChatReminderNotificationJob` | `60000` ms | Pick up second-chat reminders within a 1-minute window. |
-| `VisualReviewReminderNotificationJob` | `1800000` ms | Pick up persisted visual-review reminder eligibility about every 30 minutes. |
-| `ChatTimeoutJob` | `60000` ms | Expire timed-out first chats without leaving users stuck. |
-| `SecondChatLifecycleJob` | `120000` ms | Process expired no-show claims, resolve hard-cutoff no-shows, expire inactive scheduled windows, expire active second chats and close read-only chats. |
-| `InactivityCheckJob` | `60000` ms, `5` minute threshold | Abandon inactive first chats before the absolute timeout when no messages are sent. |
-| `MatchExpirationJob` | `300000` ms, `PT20M` first-chat fallback | Safety net for stale matches that did not progress after first-chat timeout handling. |
-| `VisualPhaseExpirationJob` | `300000` ms | Expire visual reviews whose deadline passed. |
-| `PenaltyExpirationJob` | `600000` ms | Normalize expired temporary account-ban rows to inactive; access expiry is authoritative at `now >= expiresAt` even before this job runs. |
-| `UserReliabilityEventCleanupJob` | `3600000` ms | Delete expired internal reliability events after their scoring window. |
-| `SchedulingNegotiationTimeoutJob` | `900000` ms | Close scheduling negotiations after their deadline. |
-| `AccountDeletionFinalizationJob` | `3600000` ms | Finalize deleted accounts after the recovery window. |
-| `MediaCleanupJob` | `300000` ms | Retry durable profile-photo object cleanup tasks. |
+| Job | Dev | Prod | Operational purpose |
+| --- | ---: | ---: | --- |
+| `MatchmakingJob` | 15000 | 15000 | At most 10 pairs per run by default. Keep queued users moving into first chats. |
+| `SchedulingActivationJob` | 15000 | 21600000 | Make scheduling actionable shortly after the deferred availability time. |
+| `SecondChatReminderNotificationJob` | 60000 | 60000 | Pick up second-chat reminders within a 1-minute window. |
+| `VisualReviewReminderNotificationJob` | 1800000 | 1800000 | Pick up persisted visual-review reminder eligibility about every 30 minutes. |
+| `ChatTimeoutJob` | 30000 | 60000 | Expire timed-out first chats without leaving users stuck. |
+| `SecondChatLifecycleJob` | 30000 | 120000 | Process expired no-show claims, resolve hard-cutoff no-shows, expire inactive scheduled windows, expire active second chats and close read-only chats. |
+| `SecondChatStartNotificationJob` | 60000 | 240000 | Scan for recently started second chats within the existing delivery window. |
+| `InactivityCheckJob` | 30000 | 60000 | The default inactivity threshold is five minutes. Abandon inactive first chats before the absolute timeout when no messages are sent. |
+| `MatchExpirationJob` | 300000 | 300000 | The fallback for first chats is `PT20M`. Safety net for stale matches that did not progress after first-chat timeout handling. |
+| `VisualPhaseExpirationJob` | 60000 | 300000 | Expire visual reviews whose deadline passed. |
+| `PenaltyExpirationJob` | 60000 | 600000 | Normalize expired temporary account-ban rows to inactive; access expiry is authoritative at `now >= expiresAt` even before this job runs. |
+| `UserReliabilityEventCleanupJob` | 3600000 | 3600000 | Delete expired internal reliability events after their scoring window. |
+| `SchedulingNegotiationTimeoutJob` | 60000 | 900000 | Close scheduling negotiations after their deadline. |
+| `AccountDeletionFinalizationJob` | 3600000 | 3600000 | Finalize deleted accounts after the recovery window. |
+| `MediaCleanupJob` | 300000 | 300000 | Retry durable profile-photo object cleanup tasks. |
 
 These defaults are intentionally more frequent for user-visible bottlenecks and
 less frequent for hour/day-scale cleanup. Local profiles keep
@@ -506,12 +508,32 @@ jobs deterministically.
 
 Scheduling has two separate jobs. `SchedulingActivationJob` moves deferred
 connections from `SCHEDULING_PENDING` to `SCHEDULING_PHASE` once
-`schedulingAvailableAt` is due and initializes the negotiation. The base and dev
-cadence is one minute; production defaults to a six-hour fixed delay, yielding
-up to four activation batches per day unless overridden. Only after activation
-does `SchedulingNegotiationTimeoutJob` close expired scheduling negotiations.
+`schedulingAvailableAt` is due and initializes the negotiation. Dev defaults
+to a 15-second poll and a 15-second minimum ShedLock hold. The maximum lock
+lease is five minutes and the non-Dev minimum hold defaults to 30 seconds.
+Only after activation does `SchedulingNegotiationTimeoutJob` close expired
+scheduling negotiations.
 `schedulingExpiresAt` on a pending connection is provisional because activation
 recalculates the full actionable deadline from the actual activation time.
+
+Repository configuration uses Spring Boot's default single scheduler worker.
+A fixed delay starts after the previous invocation ends. Slow jobs, database
+contention or another instance holding a ShedLock can delay actual work beyond
+the configured interval. More frequent Dev checks increase database polling.
+The start-notification job still uses bounded candidate discovery, locked
+eligibility checks and per-recipient delivery deduplication within the existing
+five-minute window. Delivery results are persisted after the provider call.
+An overlapping manual run or failed result persistence can still lead to
+duplicate sends. Avoid overlapping manual runs with automatic jobs during
+deterministic tests. Scheduling timeout and penalty expiration still scan all
+due rows, so a large backlog can occupy the worker.
+
+Compare timestamped job summaries and `reals.scheduler.job.runs` and
+`reals.scheduler.job.duration` to see actual cadence and runtime. There is
+no direct scheduler queue-delay metric. Matchmaking's processed, skipped and
+failed counts and `reals.matchmaking.run.limit_exhausted` help distinguish
+an on-time run with no eligible pair from processing lag or a saturated run.
+Queue eligibility, compatibility, cooldowns and capacity can still delay matching.
 
 ## Profile Authenticity Verification
 

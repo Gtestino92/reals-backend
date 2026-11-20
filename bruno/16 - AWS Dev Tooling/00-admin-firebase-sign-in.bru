@@ -1,11 +1,11 @@
 meta {
-  name: 00 Admin Firebase Sign In
+  name: 00 Validate Firebase Google ID Token
   type: http
-  seq: 0
+  seq: 1
 }
 
 post {
-  url: https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}
+  url: https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebase_api_key}}
   body: json
   auth: none
 }
@@ -16,27 +16,41 @@ headers {
 
 body:json {
   {
-    "email": "{{firebase_admin_email}}",
-    "password": "{{firebase_admin_password}}",
-    "returnSecureToken": true
+    "idToken": "{{firebase_admin_google_id_token}}"
+  }
+}
+
+script:pre-request {
+  bru.setVar("firebase_admin_id_token", "");
+  bru.setVar("firebase_admin_uid", "");
+  bru.setVar("firebase_admin_grant", "");
+  bru.setVar("firebase_admin_status_token", "");
+
+  const uid = bru.getEnvVar("firebase_admin_expected_uid");
+  const email = bru.getEnvVar("firebase_admin_email");
+  const token = bru.getEnvVar("firebase_admin_google_id_token");
+  if (!uid?.trim() || !email?.trim() || !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(token)) {
+    throw new Error("Configure the expected Firebase admin UID and email, and supply a Firebase Google ID token.");
+  }
+  // Early claim check only. Firebase lookup and backend status verify the actual token.
+  const claims = require("jsonwebtoken").decode(token);
+  if (claims?.firebase?.sign_in_provider !== "google.com" || claims.sub !== uid.trim()) {
+    throw new Error("The supplied token is not from a Google session for the configured Firebase UID.");
   }
 }
 
 script:post-response {
   const body = res.getBody();
-  if (!body || !body.idToken || !body.localId || !body.email) {
-    throw new Error("Expected Firebase sign-in response with idToken, localId and email.");
+  const user = body?.users?.length === 1 ? body.users[0] : null;
+  const expectedUid = bru.getEnvVar("firebase_admin_expected_uid").trim();
+  const expectedEmail = bru.getEnvVar("firebase_admin_email").trim().toLowerCase();
+  if (res.getStatus() !== 200 || user?.localId !== expectedUid ||
+      user?.email?.toLowerCase() !== expectedEmail || user?.emailVerified !== true ||
+      !user.providerUserInfo?.some(provider => provider.providerId === "google.com")) {
+    throw new Error("Firebase lookup did not verify the configured administrator with a linked Google provider.");
   }
 
-  const expectedEmail = bru.getEnvVar("firebase_admin_email");
-  if (expectedEmail && body.email !== expectedEmail) {
-    throw new Error(`Expected admin Firebase email ${expectedEmail}, got ${body.email}.`);
-  }
-
-  bru.setEnvVar("firebase_admin_id_token", body.idToken);
-  bru.setEnvVar("firebase_admin_uid", body.localId);
-
-  if (body.refreshToken) {
-    bru.setEnvVar("firebase_admin_refresh_token", body.refreshToken);
-  }
+  // The backend status request also verifies that this session signed in with Google.
+  bru.setVar("firebase_admin_id_token", bru.getEnvVar("firebase_admin_google_id_token"));
+  bru.setVar("firebase_admin_uid", user.localId);
 }

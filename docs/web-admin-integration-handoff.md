@@ -38,7 +38,7 @@ retry automatically. 429 ADMIN_MFA_RATE_LIMITED includes integer Retry-After sec
 Network throttling can return RATE_LIMIT_EXCEEDED. Existing deletion/ban restrictions still apply.
 Status returns grantValid=false for unusable grants and never materializes state.
 
-Actuator info/metrics and dev admin tooling are denied pending equivalent verified App Check support.
+Actuator info/metrics are denied. Hosted Dev tooling requires explicit enablement and the same verified administrative credentials.
 Deferred Web tasks: App Check provider/setup and token forwarding, Google UX and reauthentication,
 TOTP form, status/error UI, memory-only grant handling, expiry/revocation/logout UX and real browser
 validation. Full contract: [API](commons/api.md#administrative-authentication), [OpenAPI](commons/openapi.yaml).

@@ -104,8 +104,9 @@ authenticated user/profile/photo endpoints, legal catalog endpoints and
 `/api/me/local-dev/email-verification`. Exclusions are `OPTIONS`, `/api/ping`,
 `/api/local-dev/**`, `/actuator/health`, `/actuator/health/**`,
 `/actuator/info`, `/actuator/metrics`, `/actuator/metrics/**` and
-`/h2-console/**`. The `/api/local-dev/**` exclusion is only for system/developer
-tooling and does not cover `/api/me/local-dev/email-verification`.
+`/h2-console/**`. The `/api/local-dev/**` exclusion ends in hosted `dev` when
+`DEV_REMOTE_TOOLING_ENABLED=true`. The separate local Firebase email helper
+remains subject to the configured App Check mode.
 
 Stable App Check failures use the normal JSON error shape:
 
@@ -173,8 +174,9 @@ providers fail closed on real Firebase-token paths. The filter enforces:
 a verified allowlisted Web App Check App ID, and an unexpired, unrevoked PostgreSQL
 MFA grant bound to the current Firebase authentication event and factor. Email-only
 administrative authority has been removed. See [administrative authentication](admin-auth.md)
-for exact enforcement, limits, rotation and operator setup. Actuator info/metrics and
-dev administrative tooling are denied pending equivalent App Check support.
+for exact enforcement, limits, rotation and operator setup. Actuator info and
+metrics remain denied. Hosted Dev tooling can opt into the same verified
+administrative boundary.
 
 Temporary/permanent ban application and account deletion requests atomically revoke all
 unexpired, unrevoked admin grants under the existing user lock. Ban expiry, appeal approval

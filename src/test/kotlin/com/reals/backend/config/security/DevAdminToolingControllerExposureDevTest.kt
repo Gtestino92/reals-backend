@@ -91,7 +91,7 @@ class DevAdminToolingControllerExposureDevTest {
     private lateinit var schedulingActivationJob: SchedulingActivationJob
 
     @Test
-    fun `dev tooling denies users and injected admin roles without verified App Check support`() {
+    fun `dev tooling denies users and injected admin roles by default`() {
         val paths = listOf(
             "/api/local-dev/matchmaking/process",
             "/api/local-dev/pair-history/reset",

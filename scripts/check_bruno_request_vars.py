@@ -13,6 +13,8 @@ SENSITIVE_NAMES = {
     "firebase_app_check_debug_token",
     "firebase_admin_password",
     "firebase_admin_id_token",
+    "firebase_admin_google_id_token",
+    "firebase_admin_grant",
     "firebase_admin_refresh_token",
 }
 

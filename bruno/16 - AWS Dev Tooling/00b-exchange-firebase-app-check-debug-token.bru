@@ -1,11 +1,11 @@
 meta {
   name: 00b Exchange Firebase App Check Debug Token
   type: http
-  seq: 1
+  seq: 0
 }
 
 post {
-  url: https://firebaseappcheck.googleapis.com/v1/projects/{{firebase_project_number}}/apps/{{firebase_app_id}}:exchangeDebugToken?key={{firebase_api_key}}
+  url: https://firebaseappcheck.googleapis.com/v1/projects/{{firebase_project_number}}/apps/{{firebase_admin_web_app_id}}:exchangeDebugToken?key={{firebase_api_key}}
   body: json
   auth: none
 }
@@ -21,6 +21,16 @@ body:json {
   }
 }
 
+script:pre-request {
+  bru.setVar("firebase_app_check_token", "");
+  const appId = bru.getEnvVar("firebase_admin_web_app_id");
+  const project = bru.getEnvVar("firebase_project_number");
+  if (!/^[0-9]+$/.test(project) || !/^1:[0-9]+:web:[A-Za-z0-9]+$/.test(appId) ||
+      appId.split(":")[1] !== project) {
+    throw new Error("Configure the Firebase Web App ID and its numeric project number.");
+  }
+}
+
 tests {
   test("exchange returns 200", function () {
     expect(res.getStatus()).to.equal(200);
@@ -28,8 +38,7 @@ tests {
 
   test("returned App Check token is present", function () {
     const body = res.getBody();
-    expect(body).to.have.property("token").that.is.a("string").and.not.empty;
-    expect(body.token.trim()).to.not.equal("");
+    expect(typeof body?.token === "string" && body.token.trim().length > 0).to.equal(true);
   });
 }
 
@@ -45,11 +54,5 @@ script:post-response {
     throw new Error("Expected Firebase App Check exchange response with nonblank token.");
   }
 
-  bru.setEnvVar("firebase_app_check_token", token);
-
-  if (body.ttl) {
-    console.log(`Stored firebase_app_check_token for AWS DEV tooling. TTL: ${body.ttl}.`);
-  } else {
-    console.log("Stored firebase_app_check_token for AWS DEV tooling.");
-  }
+  bru.setVar("firebase_app_check_token", token);
 }

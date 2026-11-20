@@ -3,6 +3,7 @@ package com.reals.backend.config.environment
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.mock.env.MockEnvironment
 
 class EnvironmentExposurePolicyTest {
 
@@ -46,11 +47,16 @@ class EnvironmentExposurePolicyTest {
     }
 
     @Test
-    fun `exact dev permits admin tooling only`() {
+    fun `exact dev requires explicit enablement for admin tooling`() {
         val policy = EnvironmentExposurePolicy.forActiveProfiles("dev")
 
         assertEquals(false, policy.localDevEndpointsAllowed())
-        assertEquals(true, policy.devAdminToolingAllowed())
+        assertEquals(false, policy.devAdminToolingAllowed())
+        val environment = MockEnvironment().withProperty("local-dev.remote-tooling-enabled", "true")
+        environment.setActiveProfiles("dev")
+        assertEquals(true, EnvironmentExposurePolicy(environment).devAdminToolingAllowed())
+        environment.setActiveProfiles("dev", "prod")
+        assertEquals(false, EnvironmentExposurePolicy(environment).devAdminToolingAllowed())
     }
 
     @Test

@@ -12,6 +12,8 @@ post {
 
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  X-Reals-Admin-Grant: {{firebase_admin_grant}}
 }
 
 script:post-response {

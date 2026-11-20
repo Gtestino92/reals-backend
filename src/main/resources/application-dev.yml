@@ -45,20 +45,23 @@ management:
 backoffice:
   admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
 
+local-dev:
+  remote-tooling-enabled: ${DEV_REMOTE_TOOLING_ENABLED:false}
+
 scheduler:
   enabled: true
   matchmaking-job:
-    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_MATCHMAKING_JOB_FIXED_DELAY:15000}
     max-pairs-per-run: ${SCHEDULER_MATCHMAKING_JOB_MAX_PAIRS_PER_RUN:10}
   chat-timeout-job:
-    fixed-delay: ${SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_CHAT_TIMEOUT_JOB_FIXED_DELAY:30000}
   second-chat-lifecycle-job:
-    fixed-delay: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY:120000}
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_LIFECYCLE_JOB_FIXED_DELAY:30000}
   second-chat-reminder-job:
     # 60000 keeps reminder precision within a 1-minute window.
     fixed-delay: ${SCHEDULER_SECOND_CHAT_REMINDER_JOB_FIXED_DELAY:60000}
   second-chat-start-notification-job:
-    fixed-delay: ${SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY:240000}
+    fixed-delay: ${SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_FIXED_DELAY:60000}
     batch-size: ${SCHEDULER_SECOND_CHAT_START_NOTIFICATION_JOB_BATCH_SIZE:100}
   visual-review-reminder-job:
     fixed-delay: ${SCHEDULER_VISUAL_REVIEW_REMINDER_JOB_FIXED_DELAY:1800000}
@@ -70,18 +73,19 @@ scheduler:
     fixed-delay: ${SCHEDULER_MATCH_EXPIRATION_JOB_FIXED_DELAY:300000}
     max-chat-duration: ${SCHEDULER_MATCH_EXPIRATION_JOB_MAX_CHAT_DURATION:PT20M}
   inactivity-check-job:
-    fixed-delay: ${SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_INACTIVITY_CHECK_JOB_FIXED_DELAY:30000}
     inactivity-threshold-minutes: ${chat.first-chat.inactivity-threshold-minutes}
   penalty-expiration-job:
-    fixed-delay: ${SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY:600000}
+    fixed-delay: ${SCHEDULER_PENALTY_EXPIRATION_JOB_FIXED_DELAY:60000}
   user-reliability-cleanup-job:
     fixed-delay: ${SCHEDULER_USER_RELIABILITY_CLEANUP_JOB_FIXED_DELAY:3600000}
   visual-phase-expiration-job:
-    fixed-delay: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY:300000}
+    fixed-delay: ${SCHEDULER_VISUAL_PHASE_EXPIRATION_JOB_FIXED_DELAY:60000}
   scheduling-timeout-job:
-    fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:900000}
+    fixed-delay: ${SCHEDULER_SCHEDULING_TIMEOUT_JOB_FIXED_DELAY:60000}
   scheduling-activation-job:
-    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:60000}
+    fixed-delay: ${SCHEDULER_SCHEDULING_ACTIVATION_JOB_FIXED_DELAY:15000}
+    lock-at-least-for: PT15S
   account-deletion-finalization-job:
     fixed-delay: ${SCHEDULER_ACCOUNT_DELETION_FINALIZATION_JOB_FIXED_DELAY:3600000}
 

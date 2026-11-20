@@ -1,0 +1,24 @@
+meta {
+  name: 99 Revoke Admin Grant
+  type: http
+  seq: 99
+}
+
+post {
+  url: {{baseUrl}}/api/admin-auth/revoke
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{firebase_admin_id_token}}
+  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  X-Reals-Admin-Grant: {{firebase_admin_grant}}
+}
+
+script:post-response {
+  if (res.getStatus() !== 204) {
+    throw new Error("Grant revocation failed. Check the current Firebase identity and Web App Check token.");
+  }
+  bru.setVar("firebase_admin_grant", "");
+}

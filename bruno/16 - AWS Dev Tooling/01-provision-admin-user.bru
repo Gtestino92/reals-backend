@@ -1,7 +1,7 @@
 meta {
   name: 01 Provision Admin User
   type: http
-  seq: 1
+  seq: 5
 }
 
 post {
@@ -13,6 +13,13 @@ post {
 headers {
   Authorization: Bearer {{firebase_admin_id_token}}
   X-Firebase-AppCheck: {{firebase_app_check_token}}
+}
+
+script:pre-request {
+  const token = bru.getVar("firebase_admin_id_token");
+  if (!token || bru.getVar("firebase_admin_status_token") !== token) {
+    throw new Error("Run 00 Validate Firebase Google ID Token and 05 Admin Status first.");
+  }
 }
 
 script:post-response {
@@ -27,8 +34,8 @@ script:post-response {
   }
 
   const expectedEmail = bru.getEnvVar("firebase_admin_email");
-  if (expectedEmail && body.email !== expectedEmail) {
-    throw new Error(`Expected backend admin email ${expectedEmail}, got ${body.email}.`);
+  if (body.email?.toLowerCase() !== expectedEmail?.trim().toLowerCase()) {
+    throw new Error("Backend user email does not match the configured administrator.");
   }
 
   bru.setEnvVar("adminUserId", body.id);

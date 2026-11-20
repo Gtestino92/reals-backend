@@ -128,7 +128,7 @@ Bruno also includes manual HTTP collections that are convenient to run against t
 `local-postgres`, `local-firebase` and `dev`. They are unauthenticated only in
 local execution profiles, including `local-firebase`, so Android/Firebase
 manual flows can process queued pairs and trigger jobs locally. In hosted
-`dev`, the same tooling is denied pending equivalent verified App Check support. Local-dev endpoints must not be enabled in production.
+`dev`, the same tooling requires the explicit flag and verified Google, Web App Check and TOTP administrative credentials. Local-dev endpoints are denied in production.
 
 `POST /api/me/local-dev/email-verification` is different: it is a local
 Firebase helper under the authenticated `/api/me/**` boundary, not the
