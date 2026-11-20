@@ -8,13 +8,13 @@ COPY .mvn .mvn
 COPY mvnw pom.xml ./
 RUN chmod +x mvnw
 
-RUN --mount=type=cache,target=/root/.m2 \
+RUN --mount=type=cache,id=s/93c82963-37c3-414d-9a3c-6a1239f75087-/root/.m2,target=/root/.m2 \
     ./mvnw -B -DskipTests dependency:go-offline
 
 COPY src src
 COPY legal-documents legal-documents
 
-RUN --mount=type=cache,target=/root/.m2 \
+RUN --mount=type=cache,id=s/93c82963-37c3-414d-9a3c-6a1239f75087-/root/.m2,target=/root/.m2 \
     ./mvnw -B -DskipTests package
 
 FROM eclipse-temurin:21-jre-jammy
