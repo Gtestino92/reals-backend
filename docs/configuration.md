@@ -752,6 +752,32 @@ Example flow:
 4. The pipeline starts the app with `DATABASE_PASSWORD=<resolved secret>`.
 5. Spring resolves `${DATABASE_PASSWORD}` at startup.
 
+## Password reset diagnostics
+
+`FIREBASE_WEB_API_KEY` must identify the Firebase project that owns the
+account and permit calls to the Identity Toolkit API from the backend.
+The reset request addresses the account by normalized email within that
+project. Firebase Admin credentials and stored Firebase UIDs are used
+separately from this REST call.
+
+Filter application logs for `event=password_reset` and read the `outcome` field.
+
+- `local_ineligible` covers an absent or ineligible local account.
+- `executor_submitted` means the bounded executor accepted the task.
+  `executor_rejected` means capacity or shutdown prevented submission.
+- `firebase_accepted` means Identity Toolkit returned HTTP 2xx. Inbox delivery
+  requires separate verification. Firebase email enumeration protection can
+  suppress a missing-account error while skipping the email.
+- `firebase_rejected` includes `http_status` and an allowlisted `firebase_code`
+  such as `EMAIL_NOT_FOUND`, `RESET_PASSWORD_EXCEED_LIMIT` or
+  `API_KEY_SERVICE_BLOCKED`. Unknown or unreadable error responses use
+  `firebase_code=UNKNOWN`.
+- `firebase_timeout` and `firebase_transport_failure` identify network failures.
+  `firebase_unconfigured` indicates a blank effective API key.
+  `worker_failure` covers unexpected errors in the background task.
+
+The endpoint gives the same empty HTTP 202 response for these outcomes.
+
 ## Health And Smoke Checks
 
 Runtime readiness checks should call:

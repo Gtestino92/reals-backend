@@ -9,7 +9,10 @@ import com.reals.backend.service.identity.FirebaseAuthRestProperties
 import com.reals.backend.service.identity.FirebasePasswordResetEmailService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mockito.*
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.context.event.ContextClosedEvent
 import org.springframework.http.MediaType
@@ -24,6 +27,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicInteger
 
+@ExtendWith(OutputCaptureExtension::class)
 class PasswordResetAsyncTest {
     private val repository = mock(UserRepository::class.java)
     private val executor = PasswordResetExecutionConfig().passwordResetExecutor().apply { initialize() }
@@ -66,7 +70,7 @@ class PasswordResetAsyncTest {
     }
 
     @Test
-    fun `bounded saturation rejects delivery without delaying HTTP or running on caller`() {
+    fun `bounded saturation rejects delivery without delaying HTTP or running on caller`(output: CapturedOutput) {
         val started = CountDownLatch(2)
         val release = CountDownLatch(1)
         val calls = AtomicInteger()
@@ -90,6 +94,8 @@ class PasswordResetAsyncTest {
             }
             assertEquals(2, calls.get())
             assertEquals(32, executor.queueSize)
+            assertTrue(output.out.contains("event=password_reset outcome=executor_rejected"))
+            assertFalse(output.out.contains("user@example.com"))
         } finally {
             executor.destroy()
             release.countDown()
@@ -134,7 +140,7 @@ class PasswordResetAsyncTest {
     }
 
     @Test
-    fun `delivery failure does not stop later work`() {
+    fun `delivery failure does not stop later work`(output: CapturedOutput) {
         val completed = CountDownLatch(1)
         val delivery = mock(PasswordResetEmailDeliveryService::class.java)
         doThrow(IllegalStateException("sensitive upstream detail"))
@@ -146,6 +152,8 @@ class PasswordResetAsyncTest {
         try {
             repeat(2) { service.requestPasswordReset("user@example.com") }
             assertTrue(completed.await(5, SECONDS))
+            assertTrue(output.out.contains("event=password_reset outcome=worker_failure"))
+            assertFalse(output.out.contains("sensitive upstream detail"))
         } finally {
             executor.destroy()
         }
