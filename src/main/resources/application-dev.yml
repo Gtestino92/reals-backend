@@ -217,3 +217,27 @@ notifications:
     latest-send-after-start-minutes: ${NOTIFICATIONS_SECOND_CHAT_START_LATEST_SEND_AFTER_START_MINUTES:5}
   visual-review-reminder:
     remaining-percentage: ${NOTIFICATIONS_VISUAL_REVIEW_REMINDER_REMAINING_PERCENTAGE:40}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "dev & dev-legal-fixtures & !prod"
+
+legal:
+  documents:
+    - type: TERMS_OF_USE
+      version: dev-fixture-2026-11-23-v1
+      url: https://reals-web.pages.dev/legal/terms/dev-fixture-2026-11-23-v1/document.html
+      content-sha256: c41d99b3c29a49a1628c3e6cb1166aa27590a5e3c5d2ab5092c4239e07254d63
+      required-action: ACCEPTED
+    - type: PRIVACY_NOTICE
+      version: dev-fixture-2026-11-23-v1
+      url: https://reals-web.pages.dev/legal/privacy/dev-fixture-2026-11-23-v1/document.html
+      content-sha256: cf4c1c0949c678d1a9d7ef300eeb1919ef785d021fd9726c9cd0f1a3a81cb831
+      required-action: ACKNOWLEDGED
+    - type: COMMUNITY_GUIDELINES
+      version: dev-fixture-2026-11-23-v1
+      url: https://reals-web.pages.dev/legal/community-guidelines/dev-fixture-2026-11-23-v1/document.html
+      content-sha256: 12af43253f497dc4a89d99de0faf68919be04d33b2e331b62ca44795c66957b7
+      required-action: ACCEPTED
