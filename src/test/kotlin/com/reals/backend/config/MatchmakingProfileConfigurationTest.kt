@@ -9,6 +9,18 @@ import org.springframework.mock.env.MockEnvironment
 class MatchmakingProfileConfigurationTest {
 
     @Test
+    fun `previous pairing cooldown is optional in dev and enabled by default in prod`() {
+        val key = "matchmaking.exclude-previous-pairing"
+        val dev = environmentFromYaml("application-dev.yml")
+        val prod = environmentFromYaml("application-prod.yml")
+
+        assertEquals(false, dev.getProperty(key, Boolean::class.java))
+        assertEquals(true, prod.getProperty(key, Boolean::class.java))
+        dev.setProperty("MATCHMAKING_EXCLUDE_PREVIOUS_PAIRING", "true")
+        assertEquals(true, dev.getProperty(key, Boolean::class.java))
+    }
+
+    @Test
     fun `dev defaults to probabilistic ranking active affinity and enabled reliability`() {
         val environment = environmentFromYaml("application-dev.yml")
 
