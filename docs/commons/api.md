@@ -813,6 +813,8 @@ Selected stable frontend-facing domain codes:
 
 ## Manual blocking
 
+After a block in either direction, ordinary participant initial and incremental chat-message reads omit the counterpart's AUDIO messages. Retained TEXT messages and the caller's own audio remain readable when the chat's existing read policy permits history; CLOSED chats remain unreadable. This applies to first and second chats, including CANCELLED chats and chats already terminated before blocking. The message response schema is unchanged, but clients must tolerate gaps in message history and must not retain earlier audio URLs. Previously issued presigned URLs may remain valid until expiration. Administrative safety evidence is unaffected.
+
 `POST /api/matches/{matchId}/block` requires no body and returns block `id`, `source`, and `createdAt`: `201 Created` for a new directional block and `200 OK` for an idempotent replay. Manual blocking creates no report, penalty, or reliability event. A block in either direction excludes the pair and causes positive progression to fail with `409 USER_PAIR_BLOCKED`. Reads, rejection, exit, cancellation, and safety paths remain available. There is no unblock endpoint in the current MVP.
 
 

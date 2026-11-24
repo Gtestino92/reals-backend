@@ -278,7 +278,7 @@ class GlobalExceptionHandler {
                 ErrorResponse(
                     code = "ACCESS_DENIED",
                     error = "Forbidden",
-                    message = ex.message
+                    message = "Access is denied"
                 )
             )
 

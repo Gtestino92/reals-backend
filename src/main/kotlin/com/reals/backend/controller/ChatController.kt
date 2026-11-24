@@ -4,6 +4,9 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.domain.ChatReplyTargetType
+import com.reals.backend.domain.ChatMessageType
+import com.reals.backend.domain.ChatMessage
+import com.reals.backend.service.ChatAccessService
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
@@ -34,6 +37,7 @@ import java.util.*
 class ChatController(
     private val chatService: ChatService,
     private val chatMessageService: ChatMessageService,
+    private val chatAccessService: ChatAccessService,
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
     private val chatAudioPolicyService: ChatAudioPolicyService,
@@ -225,12 +229,13 @@ class ChatController(
                 limit = limit
             )
 
+            val visibleMessages = visibleMessages(page.messages, chatId, userId)
             return ResponseEntity.ok<Any>(
                 ChatMessagesResponse.from(
-                    messages = page.messages,
+                    messages = visibleMessages,
                     hasMore = page.hasMore,
                     audioUrlResolver = ::audioReadUrl,
-                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
+                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(visibleMessages)
                 )
             )
         }
@@ -242,7 +247,7 @@ class ChatController(
         )
 
         return ResponseEntity.ok<Any>(
-            messageResponses(messages)
+            messageResponses(visibleMessages(messages, chatId, userId))
         )
     }
 
@@ -378,6 +383,12 @@ class ChatController(
             bucket = requireNotNull(message.audioBucket),
             key = requireNotNull(message.audioObjectKey)
         )
+
+    private fun visibleMessages(messages: List<ChatMessage>, chatId: UUID, userId: UUID): List<ChatMessage> {
+        if (messages.none { it.messageType == ChatMessageType.AUDIO && it.senderId != userId }) return messages
+        if (!chatAccessService.isChatPairBlocked(chatId)) return messages
+        return messages.filter { it.messageType != ChatMessageType.AUDIO || it.senderId == userId }
+    }
 
     private fun messageResponse(message: com.reals.backend.domain.ChatMessage): ChatMessageResponse =
         ChatMessageResponse.from(

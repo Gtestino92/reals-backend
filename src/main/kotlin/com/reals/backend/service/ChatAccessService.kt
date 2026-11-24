@@ -59,6 +59,12 @@ class ChatAccessService(
         }
     }
 
+    fun isChatPairBlocked(chatId: UUID): Boolean {
+        val chat = findByIdOrThrow(chatId)
+        val match = matchService.findByIdOrThrow(chat.matchId)
+        return userBlockService.isBlockedPair(match.userAId, match.userBId)
+    }
+
     fun chatNotFound(): DomainNotFoundException =
         DomainNotFoundException(
             code = DomainErrorCode.CHAT_NOT_FOUND,

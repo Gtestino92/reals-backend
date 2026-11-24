@@ -411,10 +411,12 @@ class ChatMessageService(
         chatLifecycleService.validateChatReadable(chat)
         val pageLimit = resolveMessagePageLimit(limit)
 
-        return chatMessageRepository.findByChatSessionIdOrderBySentAtDescIdDesc(
-            chatSessionId = chatId,
-            pageable = PageRequest.of(0, pageLimit)
-        ).asReversed()
+        val pageable = PageRequest.of(0, pageLimit)
+        return if (chatAccessService.isChatPairBlocked(chatId)) {
+            chatMessageRepository.findVisiblePageForBlockedPair(chatId, userId, pageable = pageable).asReversed()
+        } else {
+            chatMessageRepository.findByChatSessionIdOrderBySentAtDescIdDesc(chatId, pageable).asReversed()
+        }
     }
 
     private fun getMessagesAfterMeasured(
@@ -438,12 +440,18 @@ class ChatMessageService(
             throw chatLifecycleService.chatNotAvailable()
         }
 
-        val page = chatMessageRepository.findPageAfterCursor(
-            chatSessionId = chatId,
-            cursorId = afterMessage.id,
-            messageId = afterMessage.id.toString(),
-            pageable = PageRequest.of(0, pageLimit + 1)
-        )
+        val pageable = PageRequest.of(0, pageLimit + 1)
+        val page = if (chatAccessService.isChatPairBlocked(chatId)) {
+            chatMessageRepository.findVisiblePageAfterCursorForBlockedPair(
+                chatSessionId = chatId, cursorId = afterMessage.id,
+                messageId = afterMessage.id.toString(), userId = userId, pageable = pageable
+            )
+        } else {
+            chatMessageRepository.findPageAfterCursor(
+                chatSessionId = chatId, cursorId = afterMessage.id,
+                messageId = afterMessage.id.toString(), pageable = pageable
+            )
+        }
 
         return ChatMessagesPage(
             messages = page.take(pageLimit),
