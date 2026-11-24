@@ -20,7 +20,7 @@ internal class ApiCorsConfiguration(configuredOrigins: String) : CorsConfigurati
         allowedOrigins = origins.toList()
         allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         allowedHeaders = listOf("Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Reals-Admin-Grant")
-        exposedHeaders = listOf("Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining")
+        exposedHeaders = listOf("Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Reals-Counterpart-Audio-Access")
         allowCredentials = false
         maxAge = 3600L
     }

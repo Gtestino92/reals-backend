@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatMessageType.TEXT
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.containsString
@@ -17,13 +18,17 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import org.mockito.Mockito
+import org.springframework.http.HttpHeaders
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 
+@TestPropertySource(properties = ["security.cors.allowed-origins=https://chat.example.test"])
 class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
     @MockitoBean
@@ -115,8 +120,14 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         Mockito.`when`(storageService.getReadUrl(bucket, key)).thenReturn(marker)
         val path = "/api/chats/${pair.secondChatId}/messages"
 
-        mockMvc.perform(get(path).with(authenticatedAs(pair.userBId)))
+        val origin = "https://chat.example.test"
+        mockMvc.perform(get(path).header(HttpHeaders.ORIGIN, origin).with(authenticatedAs(pair.userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                containsString("X-Reals-Counterpart-Audio-Access")))
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$[0].id", equalTo(message.id.toString())))
             .andExpect(jsonPath("$[0].audio.url", equalTo(marker)))
         Mockito.verify(storageService).getReadUrl(bucket, key)
@@ -124,6 +135,7 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
         mockMvc.perform(get(path).with(authenticatedAs(unrelated.id)))
             .andExpect(status().isForbidden)
+            .andExpect(header().doesNotExist("X-Reals-Counterpart-Audio-Access"))
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
             .andExpect(jsonPath("$.message", equalTo("Access is denied")))
             .andExpect(content().string(not(containsString(pair.matchId.toString()))))
@@ -141,6 +153,38 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `block visible after counterpart URL resolution rejects the entire history response`() {
+        val pair = createMatchWithFirstChat()
+        val start = OffsetDateTime.parse("2026-01-01T00:00:00Z")
+        for ((index, sender) in listOf(pair.userAId, pair.userBId).withIndex()) {
+            chatMessageRepository.saveAndFlush(ChatMessage(
+                chatSessionId = pair.firstChatId, senderId = sender, messageType = ChatMessageType.AUDIO,
+                audioBucket = "media", audioObjectKey = sender.toString(), audioContentType = "audio/mp4",
+                audioSizeBytes = 32, audioDurationMillis = 1000, sentAt = start.plusSeconds(index.toLong())
+            ))
+        }
+        val counterpart = pair.userAId.toString()
+        val own = pair.userBId.toString()
+        Mockito.`when`(storageService.getReadUrl("media", counterpart)).thenReturn("signed-counterpart")
+        // The response mapper requests the viewer's URL only after the counterpart URL has returned.
+        Mockito.`when`(storageService.getReadUrl("media", own)).thenAnswer {
+            userBlockService.blockUser(pair.userAId, pair.userBId, UserBlockSource.MANUAL)
+            "signed-own"
+        }
+
+        mockMvc.perform(get("/api/chats/${pair.firstChatId}/messages").with(authenticatedAs(pair.userBId)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("USER_PAIR_BLOCKED")))
+            .andExpect(header().doesNotExist("X-Reals-Counterpart-Audio-Access"))
+            .andExpect(content().string(not(containsString("signed-counterpart"))))
+            .andExpect(content().string(not(containsString("signed-own"))))
+
+        val order = Mockito.inOrder(storageService)
+        order.verify(storageService).getReadUrl("media", counterpart)
+        order.verify(storageService).getReadUrl("media", own)
+    }
+
+    @Test
     fun `block suppresses counterpart audio on initial and incremental reads of both chats`() {
         val first = createMatchWithFirstChat("blocked-first-audio")
         assertBlockedAudioHistory(first.matchId, first.firstChatId, first.userAId, first.userBId)
@@ -155,6 +199,13 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         userAId: java.util.UUID,
         userBId: java.util.UUID
     ) {
+        val path = "/api/chats/$chatId/messages"
+        for (viewer in listOf(userAId, userBId)) {
+            mockMvc.perform(get(path).with(authenticatedAs(viewer)))
+                .andExpect(status().isOk)
+                .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
+                .andExpect(content().json("[]"))
+        }
         val text = chatMessageRepository.saveAndFlush(ChatMessage(
             chatSessionId = chatId, senderId = userAId, messageType = TEXT, content = "Retained text"
         ))
@@ -165,10 +216,10 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         ))
         Mockito.`when`(storageService.getReadUrl("fixture-media", "fixture/blocked.m4a"))
             .thenReturn("fixture-audio-reference")
-        val path = "/api/chats/$chatId/messages"
 
         mockMvc.perform(get(path).with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
             .andExpect(content().string(containsString("fixture-audio-reference")))
         mockMvc.perform(post("/api/matches/$matchId/block").with(authenticatedAs(userAId)))
             .andExpect(status().isCreated)
@@ -177,12 +228,21 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         assertEquals(ChatStatus.CANCELLED, chatRepository.findById(chatId).orElseThrow().status)
         mockMvc.perform(get(path).param("limit", "1").with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(content().string(containsString("Retained text")))
             .andExpect(content().string(not(containsString(audio.id.toString()))))
         mockMvc.perform(get(path).param("after", text.id.toString()).with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
             .andExpect(jsonPath("$.messages").isEmpty)
         Mockito.verifyNoInteractions(storageService)
+        mockMvc.perform(get(path).with(authenticatedAs(userAId)))
+            .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+        mockMvc.perform(get(path).param("after", audio.id.toString()).with(authenticatedAs(userAId)))
+            .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
     }
 
     @Test
@@ -251,12 +311,14 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
             Mockito.clearInvocations(storageService)
             mockMvc.perform(get(path).param("limit", "2").with(authenticatedAs(viewer)))
                 .andExpect(status().isOk)
+                .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
                 .andExpect(jsonPath("$[0].id", equalTo(text.id.toString())))
                 .andExpect(jsonPath("$[1].id", equalTo(own.id.toString())))
                 .andExpect(jsonPath("$[1].audio.url", equalTo("signed-${own.audioObjectKey}")))
             val next = if (viewer == pair.userAId) text else bCursor
             mockMvc.perform(get(path).param("after", hidden.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
-                .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(next.id.toString())))
+                .andExpect(status().isOk).andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+                .andExpect(jsonPath("$.messages[0].id", equalTo(next.id.toString())))
                 .andExpect(jsonPath("$.messages[1]").doesNotExist()).andExpect(jsonPath("$.hasMore", equalTo(true)))
             mockMvc.perform(get(path).param("after", text.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
                 .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(own.id.toString())))
@@ -327,6 +389,7 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         Mockito.clearInvocations(storageService)
         mockMvc.perform(get("/api/chats/${pair.firstChatId}/messages").with(authenticatedAs(pair.userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
             .andExpect(content().string(containsString("Historical text")))
             .andExpect(content().string(not(containsString(audio.id.toString()))))
         Mockito.verifyNoInteractions(storageService)

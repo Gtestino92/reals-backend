@@ -1019,7 +1019,7 @@ paths:
     get:
       tags: [Chats]
       summary: List chat messages
-      description: Without a cursor, returns the legacy JSON array containing the most recent bounded page in chronological order. With `after` or `afterMessageId`, returns `ChatMessagesResponse` with messages strictly after the cursor ordered by `sentAt ASC, id ASC`; `hasMore` is true when additional rows exist beyond the returned page. Response formats are preserved for compatibility.
+      description: Without a cursor, returns the legacy JSON array containing the most recent bounded page in chronological order. With `after` or `afterMessageId`, returns `ChatMessagesResponse` with messages strictly after the cursor ordered by `sentAt ASC, id ASC`; `hasMore` is true when additional rows exist beyond the returned page. Every successful participant read, including an empty page, reports the bidirectional block policy in `X-Reals-Counterpart-Audio-Access`. `RESTRICTED` requires clients to retire previously loaded counterpart audio. The header does not identify the blocker. Response formats are preserved for compatibility.
       parameters:
         - $ref: '#/components/parameters/ChatId'
         - name: after
@@ -1044,6 +1044,11 @@ paths:
       responses:
         '200':
           description: Messages. Without a cursor this is the legacy array; with a cursor this is ChatMessagesResponse.
+          headers:
+            X-Reals-Counterpart-Audio-Access:
+              description: Participant counterpart audio policy, exposed to approved Web origins. RESTRICTED also applies to empty pages.
+              schema: { type: string, enum: [ALLOWED, RESTRICTED] }
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
           content:
             application/json:
               schema:

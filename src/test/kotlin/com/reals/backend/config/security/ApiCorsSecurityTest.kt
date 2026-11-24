@@ -104,6 +104,8 @@ class ApiCorsSecurityTest {
             .andExpect(status().isOk)
             .andExpect(content().string(""))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, WEB_ORIGIN))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-Reals-Counterpart-Audio-Access"))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET,POST,PUT,PATCH,DELETE,OPTIONS"))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "authorization, x-firebase-appcheck"))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "3600"))
@@ -225,7 +227,7 @@ class ApiCorsSecurityTest {
             .andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, WEB_ORIGIN))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
-                "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining"))
+                "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-Reals-Counterpart-Audio-Access"))
             .andReturn().response
         assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)!!.toLong()).isPositive()
     }
