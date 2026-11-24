@@ -4,6 +4,7 @@ import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatMessageType
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatMessageType.TEXT
+import com.reals.backend.domain.UserBlockSource
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.containsString
@@ -17,6 +18,8 @@ import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.NegotiationStatus
 import com.reals.backend.domain.ProposalStatus
 import org.mockito.Mockito
+import org.springframework.http.HttpHeaders
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -25,6 +28,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 
+@TestPropertySource(properties = ["security.cors.allowed-origins=https://chat.example.test"])
 class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
     @MockitoBean
@@ -116,8 +120,12 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         Mockito.`when`(storageService.getReadUrl(bucket, key)).thenReturn(marker)
         val path = "/api/chats/${pair.secondChatId}/messages"
 
-        mockMvc.perform(get(path).with(authenticatedAs(pair.userBId)))
+        val origin = "https://chat.example.test"
+        mockMvc.perform(get(path).header(HttpHeaders.ORIGIN, origin).with(authenticatedAs(pair.userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                containsString("X-Reals-Counterpart-Audio-Access")))
             .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$[0].id", equalTo(message.id.toString())))
@@ -142,6 +150,38 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
             .andExpect(jsonPath("$.code", equalTo("CHAT_NOT_AVAILABLE")))
             .andExpect(content().string(not(containsString(marker))))
         Mockito.verifyNoInteractions(storageService)
+    }
+
+    @Test
+    fun `block visible after counterpart URL resolution rejects the entire history response`() {
+        val pair = createMatchWithFirstChat()
+        val start = OffsetDateTime.parse("2026-01-01T00:00:00Z")
+        for ((index, sender) in listOf(pair.userAId, pair.userBId).withIndex()) {
+            chatMessageRepository.saveAndFlush(ChatMessage(
+                chatSessionId = pair.firstChatId, senderId = sender, messageType = ChatMessageType.AUDIO,
+                audioBucket = "media", audioObjectKey = sender.toString(), audioContentType = "audio/mp4",
+                audioSizeBytes = 32, audioDurationMillis = 1000, sentAt = start.plusSeconds(index.toLong())
+            ))
+        }
+        val counterpart = pair.userAId.toString()
+        val own = pair.userBId.toString()
+        Mockito.`when`(storageService.getReadUrl("media", counterpart)).thenReturn("signed-counterpart")
+        // The response mapper requests the viewer's URL only after the counterpart URL has returned.
+        Mockito.`when`(storageService.getReadUrl("media", own)).thenAnswer {
+            userBlockService.blockUser(pair.userAId, pair.userBId, UserBlockSource.MANUAL)
+            "signed-own"
+        }
+
+        mockMvc.perform(get("/api/chats/${pair.firstChatId}/messages").with(authenticatedAs(pair.userBId)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code", equalTo("USER_PAIR_BLOCKED")))
+            .andExpect(header().doesNotExist("X-Reals-Counterpart-Audio-Access"))
+            .andExpect(content().string(not(containsString("signed-counterpart"))))
+            .andExpect(content().string(not(containsString("signed-own"))))
+
+        val order = Mockito.inOrder(storageService)
+        order.verify(storageService).getReadUrl("media", counterpart)
+        order.verify(storageService).getReadUrl("media", own)
     }
 
     @Test
