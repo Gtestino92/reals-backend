@@ -1,5 +1,19 @@
 # Backend authorization assessment, phase 1
 
+## Independent review follow-up
+
+A HEART replay could return an already-reacted counterpart audio message before checking the pair block. The ordinary response mapper would then sign it. The reaction service now returns `409 USER_PAIR_BLOCKED` for this replay using its existing chat lock. Text replays still succeed, and blocking leaves the recorded HEART intact.
+
+All ordinary single-message and page responses check the viewer and counterpart before signing counterpart audio. Send and send-replay responses contain the caller's own message. The history queries still filter before pagination. If the final check observes a new block, the entire stale response is rejected. A fresh read computes rows and `hasMore` together. The final check and URL signing are separate operations. A block committed after that check can overlap an in-flight response, and already-issued URLs may work until expiry. This change adds no lock around storage or response mapping.
+
+Web's `mergeMessages` and Android's `appendUnique` retain messages received before a block. Omitting restricted items from subsequent pages does not evict them. Both clients need to reconcile their existing history and playback state after blocking while preserving historical text and their own audio. Client implementation and runtime verification remain separate work.
+
+The HTTP regressions exercised both sides of a real block, initial and incremental mixed history, playback of the viewer's own audio, a previously visible counterpart audio cursor, and both values of `hasMore`. A blocked audio HEART replay returned the conflict without a storage call. The existing reaction stayed recorded and the text HEART replay returned 200. PostgreSQL 16 Testcontainers exercised both blocked-page queries with tied timestamps and restricted rows at page boundaries. The following local run passed all 88 tests with zero skipped.
+
+```powershell
+.\mvnw.cmd -o '-Dapi.version=1.44' '-Dtest=AuthorizationBoundaryIntegrationTest,ChatMessageReactionIntegrationTest,ChatControllerIntegrationTest,ChatAudioServiceTest,UserBlockBack3IntegrationTest,AdminSafetyReportControllerIntegrationTest,BlockedAudioHistoryPostgresIT' test
+```
+
 ## Follow-up remediation on `fix/authorization-privacy-hardening`
 
 The public MVC handler now returns the same generic `Access is denied` message as the security filter for `403 ACCESS_DENIED`. HTTP regressions assert the body and absence of relationship IDs. The error schema, status and code remain unchanged.

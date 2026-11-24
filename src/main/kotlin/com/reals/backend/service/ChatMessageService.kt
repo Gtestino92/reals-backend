@@ -340,6 +340,9 @@ class ChatMessageService(
         }
 
         if (message.reactionType == ChatMessageReactionType.HEART) {
+            if (message.messageType == ChatMessageType.AUDIO) {
+                chatAccessService.requireChatPairNotBlocked(chat)
+            }
             return message
         }
 

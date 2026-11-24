@@ -9,6 +9,8 @@ import com.reals.backend.service.S3StorageService
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.not
+import java.time.OffsetDateTime
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import com.reals.backend.domain.ConnectionState
@@ -181,6 +183,86 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.messages").isEmpty)
         Mockito.verifyNoInteractions(storageService)
+    }
+
+    @Test
+    fun `HEART replays keep text readable but cannot sign counterpart audio after a block`() {
+        val pair = createMatchWithFirstChat()
+        val path = "/api/chats/${pair.firstChatId}/messages"
+        val audio = chatMessageRepository.saveAndFlush(ChatMessage(
+            chatSessionId = pair.firstChatId, senderId = pair.userAId, messageType = ChatMessageType.AUDIO,
+            audioBucket = "media", audioObjectKey = "voice", audioSizeBytes = 32,
+            audioContentType = "audio/mp4", audioDurationMillis = 1000
+        ))
+        val text = chatMessageRepository.saveAndFlush(ChatMessage(
+            chatSessionId = pair.firstChatId, senderId = pair.userAId, content = "retained"
+        ))
+        fun heart(message: ChatMessage) = mockMvc.perform(
+            put("$path/${message.id}/reaction").with(authenticatedAs(pair.userBId))
+                .contentType(jsonContentType).content("""{"type":"HEART"}""")
+        )
+        Mockito.`when`(storageService.getReadUrl("media", "voice")).thenReturn("signed-voice")
+        heart(text).andExpect(status().isOk)
+        repeat(2) {
+            heart(audio).andExpect(status().isOk).andExpect(jsonPath("$.audio.url", equalTo("signed-voice")))
+        }
+
+        mockMvc.perform(post("/api/matches/${pair.matchId}/block").with(authenticatedAs(pair.userBId)))
+            .andExpect(status().isCreated)
+        Mockito.clearInvocations(storageService)
+        heart(audio).andExpect(status().isConflict).andExpect(jsonPath("$.code", equalTo("USER_PAIR_BLOCKED")))
+            .andExpect(content().string(not(containsString("signed-voice"))))
+        heart(text).andExpect(status().isOk).andExpect(jsonPath("$.content", equalTo("retained")))
+            .andExpect(jsonPath("$.reactionType", equalTo("HEART")))
+        Mockito.verifyNoInteractions(storageService)
+        assertEquals("HEART", chatMessageRepository.findById(audio.id).orElseThrow().reactionType?.name)
+    }
+
+    @Test
+    fun `both participants can page past hidden audio cursors and play only their own audio`() {
+        val pair = createActiveSecondChat()
+        val path = "/api/chats/${pair.secondChatId}/messages"
+        val start = OffsetDateTime.parse("2026-07-01T12:00:00Z")
+        fun audio(sender: java.util.UUID, key: String, index: Long) = chatMessageRepository.saveAndFlush(ChatMessage(
+            chatSessionId = pair.secondChatId, senderId = sender, messageType = ChatMessageType.AUDIO,
+            audioBucket = "media", audioObjectKey = key, audioSizeBytes = 32, audioContentType = "audio/mp4",
+            audioDurationMillis = 1000, sentAt = start.plusSeconds(index)
+        ))
+        val aCursor = audio(pair.userAId, "a", 0)
+        val bCursor = audio(pair.userBId, "b", 1)
+        val text = chatMessageRepository.saveAndFlush(ChatMessage(
+            chatSessionId = pair.secondChatId, senderId = pair.userAId, content = "retained", sentAt = start.plusSeconds(2)
+        ))
+        val aLast = audio(pair.userAId, "a", 3)
+        val bLast = audio(pair.userBId, "b", 4)
+        for (key in listOf("a", "b")) {
+            Mockito.`when`(storageService.getReadUrl("media", key)).thenReturn("signed-$key")
+        }
+        for (viewer in listOf(pair.userAId, pair.userBId)) {
+            mockMvc.perform(get(path).with(authenticatedAs(viewer))).andExpect(status().isOk)
+                .andExpect(content().string(containsString(aCursor.id.toString())))
+                .andExpect(content().string(containsString(bCursor.id.toString())))
+        }
+        mockMvc.perform(post("/api/matches/${pair.matchId}/block").with(authenticatedAs(pair.userAId)))
+            .andExpect(status().isCreated)
+
+        for ((own, hidden) in listOf(aLast to bCursor, bLast to aCursor)) {
+            val viewer = own.senderId
+            Mockito.clearInvocations(storageService)
+            mockMvc.perform(get(path).param("limit", "2").with(authenticatedAs(viewer)))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[0].id", equalTo(text.id.toString())))
+                .andExpect(jsonPath("$[1].id", equalTo(own.id.toString())))
+                .andExpect(jsonPath("$[1].audio.url", equalTo("signed-${own.audioObjectKey}")))
+            val next = if (viewer == pair.userAId) text else bCursor
+            mockMvc.perform(get(path).param("after", hidden.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
+                .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(next.id.toString())))
+                .andExpect(jsonPath("$.messages[1]").doesNotExist()).andExpect(jsonPath("$.hasMore", equalTo(true)))
+            mockMvc.perform(get(path).param("after", text.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
+                .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(own.id.toString())))
+                .andExpect(jsonPath("$.hasMore", equalTo(false)))
+            Mockito.verify(storageService, Mockito.never()).getReadUrl("media", hidden.audioObjectKey!!)
+        }
     }
 
     @Test
