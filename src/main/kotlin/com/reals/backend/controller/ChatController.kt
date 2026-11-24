@@ -13,6 +13,7 @@ import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
 import com.reals.backend.service.ChatAudioUploadGuard
 import com.reals.backend.service.ChatMessageService
+import com.reals.backend.service.ChatAccessService
 import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
@@ -37,6 +38,7 @@ import java.util.*
 class ChatController(
     private val chatService: ChatService,
     private val chatMessageService: ChatMessageService,
+    private val chatAccessService: ChatAccessService,
     private val userBlockService: UserBlockService,
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
@@ -229,14 +231,13 @@ class ChatController(
                 limit = limit
             )
 
-            return ResponseEntity.ok<Any>(
-                ChatMessagesResponse.from(
+            val body = ChatMessagesResponse.from(
                     messages = page.messages,
                     hasMore = page.hasMore,
                     audioUrlResolver = participantAudioResolver(page.messages, userId),
                     replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
                 )
-            )
+            return participantHistoryResponse(chatId, userId, page.messages, body)
         }
 
         val messages = chatMessageService.getMessages(
@@ -245,9 +246,28 @@ class ChatController(
             limit = limit
         )
 
-        return ResponseEntity.ok<Any>(
-            messageResponses(messages, userId)
-        )
+        return participantHistoryResponse(chatId, userId, messages, messageResponses(messages, userId))
+    }
+
+    private fun participantHistoryResponse(
+        chatId: UUID,
+        viewerId: UUID,
+        messages: List<ChatMessage>,
+        body: Any
+    ): ResponseEntity<Any> {
+        // Recheck after URL issuance, including empty pages. Blocks are irreversible, so a
+        // later restriction must never turn a selected counterpart audio row into a 200.
+        val restricted = chatAccessService.isChatPairBlocked(chatId)
+        if (restricted && messages.any { it.messageType == ChatMessageType.AUDIO && it.senderId != viewerId }) {
+            throw DomainConflictException(
+                code = DomainErrorCode.USER_PAIR_BLOCKED,
+                message = "Interaction is not available for this user pair"
+            )
+        }
+        return ResponseEntity.ok()
+            .header("Cache-Control", "no-store")
+            .header("X-Reals-Counterpart-Audio-Access", if (restricted) "RESTRICTED" else "ALLOWED")
+            .body(body)
     }
 
     @PostMapping("/{chatId}/exit-requests")

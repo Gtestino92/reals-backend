@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 
 class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
@@ -117,6 +118,8 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
         mockMvc.perform(get(path).with(authenticatedAs(pair.userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$[0].id", equalTo(message.id.toString())))
             .andExpect(jsonPath("$[0].audio.url", equalTo(marker)))
         Mockito.verify(storageService).getReadUrl(bucket, key)
@@ -124,6 +127,7 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
 
         mockMvc.perform(get(path).with(authenticatedAs(unrelated.id)))
             .andExpect(status().isForbidden)
+            .andExpect(header().doesNotExist("X-Reals-Counterpart-Audio-Access"))
             .andExpect(jsonPath("$.code", equalTo("ACCESS_DENIED")))
             .andExpect(jsonPath("$.message", equalTo("Access is denied")))
             .andExpect(content().string(not(containsString(pair.matchId.toString()))))
@@ -155,6 +159,13 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         userAId: java.util.UUID,
         userBId: java.util.UUID
     ) {
+        val path = "/api/chats/$chatId/messages"
+        for (viewer in listOf(userAId, userBId)) {
+            mockMvc.perform(get(path).with(authenticatedAs(viewer)))
+                .andExpect(status().isOk)
+                .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
+                .andExpect(content().json("[]"))
+        }
         val text = chatMessageRepository.saveAndFlush(ChatMessage(
             chatSessionId = chatId, senderId = userAId, messageType = TEXT, content = "Retained text"
         ))
@@ -165,10 +176,10 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         ))
         Mockito.`when`(storageService.getReadUrl("fixture-media", "fixture/blocked.m4a"))
             .thenReturn("fixture-audio-reference")
-        val path = "/api/chats/$chatId/messages"
 
         mockMvc.perform(get(path).with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "ALLOWED"))
             .andExpect(content().string(containsString("fixture-audio-reference")))
         mockMvc.perform(post("/api/matches/$matchId/block").with(authenticatedAs(userAId)))
             .andExpect(status().isCreated)
@@ -177,12 +188,21 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         assertEquals(ChatStatus.CANCELLED, chatRepository.findById(chatId).orElseThrow().status)
         mockMvc.perform(get(path).param("limit", "1").with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(content().string(containsString("Retained text")))
             .andExpect(content().string(not(containsString(audio.id.toString()))))
         mockMvc.perform(get(path).param("after", text.id.toString()).with(authenticatedAs(userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
             .andExpect(jsonPath("$.messages").isEmpty)
         Mockito.verifyNoInteractions(storageService)
+        mockMvc.perform(get(path).with(authenticatedAs(userAId)))
+            .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+        mockMvc.perform(get(path).param("after", audio.id.toString()).with(authenticatedAs(userAId)))
+            .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
     }
 
     @Test
@@ -251,12 +271,14 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
             Mockito.clearInvocations(storageService)
             mockMvc.perform(get(path).param("limit", "2").with(authenticatedAs(viewer)))
                 .andExpect(status().isOk)
+                .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
                 .andExpect(jsonPath("$[0].id", equalTo(text.id.toString())))
                 .andExpect(jsonPath("$[1].id", equalTo(own.id.toString())))
                 .andExpect(jsonPath("$[1].audio.url", equalTo("signed-${own.audioObjectKey}")))
             val next = if (viewer == pair.userAId) text else bCursor
             mockMvc.perform(get(path).param("after", hidden.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
-                .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(next.id.toString())))
+                .andExpect(status().isOk).andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
+                .andExpect(jsonPath("$.messages[0].id", equalTo(next.id.toString())))
                 .andExpect(jsonPath("$.messages[1]").doesNotExist()).andExpect(jsonPath("$.hasMore", equalTo(true)))
             mockMvc.perform(get(path).param("after", text.id.toString()).param("limit", "1").with(authenticatedAs(viewer)))
                 .andExpect(status().isOk).andExpect(jsonPath("$.messages[0].id", equalTo(own.id.toString())))
@@ -327,6 +349,7 @@ class AuthorizationBoundaryIntegrationTest : ControllerIT() {
         Mockito.clearInvocations(storageService)
         mockMvc.perform(get("/api/chats/${pair.firstChatId}/messages").with(authenticatedAs(pair.userBId)))
             .andExpect(status().isOk)
+            .andExpect(header().string("X-Reals-Counterpart-Audio-Access", "RESTRICTED"))
             .andExpect(content().string(containsString("Historical text")))
             .andExpect(content().string(not(containsString(audio.id.toString()))))
         Mockito.verifyNoInteractions(storageService)
