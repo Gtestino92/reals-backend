@@ -8,6 +8,7 @@ import com.reals.backend.service.exception.DomainNotFoundException
 import com.reals.backend.service.exception.ChatAudioStorageException
 import com.reals.backend.service.exception.ObjectStorageException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.dao.CannotAcquireLockException
@@ -62,15 +63,18 @@ class GlobalExceptionHandlerTest {
 
     @Test
     fun `access denied errors expose stable error code`() {
+        val internalMatchId = "e2f7d114-4fd4-47cf-8273-33470fd28356"
         val response =
             handler.handleAccessDenied(
-                AccessDeniedException("User cannot access this resource")
+                AccessDeniedException("User does not belong to match $internalMatchId")
             )
 
         assertEquals(HttpStatus.FORBIDDEN, response.statusCode)
-        assertEquals("ACCESS_DENIED", response.body?.code)
-        assertEquals("Forbidden", response.body?.error)
-        assertEquals("User cannot access this resource", response.body?.message)
+        val body = requireNotNull(response.body)
+        assertEquals("ACCESS_DENIED", body.code)
+        assertEquals("Forbidden", body.error)
+        assertEquals("Access is denied", body.message)
+        assertFalse(listOfNotNull(body.code, body.error, body.message).any { internalMatchId in it })
     }
 
     @Test
