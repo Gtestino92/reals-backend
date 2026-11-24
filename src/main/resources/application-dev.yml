@@ -227,17 +227,17 @@ spring:
 legal:
   documents:
     - type: TERMS_OF_USE
-      version: dev-fixture-2026-11-23-v1
-      url: https://reals-web.pages.dev/legal/terms/dev-fixture-2026-11-23-v1/document.html
-      content-sha256: c41d99b3c29a49a1628c3e6cb1166aa27590a5e3c5d2ab5092c4239e07254d63
+      version: dev-fixture-2026-11-24-v2
+      url: https://reals-web.pages.dev/legal/terms/dev-fixture-2026-11-24-v2/document.html
+      content-sha256: b652320230b6931f94c477f5f4345d759d5041a45ccd1164d4f4bdf172a2cc57
       required-action: ACCEPTED
     - type: PRIVACY_NOTICE
-      version: dev-fixture-2026-11-23-v1
-      url: https://reals-web.pages.dev/legal/privacy/dev-fixture-2026-11-23-v1/document.html
-      content-sha256: cf4c1c0949c678d1a9d7ef300eeb1919ef785d021fd9726c9cd0f1a3a81cb831
+      version: dev-fixture-2026-11-24-v2
+      url: https://reals-web.pages.dev/legal/privacy/dev-fixture-2026-11-24-v2/document.html
+      content-sha256: a83ebdb61fb16bdea3f6d195ba5ae8065976704f00b23e460e307d5d2b5377dc
       required-action: ACKNOWLEDGED
     - type: COMMUNITY_GUIDELINES
-      version: dev-fixture-2026-11-23-v1
-      url: https://reals-web.pages.dev/legal/community-guidelines/dev-fixture-2026-11-23-v1/document.html
-      content-sha256: 12af43253f497dc4a89d99de0faf68919be04d33b2e331b62ca44795c66957b7
+      version: dev-fixture-2026-11-24-v2
+      url: https://reals-web.pages.dev/legal/community-guidelines/dev-fixture-2026-11-24-v2/document.html
+      content-sha256: e2e927cbd73db4ddf37050d349d67e962bac4b270f7ce276a35268db9fd35020
       required-action: ACCEPTED
