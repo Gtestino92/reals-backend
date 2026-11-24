@@ -130,6 +130,8 @@ investigation and must not be reported as confirmed vulnerabilities.
 - Acceptance: each object endpoint has positive/negative ownership coverage;
   foreign identifiers reveal no private data and cause no unauthorized mutation.
 
+The phase-1 authorization follow-up covers generic public 403 messages, post-block counterpart audio URL suppression, scheduling proposal ownership, and photo mutation checks. The remaining item-8 work is a complete endpoint matrix and concurrency testing across block creation and media serialization. See [authorization assessment](authorization-assessment-phase1.md).
+
 ## 9. Rate Limiting Behind Trusted Reverse Proxies
 
 - Priority: P1.

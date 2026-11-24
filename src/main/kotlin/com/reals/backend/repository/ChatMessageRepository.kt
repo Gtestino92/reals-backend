@@ -20,6 +20,16 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         pageable: Pageable
     ): List<ChatMessage>
 
+    @Query("""select m from ChatMessage m where m.chatSessionId = :chatSessionId
+        and (m.messageType <> :audioType or m.senderId = :userId)
+        order by m.sentAt desc, m.id desc""")
+    fun findVisiblePageForBlockedPair(
+        @Param("chatSessionId") chatSessionId: UUID,
+        @Param("userId") userId: UUID,
+        @Param("audioType") audioType: ChatMessageType = ChatMessageType.AUDIO,
+        pageable: Pageable
+    ): List<ChatMessage>
+
     fun findByChatSessionIdAndSentAtAfter(
         chatSessionId: UUID,
         sentAt: OffsetDateTime
@@ -59,6 +69,26 @@ interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
         @Param("chatSessionId") chatSessionId: UUID,
         @Param("cursorId") cursorId: UUID,
         @Param("messageId") messageId: String,
+        pageable: Pageable
+    ): List<ChatMessage>
+
+    @Query(
+        value = """
+        select * from chat_messages
+        where chat_session_id = :chatSessionId
+          and (message_type <> 'AUDIO' or sender_id = :userId)
+          and (sent_at > (select cursor.sent_at from chat_messages cursor where cursor.id = :cursorId)
+            or (sent_at = (select cursor.sent_at from chat_messages cursor where cursor.id = :cursorId)
+              and cast(id as varchar) > :messageId))
+        order by sent_at asc, cast(id as varchar) asc
+        """,
+        nativeQuery = true
+    )
+    fun findVisiblePageAfterCursorForBlockedPair(
+        @Param("chatSessionId") chatSessionId: UUID,
+        @Param("cursorId") cursorId: UUID,
+        @Param("messageId") messageId: String,
+        @Param("userId") userId: UUID,
         pageable: Pageable
     ): List<ChatMessage>
 

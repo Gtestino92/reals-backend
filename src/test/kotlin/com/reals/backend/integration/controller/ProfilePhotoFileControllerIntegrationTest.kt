@@ -5,9 +5,11 @@ import com.reals.backend.domain.Intention
 import com.reals.backend.domain.StoredObject
 import com.reals.backend.integration.ControllerIT
 import com.reals.backend.service.S3StorageService
+import com.reals.backend.repository.MediaCleanupTaskRepository
 import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito
@@ -31,8 +33,46 @@ import javax.imageio.ImageIO
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfilePhotoFileControllerIntegrationTest : ControllerIT() {
 
+    @Autowired
+    private lateinit var mediaCleanupTaskRepository: MediaCleanupTaskRepository
+
     @MockitoBean
     private lateinit var storageService: S3StorageService
+
+    @Test
+    fun `foreign photo mutations preserve metadata storage and cleanup queue`() {
+        val owner = createDraftProfile()
+        val other = createDraftProfile()
+        val objectKey = "users/$owner/profile-photos/owned.jpg"
+        stubStorageUpload(StoredObject("test-bucket", objectKey, MediaType.IMAGE_JPEG_VALUE, 4))
+        mockMvc.perform(multipart("/api/me/profile/photos")
+            .file(jpegFile("file")).param("position", "1").with(authenticatedAs(owner)))
+            .andExpect(status().isCreated)
+        val profile = profileService.findByUserId(owner)!!
+        val before = profilePhotoService.getPhotos(profile.id).single().copy()
+        val cleanupCount = mediaCleanupTaskRepository.count()
+        Mockito.clearInvocations(storageService)
+
+        mockMvc.perform(multipart("/api/me/profile/photos/${before.id}/file")
+            .file(jpegFile("file"))
+            .with { request -> request.method = "PUT"; request }
+            .with(authenticatedAs(other)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
+        mockMvc.perform(delete("/api/me/profile/photos/${before.id}").with(authenticatedAs(other)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/me/profile/photos/reorder")
+            .with(authenticatedAs(other)).contentType(jsonContentType)
+            .content(jsonBody(mapOf("placements" to listOf(mapOf("photoId" to before.id, "position" to 1))))))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code", equalTo("PROFILE_PHOTO_NOT_FOUND")))
+
+        val after = profilePhotoService.getPhotos(profile.id).single()
+        assertEquals(before, after)
+        assertEquals(cleanupCount, mediaCleanupTaskRepository.count())
+        Mockito.verifyNoInteractions(storageService)
+    }
 
     @Test
     fun `upload photo stores multipart file and returns validated photo`() {

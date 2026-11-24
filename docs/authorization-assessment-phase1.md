@@ -1,5 +1,33 @@
 # Backend authorization assessment, phase 1
 
+## Independent review follow-up
+
+A HEART replay could return an already-reacted counterpart audio message before checking the pair block. The ordinary response mapper would then sign it. The reaction service now returns `409 USER_PAIR_BLOCKED` for this replay using its existing chat lock. Text replays still succeed, and blocking leaves the recorded HEART intact.
+
+All ordinary single-message and page responses check the viewer and counterpart before signing counterpart audio. Send and send-replay responses contain the caller's own message. The history queries still filter before pagination. If the final check observes a new block, the entire stale response is rejected. A fresh read computes rows and `hasMore` together. The final check and URL signing are separate operations. A block committed after that check can overlap an in-flight response, and already-issued URLs may work until expiry. This change adds no lock around storage or response mapping.
+
+Web's `mergeMessages` and Android's `appendUnique` retain messages received before a block. Omitting restricted items from subsequent pages does not evict them. Both clients need to reconcile their existing history and playback state after blocking while preserving historical text and their own audio. Client implementation and runtime verification remain separate work.
+
+The HTTP regressions exercised both sides of a real block, initial and incremental mixed history, playback of the viewer's own audio, a previously visible counterpart audio cursor, and both values of `hasMore`. A blocked audio HEART replay returned the conflict without a storage call. The existing reaction stayed recorded and the text HEART replay returned 200. PostgreSQL 16 Testcontainers exercised both blocked-page queries with tied timestamps and restricted rows at page boundaries. The following local run passed all 88 tests with zero skipped.
+
+```powershell
+.\mvnw.cmd -o '-Dapi.version=1.44' '-Dtest=AuthorizationBoundaryIntegrationTest,ChatMessageReactionIntegrationTest,ChatControllerIntegrationTest,ChatAudioServiceTest,UserBlockBack3IntegrationTest,AdminSafetyReportControllerIntegrationTest,BlockedAudioHistoryPostgresIT' test
+```
+
+## Follow-up remediation on `fix/authorization-privacy-hardening`
+
+The public MVC handler now returns the same generic `Access is denied` message as the security filter for `403 ACCESS_DENIED`. HTTP regressions assert the body and absence of relationship IDs. The error schema, status and code remain unchanged.
+
+Ordinary initial and incremental message reads now omit counterpart AUDIO messages whenever a directional block exists between the chat participants. The check uses the pair's persisted block, including when the chat remains readable as CANCELLED. TEXT history and the caller's own audio retain their existing access rules; CLOSED still rejects reads. The block workflow is used in the new first- and second-chat regression, and administrative report evidence still uses its separate privileged serializer. Stored messages and media are retained. Already-issued presigned URLs may remain valid until expiration. Web and Android consumers receive the same DTO shape but must tolerate omitted audio items and avoid caching old links; those client repositories were not available for runtime verification.
+
+The new scheduling regression checks an unrelated caller, a proposal ID from another connection, both negotiations, both connection states, proposal status and reliability events, then accepts with the authorized partner. The photo regression checks foreign replace, delete and reorder requests against metadata, storage interactions and cleanup tasks. Ownership guards already rejected these writes; no application change was needed.
+
+Connection detail, negotiation and proposal GETs remain participant-readable after block or closure. They expose participant IDs, scheduling deadlines, confirmed time and historical proposed times. Historical meeting times are sensitive after a block; retention and client history requirements need a separate product decision before narrowing those fields. No scheduling schema or read contract changed here.
+
+The two prior visual-review failures were not reproduced in the initial focused rerun. The shared visual fixture creates an availability window from the current backend time and makes it available immediately; the configured test duration is 24 hours. The previously reported first-write 409 and visual fixture failure are not explained by that window alone. A deterministic root cause was not established, so no assertion, retry or timing change was applied. Test isolation and the original run environment remain to investigate.
+
+Validation on this branch: `-DskipTests compile` passed. `-Dtest=AuthorizationBoundaryIntegrationTest,ProfilePhotoFileControllerIntegrationTest` passed 17 tests. The broader exact-class selection (chat, connection, block, visual, photo reorder, admin controllers, audio and availability) passed 216 tests; its sole error was `AdminMfaPostgresIT` container startup because local Docker rejected Testcontainers API 1.32. Rerunning `AuthorizationBoundaryIntegrationTest,AdminMfaPostgresIT` with the process-local `-Dapi.version=1.44` override passed 25 tests, including 19 PostgreSQL tests. The security-package classes plus the final authorization and photo regression classes passed 159 tests. `python scripts/check_bruno_request_vars.py` and `git diff --check` passed. The full unfiltered backend suite was not run under the repository's testing rule.
+
 ## Scope and method
 
 All 383 distinct tests selected for this assessment passed across the initial runs and one targeted rerun. The tested controls denied unrelated users access to message contents, scheduling data and media references. Source review identified one low-severity error-message privacy issue. Post-block audio retention remains an open policy question.

@@ -4,6 +4,9 @@ import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatExitOutcome
 import com.reals.backend.domain.ChatReplyTargetType
+import com.reals.backend.domain.ChatMessageType
+import com.reals.backend.domain.ChatMessage
+import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.ChatExitService
 import com.reals.backend.service.ChatAudioPolicyService
 import com.reals.backend.service.ChatAudioSendResult
@@ -34,6 +37,7 @@ import java.util.*
 class ChatController(
     private val chatService: ChatService,
     private val chatMessageService: ChatMessageService,
+    private val userBlockService: UserBlockService,
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
     private val chatAudioPolicyService: ChatAudioPolicyService,
@@ -87,7 +91,7 @@ class ChatController(
             )
         ) {
             is ChatMessageService.SendMessageResult.Sent ->
-                ResponseEntity.ok(messageResponse(result.message))
+                ResponseEntity.ok(messageResponse(result.message, userId))
 
             is ChatMessageService.SendMessageResult.RejectedAfterResolution ->
                 throw DomainConflictException(code = result.code, message = result.message)
@@ -163,9 +167,9 @@ class ChatController(
         return when (result) {
             is ChatAudioSendResult.Created ->
                 ResponseEntity.status(HttpStatus.CREATED)
-                    .body(messageResponse(result.message))
+                    .body(messageResponse(result.message, userId))
             is ChatAudioSendResult.Replayed ->
-                ResponseEntity.ok(messageResponse(result.message))
+                ResponseEntity.ok(messageResponse(result.message, userId))
         }
     }
 
@@ -184,7 +188,7 @@ class ChatController(
                 userId = userId,
                 reactionType = request.type
             )
-        return ResponseEntity.ok(messageResponse(message))
+        return ResponseEntity.ok(messageResponse(message, userId))
     }
 
     @PostMapping("/{chatId}/guidance/next-request")
@@ -229,7 +233,7 @@ class ChatController(
                 ChatMessagesResponse.from(
                     messages = page.messages,
                     hasMore = page.hasMore,
-                    audioUrlResolver = ::audioReadUrl,
+                    audioUrlResolver = participantAudioResolver(page.messages, userId),
                     replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
                 )
             )
@@ -242,7 +246,7 @@ class ChatController(
         )
 
         return ResponseEntity.ok<Any>(
-            messageResponses(messages)
+            messageResponses(messages, userId)
         )
     }
 
@@ -379,19 +383,29 @@ class ChatController(
             key = requireNotNull(message.audioObjectKey)
         )
 
-    private fun messageResponse(message: com.reals.backend.domain.ChatMessage): ChatMessageResponse =
+    private fun participantAudioResolver(messages: List<ChatMessage>, viewerId: UUID): (ChatMessage) -> String {
+        // All messages in a participant response belong to the same two-person chat.
+        // If a block committed after page selection, reject the stale response before signing.
+        messages.firstOrNull { it.messageType == ChatMessageType.AUDIO && it.senderId != viewerId }?.let {
+            userBlockService.requirePairNotBlocked(viewerId, it.senderId)
+        }
+        return ::audioReadUrl
+    }
+
+    private fun messageResponse(message: ChatMessage, viewerId: UUID): ChatMessageResponse =
         ChatMessageResponse.from(
             m = message,
-            audioUrlResolver = ::audioReadUrl,
+            audioUrlResolver = participantAudioResolver(listOf(message), viewerId),
             replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
         )
 
-    private fun messageResponses(messages: List<com.reals.backend.domain.ChatMessage>): List<ChatMessageResponse> {
+    private fun messageResponses(messages: List<ChatMessage>, viewerId: UUID): List<ChatMessageResponse> {
         val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(messages)
+        val audioResolver = participantAudioResolver(messages, viewerId)
         return messages.map { message ->
             ChatMessageResponse.from(
                 m = message,
-                audioUrlResolver = ::audioReadUrl,
+                audioUrlResolver = audioResolver,
                 replyTo = replyPreviews[message.id]
             )
         }
