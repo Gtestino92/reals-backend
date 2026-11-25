@@ -2,7 +2,7 @@
 
 Assessment date: 2026-11-24. Baselines: backend `9a9893380f5afa73adb74606b32cd754edc4abea`, Web `446bc9066efac8df01890dc3fca89fff5334c513`, Android `97827fbb950c69bd58d4ab48f0c5aca280508b3b` (each `origin/development`). This follows [phase 1](authorization-assessment-phase1.md). No production service, real identity, private user object, hosted bucket, or live configuration was accessed. The attached Web `.env.local` was not read or used.
 
-## Confirmed findings
+## Confirmed findings at the assessment baseline
 
 | Severity | Finding and reproducible evidence | Boundary |
 | --- | --- | --- |
@@ -37,7 +37,25 @@ Android's `ProfilePhotoImageRequests` sets Coil disk and memory keys through `st
 Backend increment (2026-11-24): successful participant initial and incremental history reads now report `X-Reals-Counterpart-Audio-Access: ALLOWED | RESTRICTED`, including empty pages, with `Cache-Control: no-store`. The signal uses the existing bidirectional block policy after participant authorization and is exposed only to approved Web origins. A second block check after URL resolution rejects a selected counterpart audio page if a block became visible meanwhile. Block creation is irreversible in the current model. A block committing after this final check but before response delivery remains a race; existing signed URLs and already loaded client media remain usable until clients retire them or the URL expires. No broad chat lock was added to read paths. Web, Android, object metadata, signed URL TTLs and hosted infrastructure still require their separate remediation increments.
 
 1. Reconcile authoritative blocked history in both clients: remove only counterpart AUDIO after a complete authoritative snapshot or explicit block state, stop/release its player, reject late reads and URL renewals, and preserve text, own audio and administrative evidence. Cover initial/incremental pages, pagination gaps, overlapping responses, resume, sign-out and identity replacement.
-2. Define private media cache policy at upload and hosted delivery. Validate response headers and browser/Coil eviction behavior with synthetic objects before choosing `no-store`, a bounded private lifetime or account-scoped keys. Address already cached objects and URL-bearing logs.
+2. The backend now sets `Cache-Control: no-store` on new and replacement photo uploads and audio in both chats. Existing private media needs a separately approved, exclusive maintenance window. Verify hosted delivery and validate browser/Coil cache isolation separately. [Storage rollout and operator procedure](storage-r2-configuration.md#rollout-and-existing-objects)
 3. Validate storage/CDN and hosted log redaction in a disposable hosted environment, including the exact 15-minute application signature and issuance after block, deletion and suspension. Consider shorter TTL or revocation mechanisms only with measured UX and infrastructure behavior.
 
 No production remediation was made. The local storage conclusions apply only to the disposable MinIO instance; hosted R2, CDN, ingress and browser/device cache conclusions remain open.
+
+## Backend cache policy verification, 2026-11-25
+
+`PrivateMediaMinioIT` ran against a fresh MinIO RELEASE.2025-09-07T16-13-09Z
+container with synthetic bytes. The storage service issued the normal
+15-minute GET URL. Anonymous GET returned 403. Signed GET returned 200 with
+`audio/mp4` and `Cache-Control: no-store`. Signed byte-range GET returned 206
+with the same cache directive. Both bodies matched the expected bytes, and
+authenticated SDK HEAD confirmed stored `no-store`. A separate three-second
+SDK signature returned 200 before expiry and 403 afterward. Following deletion,
+the original application URL returned 404. In the exclusive legacy fixture,
+one metadata replacement preserved the key, bytes, size, content type,
+disposition and user metadata. A second pass skipped the write.
+
+Run `./mvnw -Dtest=PrivateMediaMinioIT test` with a disposable local Docker
+runtime to repeat. Hosted R2 and CDN behavior still require a synthetic
+rehearsal before rollout. Client cache isolation, hosted log redaction, and
+signed URL revocation remain independent work.

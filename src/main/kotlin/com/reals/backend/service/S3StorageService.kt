@@ -74,6 +74,7 @@ class S3StorageService(
             .bucket(properties.bucket)
             .key(key)
             .contentType(normalizedContentType)
+            .cacheControl("no-store")
             .contentLength(bytes.size.toLong())
             .build()
 

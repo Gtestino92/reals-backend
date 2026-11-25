@@ -26,6 +26,115 @@ Android multipart upload
 
 There is no direct Android-to-object-storage upload in the MVP flow.
 
+## Private media HTTP caching
+
+Every application media PUT stores `Cache-Control: no-store`. A replacement
+photo gets a fresh object key and the same policy as a new JPEG or PNG.
+First and Second Chat use the same M4A upload path. Persisting the directive
+lets storage return it on full and range GETs and instructs HTTP caches to
+avoid storing private bytes. Expect more reads, including repeated range
+requests, and potentially higher latency, bandwidth and storage charges.
+URL issuance still signs the persisted bucket and key locally with the
+configured duration and browser-facing endpoint. It needs no HEAD, rewrite,
+query suffix or GetObject response override. Production requires presigned mode.
+
+`no-store` does not revoke an issued bearer URL, retroactively delete cached
+bytes, guarantee eviction from Coil, browser application storage or other
+independent caches, or prevent a recipient from retaining a download.
+
+Disposable MinIO returned the stored directive on signed 200 and 206
+responses. Hosted R2 and intermediary delivery still require verification.
+[Local provider evidence](media-security-assessment-phase2.md#backend-cache-policy-verification-2026-11-25)
+
+### Rollout and existing objects
+
+1. Validate the candidate build on disposable storage. Repeat HEAD, anonymous
+   GET, signed full/range GET, expiry and deletion with synthetic media in a
+   separately approved hosted R2 environment, including each delivery hop.
+   Rehearse the single-object replacement below with representative headers and
+   storage classes. Check access logs separately for signed URL redaction.
+2. Roll out the writer to every instance, verify metadata on synthetic new
+   and replacement uploads, and monitor storage read volume. Existing objects
+   keep their old metadata until explicitly processed.
+3. Run the following operator procedure once per approved environment and
+   bucket. Include historical persisted buckets separately. After reopening
+   traffic, check cleanup backlog and signed delivery of synthetic media.
+
+### Operator procedure for existing private media
+
+Use a private operator session with SDK/wire logging and shell tracing off.
+Keep identifiers, values of custom metadata, signed URLs, payloads and secrets
+out of reports. The default operation is a read-only inventory.
+
+1. Explicitly select and verify the environment, account, endpoint, region,
+   bucket and matching database. Use a read-only identity for the dry-run.
+   Inspect versioning, retention/holds, encryption, tags, access controls,
+   lifecycle rules and external writers. A copy can create a new version or
+   reset last-modified time. Exclude objects where that would affect evidence,
+   deadlines or access, or preservation cannot be demonstrated.
+2. For each prefix `users/` and `chats/`, issue `ListObjectsV2` with
+   `MaxKeys=100`. Follow `NextContinuationToken` until complete. Process at
+   most one page at a time. Accept only full keys matching
+   `users/<uuid>/profile-photos/<uuid>.jpg`, the same pattern with `.png`,
+   or `chats/<uuid>/messages/<uuid>.m4a`. Require canonical UUID segments.
+   Match bucket **and** key to the persisted photo or audio reference.
+   Defer null or ambiguous bucket references, unknown keys,
+   missing references, and keys with any outstanding media cleanup task
+   (including guards, leased and failed tasks). Preserve administrative
+   evidence and retained account data. Never infer disposability from block,
+   moderation or account status. Leave ambiguous and evidence-sensitive cases
+   for review. Do not delete objects, edit references or acknowledge tasks.
+3. HEAD eligible objects. Count compliant (`CacheControl == "no-store"`),
+   eligible, missing, deferred and failed entries. Inventory the full set of
+   writable HTTP and custom metadata and the effective storage class. Review
+   only aggregate counts and estimated operations before authorizing writes.
+4. For mutation, obtain explicit operator approval for this bucket, batch
+   limit and maintenance window. Take exclusive control: stop all application
+   replicas, uploads, replacements, deletes, account deletion/finalization,
+   cleanup workers, retries, local tools and other writers. Drain in-flight
+   requests, transactions, storage calls and worker leases. If provider
+   lifecycle deletion, replication or another writer can still race, defer.
+   Re-inventory under this freeze and keep it until all copies have settled.
+5. An in-flight copy may read old bytes, a concurrent delete may succeed, and
+   the copy may then recreate the key. Source ETag matching checks the source
+   and gives no portable destination-existence guarantee at commit. A DB lock
+   or an extra HEAD cannot fence an object-store delete. R2 documents
+   destination conditions for CopyObject as a provider-specific beta. This
+   procedure relies on exclusive access across both providers.
+   [R2 destination conditions for CopyObject](https://developers.cloudflare.com/r2/api/s3/extensions/#conditional-operations-in-copyobject-for-the-destination-object)
+6. Within the approved bound, recheck eligibility and HEAD immediately before
+   each copy. Skip compliant or missing objects. Capture a trusted full-object
+   checksum, or stream a GET to SHA-256 in memory before and after the copy
+   without retaining bytes. An ETag alone is not a portable content checksum.
+   Issue one SDK `CopyObject` with source and destination the **same bucket
+   and key**, `CopySourceIfMatch` from the fresh HEAD, and
+   `MetadataDirective=REPLACE`. Set `CacheControl=no-store` and explicitly
+   carry forward ContentType, ContentDisposition, ContentEncoding,
+   ContentLanguage, Expires, all user metadata and effective storage class.
+   Preserve any additional applicable headers, tags, ACL and encryption
+   settings with provider-supported semantics verified in rehearsal. Defer
+   unsupported cases. The server copies the original body.
+7. Require SDK success and HEAD the original key. Compare type, length, class,
+   custom metadata, all preserved attributes and the checksum, and verify the
+   new directive. On a timeout or ambiguous result, keep the freeze, allow
+   outstanding operations to settle and verify against the pre-copy record
+   before retrying. Halt on mismatch, precondition failure or loss of
+   exclusivity. Keep restricted verification records for unresolved objects.
+   Never recreate a missing key from a manifest or backup.
+8. Resume incomplete batches only under a confirmed freeze with fresh checks.
+   Re-list from the beginning if a checkpoint is stale. Already verified
+   compliant objects need no write. Resolve ambiguous copies before counting
+   them as complete. Publish aggregate totals for pages, examined, compliant,
+   copied and verified, deferred, missing and failed. Release the window
+   only after settling all operations. Resume existing lifecycle workers with
+   their original queues and deadlines.
+
+Photo replacement and deletion enqueue cleanup of the old object, and failed
+uploads can trigger immediate compensation or delayed guard cleanup. Current
+account deletion removes ephemeral operational data and retains media/evidence
+references. The maintenance window covers both manual and scheduled account
+transitions so their eligibility and retention decisions remain authoritative.
+
 ## Local MinIO vs Shared Storage
 
 - Local MinIO is provisioned by `docker-compose.yml` for developer-machine
