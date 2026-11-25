@@ -363,3 +363,100 @@ read as an architecture document or changelog.
   activation, Sightengine-backed real photo uploads and security denial checks
   for missing/invalid Auth/App Check and normal-user access to admin/Actuator
   surfaces. This does not prove Google Play / Play Integrity distribution.
+
+
+### Shared social contacts and contact-based exclusions
+
+**Status:** Planned product evolution. Not implemented. Deferred until the current security and performance hardening work is complete.
+
+**Product goals**
+
+- Increase interpersonal trust through shared social context without revealing counterpart identity before visual review.
+- Allow users to avoid unwanted encounters with people they already know.
+- Preserve voluntary participation and the existing conversation-first product model.
+
+#### Shared contacts
+
+- Offer an optional, explicitly consented contact-import feature.
+- Encourage participation by explaining its benefits, without making contact sharing a registration or matching requirement.
+- Allow users to select, exclude, refresh and remove their imported contacts.
+- Require bilateral participation before exposing shared-contact information.
+- Display only an appropriate aggregate count of shared contacts in participant chat/profile surfaces.
+- Never expose contact names, phone numbers, social handles or individual contact identities to the counterpart.
+- Evaluate shared contacts as a bounded positive matchmaking-ranking contribution, not a hard eligibility requirement.
+- Do not penalize users who decline participation or have no shared contacts.
+- Review count bucketing and update frequency to reduce contact-membership inference.
+
+#### Contact-based matchmaking exclusions
+
+Treat this as an independent feature sharing the contact normalization infrastructure.
+
+- Allow users to exclude selected contacts or manually entered phone numbers from future matchmaking.
+- Do not require general contact sharing to enable exclusions.
+- Apply exclusions bidirectionally as a hard eligibility constraint when a verified phone-number association exists.
+- Keep exclusion lists private and independently manageable.
+- Define behavior for number changes, recycled numbers, existing interactions and exclusion removal.
+- Do not conflate contact-based exclusions with existing irreversible user-pair safety blocks.
+- Verified phone-number association is a prerequisite for reliable phone-based account exclusion.
+- Never expose whether an excluded number belongs to a registered Reals account.
+
+#### Cross-platform import strategy
+
+Use a common backend contract and shared product semantics regardless of the import source.
+
+Candidate sources:
+- Browser Contact Picker API where supported, primarily Chrome Android.
+- Google People API with minimal read-only OAuth scope, potentially covering iOS, Android and desktop browsers.
+- Native Android contact selection when Android production work resumes.
+- Optional user-selected vCard import as a compatibility fallback, subject to usability and privacy review.
+
+Prefer browser capability detection over platform-specific product implementations.
+
+Google People API feasibility, OAuth approval requirements, third-party contact-data policies and iOS coverage must be validated before selecting it as a production integration.
+
+Instagram integration and scraping-based approaches are not planned.
+
+#### Privacy and security requirements
+
+- Normalize phone numbers consistently, including international numbering and ambiguous regional formats.
+- Deduplicate normalized identifiers.
+- Persist only server-generated, versioned HMAC-SHA256 digests using dedicated protected key material.
+- Do not persist original phone numbers, contact names or unnecessary address-book attributes in the imported-contact store.
+- Do not use unkeyed phone-number hashes as a privacy mechanism.
+- Treat contact digests as pseudonymous personal data, not anonymous data.
+- Prevent raw contact information from entering logs, analytics, traces, durable browser storage or debugging artifacts.
+- Define consent, revocation, deletion, retention, key rotation and derived-data invalidation.
+- Review third-party contact rights and non-user opt-out mechanisms.
+- Prevent contact enumeration, arbitrary pair queries, repeated membership probing and fabricated contact-list abuse.
+- Establish legal and provider-policy feasibility before processing real address books.
+
+#### Performance and architecture
+
+- Do not call external contact providers during matchmaking execution.
+- Calculate overlap only between otherwise eligible candidates.
+- Avoid unbounded all-pairs social graph materialization.
+- Evaluate indexed intersections, bounded batching and safe derived-data caching.
+- Do not add repeated contact-overlap queries to ordinary chat or Home polling.
+- Keep revocation and exclusion enforcement authoritative.
+- Review storage growth, query plans and connection-pool impact before enabling the feature.
+
+#### Validation gates
+
+- Synthetic cross-platform proof of concept.
+- OAuth/provider-policy and privacy review.
+- Consent withdrawal and complete deletion tests.
+- Cross-account isolation and enumeration-resistance tests.
+- Matchmaking eligibility, ranking fairness and concurrency regression coverage.
+- Verify that no participant information reveals counterpart identity before visual review.
+
+### Identity and authenticity verification evolution
+
+Identity verification remains a separate future initiative.
+
+- Distinguish legal identity verification, account ownership, facial authenticity, liveness and behavioral reliability.
+- Evaluate document-based identity verification, including DNI where appropriate, as a separate product and privacy decision.
+- Facial verification or face-check implementation is not part of the current roadmap increment.
+- Do not represent shared contacts or verified phone ownership as proof of legal identity.
+- Social endorsements or third-party testimonials are not currently prioritized.
+
+Provider selection, biometric-data handling, retention, fraud resistance, costs and user experience require a dedicated design phase.
