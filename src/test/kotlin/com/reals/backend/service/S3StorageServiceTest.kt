@@ -9,6 +9,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import software.amazon.awssdk.core.sync.RequestBody
@@ -21,8 +24,9 @@ import java.util.UUID
 
 class S3StorageServiceTest {
 
-    @Test
-    fun `upload profile photo returns storage metadata without generating read url`() {
+    @ParameterizedTest
+    @CsvSource("IMAGE/JPEG,jpg", "IMAGE/PNG,png")
+    fun `upload profile photo returns storage metadata without generating read url`(type: String, extension: String) {
         val s3Client = Mockito.mock(S3Client::class.java)
         val presigner = Mockito.mock(S3Presigner::class.java)
         val service = S3StorageService(
@@ -37,18 +41,15 @@ class S3StorageServiceTest {
         val storedObject = service.uploadProfilePhoto(
             userId = userId,
             photoId = photoId,
-            contentType = "IMAGE/JPEG",
+            contentType = type,
             bytes = byteArrayOf(1, 2, 3)
         )
 
         assertEquals("reals-media", storedObject.bucket)
-        assertEquals("users/$userId/profile-photos/$photoId.jpg", storedObject.key)
-        assertEquals("image/jpeg", storedObject.contentType)
+        assertEquals("users/$userId/profile-photos/$photoId.$extension", storedObject.key)
+        assertEquals(type.lowercase(), storedObject.contentType)
         assertEquals(3, storedObject.sizeBytes)
-        Mockito.verify(s3Client).putObject(
-            any(PutObjectRequest::class.java),
-            any(RequestBody::class.java)
-        )
+        assertPrivateUpload(s3Client, storedObject.key, storedObject.contentType, byteArrayOf(1, 2, 3))
         Mockito.verifyNoInteractions(presigner)
     }
 
@@ -87,10 +88,11 @@ class S3StorageServiceTest {
             readUrlMode = S3ReadUrlMode.PRESIGNED
         )
         val presigner = S3CompatibleStorageConfig().s3Presigner(properties)
+        val s3Client = Mockito.mock(S3Client::class.java)
 
         try {
             val service = S3StorageService(
-                s3Client = Mockito.mock(S3Client::class.java),
+                s3Client = s3Client,
                 s3Presigner = presigner,
                 properties = properties
             )
@@ -102,6 +104,8 @@ class S3StorageServiceTest {
 
             assertTrue(url.startsWith("http://localhost:9000/archived-chat-media/"))
             assertTrue(url.contains("chats/chat-id/messages/message-id.m4a"))
+            assertTrue("X-Amz-Expires=420" in java.net.URI(url).rawQuery.split('&'))
+            Mockito.verifyNoInteractions(s3Client)
         } finally {
             presigner.close()
         }
@@ -130,10 +134,19 @@ class S3StorageServiceTest {
         assertEquals("chats/$chatId/messages/$messageId.m4a", storedObject.key)
         assertEquals("audio/mp4", storedObject.contentType)
         assertEquals(3, storedObject.sizeBytes)
-        Mockito.verify(s3Client).putObject(
-            any(PutObjectRequest::class.java),
-            any(RequestBody::class.java)
-        )
+        assertPrivateUpload(s3Client, storedObject.key, storedObject.contentType, byteArrayOf(1, 2, 3))
+    }
+
+    private fun assertPrivateUpload(client: S3Client, key: String, type: String, bytes: ByteArray) {
+        val request = ArgumentCaptor.forClass(PutObjectRequest::class.java)
+        val body = ArgumentCaptor.forClass(RequestBody::class.java)
+        Mockito.verify(client).putObject(request.capture(), body.capture())
+        assertEquals("no-store", request.value.cacheControl())
+        assertEquals("reals-media", request.value.bucket())
+        assertEquals(key, request.value.key())
+        assertEquals(type, request.value.contentType())
+        assertEquals(bytes.size.toLong(), request.value.contentLength())
+        body.value.contentStreamProvider().newStream().use { assertTrue(bytes.contentEquals(it.readBytes())) }
     }
 
     @Test
@@ -184,6 +197,20 @@ class S3StorageServiceTest {
 
         assertEquals("reals-media", service.mediaBucket())
         assertEquals("reals-media", service.profilePhotoBucket())
+    }
+
+    @Test
+    fun `profile photo upload storage failures use object storage exception`() {
+        val client = Mockito.mock(S3Client::class.java)
+        val service = S3StorageService(client, Mockito.mock(S3Presigner::class.java),
+            storageProperties(readUrlMode = S3ReadUrlMode.PRESIGNED))
+        val failure = RuntimeException("storage down")
+        Mockito.doThrow(failure).`when`(client).putObject(any(PutObjectRequest::class.java), any(RequestBody::class.java))
+
+        val exception = assertThrows<ObjectStorageException> {
+            service.uploadProfilePhoto(UUID.randomUUID(), UUID.randomUUID(), "image/jpeg", byteArrayOf(1))
+        }
+        assertEquals(failure, exception.cause)
     }
 
     @Test
@@ -318,7 +345,7 @@ class S3StorageServiceTest {
             secretAccessKey = "test-secret-key",
             publicBaseUrl = publicBaseUrl,
             pathStyleAccessEnabled = true,
-            signedUrlDurationMinutes = 15,
+            signedUrlDurationMinutes = 7,
             readUrlMode = readUrlMode
         )
 }

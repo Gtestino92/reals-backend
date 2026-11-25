@@ -151,9 +151,11 @@ The phase-1 authorization follow-up covers generic public 403 messages, post-blo
 
 - Priority: P1.
 - Component: backend S3 storage, Web/Android media clients, CDN/logging.
-- Evidence/status: PARTIAL. `S3StorageService.kt` generates presigned reads;
-  `S3StorageServiceTest.kt` checks browser endpoint/signature fields; local MinIO
-  initialization sets the bucket private. Full cache/log/client behavior is unverified.
+- Evidence/status: PARTIAL. Uploads and replacements now persist
+  `Cache-Control: no-store`. Existing objects require an operator-controlled
+  backfill. Hosted R2/CDN verification, client cache isolation, hosted log
+  redaction and issued-URL revocation remain separate follow-ups.
+  [Storage rollout and operator procedure](storage-r2-configuration.md#rollout-and-existing-objects)
 - Risk: potential bearer-URL disclosure or access beyond the intended cache window.
 - Proposal: review TTLs, response/referrer/cache policies, analytics/log redaction
   and client persistence; document revocation limitations for already-issued URLs.
