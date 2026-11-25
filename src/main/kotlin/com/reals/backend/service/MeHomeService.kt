@@ -89,6 +89,7 @@ class MeHomeService(
         val visibleConnections: List<Connection>,
         val pendingSchedulingConnections: List<Connection>,
         val secondChatsByConnectionId: Map<UUID, Chat>,
+        val schedulingActionIds: Set<UUID>,
         val currentNegotiationsByConnectionId: Map<UUID, ScheduleNegotiation>,
         val confirmedNegotiationsByConnectionId: Map<UUID, com.reals.backend.domain.ScheduleNegotiation>,
         val myAttendanceStatusByConnectionId: Map<UUID, SecondChatAttendanceStatus>
@@ -118,7 +119,7 @@ class MeHomeService(
                 emptyMap()
             } else {
                 profileRepository
-                    .findByUserIdIn(partnerUserIds)
+                    .findHomePartnersByUserIdIn(partnerUserIds)
                     .associateBy { it.userId }
             }
 
@@ -149,7 +150,7 @@ class MeHomeService(
                     partnerUserId(connection.userAId, connection.userBId, userId)
                 ],
                 now = snapshot.now,
-                userId
+                requiresAction = connection.id in snapshot.schedulingActionIds
             )
         }
 
@@ -229,7 +230,7 @@ class MeHomeService(
                     currentNegotiation = snapshot.currentNegotiationsByConnectionId[connection.id],
                     myAttendanceStatus = snapshot.myAttendanceStatusByConnectionId[connection.id],
                     now = snapshot.now,
-                    userId
+                    requiresAction = connection.id in snapshot.schedulingActionIds
                 )
             },
             passiveNotices = passiveNoticesForPendingScheduling(
@@ -371,7 +372,16 @@ class MeHomeService(
                 .associate { it.connectionId to it.attendanceStatus }
         }
 
+        val schedulingIds = visibleConnections.filter {
+            it.state == ConnectionState.SCHEDULING_PHASE && it.id in currentNegotiationsByConnectionId
+        }.map { it.id }
+        val submittedIds = if (schedulingIds.isEmpty()) emptySet() else
+            scheduleProposalRepository.submittedRounds(userId, schedulingIds)
+                .filter { it.roundNumber == currentNegotiationsByConnectionId[it.connectionId]?.roundNumber }
+                .map { it.connectionId }.toSet()
+
         return HomeOperationalSnapshot(
+            schedulingActionIds = schedulingIds.toSet() - submittedIds,
             now = now,
             blockedCounterpartIds = blockedCounterpartIds,
             activeMatches = activeMatches,
@@ -769,7 +779,7 @@ class MeHomeService(
         myAttendanceStatus: SecondChatAttendanceStatus?,
         partner: Profile?,
         now: OffsetDateTime,
-        currentUserId: UUID
+        requiresAction: Boolean
     ): HomeNextStepResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
@@ -798,19 +808,6 @@ class MeHomeService(
             ) ?: return null
         }
 
-        val requiresAction = when (type) {
-            HomeNextStepType.SCHEDULING ->
-                currentNegotiation?.let { negotiation ->
-                    !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                        connection.id,
-                        currentUserId,
-                        negotiation.roundNumber
-                    )
-                } ?: false
-
-            else -> false
-        }
-
         return HomeNextStepResponse(
             type = type,
             connectionId = connection.id,
@@ -835,7 +832,7 @@ class MeHomeService(
         currentNegotiation: ScheduleNegotiation?,
         myAttendanceStatus: SecondChatAttendanceStatus?,
         now: OffsetDateTime,
-        currentUserId: UUID
+        requiresAction: Boolean
     ): HomeNextStepLiteResponse? {
         val type = when (connection.state) {
             ConnectionState.SCHEDULING_PHASE -> HomeNextStepType.SCHEDULING
@@ -862,19 +859,6 @@ class MeHomeService(
                 myAttendanceStatus = myAttendanceStatus,
                 now = now
             ) ?: return null
-        }
-
-        val requiresAction = when (type) {
-            HomeNextStepType.SCHEDULING ->
-                currentNegotiation?.let { negotiation ->
-                    !scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                        connection.id,
-                        currentUserId,
-                        negotiation.roundNumber
-                    )
-                } ?: false
-
-            else -> false
         }
 
         return HomeNextStepLiteResponse(

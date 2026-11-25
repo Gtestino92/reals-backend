@@ -23,6 +23,7 @@ import com.reals.backend.repository.MatchRepository
 import com.reals.backend.repository.MatchmakingQueueRepository
 import com.reals.backend.repository.ProfileRepository
 import com.reals.backend.repository.ScheduleNegotiationRepository
+import com.reals.backend.repository.SubmittedRound
 import com.reals.backend.repository.ScheduleProposalRepository
 import com.reals.backend.repository.SecondChatParticipationRepository
 import com.reals.backend.repository.VisualReviewRepository
@@ -852,12 +853,8 @@ class MeHomeServiceTest {
             .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
 
         Mockito.`when`(
-            scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                connection.id,
-                userId,
-                negotiation.roundNumber
-            )
-        ).thenReturn(false)
+            scheduleProposalRepository.submittedRounds(userId, listOf(connection.id))
+        ).thenReturn(emptyList())
 
         val full = service.getHome(userId)
         val pending = service.getPendingHomeState(userId)
@@ -895,12 +892,8 @@ class MeHomeServiceTest {
             .thenReturn(UserHomeStatus(userId = userId, version = 1, dirty = true))
 
         Mockito.`when`(
-            scheduleProposalRepository.existsByConnectionIdAndUserIdAndRoundNumber(
-                connection.id,
-                userId,
-                negotiation.roundNumber
-            )
-        ).thenReturn(true)
+            scheduleProposalRepository.submittedRounds(userId, listOf(connection.id))
+        ).thenReturn(listOf(SubmittedRound(connection.id, negotiation.roundNumber)))
 
         val full = service.getHome(userId)
         val pending = service.getPendingHomeState(userId)
@@ -944,14 +937,14 @@ class MeHomeServiceTest {
                 .thenReturn(visualReviews)
         }
         if (matches.isNotEmpty()) {
-            Mockito.`when`(profileRepository.findByUserIdIn(matches.map { it.userBId }))
+            Mockito.`when`(profileRepository.findHomePartnersByUserIdIn(matches.map { it.userBId }))
                 .thenReturn(emptyList())
         }
         val partnerUserIds = matches.map { it.userBId } +
             connections.map { it.userBId } +
             historicalConnections.map { it.userBId }
         if (partnerUserIds.isNotEmpty()) {
-            Mockito.`when`(profileRepository.findByUserIdIn(partnerUserIds))
+            Mockito.`when`(profileRepository.findHomePartnersByUserIdIn(partnerUserIds))
                 .thenReturn(emptyList())
         }
         Mockito.`when`(

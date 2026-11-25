@@ -242,6 +242,27 @@ read as an architecture document or changelog.
 - Add Redis, SSE/WebSocket, push-driven refresh, or Home projections only when
   polling pressure and latency measurements require them.
 
+### Scheduling read volume
+
+- Deploy the scheduling snapshot endpoint before switching Web to it. Until a
+  client adopts it, that client still pays for the legacy reads. Android and
+  older Web builds can continue using the individual endpoints.
+- A disposable PostgreSQL 16 fixture measured 22 Hibernate statements for the
+  six authenticated Web negotiation reads and 6 for one snapshot. Both counts
+  include the Firebase token filter's user lookup and effective-ban check on
+  every request. Calling the snapshot service directly used 4 statements.
+  The fixture uses a synthetic verified token. Counts exclude
+  JDBC transaction control, token verification latency and any separate Home
+  reconciliation request.
+- Home loads the caller's distinct submitted rounds for visible scheduling
+  connections in one query. Full Home also fetches the eager gender preferences
+  with the partner profiles. With zero, one and four scheduling connections,
+  full Home used 14, 20 and 20 statements and pending Home used 7, 12 and 12.
+  These are service-level counts with an existing Home status row.
+  Partner count, proposal history and availability
+  windows can still increase rows transferred. Measure response size, latency
+  and pool occupancy under real polling concurrency after client adoption.
+
 ### Reliability score cache
 
 - Add a TTL or materialized reliability-score cache only if event-sourced score

@@ -4,6 +4,11 @@ import com.reals.backend.domain.Chat
 import com.reals.backend.domain.ChatMessage
 import com.reals.backend.domain.ChatStatus
 import com.reals.backend.domain.ChatType
+import com.reals.backend.domain.Connection
+import com.reals.backend.domain.Match
+import com.reals.backend.domain.MatchState
+import com.reals.backend.domain.ScheduleNegotiation
+import com.reals.backend.domain.ScheduleProposal
 import com.reals.backend.domain.ConnectionState
 import com.reals.backend.domain.Gender
 import com.reals.backend.domain.User
@@ -224,6 +229,40 @@ class ProductionReadinessPostgresIT : PostgresITBase() {
         assertEquals(firebaseUid, linkedUser!!.firebaseUid)
         assertEquals(email, linkedUser.email)
         assertEquals(1, userRepository.findAll().count { it.firebaseUid == firebaseUid })
+    }
+
+    @Test
+    fun `scheduling actions use one current round lookup across visible connections`() {
+        val user = createMeasuredUser("scheduling")
+        homeStatusService.getOrCreateStatus(user)
+        val expected = mutableMapOf<UUID, Boolean>()
+        val deadline = OffsetDateTime.now().plusDays(1)
+        fun measure(): Pair<Long, Long> {
+            val full = measurePreparedStatements("scheduling full ${expected.size}") {
+                assertEquals(expected, meHomeService.getHome(user).nextSteps.associate { it.connectionId to it.requiresAction })
+            }
+            val pending = measurePreparedStatements("scheduling pending ${expected.size}") {
+                assertEquals(expected, meHomeService.getPendingHomeState(user).nextSteps.associate { it.connectionId to it.requiresAction })
+            }
+            return full to pending
+        }
+        measure()
+        var one = 0L to 0L
+        repeat(4) { index ->
+            val partner = createMeasuredPartner("scheduling-$index")
+            val match = matchRepository.save(Match(userAId = user, userBId = partner, state = MatchState.VISUAL_APPROVED))
+            val connection = connectionRepository.save(Connection(matchId = match.id, userAId = user,
+                userBId = partner, state = ConnectionState.SCHEDULING_PHASE, schedulingExpiresAt = deadline))
+            if (index < 3) {
+                negotiationRepository.save(ScheduleNegotiation(connectionId = connection.id, roundNumber = 2))
+                proposalRepository.save(ScheduleProposal(connectionId = connection.id,
+                    userId = if (index == 2) partner else user, roundNumber = if (index == 1) 1 else 2,
+                    preferenceOrder = 1, proposedDateTime = deadline))
+            }
+            expected[connection.id] = index == 1 || index == 2
+            if (index == 0) one = measure()
+        }
+        assertEquals(one, measure())
     }
 
     private fun measurePreparedStatements(

@@ -1682,6 +1682,43 @@ paths:
           $ref: '#/components/responses/Negotiation'
         '404':
           $ref: '#/components/responses/SchedulingNegotiationNotFound'
+  /api/connections/{connectionId}/scheduling-snapshot:
+    get:
+      tags: [Connections]
+      summary: Read a consistent participant scheduling snapshot
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Participant-private scheduling view. Before scheduling activation only connection and serverTime are populated and proposals is empty.
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: [no-store] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connection, negotiation, proposals, availability, serverTime]
+                properties:
+                  connection: { $ref: '#/components/schemas/ConnectionResponse' }
+                  negotiation:
+                    oneOf:
+                      - { $ref: '#/components/schemas/NegotiationResponse' }
+                      - { type: object, nullable: true, enum: [null] }
+                  proposals:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleProposalResponse' }
+                  availability:
+                    oneOf:
+                      - { $ref: '#/components/schemas/SchedulingAvailabilityResponse' }
+                      - { type: object, nullable: true, enum: [null] }
+                  serverTime: { type: string, format: date-time }
+        '401':
+          description: Authentication required or account unavailable
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SchedulingNegotiationNotFound'
   /api/connections/{connectionId}/scheduling-availability:
     get:
       tags: [Connections]

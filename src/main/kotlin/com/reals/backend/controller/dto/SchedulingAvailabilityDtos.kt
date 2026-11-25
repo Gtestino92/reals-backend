@@ -27,3 +27,11 @@ data class SchedulingUnavailableWindowResponse(
     val startsAt: OffsetDateTime,
     val endsAt: OffsetDateTime
 )
+
+data class SchedulingSnapshotResponse(
+    val connection: ConnectionResponse,
+    val negotiation: NegotiationResponse?,
+    val proposals: List<ScheduleProposalResponse>,
+    val availability: SchedulingAvailabilityResponse?,
+    val serverTime: OffsetDateTime
+)
