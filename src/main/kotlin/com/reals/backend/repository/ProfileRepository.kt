@@ -2,6 +2,7 @@ package com.reals.backend.repository
 
 import com.reals.backend.domain.Profile
 import jakarta.persistence.LockModeType
+import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
@@ -16,6 +17,9 @@ interface ProfileRepository : JpaRepository<Profile, UUID> {
     fun findByUserIdForUpdate(
         @Param("userId") userId: UUID
     ): Profile?
+
+    @EntityGraph(attributePaths = ["lookingForGenders"])
+    fun findHomePartnersByUserIdIn(userIds: Collection<UUID>): List<Profile>
 
     fun findByUserIdIn(userIds: Collection<UUID>): List<Profile>
 }
