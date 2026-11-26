@@ -279,7 +279,7 @@ gateway or distributed limiting remains a deployment concern.
 The `prod` profile refuses to start when `security.rate-limit.enabled=false`.
 
 The pre-authentication limiter runs before Firebase token verification and keys
-only by endpoint group plus `request.remoteAddr`:
+only by endpoint group plus the resolved client IP:
 
 - `pre-auth:{endpoint-group}:ip:{client-ip}`
 
@@ -300,10 +300,13 @@ group plus a stable authenticated identity:
 - `post-auth:{endpoint-group}:firebase:{firebase-uid}`
 - `post-auth:{endpoint-group}:local-dev:{dev-user-id}`
 
-Production deployments must configure the trusted reverse proxy or servlet
-container so `request.remoteAddr` is the real client IP only when forwarded by
-trusted infrastructure. The application filter does not parse or trust arbitrary
-`X-Forwarded-For`, `Forwarded`, `X-Real-IP` or similar request headers.
+Pre-authentication and provisioning use the same client IP resolver. By default
+it uses the direct socket peer. Configure `TRUSTED_CLIENT_IP_PROXIES` with a
+comma-separated list of exact numeric direct proxy addresses only after
+verifying those peers overwrite `X-Real-IP`. The resolver accepts one numeric
+`X-Real-IP` from a listed peer and falls back to the peer for missing, repeated
+or malformed values. It ignores `X-Forwarded-For` and `Forwarded` entirely.
+Keep `server.forward-headers-strategy=none` so the resolver sees the socket peer.
 
 Buckets expire after idle time equal to the greater of 15 minutes and
 `ceil(capacity / refillTokens) * refillPeriod`. Each entry uses its own policy;
@@ -314,7 +317,7 @@ periods are credited up to capacity. Cache access renews idle retention, and
 bucket consumption/refill remains synchronized.
 
 The proposed dedicated pre-auth policy for exactly `POST /api/auth/password-reset`
-is capacity 10, refill 10 every 3600 seconds per `remoteAddr`, independent of
+is capacity 10, refill 10 every 3600 seconds per resolved client IP, independent of
 email and authentication. `security.rate-limit.password-reset-enabled` defaults
 to `false` in all profiles, including prod, until the proxy boundary is verified.
 When disabled it falls back to the existing broad pre-auth policy (600/60s by
@@ -329,27 +332,21 @@ or durable quota enforcement remains deferred.
 
 ### Client IP verification gap and activation prerequisite
 
-Repository evidence (`docs/aws-prod-deployment.md`, `docs/dev-deployment.md`,
-`ops/aws/deploy-backend.sh`) describes operator-managed Nginx in front of an
-EC2 Docker backend, with default port binding `127.0.0.1:8080:8080` and an external
-runtime env file. Helm values also describe an Nginx ingress, but do not prove
-the effective EC2 configuration. The actual Nginx configuration, runtime env
-file, and trusted proxy/container IP handling are not available in this repo.
-No explicit Spring forwarded-header strategy or trusted proxy valve is defined
-in the checked-in application configuration. Consequently `remoteAddr` cannot
-be proven to identify individual production clients; it may identify a shared
-proxy/Docker peer. No forwarded-header parsing or speculative proxy settings
-were added.
+Railway DEV uses public HTTP networking on a Railway-managed domain. Railway
+documents `X-Real-IP` as the client address header. The deployment configuration
+does not identify stable direct proxy addresses or establish header overwrite
+behavior on all paths to the container. AWS uses operator-managed Nginx in front
+of a loopback-bound Docker port. The Nginx configuration lives outside this
+repository.
 
-Before setting `RATE_LIMIT_PASSWORD_RESET_ENABLED=true` in a hosted environment,
-operators must verify the effective ingress path and container configuration:
-only trusted infrastructure can reach the backend; the edge removes/replaces
-client-supplied forwarding headers; the servlet container resolves client IPs
-only through explicitly trusted proxy hops; two external clients produce distinct
-`remoteAddr` values; and spoofing forwarding headers cannot change that identity.
-This requires runtime evidence outside this change. Do not enable the stricter
-policy while all clients may share the proxy IP. Direct local tests may enable
-it explicitly. No infrastructure or deployment configuration is changed here.
+Before enabling the dedicated password-reset limit or persistent network
+provisioning quotas in a hosted environment, verify the exact direct proxy peers
+and that only those peers can supply trusted `X-Real-IP`. Verify the proxy
+overwrites incoming copies, that direct or private-network access cannot spoof
+the IP, and that two external sources have distinct quota buckets. Leave the
+trusted peers and opt-in quotas unset where that boundary cannot be verified.
+[Railway public networking specs](https://docs.railway.com/networking/public-networking/specs-and-limits)
+
 
 ## Visual Content Boundaries
 
@@ -418,7 +415,7 @@ buckets. Existing UID provisioning, login, verified legacy linking, reactivation
 conflicts and rolled-back creation do not consume it. Firebase identities are
 never deleted or disabled because of this quota.
 
-Only servlet `request.remoteAddr` is used. This feature never parses
+The shared client IP resolver supplies the address. The provisioning limiter never parses
 `X-Forwarded-For`, `Forwarded` or `X-Real-IP`. IPv4 uses all 32 bits; IPv4-mapped
 IPv6 is treated as IPv4; IPv6 uses the first 64 bits. Numeric spelling variants
 normalize to the same binary origin. Hostnames and scoped addresses are rejected.
@@ -452,11 +449,10 @@ Before production activation, verify the actual public ingress to Nginx/Docker
 and the servlet container, not just a local MockMvc request:
 
 1. Identify every proxy hop and ensure direct backend access is restricted.
-2. Verify ingress strips/replaces client forwarding headers and configure the
-   container to trust only known ingress hops through an independently reviewed
-   infrastructure change. No proxy configuration is introduced by this feature.
-3. From two independently known external IPs, verify distinct correct servlet
-   client addresses (not a shared proxy/container address). Repeat through the
+2. Verify ingress overwrites `X-Real-IP` and configure the resolver's trusted
+   peers with the verified direct proxy addresses.
+3. From two independently known external IPs, verify distinct correct resolved
+   client addresses. Repeat through the
    actual TLS/production route with spoofed forwarding headers and confirm that
    the resolved address cannot be changed by the caller. Check IPv4, IPv6 and
    IPv4-mapped behavior where supported. Avoid persistent raw-IP debug logging.

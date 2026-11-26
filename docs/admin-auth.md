@@ -115,7 +115,7 @@ or provisioning material is stored in PostgreSQL. Operators must never use human
 Hourly cleanup deletes at most 100 expired rows ordered by expiry and hash. It acquires no user
 lock and never restores access. Audit history follows the existing audit retention policy.
 
-Pre-auth network-origin throttling for verify uses the existing remoteAddr-based limiter:
+Pre-auth network-origin throttling for verify uses the pre-auth limiter's [resolved client IP](security-mvp.md#rate-limiting-boundaries):
 RATE_LIMIT_ADMIN_MFA_CAPACITY=10, RATE_LIMIT_ADMIN_MFA_REFILL_TOKENS=10 and
 RATE_LIMIT_ADMIN_MFA_REFILL_PERIOD_SECONDS=600 by default. All values must be positive.
 These configure security.rate-limit.admin-mfa-capacity/admin-mfa-refill-tokens/

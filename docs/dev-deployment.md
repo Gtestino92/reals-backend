@@ -219,6 +219,16 @@ Rollout sequence:
 5. Inspect logs and `reals.app_check.requests` outcomes.
 6. Set `FIREBASE_APP_CHECK_MODE=ENFORCED` only after dev traffic is clean.
 
+## Railway DEV client IP
+
+Railway public HTTP networking supplies `X-Real-IP`. The backend uses the
+direct socket peer unless `TRUSTED_CLIENT_IP_PROXIES` explicitly lists its
+proxy address. Before setting it, verify the effective socket peers are stable
+and reserved for the ingress and that the ingress overwrites incoming copies of
+`X-Real-IP`. Keep the allowlist empty if this cannot be verified. Keep
+`server.forward-headers-strategy=none`. See the
+[hosted ingress verification procedure](security-mvp.md#client-ip-verification-gap-and-activation-prerequisite).
+
 ## Railway Dev remote tooling
 
 Use `https://reals-backend-dev.up.railway.app` as the Bruno base URL. Configure

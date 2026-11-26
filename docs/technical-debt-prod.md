@@ -88,10 +88,9 @@ read as an architecture document or changelog.
 
 ### Rate-limit and edge configuration
 
-- Verify and maintain the production Nginx/reverse-proxy client-IP boundary so
-  the servlet container receives the real client IP only from trusted
-  infrastructure. The pre-auth limiter keys on `request.remoteAddr` and does
-  not trust arbitrary forwarded-IP headers.
+- Verify the production Nginx/reverse-proxy client-IP boundary before enabling
+  dedicated password-reset or persistent provisioning quotas. The pre-auth
+  limiter uses the [shared client IP resolver](security-mvp.md#rate-limiting-boundaries).
 - Review public capacities for provisioning, password reset, message sends,
   profile-photo uploads/replacements and safety reports before opening traffic.
 - Keep the current Caffeine limiter limitation explicit: it is per-instance. A

@@ -1,14 +1,16 @@
 # Security Technical Debt
 
-Deferred work only; Local Docker Network Hardening #1 changes host publication,
-not these controls. Priorities are planning priorities: P0 = production release
-gate where applicable, P1 = next hardening work, P2 = conditional/follow-up work.
+This register records deferred work and the outcome of the final DEV backend
+hardening pass. Local Docker Network Hardening #1 addressed host publication.
+Planning priorities are P0 for release gates, P1 for the next hardening work,
+and P2 for conditional follow-up.
 They are not vulnerability severity ratings. NOT STARTED means no implementation
 of the proposed task was verified in this review, not proof that no control
 exists anywhere. PARTIAL means concrete controls exist but the stated acceptance
 criteria are not fully verified. No deferred task is claimed IMPLEMENTED.
 
-Evidence baseline: backend `development` at `1bf015c`, reviewed for this task.
+Evidence baseline for the original register was backend `development` at
+`1bf015c`. The final DEV pass used `origin/development` at `1f58337`.
 Web observations are read-only snapshots, not a full Web audit; Android and live
 production infrastructure were not audited. Potential risks below require
 investigation and must not be reported as confirmed vulnerabilities.
@@ -116,36 +118,62 @@ investigation and must not be reported as confirmed vulnerabilities.
 - Acceptance: repeatable scans and provenance records, tested severity gates,
   reviewed pins and time-bounded exceptions; coverage documented for all repos.
 
-## 8. Backend Object-Level Authorization (BOLA/IDOR) Tests
+## 8. Backend Object-Level Authorization (BOLA/IDOR)
 
-- Priority: P1.
-- Component: backend user/profile/match/chat/media/admin endpoints.
-- Evidence/status: PARTIAL. [Visual content boundaries](security-mvp.md#visual-content-boundaries)
-  document participant checks; a complete endpoint/ownership test matrix was not
-  audited. No missing authorization check is claimed.
-- Risk: potential cross-user object access if an ownership path is untested.
-- Proposal: inventory object identifiers and add focused owner/other-user/admin,
-  blocked/deleted and cross-aggregate tests around existing rules.
-- Deployment dependency: none; use isolated fixtures and existing auth model.
-- Acceptance: each object endpoint has positive/negative ownership coverage;
-  foreign identifiers reveal no private data and cause no unauthorized mutation.
+### Resolved in the final DEV pass
 
-The phase-1 authorization follow-up covers generic public 403 messages, post-block counterpart audio URL suppression, scheduling proposal ownership, and photo mutation checks. The remaining item-8 work is a complete endpoint matrix and concurrency testing across block creation and media serialization. See [authorization assessment](authorization-assessment-phase1.md).
+- **Medium, private audio after closure.** Exact audio-send replays and existing
+  HEART replays could reach URL signing after CLOSED even though chat history
+  rejected the same access. Participant audio responses now apply the existing
+  chat history policy before signing and check current state again after
+  signing. Both history formats also reject a stale response if the chat closes
+  during construction. A block observed during signing withdraws counterpart
+  audio from the response. PostgreSQL coverage includes committed fixtures and
+  state changes at the signing boundary.
+- **Low, unrelated photo ID disclosure.** A participant submitting a photo
+  report could distinguish an existing unrelated photo ID from a missing one by
+  the validation message. The lookup now requires the matched partner's profile
+  ID and produces the same public error in both cases. Administrative evidence
+  continues to use its privileged path.
+
+### Reviewed controls with no additional access defect confirmed
+
+| Surface | Boundary reviewed |
+| --- | --- |
+| Chat messages, exits, reactions and replies | Match membership on direct chat access, same-chat cursor/message/reply/exit IDs, sender-scoped idempotency, and separate text/history behavior |
+| Matches, connections and scheduling | Participant checks, visual access by phase and block state, same-connection proposal and completion-request IDs, and actor/transition checks |
+| Profiles and photos | Principal-owned self-service profiles and their photos, partner profile derived from authorized visual access, and separate admin moderation |
+| Safety reports and evidence | Report target inferred from interaction membership, parent/child context validation, and backoffice-only access to persisted evidence |
+| Provisioning and account lifecycle | Firebase UID or authenticated backend user, provider binding, and restricted deleted-account and permanent-ban routes |
+| Hosted DEV tooling and backoffice | Exact DEV profile and opt-in flags, verified token and App Check app, allowlisted active actor, MFA grant binding and scope. Password grants remain scoped to DEV tooling. |
+
+The [phase-1 assessment](authorization-assessment-phase1.md) describes the existing
+negative coverage and retained historical scheduling policy. Existing signed
+URLs are bearer references until expiry. Changes committed after the final
+authorization read can overlap transmission of an already built response.
+Storage retention and administrative evidence remain available under their
+existing policies.
 
 ## 9. Rate Limiting Behind Trusted Reverse Proxies
 
-- Priority: P1.
-- Component: backend rate-limit filters and ingress/container configuration.
-- Evidence/status: PARTIAL. Existing filters/tests and [rate-limit boundaries](security-mvp.md#rate-limiting-boundaries)
-  use `request.remoteAddr`; documentation requires trusted proxy configuration.
-  Live proxy trust and replica behavior were not verified.
-- Risk: potential shared proxy buckets, spoofed client attribution or replica
-  quota bypass if infrastructure does not enforce the intended boundary.
-- Proposal: validate trusted hops, strip untrusted forwarded headers at ingress,
-  test real client-IP attribution and choose edge/distributed controls as needed.
-- Deployment dependency: known proxy topology and replica count.
-- Acceptance: spoofed headers cannot select a bucket; distinct clients are
-  attributed correctly; quotas/429 behavior hold through the production ingress.
+- **Medium, shared proxy buckets.** The repository previously used the socket
+  peer for both pre-authentication and provisioning. On a reverse-proxy path
+  with forwarding disabled this groups legitimate users by the proxy peer.
+  Railway DEV metadata showed one replica in SFO, a Railway-managed HTTP
+  networking domain on port 8080, and zero public TCP proxies.
+- **Implemented.** Both paths use the same client IP resolver with opt-in,
+  exact direct-peer trust. Only one numeric `X-Real-IP` from an explicitly
+  trusted peer is accepted. A missing, malformed or duplicate value falls back
+  to the socket peer. Client-supplied forwarding headers on direct requests
+  cannot select a bucket. Post-authentication keys and endpoint quotas retain
+  their existing behavior.
+- **Deferred activation.** Railway documents `X-Real-IP` at its public edge.
+  Service metadata does not establish stable trusted socket peers or overwrite
+  behavior on all routes. Leave the allowlist empty until that is verified.
+  Verify the independent AWS ingress before enabling its dedicated password-reset
+  or persistent provisioning quotas. Multi-replica enforcement remains a
+  production follow-up if deployment changes.
+  [Ingress verification](security-mvp.md#client-ip-verification-gap-and-activation-prerequisite)
 
 ## 10. Private Media URL Expiration, Caching And Leakage Prevention
 
