@@ -58,6 +58,7 @@ import javax.crypto.spec.SecretKeySpec
     )],
     properties = [
         "DEV_REMOTE_TOOLING_ENABLED=true",
+        "DEV_REMOTE_TOOLING_PASSWORD_AUTH_ENABLED=true",
         "FIREBASE_APP_CHECK_MODE=MONITOR",
         "FIREBASE_PROJECT_NUMBER=123",
         "FIREBASE_APP_CHECK_ALLOWED_APP_IDS=1:123:web:admin,1:123:web:other",
@@ -161,7 +162,7 @@ class HostedDevToolingSecurityTest {
         for (path in listOf(MATCHMAKING, SCHEDULING, PAIR_RESET)) {
             denied(path, 401, "MISSING_AUTHORIZATION_HEADER", bearer = null, grant = grant)
             denied(path, 401, "INVALID_TOKEN", bearer = "invalid", grant = grant)
-            denied(path, 401, "AUTH_METHOD_NOT_ALLOWED", bearer = "password", grant = grant)
+            denied(path, 403, "ADMIN_ACCESS_DENIED", bearer = "password", grant = grant)
             denied(path, 403, "ADMIN_ACCESS_DENIED", bearer = "regular", grant = grant)
             denied(path, 403, "ADMIN_ACCESS_DENIED", bearer = "unverified", grant = grant)
             denied(path, 403, "ADMIN_ACCESS_DENIED", app = null, grant = grant)
@@ -181,6 +182,44 @@ class HostedDevToolingSecurityTest {
         verifyNoInteractions(matchmaking, scheduling, pairHistory)
     }
 
+    @Test
+    fun `password grant is restricted to hosted tooling with the verified password context`() {
+        denied(SCHEDULING, 403, "ADMIN_MFA_REQUIRED", bearer = "password")
+        verifyTotp("invalid", "password").andExpect(status().isForbidden)
+        stubToken("other-password", normalUser, provider = "password")
+        verifyTotp("web", "other-password").andExpect(status().isForbidden)
+        `when`(adminMfaClock.instant()).thenReturn(now.plusSeconds(300))
+        verifyTotp("web", "password").andExpect(status().isForbidden)
+        `when`(adminMfaClock.instant()).thenReturn(now)
+        val response = verifyTotp("web", "password").andExpect(status().isOk).andReturn().response
+        val grant = mapper.readTree(response.contentAsString).get("grant").stringValue()
+        mvc.perform(post(SCHEDULING).credentials("password", grant = grant)).andExpect(status().isOk)
+        verify(scheduling).run()
+        denied(SCHEDULING, 403, "ADMIN_ACCESS_DENIED", grant = grant)
+        mvc.perform(get("/api/admin/profile-photos/review").credentials("password", grant = grant))
+            .andExpect(status().isUnauthorized)
+        mvc.perform(get("/api/admin/profile-photos/review").credentials("google", grant = grant))
+            .andExpect(status().isForbidden)
+        mvc.perform(post("/api/admin-auth/revoke").credentials("password", grant = grant))
+            .andExpect(status().isNoContent)
+        denied(SCHEDULING, 403, "ADMIN_GRANT_REVOKED", bearer = "password", grant = grant)
+    }
+
+    @Test
+    fun `DEV with remote tooling enabled and password option absent rejects password issuance`() {
+        val env = org.springframework.mock.env.MockEnvironment().withProperty("local-dev.remote-tooling-enabled", "true")
+        env.setActiveProfiles("dev")
+        val service = context.getBean(AdminAccessService::class.java)
+        val filter = FirebaseTokenFilter(EnvironmentExposurePolicy(env), userService, penalties, firebase, service)
+        admin.authOrigin = UserAuthOrigin.EMAIL_PASSWORD
+        MockMvcBuilders.standaloneSetup(AdminAuthController(service)).addFilters<org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder>(filter)
+            .build().perform(post("/api/admin-auth/verify").credentials("password")
+                .requestAttr(FirebaseAppCheckFilter.VALID_APP_ID_ATTRIBUTE, "1:123:web:admin")
+                .contentType("application/json").content("""{"code":"123456"}"""))
+            .andExpect(status().isForbidden).andExpect(jsonPath("$.code").value("ADMIN_ACCESS_DENIED"))
+        verifyNoInteractions(states, grants)
+    }
+
     private fun stubToken(raw: String, user: User, provider: String = "google.com", emailVerified: Boolean = true) {
         val decoded = mock(FirebaseToken::class.java)
         `when`(decoded.uid).thenReturn(user.firebaseUid)
@@ -195,10 +234,10 @@ class HostedDevToolingSecurityTest {
         return mapper.readTree(response.contentAsString).get("grant").stringValue()
     }
 
-    private fun verifyTotp(app: String?): org.springframework.test.web.servlet.ResultActions {
+    private fun verifyTotp(app: String?, bearer: String = "google"): org.springframework.test.web.servlet.ResultActions {
         val key = SecretKeySpec("12345678901234567890".toByteArray(), "HmacSHA1")
         val code = TimeBasedOneTimePasswordGenerator().generateOneTimePasswordString(key, now)
-        return mvc.perform(post("/api/admin-auth/verify").credentials(app = app)
+        return mvc.perform(post("/api/admin-auth/verify").credentials(bearer = bearer, app = app)
             .contentType("application/json").content("""{"code":"$code"}"""))
     }
 

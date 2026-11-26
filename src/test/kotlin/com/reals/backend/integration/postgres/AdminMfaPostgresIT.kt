@@ -74,6 +74,14 @@ class AdminMfaPostgresIT : PostgresITBase() {
         .andExpect(header().string("Cache-Control", "no-store"))
     private fun issue() = access.verify(identity, code()).value!!
 
+    @Test fun `password tooling scope is persisted separately from Google grants`() {
+        val tooling = identity.copy(provider = FirebaseSignInProvider.PASSWORD, scope = AdminGrantScope.DEV_TOOLING)
+        val grant = access.verify(tooling, code()).value!!.grant
+        assertNull(access.grantError(tooling, grant))
+        assertEquals("ADMIN_ACCESS_DENIED", access.grantError(identity, grant))
+        assertEquals("ADMIN_ACCESS_DENIED", access.grantError(tooling.copy(scope = AdminGrantScope.BACKOFFICE), grant))
+    }
+
     @Test fun `real chain requires MFA on all admin controllers and password cannot reuse grant`() {
         val paths = listOf("/api/admin/safety-reports", "/api/admin/penalty-appeals/pending", "/api/admin/diagnostics/matchmaking", "/api/admin/profile-photos/review")
         paths.forEach { path -> mvc.perform(get(path).header("Authorization", "Bearer google").header("X-Firebase-AppCheck", "web")).andExpect(status().isForbidden) }

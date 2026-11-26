@@ -6,7 +6,7 @@ meta {
 docs {
   Hosted Dev setup, /api/local-dev/** tooling endpoints, and admin moderation helpers.
 
-  Privileged requests require the allowlisted Google administrator, verified Web App Check, and a current TOTP grant.
+  Privileged requests require the allowlisted administrator, verified Web App Check, and a current TOTP grant.
 
   Follow the README for environment setup and the request order. Send individual requests because this folder includes Dev mutations.
 }
@@ -41,7 +41,7 @@ script:pre-request {
       throw new Error("Select the original DEV environment or run 00 for this baseUrl. Remove any baseUrl override.");
     }
     const deadline = token => require("jsonwebtoken").decode(token || "")?.exp * 1000;
-    if (!(deadline(bru.getVar("devAdminIdToken")) > Date.now())) throw new Error("Run 00 Google Admin Sign In, or 98 to clear the local session.");
+    if (!(deadline(bru.getVar("devAdminIdToken")) > Date.now())) throw new Error("Run 00 Firebase Admin Password Sign In, or 98 to clear the local session.");
     if (!["03", "04"].includes(number) && !(deadline(bru.getVar("devAdminAppCheck")) > Date.now())) {
       throw new Error("Run 00b to exchange a fresh Web App Check credential.");
     }
@@ -49,7 +49,7 @@ script:pre-request {
       throw new Error("No local grant to revoke. Send 98 to clear this session.");
     }
     if (number !== "99" && Number(number) >= 10 && (!bru.getVar("devAdminGrant") || !(Date.parse(bru.getVar("devAdminGrantExpiry")) > Date.now()))) {
-      throw new Error("Run 00 and 06 for a fresh Google session and TOTP grant.");
+      throw new Error("Run 00 and 06 for a fresh password session and TOTP grant.");
     }
   }
 }

@@ -46,6 +46,7 @@ backoffice:
   admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
 
 local-dev:
+  password-auth-enabled: ${DEV_REMOTE_TOOLING_PASSWORD_AUTH_ENABLED:false}
   remote-tooling-enabled: ${DEV_REMOTE_TOOLING_ENABLED:false}
 
 scheduler:

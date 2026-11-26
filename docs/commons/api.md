@@ -680,8 +680,8 @@ These endpoints execute system-level mutations and jobs. The `/api/local-dev/**`
 path name is retained for compatibility and must never be called by the Android
 application. In `local-nodb`, `local-postgres` and `local-firebase`, they are
 available without authentication. Hosted `dev` requires
-`DEV_REMOTE_TOOLING_ENABLED=true` and the same Firebase Google bearer token,
-verified Web App Check and `X-Reals-Admin-Grant` as ordinary admin endpoints.
+`DEV_REMOTE_TOOLING_ENABLED=true` and an administrator Firebase bearer token,
+verified Web App Check and `X-Reals-Admin-Grant` bound to that session. Enabling `DEV_REMOTE_TOOLING_PASSWORD_AUTH_ENABLED` also allows password sessions for these tooling routes.
 Hosted tooling responses use `Cache-Control: no-store`. In `prod`, the
 controllers are absent and the route prefix is explicitly denied.
 

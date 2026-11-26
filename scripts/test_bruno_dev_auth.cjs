@@ -12,26 +12,19 @@ for (const file of readdirSync(directory).filter(name => name.endsWith(".bru")))
 }
 
 test("fresh hosted DEV session, protected routes, recovery and revoke", async () => {
-  const env = { baseUrl: "https://dev.example", firebase_api_key: "mock", firebase_project_number: "123",
+  const env = { baseUrl: "https://dev.example", firebase_admin_password: "synthetic", firebase_app_check_debug_token: "synthetic", firebase_api_key: "mock", firebase_project_number: "123",
     firebase_admin_web_app_id: "1:123:web:abc", firebase_admin_email: "admin@example.org", firebase_admin_expected_uid: "admin" };
   const runtime = {};
   const now = Date.now();
   const claims = { sub: "admin", email_verified: true, email: env.firebase_admin_email,
-    firebase: { sign_in_provider: "google.com" }, exp: Math.floor(now / 1000) + 300 };
+    firebase: { sign_in_provider: "password" }, exp: Math.floor(now / 1000) + 300 };
   const token = JSON.stringify(claims);
   const grant = "g".repeat(43);
-  let exchangeResult = { idToken: token };
   const bru = {
     getAllEnvVars: () => env,
     getVar: key => runtime[key], getEnvVar: key => env[key],
     setVar: (key, value) => { runtime[key] = value; }, deleteVar: key => delete runtime[key],
-    interpolate: input => input.replace(/{{(\w+)}}/g, (_, key) => runtime[key] ?? env[key]),
-    sendRequest: async ({ url, data }) => {
-      assert.equal(url, "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=mock");
-      assert.equal(data.autoCreate, false);
-      assert.equal(data.postBody, "providerId=google.com&id_token=" + encodeURIComponent(token));
-      return { data: exchangeResult };
-    }
+    interpolate: input => input.replace(/{{(\w+)}}/g, (_, key) => runtime[key] ?? env[key])
   };
   async function script(number, phase, body, status = 200, folder = false) {
     const name = requests.get(number).match(/  name: (.+)/)[1];
@@ -51,14 +44,10 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   await assert.rejects(post("00b", {}));
   await post("00b", { token });
   await script("00", "pre-request");
-  await assert.rejects(post("00", { credential: JSON.stringify({ ...claims, email_verified: false }) }));
-  exchangeResult = { error: { message: "USER_NOT_FOUND" } };
-  await assert.rejects(post("00", { credential: token }));
-  exchangeResult = { idToken: token, isNewUser: true };
-  await assert.rejects(post("00", { credential: token }));
+  await assert.rejects(post("00", {}, 400));
+  await assert.rejects(post("00", { idToken: JSON.stringify({ ...claims, email_verified: false }) }));
   assert.equal(runtime.devAdminIdToken, "");
-  exchangeResult = { idToken: token };
-  await post("00", { credential: token });
+  await post("00", { idToken: token });
   await guard("05");
   await post("05", { configured: true, grantValid: false });
   await assert.rejects(guard("60"));
@@ -97,7 +86,7 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   await assert.rejects(guard("06"));
   await post("00b", { token });
   await script("00", "pre-request");
-  await post("00", { credential: token });
+  await post("00", { idToken: token });
   await post("06", verified);
   await guard("99");
   await assert.rejects(post("99", {}, 403));

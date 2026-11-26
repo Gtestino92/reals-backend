@@ -19,10 +19,10 @@ headers {
 script:post-response {
   const status = res.getStatus();
   if (status === 401) {
-    throw new Error("Check the Firebase Google ID token and Web App Check token.");
+    throw new Error("Check the Firebase ID token and Web App Check token.");
   }
   if (status === 403) {
-    throw new Error("Run 05 Admin Status to verify administrative access and grant validity.");
+    throw new Error("Moderation requires a Google backoffice grant. Use the backoffice session for this request.");
   }
   if (status !== 200) {
     throw new Error(`Expected 200 OK, got ${status}.`);

@@ -32,7 +32,8 @@ class AdminAccessGrant(
     @Column(name = "factor_id", nullable = false) var factorId: String = "",
     @Column(name = "issued_at", nullable = false) var issuedAt: Instant = Instant.EPOCH,
     @Column(name = "expires_at", nullable = false) var expiresAt: Instant = Instant.EPOCH,
-    @Column(name = "revoked_at") var revokedAt: Instant? = null
+    @Column(name = "revoked_at") var revokedAt: Instant? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var scope: AdminGrantScope = AdminGrantScope.BACKOFFICE
 )
 
 interface AdminMfaStateRepository : JpaRepository<AdminMfaState, UUID>

@@ -13,9 +13,12 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 
+enum class AdminGrantScope { BACKOFFICE, DEV_TOOLING }
+
 /** Verified token/App Check context only; never constructed from client identity headers. */
 data class AdminRequestIdentity(val userId: UUID, val uid: String, val email: String?,
-    val emailVerified: Boolean, val provider: FirebaseSignInProvider?, val authTime: Long, val appId: String)
+    val emailVerified: Boolean, val provider: FirebaseSignInProvider?, val authTime: Long, val appId: String,
+    val scope: AdminGrantScope = AdminGrantScope.BACKOFFICE)
 
 data class AdminGrantResponse(val grant: String, val expiresAt: Instant)
 data class AdminResult(val value: AdminGrantResponse? = null, val error: String? = null, val retryAfter: Long? = null)
@@ -37,7 +40,10 @@ class AdminAccessService(
         user != null && user.status == UserStatus.ACTIVE && user.firebaseUid == identity.uid &&
             identity.uid in identities.uids && identity.emailVerified &&
             identity.email?.trim()?.lowercase(java.util.Locale.ROOT) in identities.emails &&
-            identity.provider == FirebaseSignInProvider.GOOGLE && identity.appId in identities.webAppIds &&
+            (when (identity.scope) {
+                AdminGrantScope.BACKOFFICE -> identity.provider == FirebaseSignInProvider.GOOGLE
+                AdminGrantScope.DEV_TOOLING -> identity.provider == FirebaseSignInProvider.PASSWORD
+            }) && identity.appId in identities.webAppIds &&
             identity.authTime > 0 && penalties.resolveEffectiveBan(user.id, java.time.OffsetDateTime.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)) == null
 
     @Transactional(readOnly = true)
@@ -91,7 +97,7 @@ class AdminAccessService(
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) })
         val expires = now.plusSeconds(properties.grantTtlSeconds)
         grants.save(AdminAccessGrant(sha256(token), identity.userId, identity.uid, identity.authTime,
-            "GOOGLE", identity.appId, factor, now, expires))
+            requireNotNull(identity.provider).name, identity.appId, factor, now, expires, scope = identity.scope))
         event(AuditEventType.ADMIN_MFA_VERIFIED, identity)
         event(AuditEventType.ADMIN_GRANT_ISSUED, identity)
         return AdminResult(value = AdminGrantResponse(token, expires))
@@ -111,7 +117,7 @@ class AdminAccessService(
 
     private fun matches(grant: AdminAccessGrant, identity: AdminRequestIdentity) =
         grant.userId == identity.userId && grant.firebaseUid == identity.uid && grant.authTime == identity.authTime &&
-            grant.provider == "GOOGLE" && grant.webAppId == identity.appId && grant.factorId == properties.factorId
+            grant.scope == identity.scope && grant.provider == identity.provider?.name && grant.webAppId == identity.appId && grant.factorId == properties.factorId
 
     @Transactional
     fun revoke(identity: AdminRequestIdentity, token: String?) {

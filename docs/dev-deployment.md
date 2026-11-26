@@ -227,6 +227,7 @@ the following in the Railway Dev service before running the tooling.
 ```dotenv
 SPRING_PROFILES_ACTIVE=dev
 DEV_REMOTE_TOOLING_ENABLED=true
+DEV_REMOTE_TOOLING_PASSWORD_AUTH_ENABLED=true
 BACKOFFICE_ADMIN_UIDS=<Firebase admin UID>
 BACKOFFICE_ADMIN_EMAILS=<verified admin email>
 BACKOFFICE_ALLOWED_WEB_APP_IDS=<Firebase Web App ID>
@@ -242,13 +243,14 @@ FIREBASE_APP_CHECK_MODE=MONITOR
   establish an administrative identity. The App Check allowlist is
   comma-separated. Include the same Dev Web App ID in both allowlists and
   retain existing allowed client app IDs.
-- Confirm Google is linked to the existing Firebase UID in the same project,
+- For password tooling confirm Email/Password is enabled and the password provider is linked to the existing Firebase UID in the same project,
   the email is verified and the backend user is active and unrestricted.
   Use the existing TOTP factor and protect its secret and version in Railway.
 - For Bruno debug exchange, use an already registered debug secret for the
-  allowlisted Web app. Enter the secret at the 00b prompt. Start the local Google
-  login helper with a Desktop OAuth client accepted by the DEV Firebase project.
-  Send 00, then 06. Use 05 before and after TOTP to inspect grant status.
+  allowlisted Web app. Store it and the existing administrator password as local
+  Bruno Secret inputs. Send 00b, 00 (password sign-in), 06 (TOTP), then 60
+  (read-only fixture check). Both tooling flags default to false. Password grants
+  are restricted to DEV tooling. Production and backoffice retain Google authentication.
 - After rollout, follow the
   [Bruno request order](../bruno/16%20-%20AWS%20Dev%20Tooling/README.md#request-order).
   Verify read-only administrative status first and use Dev fixtures for job

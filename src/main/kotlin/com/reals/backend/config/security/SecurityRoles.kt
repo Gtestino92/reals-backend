@@ -2,6 +2,7 @@ package com.reals.backend.config.security
 
 object SecurityRoles {
     const val USER = "USER"
+    const val DEV_TOOLING = "DEV_TOOLING"
     const val ADMIN = "ADMIN"
     const val FIREBASE_AUTHENTICATED = "FIREBASE_AUTHENTICATED"
 
