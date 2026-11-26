@@ -160,6 +160,33 @@ class SafetyReportControllerIntegrationTest : ControllerIT() {
     }
 
     @Test
+    fun `profile photo reports cannot distinguish a foreign photo from a missing photo`() {
+        val setup = createMatchInVisualPhase()
+        val unrelated = createMatchWithFirstChat("unrelated-photo")
+        val foreignProfile = requireNotNull(profileRepository.findByUserId(unrelated.userAId))
+        val foreignPhoto = profilePhotoRepository.findByProfileId(foreignProfile.id).first()
+
+        for (photoId in listOf(foreignPhoto.id, UUID.randomUUID())) {
+            mockMvc.perform(
+                post("/api/safety/reports")
+                    .with(authenticatedAs(setup.userAId))
+                    .contentType(jsonContentType)
+                    .content(reportJson(
+                        reportedUserId = setup.userBId,
+                        contextType = SafetyReportContextType.PROFILE_PHOTO,
+                        matchId = setup.matchId,
+                        profilePhotoId = photoId,
+                        details = "Profile photo was unsafe"
+                    ))
+            )
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.code", equalTo("SAFETY_REPORT_CONTEXT_INVALID")))
+                .andExpect(jsonPath("$.message", equalTo("Profile photo context was not found")))
+        }
+        assertTrue(safetyReportRepository.findAll().isEmpty())
+    }
+
+    @Test
     fun `creates chat report with explicit non-blocking containment`() {
         val setup = createMatchWithFirstChat()
 

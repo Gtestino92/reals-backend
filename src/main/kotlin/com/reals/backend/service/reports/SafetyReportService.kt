@@ -713,33 +713,21 @@ class SafetyReportService(
             throw invalidContext("connectionId is not supported for this context")
         }
         val match = findMatchOrInvalid(matchId)
+        val partnerId = otherParticipantOrThrow(match, reporterUserId)
         requireVisualPhaseOrLater(match)
-        val profilePhoto = profilePhotoRepository.findById(photoId)
-            .orElseThrow { invalidContext("Profile photo context was not found") }
-        val ownerProfile = profileRepository.findById(profilePhoto.profileId)
-            .orElseThrow { invalidContext("Profile photo owner was not found") }
-
-        val matchReportedUserId = otherParticipantOrThrow(
-            match = match,
-            reporterUserId = reporterUserId
-        )
-
-        if (ownerProfile.userId != matchReportedUserId) {
-            throw invalidContext("Profile photo does not belong to the matched partner")
+        requireReportedUserMatches(request.reportedUserId, partnerId)
+        val partnerProfile = profileRepository.findByUserId(partnerId)
+        if (partnerProfile == null || !profilePhotoRepository.existsByIdAndProfileId(photoId, partnerProfile.id)) {
+            throw invalidContext("Profile photo context was not found")
         }
 
-        requireReportedUserMatches(
-            requestedReportedUserId = request.reportedUserId,
-            inferredReportedUserId = ownerProfile.userId
-        )
-
         return SafetyReportContext(
-            reportedUserId = ownerProfile.userId,
+            reportedUserId = partnerId,
             chatId = null,
             matchId = match.id,
             connectionId = null,
             contextType = SafetyReportContextType.PROFILE_PHOTO,
-            contextId = profilePhoto.id
+            contextId = photoId
         )
     }
 
