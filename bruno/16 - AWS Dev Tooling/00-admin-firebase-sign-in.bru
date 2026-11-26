@@ -63,6 +63,5 @@ script:post-response {
       claims.firebase?.sign_in_provider !== "google.com" || !(claims.exp * 1000 > Date.now())) {
     throw new Error("Firebase did not return a current Google session for the configured verified administrator.");
   }
-  bru.setVar("devAdminBaseUrl", bru.getEnvVar("baseUrl"));
   bru.setVar("devAdminIdToken", body.idToken);
 }

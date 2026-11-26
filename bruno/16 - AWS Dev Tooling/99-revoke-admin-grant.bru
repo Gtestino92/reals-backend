@@ -20,5 +20,5 @@ script:post-response {
   if (res.getStatus() !== 204) {
     throw new Error("Grant revocation failed. Check the current Firebase identity and Web App Check token.");
   }
-  for (const key of ["devAdminGrant", "devAdminGrantExpiry", "devAdminIdToken", "devAdminAppCheck", "devAdminBaseUrl"]) bru.deleteVar(key);
+  for (const key of ["devAdminGrant", "devAdminGrantExpiry", "devAdminIdToken", "devAdminAppCheck", "devAdminOwner", "devAdminBaseUrl"]) bru.deleteVar(key);
 }

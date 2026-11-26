@@ -10,6 +10,13 @@ class LoginHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # Keep credentials, callbacks and response bodies out of logs.
 
+    def do_GET(self):
+        if self.path != "/local-cleanup":
+            self.send_error(404)
+            return
+        self.send_response(204)
+        self.end_headers()
+
     def do_POST(self):
         if (self.path != "/login" or self.headers.get("Host") != "127.0.0.1:8765"
                 or self.headers.get("Origin") or self.headers.get("X-Reals-Bruno") != "1"):

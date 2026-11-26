@@ -20,6 +20,7 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
     firebase: { sign_in_provider: "google.com" }, exp: Math.floor(now / 1000) + 300 };
   const token = JSON.stringify(claims);
   const grant = "g".repeat(43);
+  let exchangeResult = { idToken: token };
   const bru = {
     getAllEnvVars: () => env,
     getVar: key => runtime[key], getEnvVar: key => env[key],
@@ -29,7 +30,7 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
       assert.equal(url, "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=mock");
       assert.equal(data.autoCreate, false);
       assert.equal(data.postBody, "providerId=google.com&id_token=" + encodeURIComponent(token));
-      return { data: { idToken: token } };
+      return { data: exchangeResult };
     }
   };
   async function script(number, phase, body, status = 200, folder = false) {
@@ -45,15 +46,23 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   const guard = number => script(number, "pre-request", null, 200, true);
   const post = (number, body, status) => script(number, "post-response", body, status);
   await assert.rejects(guard("60"));
+  await guard("00b");
   await script("00b", "pre-request");
   await assert.rejects(post("00b", {}));
   await post("00b", { token });
   await script("00", "pre-request");
   await assert.rejects(post("00", { credential: JSON.stringify({ ...claims, email_verified: false }) }));
+  exchangeResult = { error: { message: "USER_NOT_FOUND" } };
+  await assert.rejects(post("00", { credential: token }));
+  exchangeResult = { idToken: token, isNewUser: true };
+  await assert.rejects(post("00", { credential: token }));
+  assert.equal(runtime.devAdminIdToken, "");
+  exchangeResult = { idToken: token };
   await post("00", { credential: token });
   await guard("05");
   await post("05", { configured: true, grantValid: false });
   await assert.rejects(guard("60"));
+  await assert.rejects(guard("99"), /No local grant/);
   await guard("06");
   await assert.rejects(post("06", { grant, expiresAt: new Date(now).toISOString() }));
   const verified = { grant, expiresAt: new Date(now + 120000).toISOString() };
@@ -61,7 +70,7 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   await post("05", { configured: true, grantValid: true });
   for (const [number, source] of requests) {
     assert.doesNotMatch(source, /vars:pre-request|process\.env/);
-    if (!(Number(number) >= 10)) continue;
+    if (number === "98" || !(Number(number) >= 10)) continue;
     await guard(number);
     const headers = bru.interpolate(source.match(/headers \{([\s\S]*?)\n\}/)[1]);
     assert.ok(headers.includes("Authorization: Bearer " + token));
@@ -77,6 +86,13 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   delete runtime.devChatId;
   runtime.devAdminGrantExpiry = new Date(now).toISOString();
   await assert.rejects(guard("60"));
+  await guard("99");
+  for (const key of ["firebase_admin_email", "firebase_admin_expected_uid", "firebase_api_key", "firebase_project_number", "firebase_admin_web_app_id"]) {
+    const original = env[key];
+    env[key] += "-different";
+    await assert.rejects(guard("99"), /original DEV configuration/);
+    env[key] = original;
+  }
   runtime.devAdminAppCheck = JSON.stringify({ exp: 0 });
   await assert.rejects(guard("06"));
   await post("00b", { token });
@@ -88,5 +104,14 @@ test("fresh hosted DEV session, protected routes, recovery and revoke", async ()
   assert.equal(runtime.devAdminGrant, grant);
   await post("99", {}, 204);
   assert.deepEqual(runtime, {});
+  runtime.devAdminGrant = grant;
+  runtime.devAdminIdToken = JSON.stringify({ exp: 0 });
+  await guard("98");
+  assert.deepEqual(runtime, {});
   await assert.rejects(guard("60"));
+  await guard("00b");
+  await post("00b", { token });
+  env.firebase_admin_expected_uid = "different";
+  await guard("00");
+  assert.equal(runtime.devAdminAppCheck, undefined);
 });

@@ -13,23 +13,42 @@ docs {
 
 script:pre-request {
   const number = req.getName().split(" ")[0];
-  if (number !== "00" && number !== "00b") {
-    for (const key of Object.keys(bru.getAllEnvVars())) {
+  const sessionKeys = ["devAdminIdToken", "devAdminAppCheck", "devAdminGrant", "devAdminGrantExpiry",
+    "devAdminOwner", "devAdminBaseUrl"];
+  if (number === "98") {
+    for (const key of sessionKeys) bru.deleteVar(key);
+    return;
+  }
+  const owner = JSON.stringify(["baseUrl", "firebase_api_key", "firebase_project_number", "firebase_admin_web_app_id",
+    "firebase_admin_expected_uid", "firebase_admin_email"].map(key => bru.getEnvVar(key)));
+  if (number === "00" || number === "00b") {
+    if (owner !== bru.getVar("devAdminOwner")) {
+      for (const key of sessionKeys) bru.deleteVar(key);
+      bru.setVar("devAdminOwner", owner);
+    }
+  } else {
+    if (owner !== bru.getVar("devAdminOwner")) {
+      throw new Error("Select the session's original DEV configuration, or send 00b and 00 to start a new session. Use 98 for local cleanup.");
+    }
+    for (const key of number === "99" ? [] : Object.keys(bru.getAllEnvVars())) {
       if (/^(dev.*Id|matchUser[AB]Id|maxPairsPerRun|profilePhotoReview(PhotoId|Version))$/.test(key) &&
           bru.interpolate("{{" + key + "}}") !== bru.getEnvVar(key)) {
         throw new Error("Remove the override for " + key + " and use the selected environment.");
       }
     }
     const base = bru.getEnvVar("baseUrl");
-    if (!base || base !== bru.interpolate("{{baseUrl}}") || base !== bru.getVar("devAdminBaseUrl")) {
+    if (!base || base !== bru.interpolate("{{baseUrl}}")) {
       throw new Error("Select the original DEV environment or run 00 for this baseUrl. Remove any baseUrl override.");
     }
     const deadline = token => require("jsonwebtoken").decode(token || "")?.exp * 1000;
-    if (!(deadline(bru.getVar("devAdminIdToken")) > Date.now())) throw new Error("Run 00 Google Admin Sign In.");
+    if (!(deadline(bru.getVar("devAdminIdToken")) > Date.now())) throw new Error("Run 00 Google Admin Sign In, or 98 to clear the local session.");
     if (!["03", "04"].includes(number) && !(deadline(bru.getVar("devAdminAppCheck")) > Date.now())) {
       throw new Error("Run 00b to exchange a fresh Web App Check credential.");
     }
-    if (Number(number) >= 10 && (!bru.getVar("devAdminGrant") || !(Date.parse(bru.getVar("devAdminGrantExpiry")) > Date.now()))) {
+    if (number === "99" && !bru.getVar("devAdminGrant")) {
+      throw new Error("No local grant to revoke. Send 98 to clear this session.");
+    }
+    if (number !== "99" && Number(number) >= 10 && (!bru.getVar("devAdminGrant") || !(Date.parse(bru.getVar("devAdminGrantExpiry")) > Date.now()))) {
       throw new Error("Run 00 and 06 for a fresh Google session and TOTP grant.");
     }
   }
