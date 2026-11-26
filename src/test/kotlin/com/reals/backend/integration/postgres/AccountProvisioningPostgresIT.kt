@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit
 @AutoConfigureMockMvc
 @TestPropertySource(properties = [
     "security.account-provisioning-limit.enabled=true",
+    "security.client-ip.trusted-proxies=10.0.0.5",
     "security.account-provisioning-limit.hmac-secret=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
     "security.account-provisioning-limit.cleanup-batch-size=2"
 ])
@@ -158,6 +159,23 @@ class AccountProvisioningPostgresIT : PostgresITBase() {
             .andDo { assertTrue(it.response.getHeader("Retry-After")!!.toLong() in 86390..86400) }
         mvc.perform(request("http-0")).andExpect(status().isCreated)
         assertEquals(3, count())
+    }
+
+    @Test
+    fun `HTTP provisioning quota uses the verified peer client address`() {
+        fun request(client: String) = post("/api/me/provision")
+            .with(authentication(UsernamePasswordAuthenticationToken(
+                FirebasePrincipal(UUID.randomUUID().toString(), null, false), null,
+                listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_FIREBASE_AUTHENTICATED))
+            )))
+            .with { it.remoteAddr = "10.0.0.5"; it }
+            .header("X-Real-IP", client)
+            .header("X-Forwarded-For", "198.51.100.1")
+
+        seed(0, 3)
+        mvc.perform(request(ip)).andExpect(status().isTooManyRequests)
+        mvc.perform(request("192.0.2.2")).andExpect(status().isCreated)
+        assertEquals(4, count())
     }
 
     @Test

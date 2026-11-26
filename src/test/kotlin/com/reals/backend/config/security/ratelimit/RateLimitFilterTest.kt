@@ -407,6 +407,22 @@ class RateLimitFilterTest {
     }
 
     @Test
+    fun `trusted ingress separates password reset buckets by resolved client`() {
+        val configured = RateLimitProperties(passwordResetEnabled = true)
+        val filter = RateLimitFilter(
+            configured, RateLimitRuleResolver(configured), exposurePolicy,
+            clientIpResolver = com.reals.backend.config.security.ClientIpResolver("10.0.0.1")
+        )
+        fun reset(client: String) = passwordResetRequest("10.0.0.1").apply {
+            addHeader("X-Real-IP", client)
+            addHeader("X-Forwarded-For", "203.0.113.100")
+        }
+        repeat(10) { assertEquals(200, runPreAuth(filter, reset("192.0.2.1"))) }
+        assertEquals(429, runPreAuth(filter, reset("192.0.2.1")))
+        assertEquals(200, runPreAuth(filter, reset("192.0.2.2")))
+    }
+
+    @Test
     fun `dedicated reset is opt in and local exemptions and disabled limiter are preserved`() {
         assertFalse(RateLimitProperties().passwordResetEnabled)
         assertEquals(properties.preAuthCapacity, preAuthFilter().preAuthenticationRule(passwordResetRequest("10.0.0.1")).capacity)

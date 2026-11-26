@@ -46,6 +46,7 @@ management:
 
 server:
   port: ${PORT:8080}
+  forward-headers-strategy: none
 
 backoffice:
   admin-emails: ${BACKOFFICE_ADMIN_EMAILS:}
@@ -367,6 +368,8 @@ notifications:
     remaining-percentage: 40
 
 security:
+  client-ip:
+    trusted-proxies: ${TRUSTED_CLIENT_IP_PROXIES:}
   cors:
     allowed-origins: ${REALS_CORS_ALLOWED_ORIGINS:}
   firebase-auth:
