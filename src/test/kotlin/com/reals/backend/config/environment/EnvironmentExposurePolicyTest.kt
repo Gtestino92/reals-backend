@@ -55,6 +55,11 @@ class EnvironmentExposurePolicyTest {
         val environment = MockEnvironment().withProperty("local-dev.remote-tooling-enabled", "true")
         environment.setActiveProfiles("dev")
         assertEquals(true, EnvironmentExposurePolicy(environment).devAdminToolingAllowed())
+        assertEquals(false, EnvironmentExposurePolicy(environment).devPasswordToolingAllowed())
+        environment.setProperty("local-dev.password-auth-enabled", "true")
+        assertEquals(true, EnvironmentExposurePolicy(environment).devPasswordToolingAllowed())
+        environment.setActiveProfiles("prod")
+        assertEquals(false, EnvironmentExposurePolicy(environment).devPasswordToolingAllowed())
         environment.setActiveProfiles("dev", "prod")
         assertEquals(false, EnvironmentExposurePolicy(environment).devAdminToolingAllowed())
     }

@@ -32,7 +32,7 @@ they do not add a second execution profile.
 `/api/local-dev/**` is tooling for controlled Bruno/manual verification. It
 remains unauthenticated in `local-nodb`, `local-postgres` and
 `local-firebase`. Hosted `dev` requires `DEV_REMOTE_TOOLING_ENABLED=true`, a
-verified Google administrator session, verified Web App Check and a current
+verified Google (or explicitly enabled DEV password) administrator session, verified Web App Check and a current
 TOTP grant. `prod` and `test` deny the route prefix, and
 `prod` does not register the real `Dev*` controllers.
 

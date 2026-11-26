@@ -23,7 +23,7 @@ BACKOFFICE_ALLOWED_WEB_APP_IDS accepts only Firebase `1:<number>:web:<id>` ident
 A Web App ID identifies an application, not one computer or physical device.
 
 All /api/admin/** routes use the same boundary, including moderation, appeals and diagnostics.
-Hosted `dev` applies the same boundary to `/api/local-dev/**` when
+Hosted `dev` also accepts Google backoffice grants on `/api/local-dev/**` when
 `DEV_REMOTE_TOOLING_ENABLED=true`. The flag defaults to false. Local execution
 profiles keep their unauthenticated tooling. Production tooling and Actuator
 info/metrics are explicitly denied. The hosted Dev rollout checklist is in
@@ -42,7 +42,7 @@ info/metrics are explicitly denied. The hosted Dev rollout checklist is in
 | ADMIN_MFA_MAX_FAILED_ATTEMPTS | 5 | 1?20 failures per window |
 | ADMIN_MFA_FAILURE_WINDOW_SECONDS | 600 | Fixed attempt window, 1?86400 seconds |
 | ADMIN_MFA_LOCKOUT_SECONDS | 900 | Temporary lockout, 1?86400 seconds |
-| ADMIN_MFA_MAX_AUTH_AGE_SECONDS | 300 | Google auth age for issuance, 1?300 seconds |
+| ADMIN_MFA_MAX_AUTH_AGE_SECONDS | 300 | Verified authentication age for issuance, 1?300 seconds |
 
 Empty allowlists or secret disable administration without changing USER behavior. Invalid
 nonempty secret, version, numeric limits, multiple identities or non-Web IDs fail startup.
@@ -107,7 +107,7 @@ On rollout, use the existing operator revocation procedure if restrictions were 
 this patch: the new integration does not replay historical restrictions or reset existing MFA state.
 
 Tokens use 32 SecureRandom bytes, URL-safe Base64 without padding; only SHA-256 hashes persist.
-Grants bind local user, UID, GOOGLE provider, verified auth_time, Web App ID and factor fingerprint.
+Ordinary backoffice grants bind local user, UID, GOOGLE provider, verified auth_time, Web App ID and factor fingerprint.
 ID-token refresh preserves auth_time and never extends the absolute grant deadline. Valid only
 while now < expiresAt; equality expires. Provider, identity, ban, app or factor changes deny use.
 The factor fingerprint hashes the configured version and high-entropy secret; no TOTP secret
@@ -209,3 +209,12 @@ git diff --check
 
 Compilation succeeded. OpenAPI YAML and all internal references resolved; added/modified text
 passed the UTF-8/mojibake inspection. The unrestricted Maven suite was not run.
+
+## Hosted DEV password tooling
+
+On the dev execution profile, both remote-tooling flags must be enabled to use
+the verified Firebase password provider on the three MFA session endpoints and
+`/api/local-dev/**`. V50 preserves existing Google grants as BACKOFFICE and
+binds password grants to DEV_TOOLING. The latter grant supplies only tooling
+authority. The user lock, TOTP replay guard, auth-time freshness, App Check
+binding and revocation rules are shared. [DEV setup](dev-deployment.md#railway-dev-remote-tooling)

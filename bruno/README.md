@@ -28,9 +28,9 @@ The first request generates unique test emails and a future half-hour second-cha
 - `10 Local Dev Jobs`: local-only manual triggers for periodic jobs, including user reliability cleanup.
 - `12 User Reliability Debug`: local/dev-only Firebase sign-in/provision setup and read requests for `GET /api/local-dev/user-reliability/{userId}`.
 - `14 Second Chat Attendance Debug`: local-only second-chat attendance, no-show and conversation-lifecycle helpers, including forced join windows, explicit joins, no-show claims, mutual-completion requests, inactivity claims, forced request expiry, status inspection and lifecycle-job execution.
-- `16 AWS Dev Tooling`: hosted DEV Web App Check exchange, browser Google sign-in, TOTP, authenticated `/api/local-dev/**` triggers and admin moderation helpers.
+- `16 AWS Dev Tooling`: hosted DEV Web App Check exchange, direct Firebase password sign-in, TOTP, authenticated `/api/local-dev/**` triggers and admin moderation helpers.
 
-Hosted tooling requires the Dev enablement flag, a verified Google admin
+Hosted tooling requires the Dev enablement flags, an allowlisted verified admin
 session, Web App Check and a recent TOTP grant. Local profiles keep their
 unauthenticated tooling. Follow the [Hosted Dev Tooling runbook](16%20-%20AWS%20Dev%20Tooling/README.md).
 

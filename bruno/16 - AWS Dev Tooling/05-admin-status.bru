@@ -19,7 +19,7 @@ headers {
 script:post-response {
   const body = res.getBody();
   if (res.getStatus() !== 200 || body?.configured !== true || typeof body.grantValid !== "boolean") {
-    throw new Error("Administrative status failed. Check the Google identity, Web App Check and MFA configuration.");
+    throw new Error("Administrative status failed. Check the administrator identity, Web App Check and MFA configuration.");
   }
   if (!body.grantValid) bru.setVar("devAdminGrant", "");
 }

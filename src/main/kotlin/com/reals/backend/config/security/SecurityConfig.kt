@@ -127,7 +127,7 @@ class SecurityConfig(
                         auth.requestMatchers("/api/local-dev/**").permitAll()
                     }
                     environmentExposurePolicy.devAdminToolingAllowed() -> {
-                        auth.requestMatchers("/api/local-dev/**").hasRole(SecurityRoles.ADMIN)
+                        auth.requestMatchers("/api/local-dev/**").hasAnyRole(SecurityRoles.ADMIN, SecurityRoles.DEV_TOOLING)
                     }
                     else -> {
                         auth.requestMatchers("/api/local-dev/**").denyAll()

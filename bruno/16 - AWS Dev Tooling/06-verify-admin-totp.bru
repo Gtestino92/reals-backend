@@ -25,7 +25,7 @@ script:post-response {
   const body = res.getBody();
   if (res.getStatus() !== 200 || !/^[A-Za-z0-9_-]{43}$/.test(body?.grant) ||
       !(Date.parse(body?.expiresAt) > Date.now())) {
-    throw new Error("TOTP verification failed. Repeat 00 for fresh Google authentication, use a fresh code and honor Retry-After on lockout.");
+    throw new Error("TOTP verification failed. Repeat 00 for fresh password authentication, use a fresh code and honor Retry-After on lockout.");
   }
   bru.setVar("devAdminGrant", body.grant);
   bru.setVar("devAdminGrantExpiry", body.expiresAt);

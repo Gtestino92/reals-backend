@@ -9,6 +9,7 @@ import com.reals.backend.config.security.SecurityRoles
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.domain.PenaltyType
 import com.reals.backend.domain.User
+import com.reals.backend.domain.UserAuthOrigin
 import com.reals.backend.domain.UserStatus
 import com.reals.backend.service.AuthOriginPolicy
 import com.reals.backend.service.EffectiveAccountBan
@@ -114,10 +115,17 @@ class FirebaseTokenFilter(
                 return
             }
 
+            val passwordTooling = signInProvider == FirebaseSignInProvider.PASSWORD &&
+                environmentExposurePolicy.devPasswordToolingAllowed() &&
+                (path.startsWith("/api/local-dev/") || path in setOf("/api/admin-auth/status", "/api/admin-auth/verify", "/api/admin-auth/revoke"))
             val user = userService.findByFirebaseUid(decoded.uid)
 
+            // An existing Google-origin administrator may use a separately linked password only
+            // on the opt-in tooling paths. The administrative eligibility checks below still apply.
+            val linkedToolingPassword = passwordTooling && user?.status == UserStatus.ACTIVE &&
+                user.authOrigin == UserAuthOrigin.GOOGLE
             if (
-                user != null &&
+                user != null && !linkedToolingPassword &&
                 !AuthOriginPolicy.authenticationAllowed(user.authOrigin, signInProvider)
             ) {
                 SecurityContextHolder.clearContext()
@@ -194,7 +202,8 @@ class FirebaseTokenFilter(
                 val appId = request.getAttribute(FirebaseAppCheckFilter.VALID_APP_ID_ATTRIBUTE) as? String
                 val authTime = (decoded.claims["auth_time"] as? Number)?.toLong()
                 val identity = if (user != null && appId != null && authTime != null)
-                    AdminRequestIdentity(user.id, decoded.uid, decoded.email, decoded.isEmailVerified, signInProvider, authTime, appId)
+                    AdminRequestIdentity(user.id, decoded.uid, decoded.email, decoded.isEmailVerified, signInProvider, authTime, appId,
+                        if (passwordTooling) AdminGrantScope.DEV_TOOLING else AdminGrantScope.BACKOFFICE)
                     else null
                 val eligible = identity != null && adminAccessService?.eligible(identity) == true
                 var grantError: String? = "ADMIN_ACCESS_DENIED"
@@ -238,7 +247,7 @@ class FirebaseTokenFilter(
                             firebaseUid = decoded.uid,
                             firebaseEmail = decoded.email,
                             firebaseEmailVerified = decoded.isEmailVerified
-                        ) + if (adminGranted) listOf(SimpleGrantedAuthority(SecurityRoles.ROLE_ADMIN)) else emptyList()
+                        ) + if (adminGranted) listOf(SimpleGrantedAuthority(if (passwordTooling) "ROLE_${SecurityRoles.DEV_TOOLING}" else SecurityRoles.ROLE_ADMIN)) else emptyList()
                     )
                 }
         } catch (ex: FirebaseAuthException) {

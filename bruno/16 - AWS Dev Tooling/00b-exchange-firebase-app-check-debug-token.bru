@@ -16,14 +16,14 @@ headers {
 
 body:json {
   {
-    "debugToken": "{{?Registered DEV Web App Check debug secret}}",
+    "debugToken": "{{firebase_app_check_debug_token}}",
     "limitedUse": false
   }
 }
 
 script:pre-request {
   bru.setVar("devAdminAppCheck", "");
-  for (const key of ["firebase_api_key", "firebase_project_number", "firebase_admin_web_app_id"]) {
+  for (const key of ["firebase_api_key", "firebase_project_number", "firebase_admin_web_app_id", "firebase_app_check_debug_token"]) {
     const value = bru.getEnvVar(key);
     if (!value?.trim() || value.startsWith("paste-") || value !== bru.interpolate("{{" + key + "}}")) {
       throw new Error("Set " + key + " in the active environment and remove any override.");

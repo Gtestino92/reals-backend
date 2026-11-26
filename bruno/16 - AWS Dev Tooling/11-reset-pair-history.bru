@@ -26,7 +26,7 @@ body:json {
 script:post-response {
   const status = res.getStatus();
   if (status === 401) {
-    throw new Error("Check the Firebase Google ID token and Web App Check token.");
+    throw new Error("Check the Firebase ID token and Web App Check token.");
   }
   if (status === 403) {
     throw new Error("Check the hosted Dev flag and run 05 Admin Status to verify administrative access and grant validity.");

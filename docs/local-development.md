@@ -520,7 +520,7 @@ application.
 
 In `local-nodb`, `local-postgres` and `local-firebase`, these endpoints are
 available without authentication. Hosted `dev` requires an explicit opt-in,
-verified Google administrator identity, verified Web App Check and a current
+verified Google (or explicitly enabled DEV password) administrator identity, verified Web App Check and a current
 TOTP grant. See [administrative authentication](admin-auth.md).
 In `prod`, the real `Dev*` controllers are
 not registered and Spring Security explicitly denies `/api/local-dev/**`, even

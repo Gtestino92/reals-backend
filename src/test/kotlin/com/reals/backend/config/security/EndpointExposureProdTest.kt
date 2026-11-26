@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @WebMvcTest(
     controllers = [EndpointExposureProdTest.ProbeController::class],
-    properties = ["local-dev.remote-tooling-enabled=true"],
+    properties = ["local-dev.remote-tooling-enabled=true", "local-dev.password-auth-enabled=true"],
     excludeFilters = [
         ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
@@ -46,6 +46,9 @@ class EndpointExposureProdTest {
             .andExpect(status().isUnauthorized)
 
         mockMvc.perform(get("/api/local-dev/probe").with(user("user").roles("USER")))
+            .andExpect(status().isForbidden)
+
+        mockMvc.perform(get("/api/local-dev/probe").with(user("tool").roles("DEV_TOOLING")))
             .andExpect(status().isForbidden)
 
         mockMvc.perform(get("/api/local-dev/probe").with(user("admin").roles("ADMIN")))
