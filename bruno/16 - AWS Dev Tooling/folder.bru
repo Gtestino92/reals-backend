@@ -10,3 +10,27 @@ docs {
 
   Follow the README for environment setup and the request order. Send individual requests because this folder includes Dev mutations.
 }
+
+script:pre-request {
+  const number = req.getName().split(" ")[0];
+  if (number !== "00" && number !== "00b") {
+    for (const key of Object.keys(bru.getAllEnvVars())) {
+      if (/^(dev.*Id|matchUser[AB]Id|maxPairsPerRun|profilePhotoReview(PhotoId|Version))$/.test(key) &&
+          bru.interpolate("{{" + key + "}}") !== bru.getEnvVar(key)) {
+        throw new Error("Remove the override for " + key + " and use the selected environment.");
+      }
+    }
+    const base = bru.getEnvVar("baseUrl");
+    if (!base || base !== bru.interpolate("{{baseUrl}}") || base !== bru.getVar("devAdminBaseUrl")) {
+      throw new Error("Select the original DEV environment or run 00 for this baseUrl. Remove any baseUrl override.");
+    }
+    const deadline = token => require("jsonwebtoken").decode(token || "")?.exp * 1000;
+    if (!(deadline(bru.getVar("devAdminIdToken")) > Date.now())) throw new Error("Run 00 Google Admin Sign In.");
+    if (!["03", "04"].includes(number) && !(deadline(bru.getVar("devAdminAppCheck")) > Date.now())) {
+      throw new Error("Run 00b to exchange a fresh Web App Check credential.");
+    }
+    if (Number(number) >= 10 && (!bru.getVar("devAdminGrant") || !(Date.parse(bru.getVar("devAdminGrantExpiry")) > Date.now()))) {
+      throw new Error("Run 00 and 06 for a fresh Google session and TOTP grant.");
+    }
+  }
+}

@@ -246,7 +246,9 @@ FIREBASE_APP_CHECK_MODE=MONITOR
   the email is verified and the backend user is active and unrestricted.
   Use the existing TOTP factor and protect its secret and version in Railway.
 - For Bruno debug exchange, use an already registered debug secret for the
-  allowlisted Web app. Keep the debug secret on the operator's workstation.
+  allowlisted Web app. Enter the secret at the 00b prompt. Start the local Google
+  login helper with a Desktop OAuth client accepted by the DEV Firebase project.
+  Send 00, then 06. Use 05 before and after TOTP to inspect grant status.
 - After rollout, follow the
   [Bruno request order](../bruno/16%20-%20AWS%20Dev%20Tooling/README.md#request-order).
   Verify read-only administrative status first and use Dev fixtures for job

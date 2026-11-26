@@ -11,8 +11,8 @@ post {
 }
 
 headers {
-  Authorization: Bearer {{firebase_admin_id_token}}
-  X-Firebase-AppCheck: {{firebase_app_check_token}}
+  Authorization: Bearer {{devAdminIdToken}}
+  X-Firebase-AppCheck: {{devAdminAppCheck}}
 }
 
 body:json {
@@ -21,18 +21,12 @@ body:json {
   }
 }
 
-script:pre-request {
-  const token = bru.getVar("firebase_admin_id_token");
-  if (!token || bru.getVar("firebase_admin_status_token") !== token) {
-    throw new Error("Run 00 Validate Firebase Google ID Token and 05 Admin Status first.");
-  }
-}
-
 script:post-response {
   const body = res.getBody();
   if (res.getStatus() !== 200 || !/^[A-Za-z0-9_-]{43}$/.test(body?.grant) ||
-      !Number.isFinite(Date.parse(body?.expiresAt))) {
-    throw new Error("TOTP verification failed. Check the response status and honor Retry-After if present.");
+      !(Date.parse(body?.expiresAt) > Date.now())) {
+    throw new Error("TOTP verification failed. Repeat 00 for fresh Google authentication, use a fresh code and honor Retry-After on lockout.");
   }
-  bru.setVar("firebase_admin_grant", body.grant);
+  bru.setVar("devAdminGrant", body.grant);
+  bru.setVar("devAdminGrantExpiry", body.expiresAt);
 }
