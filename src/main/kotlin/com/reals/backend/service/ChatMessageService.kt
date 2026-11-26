@@ -404,6 +404,17 @@ class ChatMessageService(
             page
         }
 
+    fun requireReadableMediaChat(chatId: UUID) {
+        val status = chatRepository.findStatusById(chatId) ?: throw chatAccessService.chatNotFound()
+        chatLifecycleService.validateChatReadable(status)
+    }
+
+    fun isReadableHistoryPairBlocked(chatId: UUID): Boolean {
+        val chat = chatAccessService.findByIdOrThrow(chatId)
+        chatLifecycleService.validateChatReadable(chat)
+        return chatAccessService.isChatPairBlocked(chat)
+    }
+
     private fun getMessagesMeasured(
         chatId: UUID,
         userId: UUID,

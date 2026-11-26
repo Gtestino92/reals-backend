@@ -500,8 +500,10 @@ class ChatLifecycleService(
         }
     }
 
-    fun validateChatReadable(chat: Chat) {
-        if (chat.status == ChatStatus.CLOSED) {
+    fun validateChatReadable(chat: Chat) = validateChatReadable(chat.status)
+
+    fun validateChatReadable(status: ChatStatus) {
+        if (status == ChatStatus.CLOSED) {
             throw chatNotAvailable()
         }
     }

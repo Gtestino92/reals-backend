@@ -59,8 +59,9 @@ class ChatAccessService(
         }
     }
 
-    fun isChatPairBlocked(chatId: UUID): Boolean {
-        val chat = findByIdOrThrow(chatId)
+    fun isChatPairBlocked(chatId: UUID): Boolean = isChatPairBlocked(findByIdOrThrow(chatId))
+
+    fun isChatPairBlocked(chat: Chat): Boolean {
         val match = matchService.findByIdOrThrow(chat.matchId)
         return userBlockService.isBlockedPair(match.userAId, match.userBId)
     }
