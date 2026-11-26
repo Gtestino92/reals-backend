@@ -11,6 +11,7 @@ import java.util.UUID
 
 interface ProfilePhotoRepository : JpaRepository<ProfilePhoto, UUID> {
     fun findByProfileId(profileId: UUID): List<ProfilePhoto>
+    fun existsByIdAndProfileId(id: UUID, profileId: UUID): Boolean
     fun findByProfileIdAndPosition(profileId: UUID, position: Int): ProfilePhoto?
     fun findTop100ByModerationStatusOrderByCreatedAtAsc(
         moderationStatus: PhotoModerationStatus

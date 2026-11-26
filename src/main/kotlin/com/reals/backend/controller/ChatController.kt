@@ -13,7 +13,6 @@ import com.reals.backend.service.ChatAudioSendResult
 import com.reals.backend.service.ChatAudioService
 import com.reals.backend.service.ChatAudioUploadGuard
 import com.reals.backend.service.ChatMessageService
-import com.reals.backend.service.ChatAccessService
 import com.reals.backend.service.ChatMessageReplyPreviewResolver
 import com.reals.backend.service.ChatService
 import com.reals.backend.service.LegalComplianceService
@@ -38,7 +37,6 @@ import java.util.*
 class ChatController(
     private val chatService: ChatService,
     private val chatMessageService: ChatMessageService,
-    private val chatAccessService: ChatAccessService,
     private val userBlockService: UserBlockService,
     private val chatAudioService: ChatAudioService,
     private val chatAudioUploadGuard: ChatAudioUploadGuard,
@@ -231,11 +229,12 @@ class ChatController(
                 limit = limit
             )
 
+            val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
             val body = ChatMessagesResponse.from(
                     messages = page.messages,
                     hasMore = page.hasMore,
                     audioUrlResolver = participantAudioResolver(page.messages, userId),
-                    replyPreviews = chatMessageReplyPreviewResolver.resolveFor(page.messages)
+                    replyPreviews = replyPreviews
                 )
             return participantHistoryResponse(chatId, userId, page.messages, body)
         }
@@ -255,9 +254,8 @@ class ChatController(
         messages: List<ChatMessage>,
         body: Any
     ): ResponseEntity<Any> {
-        // Recheck after URL issuance, including empty pages. Blocks are irreversible, so a
-        // later restriction must never turn a selected counterpart audio row into a 200.
-        val restricted = chatAccessService.isChatPairBlocked(chatId)
+        // Recheck after signing, including empty pages, before returning the response.
+        val restricted = chatMessageService.isReadableHistoryPairBlocked(chatId)
         if (restricted && messages.any { it.messageType == ChatMessageType.AUDIO && it.senderId != viewerId }) {
             throw DomainConflictException(
                 code = DomainErrorCode.USER_PAIR_BLOCKED,
@@ -404,20 +402,30 @@ class ChatController(
         )
 
     private fun participantAudioResolver(messages: List<ChatMessage>, viewerId: UUID): (ChatMessage) -> String {
-        // All messages in a participant response belong to the same two-person chat.
-        // If a block committed after page selection, reject the stale response before signing.
-        messages.firstOrNull { it.messageType == ChatMessageType.AUDIO && it.senderId != viewerId }?.let {
-            userBlockService.requirePairNotBlocked(viewerId, it.senderId)
+        // A page belongs to one chat and has at most one counterpart.
+        messages.firstOrNull { it.messageType == ChatMessageType.AUDIO }?.let {
+            chatMessageService.requireReadableMediaChat(it.chatSessionId)
+            messages.firstOrNull { message -> message.messageType == ChatMessageType.AUDIO && message.senderId != viewerId }
+                ?.let { message -> userBlockService.requirePairNotBlocked(viewerId, message.senderId) }
         }
         return ::audioReadUrl
     }
 
-    private fun messageResponse(message: ChatMessage, viewerId: UUID): ChatMessageResponse =
-        ChatMessageResponse.from(
+    private fun messageResponse(message: ChatMessage, viewerId: UUID): ChatMessageResponse {
+        val replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
+        val body = ChatMessageResponse.from(
             m = message,
             audioUrlResolver = participantAudioResolver(listOf(message), viewerId),
-            replyTo = chatMessageReplyPreviewResolver.resolveFor(listOf(message))[message.id]
+            replyTo = replyTo
         )
+        if (message.messageType == ChatMessageType.AUDIO) {
+            chatMessageService.requireReadableMediaChat(message.chatSessionId)
+            if (message.senderId != viewerId) {
+                userBlockService.requirePairNotBlocked(viewerId, message.senderId)
+            }
+        }
+        return body
+    }
 
     private fun messageResponses(messages: List<ChatMessage>, viewerId: UUID): List<ChatMessageResponse> {
         val replyPreviews = chatMessageReplyPreviewResolver.resolveFor(messages)

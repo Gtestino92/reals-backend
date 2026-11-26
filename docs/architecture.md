@@ -364,7 +364,7 @@ Do not introduce these as side effects of refactors.
 
 ## Persistent provisioning admission
 
-`MeController` passes the servlet client address into `UserService`'s existing
+`MeController` passes the resolved client IP into `UserService`'s existing
 transaction/retry flow. `AccountProvisioningLimiter` serializes enabled attempts
 by UID then HMAC network origin using transaction-scoped PostgreSQL advisory
 locks. Only the new-user branch checks rolling quotas and inserts an event in

@@ -1,6 +1,7 @@
 package com.reals.backend.controller
 
 import com.reals.backend.config.security.authentication.FirebasePrincipal
+import com.reals.backend.config.security.ClientIpResolver
 import com.reals.backend.config.security.currentuser.CurrentUserAuthContext
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.HomePendingStateResponse
@@ -24,7 +25,8 @@ import java.util.UUID
 class MeController(
     private val userService: UserService,
     private val meHomeService: MeHomeService,
-    private val homeStatusService: HomeStatusService
+    private val homeStatusService: HomeStatusService,
+    private val clientIpResolver: ClientIpResolver
 ) {
 
     @GetMapping("/api/me")
@@ -143,7 +145,7 @@ class MeController(
             email = firebasePrincipal.email,
             emailVerified = firebasePrincipal.emailVerified,
             signInProvider = firebasePrincipal.signInProvider,
-            remoteAddr = request.remoteAddr
+            remoteAddr = clientIpResolver.resolve(request)
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(

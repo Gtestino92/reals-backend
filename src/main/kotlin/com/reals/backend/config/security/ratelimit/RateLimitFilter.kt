@@ -1,6 +1,7 @@
 package com.reals.backend.config.security.ratelimit
 
 import com.reals.backend.config.security.preventAdministrativeCaching
+import com.reals.backend.config.security.ClientIpResolver
 import com.reals.backend.config.environment.EnvironmentExposurePolicy
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -17,7 +18,8 @@ class RateLimitFilter(
     private val properties: RateLimitProperties,
     private val ruleResolver: RateLimitRuleResolver,
     private val environmentExposurePolicy: EnvironmentExposurePolicy,
-    private val rateLimitMetrics: RateLimitMetrics = RateLimitMetrics.noop()
+    private val rateLimitMetrics: RateLimitMetrics = RateLimitMetrics.noop(),
+    private val clientIpResolver: ClientIpResolver = ClientIpResolver("")
 ) : OncePerRequestFilter() {
 
     private val buckets = tokenBucketCache()
@@ -87,7 +89,7 @@ class RateLimitFilter(
     }
 
     internal fun rateLimitKey(request: HttpServletRequest, rule: RateLimitRule = preAuthenticationRule(request)): String =
-        "pre-auth:${rule.id}:ip:${request.remoteAddr ?: "unknown"}"
+        "pre-auth:${rule.id}:ip:${clientIpResolver.resolve(request) ?: "unknown"}"
 
     internal fun preAuthenticationRule(request: HttpServletRequest): RateLimitRule {
         if (request.normalizedPath() == "/api/admin-auth/verify") {
