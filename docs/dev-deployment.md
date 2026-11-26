@@ -262,6 +262,10 @@ FIREBASE_APP_CHECK_MODE=MONITOR
 
 ## GHCR Image
 
+The Docker build uses Maven's default Central repository for the Spring Boot
+parent POM. GitHub Actions exports the dependency prefetch layer so builds
+with the same POM can reuse those artifacts across runners.
+
 GitHub Actions publishes images on pushes to `development` and `master`:
 
 ```text
