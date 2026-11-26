@@ -870,3 +870,13 @@ remain unchanged. Never display raw server exceptions or persist tokens. Actuato
 are denied. Enabled hosted Dev tooling uses the same administrative error codes.
 
 Administrative verification infrastructure failures also return 503 ADMIN_AUTHENTICATION_UNAVAILABLE, without raw exception details; retry with backoff.
+
+## Voluntary shared contacts
+
+All operations use the authenticated owner. `GET /api/me/shared-contacts` returns requiredConsentVersion, acceptedConsentVersion, acceptedAt, state, syncedAt and importAvailable. A null accepted version means no consent. `NOT_CONFIGURED` includes consent accepted without an imported set. `SYNCED` includes an explicitly imported empty set. `RESYNC_REQUIRED` identifies an obsolete imported version.
+
+- `PUT /api/me/shared-contacts/consent` accepts the current integer version for both ranking and disclosure. Login, provider permission and general legal acceptance cannot substitute. A new consent version requires a new selection.
+- `PUT /api/me/shared-contacts/selection` accepts a JSON object containing a string array `numbers` and optional ISO region `defaultRegion`. Prefix international entries with +. Supply a region for national numbers, including Argentine domestic mobile prefixes. Mixed-country selections should use international form where the default region is inappropriate. The server validates with libphonenumber 9.0.44 (Apache 2.0), formats E.164 and deduplicates. Digits, ordinary dial punctuation and spaces are accepted. Extensions, letters and unsupported or invalid dial strings reject the entire operation with an aggregate error. Empty selection replaces with zero entries. Identical replay is free.
+- Consent acceptance returns the updated owner status. Replacement returns that status under `status` together with `submittedCount` and `distinctCount` for the owner's submission. Malformed input returns 400, missing/current-version consent or disabled imports 409, excessive size 413, quota or frequency limits 429. No errors echo entries. Successful changes count over the preceding 24 hours. A timestamp exactly 24 hours old has expired.
+- `DELETE /api/me/shared-contacts/selection` removes the selection and retains consent. `DELETE /api/me/shared-contacts/consent` withdraws and removes the selection. Both return 204, including on replay. Both work with import disabled, obsolete consent or exhausted replacement quota.
+- `GET /api/matches/{matchId}/chat` optionally returns `sharedContactRange` as ONE_TO_FIVE, SIX_TO_TEN or MORE_THAN_TEN. A null or absent value has one meaning for clients. Omit the indicator. The response is private and non-cacheable. Existing matches never gain a retroactive bucket.

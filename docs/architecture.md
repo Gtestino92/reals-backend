@@ -374,3 +374,13 @@ Firebase UID/email constraints still handle identity races. The cleanup job only
 locks expired event rows and never locks users or origins. See
 [security-mvp.md](security-mvp.md#persistent-account-provisioning-quota) for exact
 window boundaries, privacy, rollout and ingress verification requirements.
+
+## Voluntary shared contacts
+
+The user owns feature consent and one manually replaced selection. V51 scopes a 32-byte HMAC to its owner's current key version via `contact_participation`. The composite primary key on `contact_identifiers(user_id,digest)` deduplicates within an owner. `contact_replacements` holds timestamps for the cross-instance quota. Account deletion removes all three in the immediate cleanup transaction. Recovery starts without participation.
+
+Contact writes lock the active user first, as does immediate deletion. Imports validate the entire selection, enforce the rolling quota and replace identifiers in one transaction. Failed validation or insertion rolls back. Identical replay preserves time and generation. Withdrawal deletes consent and cascades to identifiers. Acceptance after withdrawal gets a fresh random generation. Removal of any previous number conservatively invalidates every snapshot involving that generation. Adding numbers retains the generation. Neither action writes historical matches.
+
+Matchmaking claims queue entries, obtains its existing ordered user locks and performs final admission. Only then does it recalculate the intersection and insert an optional match snapshot in the same transaction as match and engagement creation. Ranking reads use a statement snapshot and can become stale without authorizing disclosure. If withdrawal obtains the user lock first, creation sees no consent. If creation wins, withdrawal makes its generation unreachable. Rollback discards the match snapshot along with the new engagement. First Chat reads join the match, both current generations, accounts and restriction state in one query. A read concurrent with removal observes a committed state at its SQL statement boundary. Polling never intersects identifiers or changes state.
+
+The internal unit is a distinct matching phone number. Multiple numbers may belong to one person. Anyone can fabricate a selection. Registration, ownership, reliability and eligibility are independent of this self-reported signal.

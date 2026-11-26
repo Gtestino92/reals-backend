@@ -2,6 +2,19 @@ package com.reals.backend.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 
+enum class SocialRankingMode { OFF, SHADOW, ACTIVE }
+
+data class SocialRankingProperties(
+    val mode: SocialRankingMode = SocialRankingMode.OFF,
+    val maxBonus: Double = 0.30,
+    val saturation: Double = 4.0
+) {
+    init {
+        require(maxBonus in 0.0..1.0 && saturation.isFinite() && saturation > 0.0)
+    }
+    fun weight(count: Int): Double = kotlin.math.ln1p(maxBonus * -Math.expm1(-count.toDouble() / saturation))
+}
+
 enum class MatchmakingRankingMode {
     LEGACY_EARLY_ACCEPT,
     PROBABILISTIC_WEIGHTED
@@ -20,9 +33,11 @@ data class MatchmakingRankingProperties(
     val reliabilitySimilarityScale: Double = 10.0,
     val waitingRelaxationPeriodHours: Double = 72.0,
     val maximumSimilarityScaleMultiplier: Double = 3.0,
+    val social: SocialRankingProperties = SocialRankingProperties(),
     val affinity: MatchmakingAffinityRankingProperties = MatchmakingAffinityRankingProperties()
 ) {
     init {
+        require(mode != MatchmakingRankingMode.LEGACY_EARLY_ACCEPT || social.mode != SocialRankingMode.ACTIVE) { "Active social ranking requires probabilistic weighting" }
         require(compatibilityTemperature.isFinite() && compatibilityTemperature > 0.0) {
             "matchmaking.ranking.compatibility-temperature must be finite and greater than 0"
         }

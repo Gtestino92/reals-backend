@@ -1,5 +1,6 @@
 package com.reals.backend.controller
 
+import com.reals.backend.service.contacts.MatchContactService
 import com.reals.backend.config.security.currentuser.CurrentUserId
 import com.reals.backend.controller.dto.*
 import com.reals.backend.domain.ChatContinueDecision
@@ -19,6 +20,7 @@ import java.util.*
 @RestController
 @RequestMapping("/api/matches")
 class MatchController(
+    private val matchContacts: MatchContactService,
     private val matchService: MatchService,
     private val chatService: ChatService,
     private val firstChatResolutionService: FirstChatResolutionService,
@@ -103,13 +105,14 @@ class MatchController(
         )
         val serverTime = OffsetDateTime.now()
 
-        return ResponseEntity.ok(
+        val inactivityExpiry = chatService.inactivityExpiresAt(chat)
+        return ResponseEntity.ok().header("Cache-Control", "private, no-store").body(
             FirstChatResponse.from(
                 chat = chat,
                 partner = partnerProfile,
                 myDecision = decisions.myDecision,
                 partnerDecision = decisions.partnerDecision,
-                inactivityExpiresAt = chatService.inactivityExpiresAt(chat),
+                inactivityExpiresAt = inactivityExpiry,
                 guidance = chatService.getFirstChatGuidanceState(
                     chat = chat,
                     userId = userId
@@ -117,7 +120,8 @@ class MatchController(
                 serverTime = serverTime,
                 audioPolicy = ChatAudioPolicyResponse.from(
                     chatAudioPolicyService.policyFor(chat = chat, userId = userId)
-                )
+                ),
+                sharedContactRange = matchContacts.range(matchId, userId, inactivityExpiry)
             )
         )
     }

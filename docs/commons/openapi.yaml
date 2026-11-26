@@ -24,6 +24,77 @@ tags:
   - name: Connections
   - name: Admin
 paths:
+  /api/me/shared-contacts:
+    get:
+      tags: [Me]
+      summary: Read own voluntary participation
+      responses:
+        '200':
+          description: Current participation and synchronization status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContactStatus' }
+  /api/me/shared-contacts/consent:
+    put:
+      tags: [Me]
+      summary: Accept the current shared-contact consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer }
+      responses:
+        '200':
+          description: Current owner status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContactStatus' }
+        '409': { description: Disabled or consent version obsolete or general legal action required }
+    delete:
+      tags: [Me]
+      summary: Withdraw consent and erase selection
+      responses:
+        '204': { description: Participation removed }
+  /api/me/shared-contacts/selection:
+    put:
+      tags: [Me]
+      summary: Atomically replace the complete manual selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [numbers]
+              properties:
+                numbers: { type: array, items: { type: string }, description: Selected international or explicitly region-qualified national numbers }
+                defaultRegion: { type: string, nullable: true, minLength: 2, maxLength: 2, description: ISO 3166-1 alpha-2 dialing region for national input }
+      responses:
+        '200':
+          description: Synchronization status and aggregate results for this submission
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, submittedCount, distinctCount]
+                properties:
+                  status: { $ref: '#/components/schemas/ContactStatus' }
+                  submittedCount: { type: integer }
+                  distinctCount: { type: integer }
+        '400': { description: Invalid selection }
+        '409': { description: Imports disabled or consent or legal action required }
+        '413': { description: Selection exceeds configured limits }
+        '429': { description: Attempt frequency or rolling replacement quota exceeded }
+    delete:
+      tags: [Me]
+      summary: Erase imported selection while retaining consent
+      responses:
+        '204': { description: Selection removed }
   /api/admin-auth/status:
     get:
       tags: [Auth]
@@ -3471,12 +3542,23 @@ components:
           format: date-time
           nullable: true
           description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
+    ContactStatus:
+      type: object
+      required: [requiredConsentVersion, state, importAvailable]
+      properties:
+        requiredConsentVersion: { type: integer }
+        acceptedConsentVersion: { type: integer, nullable: true }
+        acceptedAt: { type: string, format: date-time, nullable: true }
+        state: { type: string, enum: [NOT_CONFIGURED, SYNCED, RESYNC_REQUIRED] }
+        syncedAt: { type: string, format: date-time, nullable: true }
+        importAvailable: { type: boolean }
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'
         - type: object
           required: [partner, myDecision, partnerDecision, serverTime]
           properties:
+            sharedContactRange: { type: string, nullable: true, enum: [ONE_TO_FIVE, SIX_TO_TEN, MORE_THAN_TEN, null] }
             partner: { $ref: '#/components/schemas/PartnerSummaryResponse' }
             myDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }
             partnerDecision: { $ref: '#/components/schemas/ChatParticipantDecisionStatus' }

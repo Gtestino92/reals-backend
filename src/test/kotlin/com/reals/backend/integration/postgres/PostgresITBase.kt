@@ -18,6 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
         "spring.jpa.hibernate.ddl-auto=validate",
         "spring.jpa.properties.hibernate.generate_statistics=true",
         "spring.flyway.enabled=true",
+        "spring.jpa.defer-datasource-initialization=false",
         "scheduler.enabled=false"
     ]
 )

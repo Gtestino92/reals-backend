@@ -981,3 +981,33 @@ previous network rule. `RATE_LIMIT_ENABLED=false` disables only the general netw
 PostgreSQL TOTP failed-attempt, replay and lockout protections remain active.
 Ban application and deletion requests permanently revoke existing live admin grants. Ban expiry
 and account reactivation require new TOTP verification; neither restores grants. See the runbook.
+
+## Shared-contact rollout and key rotation
+
+Use the PostgreSQL local profile for synthetic evaluation of the indexed intersection. Shared and production defaults disable all contact processing. Use `SHARED_CONTACTS_ENABLED` as the master switch, `SHARED_CONTACTS_IMPORT_ENABLED` for acceptance and replacement, and `SHARED_CONTACTS_DISCLOSURE_ENABLED` for match-time capture and participant reads. Turning disclosure on later cannot create snapshots for earlier matches. Social ranking has its own `MATCHMAKING_RANKING_SOCIAL_MODE` (OFF by default), `_MAX_BONUS` and `_SATURATION` under the same prefix.
+
+While enabled, configure `SHARED_CONTACTS_SECRET` in protected secret storage with at least 32 cryptographically random bytes encoded in standard Base64. Use independent, never-reused key and consent versions. HMAC-SHA256 covers the key version, a colon and the E.164 ASCII number. No raw number survives import. Limits under `shared-contacts` default to 2,000 distinct, 4,000 raw, 64 characters per entry, 300,000 body bytes, and five changed selections per rolling 24 hours. The contact import request bucket allows ten attempts per minute per authenticated identity per instance with rate limiting enabled.
+
+For rotation or compromise, take every old worker out of service or disable the master switch on every instance, including matchmaking workers. Drain in-flight work. Install new random material and a strictly higher key version everywhere before enabling any worker. Never roll back to a retired version or mix active versions. Status reports RESYNC_REQUIRED on stale sets. Old generations cannot authorize chat reads after reimport. Keep request bodies, JDBC driver trace, PostgreSQL bind-value logging, proxy/APM payload capture and heap dumps out of production diagnostics. Configure PostgreSQL `log_parameter_max_length` and `log_parameter_max_length_on_error` to 0 for this application, including incident diagnostics.
+
+During the drained maintenance window purge retired identifiers in committed batches. Select up to 50 stale owners with remaining identifiers ordered by user_id, lock those users in the same order, then delete identifiers for those owners after rechecking their retired key version. Keep the retired participation metadata for the resync prompt. Repeat to exhaustion before resuming processing. Withdrawal immediately removes live identifiers. Quota timestamps survive withdrawal to bound abuse and are discarded at the next changed import or immediate account deletion. Include periodic deletion of expired quota timestamps (`replaced_at <= now() - interval '24 hours'`) in database retention maintenance. Normal reads and replacement do not contact providers.
+
+In a drained PostgreSQL database, execute the following statement repeatedly with a bound integer `active_key_version`. Each statement commits independently. It returns a deletion count. A zero count ends the purge. The retired version stays on the participation row until the next manual import.
+
+```sql
+WITH owners AS MATERIALIZED (
+    SELECT u.id
+    FROM users u
+    JOIN contact_participation p ON p.user_id = u.id
+    WHERE p.key_version <> :active_key_version
+      AND EXISTS (SELECT 1 FROM contact_identifiers d WHERE d.user_id = u.id)
+    ORDER BY u.id
+    LIMIT 50
+    FOR UPDATE OF u
+), erased AS (
+    DELETE FROM contact_identifiers d USING owners o, contact_participation p
+    WHERE d.user_id = o.id AND p.user_id = o.id AND p.key_version <> :active_key_version
+    RETURNING 1
+)
+SELECT count(*) FROM erased;
+```

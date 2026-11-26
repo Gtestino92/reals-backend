@@ -5,7 +5,12 @@ spring:
     username: sa
     password:
 
+  sql:
+    init:
+      mode: embedded
+      schema-locations: classpath:db/migration/V51__shared_contacts.sql
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: create-drop
     properties:

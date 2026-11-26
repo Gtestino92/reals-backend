@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.service.contacts.MatchContactService
 import com.reals.backend.domain.*
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.MatchRepository
@@ -20,6 +21,7 @@ import java.util.*
 @Transactional
 class MatchService(
 
+    private val matchContacts: MatchContactService,
     private val matchRepository: MatchRepository,
     private val lockRepository: ActiveEngagementLockRepository,
     private val queueRepository: MatchmakingQueueRepository,
@@ -82,6 +84,8 @@ class MatchService(
                 userBId = userBId
             )
         )
+
+        matchContacts.capture(match)
 
         lockRepository.save(
             ActiveEngagementLock(

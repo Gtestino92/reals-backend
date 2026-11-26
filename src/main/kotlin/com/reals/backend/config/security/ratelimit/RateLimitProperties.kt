@@ -21,6 +21,7 @@ data class RateLimitProperties(
     val provisionCapacity: Int = 10,
     val provisionRefillTokens: Int = 10,
     val provisionRefillPeriodSeconds: Long = 60,
+    val contactImportCapacity: Int = 10,
     val messageCapacity: Int = 60,
     val messageRefillTokens: Int = 60,
     val messageRefillPeriodSeconds: Long = 60,
@@ -32,6 +33,7 @@ data class RateLimitProperties(
     val safetyReportRefillPeriodSeconds: Long = 86_400,
 ) {
     init {
+        require(contactImportCapacity > 0)
         validateRule("pre-auth", preAuthCapacity, preAuthRefillTokens, preAuthRefillPeriodSeconds)
         validateRule("admin-mfa", adminMfaCapacity, adminMfaRefillTokens, adminMfaRefillPeriodSeconds)
         validateRule("password-reset", passwordResetCapacity, passwordResetRefillTokens, passwordResetRefillPeriodSeconds)

@@ -384,3 +384,9 @@ Future product work should explain that constructive participation,
 responsiveness, scheduling commitment and safety behavior may influence
 matching opportunities. Current APIs do not expose exact internal formulas or
 user reliability scores.
+
+## Shared-contact weighting
+
+After hard candidate filtering, distance validation and the raw compatibility gate, probabilistic ranking can evaluate the bounded partner window in one PostgreSQL query. Only matching current consent and key versions on both sides qualify. For overlap n, add `ln1p(Bmax * -expm1(-n/k))` to the existing log-weight in ACTIVE. Defaults are Bmax 0.30 (accepted range 0 to 1) and k 4.0 (finite and positive). A count of zero is exactly neutral. The default relative weight gain is bounded by 30%. Reliability, affinity, waiting-time relaxation, random draws and claim fallback retain their own semantics.
+
+OFF issues zero ranking-specific SQL queries. SHADOW evaluates the same window and records the distribution without adjusting the draw. ACTIVE uses the evaluated adjustment. Legacy early accept skips SHADOW and rejects ACTIVE configuration. The Micrometer summary `matchmaking.social.log.weight` records evaluated candidates including zero weights, tagged only by mode. Its count and sum allow aggregate comparison. The timer `matchmaking.social.overlap.duration` measures batch lookup time. Evaluate selection quality, fabricated address books and latency under SHADOW before changing mode. Disclosure uses a separate match-time decision.

@@ -165,12 +165,29 @@ matchmaking:
     reliability-similarity-scale: 2.0
     waiting-relaxation-period-hours: 72.0
     maximum-similarity-scale-multiplier: 3.0
+    social:
+      mode: ${MATCHMAKING_RANKING_SOCIAL_MODE:OFF}
+      max-bonus: ${MATCHMAKING_RANKING_SOCIAL_MAX_BONUS:0.30}
+      saturation: ${MATCHMAKING_RANKING_SOCIAL_SATURATION:4.0}
     affinity:
       mode: ${MATCHMAKING_RANKING_AFFINITY_MODE:OFF}
       max-relative-adjustment: ${MATCHMAKING_RANKING_AFFINITY_MAX_RELATIVE_ADJUSTMENT:0.10}
       full-confidence-shared-questions: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_SHARED_QUESTIONS:12}
       full-confidence-categories: ${MATCHMAKING_RANKING_AFFINITY_FULL_CONFIDENCE_CATEGORIES:4}
       category-full-confidence-questions: ${MATCHMAKING_RANKING_AFFINITY_CATEGORY_FULL_CONFIDENCE_QUESTIONS:3}
+
+shared-contacts:
+  enabled: ${SHARED_CONTACTS_ENABLED:false}
+  import-enabled: ${SHARED_CONTACTS_IMPORT_ENABLED:false}
+  disclosure-enabled: ${SHARED_CONTACTS_DISCLOSURE_ENABLED:false}
+  consent-version: ${SHARED_CONTACTS_CONSENT_VERSION:1}
+  key-version: ${SHARED_CONTACTS_KEY_VERSION:1}
+  secret: ${SHARED_CONTACTS_SECRET:}
+  max-distinct: ${SHARED_CONTACTS_MAX_DISTINCT:2000}
+  max-raw: ${SHARED_CONTACTS_MAX_RAW:4000}
+  max-input-length: ${SHARED_CONTACTS_MAX_INPUT_LENGTH:64}
+  max-body-bytes: ${SHARED_CONTACTS_MAX_BODY_BYTES:300000}
+  daily-replacements: ${SHARED_CONTACTS_DAILY_REPLACEMENTS:5}
 
 chat:
   audio:
