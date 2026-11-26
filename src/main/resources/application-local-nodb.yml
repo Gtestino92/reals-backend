@@ -12,7 +12,7 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:db/migration/V51__shared_contacts.sql
+      schema-locations: classpath:db/migration/V51__shared_contacts.sql,classpath:db/migration/V52__contact_mutation_revision.sql
   jpa:
     defer-datasource-initialization: true
     hibernate:

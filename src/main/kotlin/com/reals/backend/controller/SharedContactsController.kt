@@ -27,15 +27,16 @@ class SharedContactsController(
 
     class ConsentRequest(val version: Int)
     @PutMapping("/consent")
-    fun consent(@CurrentUserId owner: UUID, @RequestBody acceptance: ConsentRequest): ContactStatus {
+    fun consent(@CurrentUserId owner: UUID, @RequestHeader("X-Contact-Revision", required = false) revision: UUID?, @RequestBody acceptance: ConsentRequest): ContactStatus {
         legal.requireCurrentRequirementsSatisfied(owner)
-        return participation.accept(owner, acceptance.version)
+        return participation.accept(owner, acceptance.version, requiredRevision(revision))
     }
 
     @PutMapping("/selection", consumes = ["application/json"])
-    fun replace(@CurrentUserId owner: UUID, request: HttpServletRequest): ContactImportResult {
+    fun replace(@CurrentUserId owner: UUID, @RequestHeader("X-Contact-Revision", required = false) revision: UUID?, request: HttpServletRequest): ContactImportResult {
         legal.requireCurrentRequirementsSatisfied(owner)
-        participation.requireImportConsent(owner)
+        val expected = requiredRevision(revision)
+        participation.requireImportConsent(owner, expected)
         val bytes = request.inputStream.readNBytes(settings.maxBodyBytes + 1)
         if (bytes.size > settings.maxBodyBytes) throw ContactRequestError(413, "CONTACT_BODY_LIMIT", "Reduce the selection size")
         val root = try { reader.readTree(bytes) } catch (_: tools.jackson.core.JacksonException) { malformed() }
@@ -50,7 +51,7 @@ class SharedContactsController(
         }
         val defaultRegion = if (region.isString) region.asString() else null
         if (defaultRegion != null && defaultRegion.length != 2) malformed()
-        return participation.replace(owner, ContactSelection(selected, defaultRegion))
+        return participation.replace(owner, ContactSelection(selected, defaultRegion), expected)
     }
 
     @DeleteMapping("/selection")
@@ -63,6 +64,10 @@ class SharedContactsController(
         participation.remove(owner, withdraw)
         return ResponseEntity.noContent().build()
     }
+
+    private fun requiredRevision(value: UUID?): UUID = value ?: throw ContactRequestError(
+        428, "CONTACT_REVISION_REQUIRED", "Read shared-contact status and send X-Contact-Revision"
+    )
 
     private fun malformed(): Nothing = throw ContactRequestError(400, "INVALID_CONTACT_SELECTION", "Provide a numbers array and optional defaultRegion")
 

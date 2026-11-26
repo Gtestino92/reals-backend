@@ -38,6 +38,12 @@ paths:
     put:
       tags: [Me]
       summary: Accept the current shared-contact consent
+      parameters:
+        - in: header
+          name: X-Contact-Revision
+          required: true
+          schema: { type: string, format: uuid }
+          description: Owner mutationRevision captured when this action was initiated
       requestBody:
         required: true
         content:
@@ -53,7 +59,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ContactStatus' }
-        '409': { description: Disabled or consent version obsolete or general legal action required }
+        '409': { description: Disabled or consent version obsolete or general legal action required or CONTACT_MUTATION_STALE. Refresh status and confirm intent. }
+        '428': { description: CONTACT_REVISION_REQUIRED. Supply X-Contact-Revision. }
     delete:
       tags: [Me]
       summary: Withdraw consent and erase selection
@@ -63,6 +70,12 @@ paths:
     put:
       tags: [Me]
       summary: Atomically replace the complete manual selection
+      parameters:
+        - in: header
+          name: X-Contact-Revision
+          required: true
+          schema: { type: string, format: uuid }
+          description: Owner mutationRevision captured when this action was initiated
       requestBody:
         required: true
         content:
@@ -87,7 +100,8 @@ paths:
                   submittedCount: { type: integer }
                   distinctCount: { type: integer }
         '400': { description: Invalid selection }
-        '409': { description: Imports disabled or consent or legal action required }
+        '409': { description: Imports disabled or consent or legal action required or CONTACT_MUTATION_STALE. Refresh status and confirm intent. }
+        '428': { description: CONTACT_REVISION_REQUIRED. Supply X-Contact-Revision. }
         '413': { description: Selection exceeds configured limits }
         '429': { description: Attempt frequency or rolling replacement quota exceeded }
     delete:
@@ -3544,8 +3558,9 @@ components:
           description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
     ContactStatus:
       type: object
-      required: [requiredConsentVersion, state, importAvailable]
+      required: [mutationRevision, requiredConsentVersion, state, importAvailable]
       properties:
+        mutationRevision: { type: string, format: uuid }
         requiredConsentVersion: { type: integer }
         acceptedConsentVersion: { type: integer, nullable: true }
         acceptedAt: { type: string, format: date-time, nullable: true }

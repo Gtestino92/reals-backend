@@ -36,6 +36,12 @@ class SharedContactsPostgresIT : PostgresITBase() {
     private fun authenticated(id: UUID) =
         authentication(UsernamePasswordAuthenticationToken(id.toString(), null, listOf(SimpleGrantedAuthority("ROLE_USER"))))
 
+    private fun acceptCurrent(id: UUID, version: Int) =
+        participation.accept(id, version, participation.status(id).mutationRevision)
+
+    private fun replaceCurrent(id: UUID, selection: ContactSelection) =
+        participation.replace(id, selection, participation.status(id).mutationRevision)
+
     private fun selection(n: Int) = ContactSelection((0 until n).map { "+1202555%04d".format(Locale.ROOT, 100+it) })
     private fun owner() = userService.createUser("test-${UUID.randomUUID()}@example.invalid").id
 
@@ -43,9 +49,9 @@ class SharedContactsPostgresIT : PostgresITBase() {
         val a = createActiveProfile("a@example.invalid","Aster",Gender.FEMALE,setOf(Gender.MALE))
         val b = createActiveProfile("b@example.invalid","Birch",Gender.MALE,setOf(Gender.FEMALE))
         for (id in listOf(a,b)) {
-            assertFailsWith<ContactRequestError> { participation.replace(id, selection(1)) }
-            participation.accept(id,1)
-            participation.replace(id,selection(5))
+            assertFailsWith<ContactRequestError> { replaceCurrent(id, selection(1)) }
+            acceptCurrent(id,1)
+            replaceCurrent(id,selection(5))
         }
         val match = matchService.createMatch(a,b)
         chatService.startFirstChat(match.id)
@@ -57,21 +63,26 @@ class SharedContactsPostgresIT : PostgresITBase() {
             .andExpect(jsonPath("$.sharedContactRange").value("ONE_TO_FIVE"))
             .andExpect(jsonPath("$.sharedContactCount").doesNotExist())
             .andExpect(jsonPath("$.generation").doesNotExist())
+            .andExpect(jsonPath("$.mutationRevision").doesNotExist())
         mvc.perform(get(url).with(authenticated(owner()))).andExpect(status().isForbidden)
         assertNull(context.range(match.id,owner(),null))
-        for (id in listOf(a,b)) participation.replace(id,selection(11))
+        for (id in listOf(a,b)) replaceCurrent(id,selection(11))
         assertEquals(SharedContactRange.ONE_TO_FIVE,range())
         val before = participation.status(a)
-        assertEquals(before, participation.replace(a,selection(11)).status)
-        assertFailsWith<ContactRequestError> { participation.replace(a,ContactSelection(listOf("invalid"))) }
+        assertEquals(before, replaceCurrent(a,selection(11)).status)
+        assertFailsWith<ContactRequestError> { replaceCurrent(a,ContactSelection(listOf("invalid"))) }
         assertEquals(11, contacts.identifiers(a).size)
-        participation.replace(a,selection(10))
+        replaceCurrent(a,selection(10))
         assertNull(range())
-        participation.replace(a,selection(11))
+        assertEquals("CONTACT_MUTATION_STALE", assertFailsWith<ContactRequestError> {
+            participation.replace(a,selection(11),before.mutationRevision)
+        }.code)
+        assertNull(range())
+        replaceCurrent(a,selection(11))
         assertNull(range())
         participation.remove(b,true)
-        participation.accept(b,1)
-        participation.replace(b,selection(11))
+        acceptCurrent(b,1)
+        replaceCurrent(b,selection(11))
         assertNull(range())
     }
 
@@ -79,8 +90,8 @@ class SharedContactsPostgresIT : PostgresITBase() {
         val a = owner()
         val b = owner()
         for (id in listOf(a,b)) {
-            participation.accept(id,1)
-            participation.replace(id,selection(1))
+            acceptCurrent(id,1)
+            replaceCurrent(id,selection(1))
         }
         val match = matchService.createMatch(a,b)
         // Query the stored context via a synthetic active First Chat.
@@ -101,31 +112,31 @@ class SharedContactsPostgresIT : PostgresITBase() {
         jdbcTemplate.update("update contact_participation set key_version=2 where user_id=?",b)
         assertNull(range())
         assertTrue(contacts.overlaps(a,listOf(b),1,1).isEmpty())
-        participation.replace(b,selection(1))
+        replaceCurrent(b,selection(1))
         assertNull(range())
     }
 
     @Test fun `old match cannot gain context on first import`() {
         val fixture = createMatchWithFirstChat()
         for (id in listOf(fixture.userAId,fixture.userBId)) {
-            participation.accept(id,1)
-            participation.replace(id,selection(1))
+            acceptCurrent(id,1)
+            replaceCurrent(id,selection(1))
         }
         assertNull(context.range(fixture.matchId,fixture.userAId,null))
     }
 
     @Test fun `rotation obsolete consent and deletion cannot restore evidence`() {
         val id = owner()
-        participation.accept(id,1)
-        participation.replace(id,selection(2))
+        acceptCurrent(id,1)
+        replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set key_version=2 where user_id=?",id)
         assertEquals(ContactSyncState.RESYNC_REQUIRED,participation.status(id).state)
-        participation.replace(id,selection(2))
+        replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set consent_version=2 where user_id=?",id)
-        assertFailsWith<ContactRequestError> { participation.replace(id,selection(3)) }
-        participation.accept(id,1)
+        assertFailsWith<ContactRequestError> { replaceCurrent(id,selection(3)) }
+        acceptCurrent(id,1)
         assertTrue(contacts.identifiers(id).isEmpty())
-        participation.replace(id,selection(2))
+        replaceCurrent(id,selection(2))
         userService.deleteUser(id)
         assertNull(contacts.participation(id))
         userService.reactivateUser(id)
@@ -135,37 +146,52 @@ class SharedContactsPostgresIT : PostgresITBase() {
 
     @Test fun `competing replacements share a committed rolling quota`() {
         val id = owner()
-        participation.accept(id,1)
+        acceptCurrent(id,1)
+        val revision = participation.status(id).mutationRevision
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(6)
         try {
             val attempts = (1..6).map { count -> pool.submit(Callable {
                 start.await()
-                try { participation.replace(id,selection(count)); 200 }
+                try { participation.replace(id,selection(count),revision); 200 }
                 catch (error: ContactRequestError) { error.status }
             }) }
             start.countDown()
-            assertEquals(listOf(200,200,200,200,200,429),attempts.map { it.get(20,TimeUnit.SECONDS) }.sorted())
+            assertEquals(listOf(200,409,409,409,409,409),attempts.map { it.get(20,TimeUnit.SECONDS) }.sorted())
         } finally { pool.shutdownNow() }
+        for (count in 7..10) replaceCurrent(id,selection(count))
         participation.remove(id,false)
         participation.remove(id,true)
-        participation.accept(id,1)
-        assertFailsWith<ContactRequestError> { participation.replace(id,selection(0)) }
+        acceptCurrent(id,1)
+        assertFailsWith<ContactRequestError> { replaceCurrent(id,selection(0)) }
         assertTrue(contacts.identifiers(id).isEmpty())
     }
 
     @Test fun `owner HTTP contract rejects whole invalid selection without echo`() {
         val id = owner()
         val base = "/api/me/shared-contacts"
-        fun send(path: String, json: String) = mvc.perform(put("$base/$path").with(authenticated(id))
-            .contentType("application/json").content(json))
+        fun send(path: String, json: String, revision: UUID = participation.status(id).mutationRevision) = mvc.perform(put("$base/$path").with(authenticated(id))
+            .header("X-Contact-Revision",revision.toString()).contentType("application/json").content(json))
         legal.currentDocuments().forEach { legal.recordAction(id,it.type,it.version,it.requiredAction) }
+        mvc.perform(get(base).with(authenticated(id)))
+            .andExpect(jsonPath("$.mutationRevision").value(participation.status(id).mutationRevision.toString()))
+        mvc.perform(put("$base/consent").with(authenticated(id)).contentType("application/json").content("""{"version":1}"""))
+            .andExpect(status().`is`(428)).andExpect(jsonPath("$.code").value("CONTACT_REVISION_REQUIRED"))
         send("selection","""{"numbers":[]}""").andExpect(status().isConflict)
         send("consent","""{"version":1}""").andExpect(status().isOk)
         send("selection","""{"numbers":["202 555-0100","+12025550100"],"defaultRegion":"US"}""")
             .andExpect(status().isOk).andExpect(jsonPath("$.status.state").value("SYNCED"))
             .andExpect(jsonPath("$.submittedCount").value(2)).andExpect(jsonPath("$.distinctCount").value(1))
         assertEquals(1,contacts.identifiers(id).size)
+        val stale = participation.status(id).mutationRevision
+        participation.remove(id,true)
+        acceptCurrent(id,1)
+        val renewed = participation.status(id)
+        send("selection","""{"numbers":["+12025550100"]}""",stale)
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("CONTACT_MUTATION_STALE"))
+        assertEquals(renewed,participation.status(id))
+        assertTrue(contacts.identifiers(id).isEmpty())
+        send("selection","""{"numbers":["+12025550100"]}""").andExpect(status().isOk)
         val bad = send("selection","""{"numbers":["synthetic-invalid"]}""").andExpect(status().isBadRequest).andReturn()
         assertFalse(bad.response.contentAsString.contains("synthetic-invalid"))
         send("selection","""{"numbers":["2025550100"],"defaultRegion":"USA"}""").andExpect(status().isBadRequest)
@@ -181,8 +207,8 @@ class SharedContactsPostgresIT : PostgresITBase() {
         val a = owner()
         val b = owner()
         for (id in listOf(a,b)) {
-            participation.accept(id,1)
-            participation.replace(id,selection(1))
+            acceptCurrent(id,1)
+            replaceCurrent(id,selection(1))
         }
         val executor = Executors.newSingleThreadExecutor()
         try {
@@ -203,14 +229,14 @@ class SharedContactsPostgresIT : PostgresITBase() {
         try {
             for (deleteAccount in listOf(false,true)) {
                 val id = owner()
-                participation.accept(id,1)
-                participation.replace(id,selection(1))
+                acceptCurrent(id,1)
+                replaceCurrent(id,selection(1))
                 val started = CountDownLatch(1)
                 val pending = transactions.execute {
                     userService.lockActiveUserOrThrow(id,"test privacy transition")
                     val import = executor.submit(Callable {
                         started.countDown()
-                        runCatching { participation.replace(id,selection(2)) }.exceptionOrNull()
+                        runCatching { replaceCurrent(id,selection(2)) }.exceptionOrNull()
                     })
                     assertTrue(started.await(10,TimeUnit.SECONDS))
                     if (deleteAccount) userService.deleteUser(id) else participation.remove(id,true)
@@ -225,13 +251,44 @@ class SharedContactsPostgresIT : PostgresITBase() {
         } finally { executor.shutdownNow() }
     }
 
+    @Test fun `privacy boundaries invalidate outstanding owner intents`() {
+        val id = owner()
+        for (boundary in listOf("empty clear", "clear", "withdraw", "recovery")) {
+            acceptCurrent(id,1)
+            val revision = participation.status(id).mutationRevision
+            participation.requireImportConsent(id,revision)
+            when (boundary) {
+                "empty clear", "clear" -> participation.remove(id,false)
+                "withdraw" -> participation.remove(id,true)
+                else -> {
+                    userService.deleteUser(id)
+                    userService.reactivateUser(id)
+                }
+            }
+            assertEquals("CONTACT_MUTATION_STALE",assertFailsWith<ContactRequestError> {
+                participation.accept(id,1,revision)
+            }.code)
+            acceptCurrent(id,1)
+            val fresh = participation.status(id)
+            fun quota() = jdbcTemplate.queryForObject("select count(*) from contact_replacements where user_id=?",Int::class.java,id)
+            val used = quota()
+            assertEquals("CONTACT_MUTATION_STALE",assertFailsWith<ContactRequestError> {
+                participation.replace(id,selection(1),revision)
+            }.code)
+            assertEquals(used,quota())
+            assertEquals(fresh,participation.status(id))
+            assertTrue(contacts.identifiers(id).isEmpty())
+            replaceCurrent(id,selection(1))
+        }
+    }
+
     @Test fun `rollback restores the selection generation and quota`() {
         val id = owner()
-        participation.accept(id,1)
-        participation.replace(id,selection(3))
+        acceptCurrent(id,1)
+        replaceCurrent(id,selection(3))
         val before = contacts.identifiers(id)
         transactions.executeWithoutResult {
-            participation.replace(id,selection(0))
+            replaceCurrent(id,selection(0))
             it.setRollbackOnly()
         }
         assertEquals(before,contacts.identifiers(id))

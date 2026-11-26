@@ -14,10 +14,31 @@ data class ContactOverlap(val count: Int, val generationA: UUID, val generationB
 
 @Repository
 class SharedContactRepository(private val jdbc: JdbcTemplate, private val named: NamedParameterJdbcTemplate) {
+    fun revision(owner: UUID): UUID = jdbc.queryForObject(
+        "select contact_mutation_revision from users where id=?", UUID::class.java, owner
+    )!!
+
+    fun advanceRevision(owner: UUID) {
+        jdbc.update("update users set contact_mutation_revision=? where id=?", UUID.randomUUID(), owner)
+    }
+
+    fun ownerStatus(owner: UUID) = jdbc.query("""
+        select u.contact_mutation_revision, p.consent_version, p.accepted_at, p.key_version, p.synced_at
+        from users u left join contact_participation p on p.user_id=u.id
+        where u.id=?
+    """, { rs, _ ->
+        rs.getObject("contact_mutation_revision", UUID::class.java) to
+            rs.getObject("consent_version")?.let { rs.toParticipation() }
+    }, owner).single()
+
     fun participation(owner: UUID) = jdbc.query("select * from contact_participation where user_id=?", { rs, _ ->
-        ContactParticipation(rs.getInt("consent_version"), rs.getObject("accepted_at", OffsetDateTime::class.java),
-            rs.getObject("key_version") as Int?, rs.getObject("synced_at", OffsetDateTime::class.java))
+        rs.toParticipation()
     }, owner).singleOrNull()
+
+    private fun java.sql.ResultSet.toParticipation() = ContactParticipation(
+        getInt("consent_version"), getObject("accepted_at", OffsetDateTime::class.java),
+        getObject("key_version") as Int?, getObject("synced_at", OffsetDateTime::class.java)
+    )
 
     fun accept(owner: UUID, version: Int, now: OffsetDateTime) {
         withdraw(owner)
@@ -30,6 +51,7 @@ class SharedContactRepository(private val jdbc: JdbcTemplate, private val named:
     }
 
     fun deleteAccountData(owner: UUID) {
+        advanceRevision(owner)
         withdraw(owner)
         jdbc.update("delete from contact_replacements where user_id=?", owner)
     }

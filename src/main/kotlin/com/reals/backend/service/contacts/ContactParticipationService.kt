@@ -10,6 +10,7 @@ import java.util.UUID
 
 enum class ContactSyncState { NOT_CONFIGURED, SYNCED, RESYNC_REQUIRED }
 data class ContactStatus(
+    val mutationRevision: UUID,
     val requiredConsentVersion: Int,
     val acceptedConsentVersion: Int?,
     val acceptedAt: OffsetDateTime?,
@@ -30,13 +31,14 @@ class ContactParticipationService(
 ) {
     @Transactional(readOnly = true)
     fun status(owner: UUID): ContactStatus {
-        val row = repository.participation(owner)
+        val (revision, row) = repository.ownerStatus(owner)
         val state = when {
             row?.keyVersion == null -> ContactSyncState.NOT_CONFIGURED
             row.keyVersion != settings.keyVersion || row.consentVersion != settings.consentVersion -> ContactSyncState.RESYNC_REQUIRED
             else -> ContactSyncState.SYNCED
         }
         return ContactStatus(
+            mutationRevision = revision,
             requiredConsentVersion = settings.consentVersion,
             acceptedConsentVersion = row?.consentVersion,
             acceptedAt = row?.acceptedAt,
@@ -46,23 +48,29 @@ class ContactParticipationService(
         )
     }
 
-    fun accept(owner: UUID, version: Int): ContactStatus {
+    fun accept(owner: UUID, version: Int, expected: UUID): ContactStatus {
         users.lockActiveUserOrThrow(owner, "Accept contact consent")
         requireImportEnabled()
+        requireRevision(owner, expected)
         if (version != settings.consentVersion) consentRequired()
-        if (repository.participation(owner)?.consentVersion != version) repository.accept(owner, version, OffsetDateTime.now())
+        if (repository.participation(owner)?.consentVersion != version) {
+            repository.accept(owner, version, OffsetDateTime.now())
+            repository.advanceRevision(owner)
+        }
         return status(owner)
     }
 
     @Transactional(readOnly = true)
-    fun requireImportConsent(owner: UUID) {
+    fun requireImportConsent(owner: UUID, expected: UUID) {
+        requireRevision(owner, expected)
         requireImportEnabled()
         if (repository.participation(owner)?.consentVersion != settings.consentVersion) consentRequired()
     }
 
-    fun replace(owner: UUID, selection: ContactSelection): ContactImportResult {
+    fun replace(owner: UUID, selection: ContactSelection, expected: UUID): ContactImportResult {
         users.lockActiveUserOrThrow(owner, "Replace contact selection")
         requireImportEnabled()
+        requireRevision(owner, expected)
         val row = repository.participation(owner)
         if (row == null || row.consentVersion != settings.consentVersion) consentRequired()
         val selected = pseudonymizer.identifiers(selection)
@@ -74,6 +82,7 @@ class ContactParticipationService(
             }
             val invalidate = row.keyVersion != settings.keyVersion || !selected.containsAll(previous)
             val toInsert = if (invalidate) selected else selected - previous
+            repository.advanceRevision(owner)
             repository.synchronize(owner, toInsert, settings.keyVersion, now, invalidate)
         }
         return ContactImportResult(status(owner), selection.numbers.size, selected.size)
@@ -81,7 +90,14 @@ class ContactParticipationService(
 
     fun remove(owner: UUID, withdraw: Boolean) {
         users.lockActiveUserOrThrow(owner, "Remove contact participation data")
+        repository.advanceRevision(owner)
         if (withdraw) repository.withdraw(owner) else repository.clear(owner)
+    }
+
+    private fun requireRevision(owner: UUID, expected: UUID) {
+        if (repository.revision(owner) != expected) {
+            throw ContactRequestError(409, "CONTACT_MUTATION_STALE", "Refresh shared-contact status and confirm your selection or consent again")
+        }
     }
 
     private fun requireImportEnabled() {

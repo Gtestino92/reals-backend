@@ -122,6 +122,7 @@ class ApiCorsSecurityTest {
         val jsonHeaders = "authorization,content-type,x-firebase-appcheck"
         val uploadHeaders = "authorization,x-firebase-appcheck" // Browser supplies the multipart Content-Type.
         listOf(
+            Triple("/api/me/shared-contacts/selection", "PUT", "$jsonHeaders,x-contact-revision"),
             Triple("/api/me/provision", "POST", jsonHeaders),
             Triple("/api/me/profile", "PATCH", jsonHeaders),
             Triple("/api/me/profile/photos", "POST", uploadHeaders),
