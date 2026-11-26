@@ -720,7 +720,7 @@ internal object MatchmakingSqlFragments {
         )
         """.trimIndent()
 
-    private fun effectiveBanExclusion(userIdExpression: String): String =
+    fun effectiveBanExclusion(userIdExpression: String): String =
         """
             AND NOT EXISTS (
                 SELECT 1

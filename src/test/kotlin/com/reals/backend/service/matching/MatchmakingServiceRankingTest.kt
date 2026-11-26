@@ -1,5 +1,11 @@
 package com.reals.backend.service.matching
 
+import com.reals.backend.config.SharedContactsProperties
+import com.reals.backend.config.SocialRankingMode
+import com.reals.backend.config.SocialRankingProperties
+import com.reals.backend.repository.ContactOverlap
+import com.reals.backend.repository.SharedContactRepository
+import com.reals.backend.service.contacts.MatchContactService
 import com.reals.backend.config.MatchmakingAffinityRankingMode
 import com.reals.backend.config.MatchmakingAffinityRankingProperties
 import com.reals.backend.config.MatchmakingRankingMode
@@ -630,6 +636,27 @@ class MatchmakingServiceRankingTest {
         assertEquals(2, randomSource.calls)
     }
 
+    @Test
+    fun `social shadow preserves complete fallback order while active weights compatible candidates`() {
+        val first = candidate("social-first", partnerAUserId)
+        val second = candidate("social-second", partnerBUserId)
+        for (mode in SocialRankingMode.entries) {
+            val candidates = FakeCandidateRepository(listOf(first,second))
+            val repo = Mockito.mock(SharedContactRepository::class.java)
+            val ranking = MatchmakingRankingProperties(mode = MatchmakingRankingMode.PROBABILISTIC_WEIGHTED,
+                social = SocialRankingProperties(mode = mode))
+            val ids = listOf(partnerAUserId, partnerBUserId)
+            Mockito.`when`(repo.overlaps(anchorUserId,ids,1,1)).thenReturn(mapOf(partnerBUserId to ContactOverlap(11,UUID.randomUUID(),UUID.randomUUID())))
+            val settings = SharedContactsProperties(enabled=true,secret=java.util.Base64.getEncoder().encodeToString(ByteArray(32)))
+            val contacts = MatchContactService(settings, ranking, repo, Mockito.mock(jakarta.persistence.EntityManager::class.java), SimpleMeterRegistry())
+            service(mode=ranking.mode, candidateRepository=candidates, reliabilityService=reliabilityService(false),
+                randomValues=listOf(0.5,0.5),rankingProperties=ranking,matchContacts=contacts).claimNextCandidatePair()
+            val expected = if (mode == SocialRankingMode.ACTIVE) listOf(second,first) else listOf(first,second)
+            assertEquals(expected.map { it.partnerQueueEntryId },candidates.claimAttempts)
+            Mockito.verify(repo,Mockito.times(if (mode == SocialRankingMode.OFF) 0 else 1)).overlaps(anchorUserId,ids,1,1)
+        }
+    }
+
     private fun service(
         mode: MatchmakingRankingMode,
         candidateRepository: FakeCandidateRepository,
@@ -640,6 +667,7 @@ class MatchmakingServiceRankingTest {
         minCompatibilityScore: Double = 0.2,
         candidatePairLimit: Int = 10,
         compatibilityScorer: CompatibilityScorer? = null,
+        matchContacts: MatchContactService = Mockito.mock(MatchContactService::class.java),
         rankingProperties: MatchmakingRankingProperties? = null,
         probabilisticWeightPolicy: ProbabilisticMatchmakingWeightPolicy? = null,
         affinityMode: MatchmakingAffinityRankingMode = MatchmakingAffinityRankingMode.OFF,
@@ -686,6 +714,7 @@ class MatchmakingServiceRankingTest {
         Mockito.`when`(affinityCatalogProvider.getCatalog()).thenReturn(testAffinityCatalog())
 
         return MatchmakingService(
+            matchContacts = matchContacts,
             queueRepository = Mockito.mock(MatchmakingQueueRepository::class.java),
             candidateRepository = candidateRepository,
             userService = Mockito.mock(UserService::class.java),

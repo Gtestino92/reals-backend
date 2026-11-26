@@ -93,6 +93,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.googlecode.libphonenumber</groupId>
+            <artifactId>libphonenumber</artifactId>
+            <version>9.0.44</version>
+        </dependency>
+        <dependency>
             <groupId>com.eatthepath</groupId>
             <artifactId>java-otp</artifactId>
             <version>1.0.0</version>

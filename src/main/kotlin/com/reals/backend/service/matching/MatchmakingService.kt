@@ -1,5 +1,7 @@
 package com.reals.backend.service.matching
 
+import com.reals.backend.config.SocialRankingMode
+import com.reals.backend.service.contacts.MatchContactService
 import com.reals.backend.config.MatchmakingRankingMode
 import com.reals.backend.config.MatchmakingRankingProperties
 import com.reals.backend.config.MatchmakingAffinityRankingMode
@@ -47,6 +49,7 @@ class MatchmakingService(
     private val affinityCatalogProvider: AffinityQuestionCatalogProvider,
     private val affinityQuestionPairEvaluator: AffinityQuestionPairEvaluator,
     private val affinityPairAssessmentAggregator: AffinityPairAssessmentAggregator,
+    private val matchContacts: MatchContactService,
     private val affinityMetrics: MatchmakingAffinityMetrics,
     private val visualAdvancementCapService: VisualAdvancementCapService,
 
@@ -453,16 +456,21 @@ class MatchmakingService(
             diagnostics = diagnostics
         )
 
+        val socialWeights = if (rankingProperties.social.mode == SocialRankingMode.OFF) {
+            emptyMap()
+        } else {
+            matchContacts.rankingWeights(assessedCandidates.map { it.candidate })
+        }
         val weightedCandidates =
             assessedCandidates.map { assessed ->
+                val logWeight = if (affinityMode == MatchmakingAffinityRankingMode.ACTIVE) {
+                    assessed.shadowLogWeight
+                } else {
+                    assessed.baseLogWeight
+                }
                 WeightedMatchmakingPartnerCandidate(
                     candidate = assessed.candidate,
-                    logWeight =
-                        if (affinityMode == MatchmakingAffinityRankingMode.ACTIVE) {
-                            assessed.shadowLogWeight
-                        } else {
-                            assessed.baseLogWeight
-                        },
+                    logWeight = logWeight + (socialWeights[assessed.candidate.pair.userBId] ?: 0.0),
                     order = assessed.order
                 )
             }

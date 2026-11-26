@@ -471,3 +471,11 @@ through a separately reviewed retention operation if the feature is retired.
 Shared Wi-Fi, VPNs, mobile CGNAT and IPv6 /64s can group unrelated users; IPv6
 prefix rotation and changing networks can bypass the quota. This MVP does not
 establish one account per person and does not replace ban-evasion detection.
+
+## Shared contacts and third-party privacy
+
+Process only synthetic selections until legal and provider sign-off. Contact digests are pseudonymous personal data. Retain them while the selection is active, subject to withdrawal, replacement, rotation purge and immediate account deletion. Live disclosure becomes unavailable as soon as the generation or version check fails. Online deletion cannot erase historical backups. Approve and enforce a backup expiry schedule before real imports. Restrict restore access and reapply withdrawals, account deletions and retired-key purges before serving a restored database.
+
+Before requesting device or provider permission, explain that participation is voluntary, people choose individual contacts, and overlap can influence compatible-candidate ranking. Only grouped counts reach a matched counterpart. Reals discards original numbers after import and never displays contact identities. Users can replace or remove a selection and withdraw. The signal provides neither identity verification nor a guarantee of safety.
+
+Release review must establish the legal basis for third-party processing independently of participant consent, approve consent and privacy wording, agree retention and backup obligations, and establish confidential non-user access, objection and deletion procedures that resist membership probing. Review Google OAuth verification, scopes, Limited Use and restrictions for the intended dating/social use before selecting People API. Review native platform rules separately. Future Web clients must use capability detection and local selection, handle resync, render an optional dismissible range and avoid durable storage of the selection. [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy)

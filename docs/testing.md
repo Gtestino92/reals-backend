@@ -307,3 +307,22 @@ The Docker API override is local to the test process. No remote database was mod
 no existing migration or Flyway history was changed. This does not exercise separate deployed
 backend processes or real Firebase infrastructure; concurrency uses independent transactions
 against PostgreSQL. The unrestricted test suite was not run.
+
+## Shared-contact synthetic PostgreSQL measurements
+
+A local PostgreSQL 16 Docker fixture contained 501 synthetic owners, ten common identifiers and otherwise owner-specific SHA-256 fixture bytes. The evaluated window was one anchor and 50 eligible partners. After VACUUM ANALYZE, three EXPLAIN (ANALYZE, BUFFERS) executions of the repository intersection produced the following results. The primary key index supplied the anchor once and one index-only scan per candidate inside a single SQL statement.
+
+| Identifiers per owner | Total identifier rows | Heap and indexes, bytes | Execution times, ms |
+| ---: | ---: | ---: | --- |
+| 200 | 100,200 | 18,087,936 | 11.569, 18.075, 16.832 |
+| 2,000 | 1,002,000 | 184,713,216 | 46.716, 39.213, 38.926 |
+
+These measurements cover the ranking SQL only. OFF adds zero statements. SHADOW and ACTIVE each add one identical statement per nonempty compatible window. At 2,000 identifiers the measured relation averaged about 369 KB per owner including index overhead. Cache, visibility map, insertion order and production contention affect these figures. Test complete worker latency and pool occupancy on deployment-sized infrastructure before real rollout.
+
+The `bounded PostgreSQL intersection uses the owner index` test in `SharedContactsPostgresIT` builds the 200-entry fixture with synthetic opaque bytes, verifies all 50 results, and runs EXPLAIN on the repository SQL. The 2,000-entry measurement used an isolated container with the same overlap pattern and an empty penalty table. No address-book values were used. Repeat tests on local PostgreSQL 16 with Docker and Java 21:
+
+```powershell
+.\mvnw.cmd '-Dapi.version=1.44' '-Dtest=ContactPolicyTest,SharedContactsPostgresIT,MatchmakingServiceRankingTest,MatchmakingProcessorServiceTest,MatchmakingRankingPropertiesTest,WeightedMatchmakingCandidateOrdererTest,AccountDeletionRetentionIntegrationTest,MatchControllerIntegrationTest,RateLimitIntegrationTest,SharedContactsDisabledIntegrationTest,AuthorizationBoundaryIntegrationTest' test
+```
+
+The Web parser in `src/chat/contracts.ts` constructs its First Chat model from known fields. The Android client uses `ignoreUnknownKeys = true` in `AppContainer.kt`. Both can ignore the additive range. Live provider authorization, browser picker behavior, native permissions and dismissible display belong to client validation.

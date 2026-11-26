@@ -205,3 +205,17 @@ Second-chat entry and conversation lifecycle are server-authoritative. Explicit 
 Text and audio chat messages are both conversational messages for lifecycle purposes. Before new insertion, message sends revalidate due terminal outcomes under the chat lock; if the chat remains writable, either message type updates conversational activity and cancels pending mutual-completion or partner-inactivity requests through the same pre-message path. Idempotent TEXT or AUDIO replay for an already-persisted `(chat, sender, clientMessageId)` returns the canonical message before ordinary mutable eligibility checks only when the semantic payload matches, including message type and direct reply target. TEXT equality uses normalized content plus direct target; AUDIO equality uses accepted audio SHA-256 plus direct target. Reusing the key with a different semantic payload returns `CHAT_MESSAGE_IDEMPOTENCY_CONFLICT`, while an exact replay can be retried after the chat later becomes terminal without reapplying activity side effects.
 
 Message `HEART` reactions are metadata, not lifecycle transitions. A new reaction reuses the chat write lock and writable-state validation, but it does not create a message, update conversational activity, reset inactivity, extend deadlines, cancel pending second-chat requests, produce reliability/penalty effects or advance first-chat/second-chat state. Already-persisted reactions remain visible in read-only states for as long as the underlying `chat_messages` row is retained.
+
+## Shared-contact participation
+
+Consent and synchronization belong to the user. Reads derive the state without changing it.
+
+| Operation | Result after commit |
+| --- | --- |
+| Accept current feature version | NOT_CONFIGURED with consent until a selection is imported. Reaccepting the same version preserves state. |
+| Replace under current consent | SYNCED, including an empty set. An identical import with a current mutation revision preserves the timestamp and both revisions. |
+| Active key or required consent version changes | A previously synchronized owner sees RESYNC_REQUIRED. Both ranking and disclosure require current versions. |
+| Remove selection | NOT_CONFIGURED with existing consent. |
+| Withdraw or delete account | NOT_CONFIGURED without consent. Recovery starts in the same state. |
+
+Overwriting a selection with a strict superset preserves existing match buckets. Removing any entry, including replacing with the empty set, retires the old generation. Reimport after rotation or fresh consent cannot restore prior snapshots.

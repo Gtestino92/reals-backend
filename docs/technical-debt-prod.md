@@ -366,7 +366,7 @@ read as an architecture document or changelog.
 
 ### Shared social contacts and contact-based exclusions
 
-**Status:** Planned product evolution. Not implemented. Deferred until the current security and performance hardening work is complete.
+**Status:** Provider-independent shared contacts are implemented behind disabled defaults. Client integrations and contact-based exclusions are deferred.
 
 **Product goals**
 
@@ -380,11 +380,11 @@ read as an architecture document or changelog.
 - Encourage participation by explaining its benefits, without making contact sharing a registration or matching requirement.
 - Allow users to select, exclude, refresh and remove their imported contacts.
 - Require bilateral participation before exposing shared-contact information.
-- Display only an appropriate aggregate count of shared contacts in participant chat/profile surfaces.
+- Display the match-time shared-number range only in authorized First Chat. The ranges are 1 to 5, 6 to 10, and more than 10.
 - Never expose contact names, phone numbers, social handles or individual contact identities to the counterpart.
 - Evaluate shared contacts as a bounded positive matchmaking-ranking contribution, not a hard eligibility requirement.
 - Do not penalize users who decline participation or have no shared contacts.
-- Review count bucketing and update frequency to reduce contact-membership inference.
+- Evaluate membership inference against the fixed bucket and generation invalidation policy before real-world rollout.
 
 #### Contact-based matchmaking exclusions
 
@@ -398,6 +398,7 @@ Treat this as an independent feature sharing the contact normalization infrastru
 - Do not conflate contact-based exclusions with existing irreversible user-pair safety blocks.
 - Verified phone-number association is a prerequisite for reliable phone-based account exclusion.
 - Never expose whether an excluded number belongs to a registered Reals account.
+- Subtract numbers on either independent exclusion list from overlap and safely terminate existing non-finalized interactions without disclosing private reasons.
 
 #### Cross-platform import strategy
 

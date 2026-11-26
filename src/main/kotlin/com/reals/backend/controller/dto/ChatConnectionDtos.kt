@@ -1,5 +1,6 @@
 package com.reals.backend.controller.dto
 
+import com.reals.backend.service.contacts.SharedContactRange
 import com.reals.backend.domain.*
 import com.reals.backend.service.ChatMessageReplyPreview
 import com.reals.backend.service.FirstChatGuidanceProgressionAction
@@ -119,7 +120,8 @@ data class FirstChatResponse(
     val partnerDecision: ChatParticipantDecisionStatus,
     val guidance: FirstChatGuidanceResponse?,
     val serverTime: OffsetDateTime,
-    val audioPolicy: ChatAudioPolicyResponse? = null
+    val audioPolicy: ChatAudioPolicyResponse? = null,
+    val sharedContactRange: SharedContactRange? = null
 ) {
     companion object {
         fun from(
@@ -130,7 +132,8 @@ data class FirstChatResponse(
             inactivityExpiresAt: OffsetDateTime?,
             serverTime: OffsetDateTime,
             guidance: FirstChatGuidanceResponse? = null,
-            audioPolicy: ChatAudioPolicyResponse? = null
+            audioPolicy: ChatAudioPolicyResponse? = null,
+            sharedContactRange: SharedContactRange? = null
         ) = FirstChatResponse(
             id = chat.id,
             matchId = chat.matchId,
@@ -153,7 +156,8 @@ data class FirstChatResponse(
             partnerDecision = partnerDecision,
             guidance = guidance,
             serverTime = serverTime,
-            audioPolicy = audioPolicy
+            audioPolicy = audioPolicy,
+            sharedContactRange = sharedContactRange
         )
     }
 }

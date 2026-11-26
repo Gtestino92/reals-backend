@@ -52,6 +52,9 @@ class RateLimitRuleResolver(
                     refillPeriodSeconds = properties.safetyReportRefillPeriodSeconds
                 )
 
+            RateLimitGroup.CONTACT_IMPORT ->
+                RateLimitRule(group.id, properties.contactImportCapacity, properties.contactImportCapacity, 60)
+
             RateLimitGroup.DEFAULT ->
                 RateLimitRule(
                     id = group.id,
@@ -67,6 +70,8 @@ class RateLimitRuleResolver(
         val method = request.method.uppercase()
 
         return when {
+            method == "PUT" && path == "/api/me/shared-contacts/selection" -> RateLimitGroup.CONTACT_IMPORT
+
             method == "POST" && path == "/api/me/provision" ->
                 RateLimitGroup.PROVISION
 
@@ -103,6 +108,7 @@ enum class RateLimitGroup(
     val id: String
 ) {
     DEFAULT("default"),
+    CONTACT_IMPORT("contact-import"),
     PROVISION("provision"),
     PASSWORD_RESET("password-reset"),
     MESSAGES("messages"),

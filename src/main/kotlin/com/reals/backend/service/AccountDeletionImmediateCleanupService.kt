@@ -1,5 +1,6 @@
 package com.reals.backend.service
 
+import com.reals.backend.repository.SharedContactRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.ConnectionHomeDismissalRepository
 import com.reals.backend.repository.MatchmakingAvailabilityNotificationEpisodeRepository
@@ -14,6 +15,7 @@ import java.util.UUID
 @Service
 @Transactional
 class AccountDeletionImmediateCleanupService(
+    private val contacts: SharedContactRepository,
     private val matchmakingQueueRepository: MatchmakingQueueRepository,
     private val activeEngagementLockRepository: ActiveEngagementLockRepository,
     private val matchmakingAvailabilityNotificationEpisodeRepository: MatchmakingAvailabilityNotificationEpisodeRepository,
@@ -24,6 +26,7 @@ class AccountDeletionImmediateCleanupService(
 ) {
 
     fun deleteEphemeralOperationalData(userId: UUID) {
+        contacts.deleteAccountData(userId)
         matchmakingQueueRepository.deleteByUserId(userId)
         activeEngagementLockRepository.deleteByUserId(userId)
         matchmakingAvailabilityNotificationEpisodeRepository.deleteByUserId(userId)
