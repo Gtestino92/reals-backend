@@ -16,13 +16,19 @@ headers {
 
 body:json {
   {
-    "debugToken": "{{firebase_app_check_debug_token}}",
+    "debugToken": "{{?Registered DEV Web App Check debug secret}}",
     "limitedUse": false
   }
 }
 
 script:pre-request {
-  bru.setVar("firebase_app_check_token", "");
+  bru.setVar("devAdminAppCheck", "");
+  for (const key of ["firebase_api_key", "firebase_project_number", "firebase_admin_web_app_id"]) {
+    const value = bru.getEnvVar(key);
+    if (!value?.trim() || value.startsWith("paste-") || value !== bru.interpolate("{{" + key + "}}")) {
+      throw new Error("Set " + key + " in the active environment and remove any override.");
+    }
+  }
   const appId = bru.getEnvVar("firebase_admin_web_app_id");
   const project = bru.getEnvVar("firebase_project_number");
   if (!/^[0-9]+$/.test(project) || !/^1:[0-9]+:web:[A-Za-z0-9]+$/.test(appId) ||
@@ -50,9 +56,10 @@ script:post-response {
 
   const body = res.getBody();
   const token = body && typeof body.token === "string" ? body.token.trim() : "";
-  if (!token) {
-    throw new Error("Expected Firebase App Check exchange response with nonblank token.");
+  if (!(require("jsonwebtoken").decode(token)?.exp * 1000 > Date.now())) {
+    throw new Error("App Check returned an invalid or expired JWT. Check the DEV Web App debug secret and repeat 00b.");
   }
 
-  bru.setVar("firebase_app_check_token", token);
+  bru.setVar("devAdminAppCheck", token);
+  console.log("Web App Check credential ready for hosted DEV requests.");
 }

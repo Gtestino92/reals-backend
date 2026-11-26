@@ -1,56 +1,67 @@
 meta {
-  name: 00 Validate Firebase Google ID Token
+  name: 00 Google Admin Sign In
   type: http
   seq: 1
 }
 
 post {
-  url: https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebase_api_key}}
-  body: json
+  url: http://127.0.0.1:8765/login
+  body: none
   auth: none
 }
 
 headers {
-  Content-Type: application/json
+  X-Reals-Bruno: 1
 }
 
-body:json {
-  {
-    "idToken": "{{firebase_admin_google_id_token}}"
-  }
+settings {
+  timeout: 130000
+  followRedirects: false
 }
 
 script:pre-request {
-  bru.setVar("firebase_admin_id_token", "");
-  bru.setVar("firebase_admin_uid", "");
-  bru.setVar("firebase_admin_grant", "");
-  bru.setVar("firebase_admin_status_token", "");
-
-  const uid = bru.getEnvVar("firebase_admin_expected_uid");
-  const email = bru.getEnvVar("firebase_admin_email");
-  const token = bru.getEnvVar("firebase_admin_google_id_token");
-  if (!uid?.trim() || !email?.trim() || !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(token)) {
-    throw new Error("Configure the expected Firebase admin UID and email, and supply a Firebase Google ID token.");
+  bru.setVar("devAdminIdToken", "");
+  bru.setVar("devAdminGrant", "");
+  const base = bru.getEnvVar("baseUrl");
+  if (!/^https:\/\/[A-Za-z0-9.-]+(?::[0-9]+)?$/.test(base) || base.includes("paste-")) {
+    throw new Error("Configure baseUrl as the trusted DEV HTTPS origin.");
   }
-  // Early claim check only. Firebase lookup and backend status verify the actual token.
-  const claims = require("jsonwebtoken").decode(token);
-  if (claims?.firebase?.sign_in_provider !== "google.com" || claims.sub !== uid.trim()) {
-    throw new Error("The supplied token is not from a Google session for the configured Firebase UID.");
+  for (const key of ["firebase_admin_expected_uid", "firebase_admin_email", "firebase_api_key"]) {
+    const value = bru.getEnvVar(key);
+    if (!value?.trim() || value.startsWith("paste-")) throw new Error("Configure " + key + " in the active environment.");
   }
 }
 
 script:post-response {
-  const body = res.getBody();
-  const user = body?.users?.length === 1 ? body.users[0] : null;
-  const expectedUid = bru.getEnvVar("firebase_admin_expected_uid").trim();
-  const expectedEmail = bru.getEnvVar("firebase_admin_email").trim().toLowerCase();
-  if (res.getStatus() !== 200 || user?.localId !== expectedUid ||
-      user?.email?.toLowerCase() !== expectedEmail || user?.emailVerified !== true ||
-      !user.providerUserInfo?.some(provider => provider.providerId === "google.com")) {
-    throw new Error("Firebase lookup did not verify the configured administrator with a linked Google provider.");
+  const credential = res.getBody()?.credential;
+  if (res.getStatus() !== 200 || !credential) throw new Error("Start scripts/bruno_dev_google_login.py and repeat 00.");
+  const decode = require("jsonwebtoken").decode;
+  const google = decode(credential);
+  const email = bru.getEnvVar("firebase_admin_email").trim().toLowerCase();
+  if (google?.email_verified !== true || google.email?.toLowerCase() !== email) {
+    throw new Error("Repeat 00 and select the configured verified Google account.");
   }
-
-  // The backend status request also verifies that this session signed in with Google.
-  bru.setVar("firebase_admin_id_token", bru.getEnvVar("firebase_admin_google_id_token"));
-  bru.setVar("firebase_admin_uid", user.localId);
+  let body;
+  try {
+    const exchange = await bru.sendRequest({
+      method: "POST",
+      url: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=" + encodeURIComponent(bru.getEnvVar("firebase_api_key")),
+      data: {
+        requestUri: "http://localhost",
+        postBody: "providerId=google.com&id_token=" + encodeURIComponent(credential),
+        autoCreate: false,
+        returnSecureToken: true
+      }
+    });
+    body = exchange.data;
+  } catch {
+    throw new Error("Firebase sign-in failed. Check the DEV API key, accepted OAuth client ID and existing Google-linked account.");
+  }
+  const claims = decode(body?.idToken || "");
+  if (body?.isNewUser || claims?.sub !== bru.getEnvVar("firebase_admin_expected_uid").trim() ||
+      claims?.email_verified !== true || claims.email?.toLowerCase() !== email ||
+      claims.firebase?.sign_in_provider !== "google.com" || !(claims.exp * 1000 > Date.now())) {
+    throw new Error("Firebase did not return a current Google session for the configured verified administrator.");
+  }
+  bru.setVar("devAdminIdToken", body.idToken);
 }
