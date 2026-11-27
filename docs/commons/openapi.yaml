@@ -3594,7 +3594,7 @@ components:
         defaultRegion: { type: string, nullable: true, minLength: 2, maxLength: 2, description: ISO 3166-1 alpha-2 dialing region for national input }
     ContactStatus:
       type: object
-      required: [mutationRevision, requiredConsentVersion, state, importAvailable]
+      required: [mutationRevision, requiredConsentVersion, state, importAvailable, totalDistinctCount]
       properties:
         mutationRevision: { type: string, format: uuid }
         requiredConsentVersion: { type: integer }
@@ -3603,6 +3603,11 @@ components:
         state: { type: string, enum: [NOT_CONFIGURED, SYNCED, RESYNC_REQUIRED] }
         syncedAt: { type: string, format: date-time, nullable: true }
         importAvailable: { type: boolean }
+        totalDistinctCount:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Owner's synchronized distinct telephone count. Zero when not configured or synchronized with an empty selection. Null when resynchronization is required.
     FirstChatResponse:
       allOf:
         - $ref: '#/components/schemas/ChatResponse'

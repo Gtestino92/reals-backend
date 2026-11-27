@@ -25,6 +25,8 @@ class SharedContactsDisabledIntegrationTest : ControllerIT() {
         contacts.accept(owner, 1, now)
         contacts.synchronize(owner, setOf(ByteBuffer.wrap(ByteArray(32))), 1, now, false)
         val before = participation.status(owner)
+        assertFalse(before.importAvailable)
+        assertEquals(1, before.totalDistinctCount)
         val error = assertFailsWith<ContactRequestError> {
             participation.add(owner, ContactSelection(emptyList()), before.mutationRevision)
         }

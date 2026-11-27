@@ -10,6 +10,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 data class ContactParticipation(val consentVersion: Int, val acceptedAt: OffsetDateTime, val keyVersion: Int?, val syncedAt: OffsetDateTime?)
+data class OwnerContactStatusRow(val revision: UUID, val participation: ContactParticipation?, val identifierCount: Int)
 data class ContactOverlap(val count: Int, val generationA: UUID, val generationB: UUID)
 
 @Repository
@@ -23,12 +24,16 @@ class SharedContactRepository(private val jdbc: JdbcTemplate, private val named:
     }
 
     fun ownerStatus(owner: UUID) = jdbc.query("""
-        select u.contact_mutation_revision, p.consent_version, p.accepted_at, p.key_version, p.synced_at
+        select u.contact_mutation_revision, p.consent_version, p.accepted_at, p.key_version, p.synced_at,
+               (select count(*) from contact_identifiers i where i.user_id=u.id) as identifier_count
         from users u left join contact_participation p on p.user_id=u.id
         where u.id=?
     """, { rs, _ ->
-        rs.getObject("contact_mutation_revision", UUID::class.java) to
-            rs.getObject("consent_version")?.let { rs.toParticipation() }
+        OwnerContactStatusRow(
+            rs.getObject("contact_mutation_revision", UUID::class.java),
+            rs.getObject("consent_version")?.let { rs.toParticipation() },
+            rs.getInt("identifier_count")
+        )
     }, owner).single()
 
     fun participation(owner: UUID) = jdbc.query("select * from contact_participation where user_id=?", { rs, _ ->
