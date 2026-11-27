@@ -2,7 +2,6 @@ package com.reals.backend.service
 
 import com.reals.backend.domain.UserHomeStatus
 import com.reals.backend.repository.UserHomeStatusRepository
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -19,20 +18,8 @@ class HomeStatusService(
             return it
         }
 
-        val now = OffsetDateTime.now()
-        return try {
-            homeStatusRepository.saveAndFlush(
-                UserHomeStatus(
-                    userId = userId,
-                    version = 0,
-                    dirty = false,
-                    nextRefreshAt = null,
-                    updatedAt = now
-                )
-            )
-        } catch (ex: DataIntegrityViolationException) {
-            homeStatusRepository.findById(userId).orElseThrow()
-        }
+        homeStatusRepository.insertDefaultIfMissing(userId, OffsetDateTime.now())
+        return homeStatusRepository.findById(userId).orElseThrow()
     }
 
     @Transactional
@@ -40,6 +27,12 @@ class HomeStatusService(
         userId: UUID,
         reason: String
     ): UserHomeStatus {
+        invalidate(userId, reason)
+        return homeStatusRepository.findById(userId).orElseThrow()
+    }
+
+    @Transactional
+    fun invalidate(userId: UUID, reason: String) {
         val now = OffsetDateTime.now()
         val updated = homeStatusRepository.bumpVersion(
             userId = userId,
@@ -47,15 +40,10 @@ class HomeStatusService(
         )
 
         if (updated == 0) {
-            createDefaultStatusIfMissing(userId = userId, now = now)
-            homeStatusRepository.bumpVersion(
-                userId = userId,
-                updatedAt = now
-            )
-        }
-
-        return homeStatusRepository.findById(userId).orElseThrow {
-            IllegalStateException("Home status missing after bump for user $userId ($reason)")
+            homeStatusRepository.insertDefaultIfMissing(userId, now)
+            check(homeStatusRepository.bumpVersion(userId, now) == 1) {
+                "Home status missing after bump for user $userId ($reason)"
+            }
         }
     }
 
@@ -65,9 +53,9 @@ class HomeStatusService(
         userBId: UUID,
         reason: String
     ) {
-        bump(userId = userAId, reason = reason)
+        invalidate(userId = userAId, reason = reason)
         if (userBId != userAId) {
-            bump(userId = userBId, reason = reason)
+            invalidate(userId = userBId, reason = reason)
         }
     }
 
@@ -102,7 +90,7 @@ class HomeStatusService(
         )
 
         if (updated == 0) {
-            createDefaultStatusIfMissing(userId = userId, now = now)
+            homeStatusRepository.insertDefaultIfMissing(userId, now)
             homeStatusRepository.scheduleNextRefreshAt(
                 userId = userId,
                 nextRefreshAt = nextRefreshAt,
@@ -136,24 +124,4 @@ class HomeStatusService(
             updatedAt = OffsetDateTime.now()
         ) == 1
 
-    private fun createDefaultStatusIfMissing(
-        userId: UUID,
-        now: OffsetDateTime
-    ) {
-        try {
-            homeStatusRepository.saveAndFlush(
-                UserHomeStatus(
-                    userId = userId,
-                    version = 0,
-                    dirty = false,
-                    nextRefreshAt = null,
-                    updatedAt = now
-                )
-            )
-        } catch (ex: DataIntegrityViolationException) {
-            if (!homeStatusRepository.existsById(userId)) {
-                throw ex
-            }
-        }
-    }
 }

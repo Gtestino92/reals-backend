@@ -10,6 +10,17 @@ import java.util.UUID
 
 interface UserHomeStatusRepository : JpaRepository<UserHomeStatus, UUID> {
 
+    @Modifying(flushAutomatically = true)
+    @Query(
+        value = """
+        insert into user_home_status (user_id, version, dirty, updated_at)
+        values (:userId, 0, false, :updatedAt)
+        on conflict do nothing
+        """,
+        nativeQuery = true
+    )
+    fun insertDefaultIfMissing(@Param("userId") userId: UUID, @Param("updatedAt") updatedAt: OffsetDateTime): Int
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from UserHomeStatus s where s.userId = :userId")
     fun deleteByUserId(@Param("userId") userId: UUID): Int

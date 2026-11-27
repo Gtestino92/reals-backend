@@ -123,14 +123,7 @@ class MatchmakingService(
     }
 
     fun dequeue(userId: UUID) {
-        val wasQueued = queueRepository.existsByUserId(userId)
-        queueRepository.deleteByUserId(userId)
-        if (wasQueued) {
-            homeStateInvalidationService.bump(
-                userId = userId,
-                reason = "matchmaking_queue_left"
-            )
-        }
+        removeQueuedUser(userId, reason = "matchmaking_queue_left")
     }
 
     fun removeAdmissionCappedQueueEntries(
@@ -151,7 +144,7 @@ class MatchmakingService(
                 )
             }
             .forEach { userId ->
-                removeStaleQueuedUser(
+                removeQueuedUser(
                     userId = userId,
                     reason = "matchmaking_admission_capacity_final_recheck"
                 )
@@ -204,7 +197,7 @@ class MatchmakingService(
                 ?: return null
 
         if (visualAdvancementCapService.isBlocked(anchor.userId, now)) {
-            removeStaleQueuedUser(
+            removeQueuedUser(
                 userId = anchor.userId,
                 reason = "matchmaking_visual_advancement_limit_anchor"
             )
@@ -253,12 +246,12 @@ class MatchmakingService(
                 )
 
                 if (anchorCapBlocked) {
-                    removeStaleQueuedUser(
+                    removeQueuedUser(
                         userId = claimed.pair.userAId,
                         reason = "matchmaking_visual_advancement_limit_claimed_anchor"
                     )
                     if (partnerCapBlocked) {
-                        removeStaleQueuedUser(
+                        removeQueuedUser(
                             userId = claimed.pair.userBId,
                             reason = "matchmaking_visual_advancement_limit_claimed_partner"
                         )
@@ -267,7 +260,7 @@ class MatchmakingService(
                 }
 
                 if (partnerCapBlocked) {
-                    removeStaleQueuedUser(
+                    removeQueuedUser(
                         userId = claimed.pair.userBId,
                         reason = "matchmaking_visual_advancement_limit_claimed_partner"
                     )
@@ -284,7 +277,7 @@ class MatchmakingService(
         return null
     }
 
-    private fun removeStaleQueuedUser(
+    private fun removeQueuedUser(
         userId: UUID,
         reason: String
     ) {
