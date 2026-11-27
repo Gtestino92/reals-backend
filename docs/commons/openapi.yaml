@@ -81,12 +81,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [numbers]
-              properties:
-                numbers: { type: array, items: { type: string }, description: Selected international or explicitly region-qualified national numbers }
-                defaultRegion: { type: string, nullable: true, minLength: 2, maxLength: 2, description: ISO 3166-1 alpha-2 dialing region for national input }
+              $ref: '#/components/schemas/ContactSelection'
       responses:
         '200':
           description: Synchronization status and aggregate results for this submission
@@ -109,6 +104,40 @@ paths:
       summary: Erase imported selection while retaining consent
       responses:
         '204': { description: Selection removed }
+  /api/me/shared-contacts/selection/additions:
+    put:
+      tags: [Me]
+      summary: Atomically add distinct numbers to the current synchronized selection
+      parameters:
+        - in: header
+          name: X-Contact-Revision
+          required: true
+          schema: { type: string, format: uuid }
+          description: Owner mutationRevision captured when this action was initiated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactSelection'
+      responses:
+        '200':
+          description: Owner status and aggregate counts. An empty or duplicate-only addition succeeds without changing the revision or synchronization time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, submittedCount, addedDistinctCount, totalDistinctCount]
+                properties:
+                  status: { $ref: '#/components/schemas/ContactStatus' }
+                  submittedCount: { type: integer }
+                  addedDistinctCount: { type: integer, description: Distinct numbers newly added to this owner selection }
+                  totalDistinctCount: { type: integer, description: Distinct numbers now synchronized for this owner }
+        '400': { description: Invalid selection }
+        '409': { description: Imports disabled or consent or legal action required or CONTACT_FULL_REPLACEMENT_REQUIRED (missing or obsolete synchronization) or CONTACT_MUTATION_STALE. Refresh status and confirm intent. }
+        '428': { description: CONTACT_REVISION_REQUIRED. Supply X-Contact-Revision. }
+        '413': { description: Request or resulting union exceeds configured limits }
+        '429': { description: Attempt frequency or shared rolling import quota exceeded }
   /api/admin-auth/status:
     get:
       tags: [Auth]
@@ -3556,6 +3585,13 @@ components:
           format: date-time
           nullable: true
           description: First-chat inactivity deadline. Null for chat types where inactivity timeout does not apply, including first-chat decision-only state after exactly one participant approved and the other remains pending.
+    ContactSelection:
+      type: object
+      additionalProperties: false
+      required: [numbers]
+      properties:
+        numbers: { type: array, items: { type: string }, description: Selected international or explicitly region-qualified national numbers }
+        defaultRegion: { type: string, nullable: true, minLength: 2, maxLength: 2, description: ISO 3166-1 alpha-2 dialing region for national input }
     ContactStatus:
       type: object
       required: [mutationRevision, requiredConsentVersion, state, importAvailable]

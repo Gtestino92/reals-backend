@@ -6,12 +6,32 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import com.reals.backend.service.contacts.ContactParticipationService
+import com.reals.backend.service.contacts.ContactRequestError
+import com.reals.backend.service.contacts.ContactSelection
 import java.nio.ByteBuffer
 import java.time.OffsetDateTime
 import kotlin.test.*
 
 class SharedContactsDisabledIntegrationTest : ControllerIT() {
     @Autowired lateinit var contacts: SharedContactRepository
+
+    @Autowired lateinit var participation: ContactParticipationService
+
+    @Test fun `disabled imports reject additions and preserve the selection`() {
+        val owner = userService.createUser("disabled-add@example.invalid").id
+        userRepository.flush()
+        val now = OffsetDateTime.now()
+        contacts.accept(owner, 1, now)
+        contacts.synchronize(owner, setOf(ByteBuffer.wrap(ByteArray(32))), 1, now, false)
+        val before = participation.status(owner)
+        val error = assertFailsWith<ContactRequestError> {
+            participation.add(owner, ContactSelection(emptyList()), before.mutationRevision)
+        }
+        assertEquals("CONTACT_IMPORT_DISABLED", error.code)
+        assertEquals(before, participation.status(owner))
+        assertEquals(1, contacts.identifiers(owner).size)
+    }
 
     @Test fun `owner can erase stale selections and withdraw with disabled feature and no secret`() {
         val owner = userService.createUser("disabled@example.invalid").id

@@ -41,6 +41,17 @@ class RateLimitFilterTest {
     private val resolver = RateLimitRuleResolver(properties)
     private val exposurePolicy = EnvironmentExposurePolicy.forActiveProfiles("prod")
 
+    @Test
+    fun `replacement and additions share the authenticated import bucket`() {
+        val filter = postAuthFilter()
+        setPrincipal(CurrentUserAuthContext(UUID.randomUUID(), "contact-owner", null, true))
+        val selection = "/api/me/shared-contacts/selection"
+        repeat(properties.contactImportCapacity) {
+            assertEquals(200, runPostAuth(filter, MockHttpServletRequest("PUT", selection)))
+        }
+        assertEquals(429, runPostAuth(filter, MockHttpServletRequest("PUT", "$selection/additions")))
+    }
+
     @AfterEach
     fun clearSecurityContext() {
         SecurityContextHolder.clearContext()

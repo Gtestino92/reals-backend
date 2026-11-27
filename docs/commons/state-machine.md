@@ -214,6 +214,7 @@ Consent and synchronization belong to the user. Reads derive the state without c
 | --- | --- |
 | Accept current feature version | NOT_CONFIGURED with consent until a selection is imported. Reaccepting the same version preserves state. |
 | Replace under current consent | SYNCED, including an empty set. An identical import with a current mutation revision preserves the timestamp and both revisions. |
+| Add to a current SYNCED selection | SYNCED with the union. A changed union advances the owner revision and synchronization time once, consumes one quota slot and preserves generation. An unchanged union preserves all four. Other states require full replacement after current consent. |
 | Active key or required consent version changes | A previously synchronized owner sees RESYNC_REQUIRED. Both ranking and disclosure require current versions. |
 | Remove selection | NOT_CONFIGURED with existing consent. |
 | Withdraw or delete account | NOT_CONFIGURED without consent. Recovery starts in the same state. |

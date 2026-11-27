@@ -70,7 +70,7 @@ class RateLimitRuleResolver(
         val method = request.method.uppercase()
 
         return when {
-            method == "PUT" && path == "/api/me/shared-contacts/selection" -> RateLimitGroup.CONTACT_IMPORT
+            method == "PUT" && path in CONTACT_IMPORT_PATHS -> RateLimitGroup.CONTACT_IMPORT
 
             method == "POST" && path == "/api/me/provision" ->
                 RateLimitGroup.PROVISION
@@ -121,4 +121,5 @@ fun HttpServletRequest.normalizedPath(): String =
         requestURI.removePrefix(contextPath)
     }
 
+private val CONTACT_IMPORT_PATHS = setOf("/api/me/shared-contacts/selection", "/api/me/shared-contacts/selection/additions")
 private val PROFILE_PHOTO_REPLACEMENT_PATH = Regex("^/api/me/profile/photos/[^/]+/file$")
