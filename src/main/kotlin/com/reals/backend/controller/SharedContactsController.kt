@@ -34,6 +34,15 @@ class SharedContactsController(
 
     @PutMapping("/selection", consumes = ["application/json"])
     fun replace(@CurrentUserId owner: UUID, @RequestHeader("X-Contact-Revision", required = false) revision: UUID?, request: HttpServletRequest): ContactImportResult {
+        return importSelection(owner, revision, request, participation::replace)
+    }
+
+    @PutMapping("/selection/additions", consumes = ["application/json"])
+    fun add(@CurrentUserId owner: UUID, @RequestHeader("X-Contact-Revision", required = false) revision: UUID?, request: HttpServletRequest): ContactAdditionResult =
+        importSelection(owner, revision, request, participation::add)
+
+    private fun <T> importSelection(owner: UUID, revision: UUID?, request: HttpServletRequest,
+                                    apply: (UUID, ContactSelection, UUID) -> T): T {
         legal.requireCurrentRequirementsSatisfied(owner)
         val expected = requiredRevision(revision)
         participation.requireImportConsent(owner, expected)
@@ -51,7 +60,7 @@ class SharedContactsController(
         }
         val defaultRegion = if (region.isString) region.asString() else null
         if (defaultRegion != null && defaultRegion.length != 2) malformed()
-        return participation.replace(owner, ContactSelection(selected, defaultRegion), expected)
+        return apply(owner, ContactSelection(selected, defaultRegion), expected)
     }
 
     @DeleteMapping("/selection")

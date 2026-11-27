@@ -22,7 +22,7 @@ import java.util.concurrent.*
 import kotlin.test.*
 
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-@TestPropertySource(properties=["shared-contacts.enabled=true","shared-contacts.import-enabled=true","shared-contacts.disclosure-enabled=true"])
+@TestPropertySource(properties=["shared-contacts.enabled=true","shared-contacts.max-distinct=12","shared-contacts.import-enabled=true","shared-contacts.disclosure-enabled=true"])
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SharedContactsPostgresIT : PostgresITBase() {
     @Autowired lateinit var participation: ContactParticipationService
@@ -41,6 +41,9 @@ class SharedContactsPostgresIT : PostgresITBase() {
 
     private fun replaceCurrent(id: UUID, selection: ContactSelection) =
         participation.replace(id, selection, participation.status(id).mutationRevision)
+
+    private fun addCurrent(id: UUID, selection: ContactSelection) =
+        participation.add(id, selection, participation.status(id).mutationRevision)
 
     private fun selection(n: Int) = ContactSelection((0 until n).map { "+1202555%04d".format(Locale.ROOT, 100+it) })
     private fun owner() = userService.createUser("test-${UUID.randomUUID()}@example.invalid").id
@@ -66,7 +69,10 @@ class SharedContactsPostgresIT : PostgresITBase() {
             .andExpect(jsonPath("$.mutationRevision").doesNotExist())
         mvc.perform(get(url).with(authenticated(owner()))).andExpect(status().isForbidden)
         assertNull(context.range(match.id,owner(),null))
+        for (id in listOf(a,b)) addCurrent(id,selection(6))
+        assertEquals(SharedContactRange.ONE_TO_FIVE,range())
         for (id in listOf(a,b)) replaceCurrent(id,selection(11))
+        assertEquals(11, contacts.overlaps(a, listOf(b), 1, 1).getValue(b).count)
         assertEquals(SharedContactRange.ONE_TO_FIVE,range())
         val before = participation.status(a)
         assertEquals(before, replaceCurrent(a,selection(11)).status)
@@ -84,6 +90,19 @@ class SharedContactsPostgresIT : PostgresITBase() {
         acceptCurrent(b,1)
         replaceCurrent(b,selection(11))
         assertNull(range())
+    }
+
+    @Test fun `new matches capture overlap from additions`() {
+        val a = owner()
+        val b = owner()
+        acceptCurrent(a, 1)
+        acceptCurrent(b, 1)
+        replaceCurrent(a, selection(0))
+        replaceCurrent(b, selection(6))
+        addCurrent(a, selection(6))
+        val match = matchService.createMatch(a, b)
+        chatService.startFirstChat(match.id)
+        assertEquals(SharedContactRange.SIX_TO_TEN, context.range(match.id, a, null))
     }
 
     @Test fun `blocked restricted and retired snapshots do not disclose`() {
@@ -131,8 +150,12 @@ class SharedContactsPostgresIT : PostgresITBase() {
         replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set key_version=2 where user_id=?",id)
         assertEquals(ContactSyncState.RESYNC_REQUIRED,participation.status(id).state)
+        val retired = contacts.identifiers(id)
+        assertEquals("CONTACT_FULL_REPLACEMENT_REQUIRED", assertFailsWith<ContactRequestError> { addCurrent(id,selection(3)) }.code)
+        assertEquals(retired, contacts.identifiers(id))
         replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set consent_version=2 where user_id=?",id)
+        assertEquals("CONTACT_CONSENT_REQUIRED", assertFailsWith<ContactRequestError> { addCurrent(id,selection(3)) }.code)
         assertFailsWith<ContactRequestError> { replaceCurrent(id,selection(3)) }
         acceptCurrent(id,1)
         assertTrue(contacts.identifiers(id).isEmpty())
@@ -183,10 +206,20 @@ class SharedContactsPostgresIT : PostgresITBase() {
             .andExpect(status().isOk).andExpect(jsonPath("$.status.state").value("SYNCED"))
             .andExpect(jsonPath("$.submittedCount").value(2)).andExpect(jsonPath("$.distinctCount").value(1))
         assertEquals(1,contacts.identifiers(id).size)
+        mvc.perform(put("$base/selection/additions").with(authenticated(id)).contentType("application/json").content("""{"numbers":[]}"""))
+            .andExpect(status().`is`(428)).andExpect(jsonPath("$.code").value("CONTACT_REVISION_REQUIRED"))
+        send("selection/additions","""{"numbers":["202 555-0100","202 555-0101","+12025550101"],"defaultRegion":"US"}""")
+            .andExpect(status().isOk).andExpect(jsonPath("$.status.state").value("SYNCED"))
+            .andExpect(jsonPath("$.submittedCount").value(3)).andExpect(jsonPath("$.addedDistinctCount").value(1))
+            .andExpect(jsonPath("$.totalDistinctCount").value(2))
         val stale = participation.status(id).mutationRevision
         participation.remove(id,true)
         acceptCurrent(id,1)
         val renewed = participation.status(id)
+        send("selection/additions","""{"numbers":[]}""",stale)
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("CONTACT_MUTATION_STALE"))
+        send("selection/additions","""{"numbers":[]}""")
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("CONTACT_FULL_REPLACEMENT_REQUIRED"))
         send("selection","""{"numbers":["+12025550100"]}""",stale)
             .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("CONTACT_MUTATION_STALE"))
         assertEquals(renewed,participation.status(id))
@@ -251,6 +284,31 @@ class SharedContactsPostgresIT : PostgresITBase() {
         } finally { executor.shutdownNow() }
     }
 
+    @Test fun `delayed additions cannot undo clear withdrawal or renewed consent`() {
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            for (boundary in listOf("clear", "withdraw", "renew")) {
+                val id = owner()
+                acceptCurrent(id, 1)
+                val revision = replaceCurrent(id, selection(1)).status.mutationRevision
+                val started = CountDownLatch(1)
+                val pending = transactions.execute {
+                    participation.remove(id, withdraw = boundary != "clear")
+                    val attempt = executor.submit(Callable {
+                        participation.requireImportConsent(id, revision)
+                        started.countDown()
+                        assertFailsWith<ContactRequestError> { participation.add(id, selection(2), revision) }.code
+                    })
+                    assertTrue(started.await(10, TimeUnit.SECONDS))
+                    if (boundary == "renew") acceptCurrent(id, 1)
+                    attempt
+                }!!
+                assertEquals("CONTACT_MUTATION_STALE", pending.get(20, TimeUnit.SECONDS))
+                assertTrue(contacts.identifiers(id).isEmpty())
+            }
+        } finally { executor.shutdownNow() }
+    }
+
     @Test fun `privacy boundaries invalidate outstanding owner intents`() {
         val id = owner()
         for (boundary in listOf("empty clear", "clear", "withdraw", "recovery")) {
@@ -275,6 +333,9 @@ class SharedContactsPostgresIT : PostgresITBase() {
             assertEquals("CONTACT_MUTATION_STALE",assertFailsWith<ContactRequestError> {
                 participation.replace(id,selection(1),revision)
             }.code)
+            assertEquals("CONTACT_MUTATION_STALE",assertFailsWith<ContactRequestError> {
+                participation.add(id,selection(2),revision)
+            }.code)
             assertEquals(used,quota())
             assertEquals(fresh,participation.status(id))
             assertTrue(contacts.identifiers(id).isEmpty())
@@ -293,6 +354,72 @@ class SharedContactsPostgresIT : PostgresITBase() {
         }
         assertEquals(before,contacts.identifiers(id))
         assertEquals(1,jdbcTemplate.queryForObject("select count(*) from contact_replacements where user_id=?",Int::class.java,id))
+    }
+
+    @Test fun `atomic additions enforce combined capacity and share the effective mutation quota`() {
+        val id = owner()
+        acceptCurrent(id, 1)
+        replaceCurrent(id, selection(1))
+        val original = contacts.identifiers(id)
+        val initial = participation.status(id)
+        fun tail(from: Int, to: Int) = ContactSelection(selection(to).numbers.drop(from))
+        assertFailsWith<IllegalStateException> {
+            transactions.executeWithoutResult {
+                addCurrent(id, tail(1, 5))
+                error("Roll back the import")
+            }
+        }
+        assertEquals(initial, participation.status(id))
+        assertEquals(original, contacts.identifiers(id))
+        val added = addCurrent(id, tail(1, 5))
+        assertEquals(4, added.addedDistinctCount)
+        assertEquals(5, added.totalDistinctCount)
+        assertTrue(contacts.identifiers(id).containsAll(original))
+        assertNotEquals(initial.mutationRevision, added.status.mutationRevision)
+        assertNotEquals(initial.syncedAt, added.status.syncedAt)
+        val atLimit = addCurrent(id, tail(4, 12))
+        assertEquals(7, atLimit.addedDistinctCount)
+        assertEquals(12, atLimit.totalDistinctCount)
+        val full = contacts.identifiers(id)
+        assertEquals("CONTACT_SET_LIMIT", assertFailsWith<ContactRequestError> { addCurrent(id, tail(11, 13)) }.code)
+        assertEquals(atLimit.status, participation.status(id))
+        assertEquals(full, contacts.identifiers(id))
+        replaceCurrent(id, selection(1))
+        addCurrent(id, tail(1, 2))
+        val before = participation.status(id)
+        val identifiers = contacts.identifiers(id)
+        val replay = addCurrent(id, selection(2))
+        assertEquals(0, replay.addedDistinctCount)
+        assertEquals(before, replay.status)
+        assertEquals("CONTACT_REPLACEMENT_LIMIT", assertFailsWith<ContactRequestError> { addCurrent(id, selection(3)) }.code)
+        assertEquals("CONTACT_REPLACEMENT_LIMIT", assertFailsWith<ContactRequestError> { replaceCurrent(id, selection(0)) }.code)
+        assertEquals(before, participation.status(id))
+        assertEquals(identifiers, contacts.identifiers(id))
+    }
+
+    @Test fun `racing additions and replacements serialize on the captured revision`() {
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            for (raceReplacement in listOf(false, true)) {
+                val id = owner()
+                acceptCurrent(id, 1)
+                val revision = replaceCurrent(id, selection(1)).status.mutationRevision
+                val start = CyclicBarrier(2)
+                val attempts = (1..2).map { index -> pool.submit(Callable {
+                    val input = ContactSelection(listOf(selection(3).numbers[index]))
+                    start.await(10, TimeUnit.SECONDS)
+                    try {
+                        if (raceReplacement && index == 2) participation.replace(id, input, revision)
+                        else participation.add(id, input, revision)
+                        "OK"
+                    } catch (e: ContactRequestError) { e.code }
+                }) }
+                val results = attempts.map { it.get(20, TimeUnit.SECONDS) }
+                assertEquals(listOf("CONTACT_MUTATION_STALE", "OK"), results.sorted())
+                val replaced = raceReplacement && results.last() == "OK"
+                assertEquals(if (replaced) 1 else 2, contacts.identifiers(id).size)
+            }
+        } finally { pool.shutdownNow() }
     }
 
     @Test fun `quota eligibility includes exact boundary`() {

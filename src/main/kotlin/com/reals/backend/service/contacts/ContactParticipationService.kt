@@ -1,10 +1,12 @@
 package com.reals.backend.service.contacts
 
 import com.reals.backend.config.SharedContactsProperties
+import com.reals.backend.repository.ContactParticipation
 import com.reals.backend.repository.SharedContactRepository
 import com.reals.backend.service.UserService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.nio.ByteBuffer
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -20,6 +22,8 @@ data class ContactStatus(
 )
 
 data class ContactImportResult(val status: ContactStatus, val submittedCount: Int, val distinctCount: Int)
+
+data class ContactAdditionResult(val status: ContactStatus, val submittedCount: Int, val addedDistinctCount: Int, val totalDistinctCount: Int)
 
 @Service
 @Transactional
@@ -68,24 +72,49 @@ class ContactParticipationService(
     }
 
     fun replace(owner: UUID, selection: ContactSelection, expected: UUID): ContactImportResult {
-        users.lockActiveUserOrThrow(owner, "Replace contact selection")
+        val row = lockForImport(owner, expected)
+        val selected = pseudonymizer.identifiers(selection)
+        val previous = repository.identifiers(owner)
+        if (row.keyVersion != settings.keyVersion || previous != selected) {
+            val invalidate = row.keyVersion != settings.keyVersion || !selected.containsAll(previous)
+            val toInsert = if (invalidate) selected else selected - previous
+            persistChange(owner, toInsert, invalidate)
+        }
+        return ContactImportResult(status(owner), selection.numbers.size, selected.size)
+    }
+
+    fun add(owner: UUID, selection: ContactSelection, expected: UUID): ContactAdditionResult {
+        val row = lockForImport(owner, expected)
+        if (row.keyVersion != settings.keyVersion) {
+            throw ContactRequestError(409, "CONTACT_FULL_REPLACEMENT_REQUIRED", "Synchronize the complete selection before adding contacts")
+        }
+        val selected = pseudonymizer.identifiers(selection)
+        val previous = repository.identifiers(owner)
+        val additions = selected - previous
+        val total = previous.size + additions.size
+        if (total > settings.maxDistinct) {
+            throw ContactRequestError(413, "CONTACT_SET_LIMIT", "Combined selection exceeds the distinct number limit")
+        }
+        if (additions.isNotEmpty()) persistChange(owner, additions, invalidate = false)
+        return ContactAdditionResult(status(owner), selection.numbers.size, additions.size, total)
+    }
+
+    private fun lockForImport(owner: UUID, expected: UUID): ContactParticipation {
+        users.lockActiveUserOrThrow(owner, "Import contact selection")
         requireImportEnabled()
         requireRevision(owner, expected)
         val row = repository.participation(owner)
         if (row == null || row.consentVersion != settings.consentVersion) consentRequired()
-        val selected = pseudonymizer.identifiers(selection)
-        val previous = repository.identifiers(owner)
-        if (row.keyVersion != settings.keyVersion || previous != selected) {
-            val now = OffsetDateTime.now()
-            if (!repository.recordReplacement(owner, now, settings.dailyReplacements)) {
-                throw ContactRequestError(429, "CONTACT_REPLACEMENT_LIMIT", "Rolling 24-hour replacement quota reached")
-            }
-            val invalidate = row.keyVersion != settings.keyVersion || !selected.containsAll(previous)
-            val toInsert = if (invalidate) selected else selected - previous
-            repository.advanceRevision(owner)
-            repository.synchronize(owner, toInsert, settings.keyVersion, now, invalidate)
+        return row
+    }
+
+    private fun persistChange(owner: UUID, inserts: Set<ByteBuffer>, invalidate: Boolean) {
+        val now = OffsetDateTime.now()
+        if (!repository.recordReplacement(owner, now, settings.dailyReplacements)) {
+            throw ContactRequestError(429, "CONTACT_REPLACEMENT_LIMIT", "Rolling 24-hour replacement quota reached")
         }
-        return ContactImportResult(status(owner), selection.numbers.size, selected.size)
+        repository.advanceRevision(owner)
+        repository.synchronize(owner, inserts, settings.keyVersion, now, invalidate)
     }
 
     fun remove(owner: UUID, withdraw: Boolean) {
