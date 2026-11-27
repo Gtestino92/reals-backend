@@ -18,7 +18,8 @@ data class ContactStatus(
     val acceptedAt: OffsetDateTime?,
     val state: ContactSyncState,
     val syncedAt: OffsetDateTime?,
-    val importAvailable: Boolean
+    val importAvailable: Boolean,
+    val totalDistinctCount: Int?
 )
 
 data class ContactImportResult(val status: ContactStatus, val submittedCount: Int, val distinctCount: Int)
@@ -35,7 +36,7 @@ class ContactParticipationService(
 ) {
     @Transactional(readOnly = true)
     fun status(owner: UUID): ContactStatus {
-        val (revision, row) = repository.ownerStatus(owner)
+        val (revision, row, count) = repository.ownerStatus(owner)
         val state = when {
             row?.keyVersion == null -> ContactSyncState.NOT_CONFIGURED
             row.keyVersion != settings.keyVersion || row.consentVersion != settings.consentVersion -> ContactSyncState.RESYNC_REQUIRED
@@ -48,7 +49,12 @@ class ContactParticipationService(
             acceptedAt = row?.acceptedAt,
             state = state,
             syncedAt = row?.syncedAt,
-            importAvailable = settings.enabled && settings.importEnabled
+            importAvailable = settings.enabled && settings.importEnabled,
+            totalDistinctCount = when (state) {
+                ContactSyncState.SYNCED -> count
+                ContactSyncState.NOT_CONFIGURED -> 0
+                ContactSyncState.RESYNC_REQUIRED -> null
+            }
         )
     }
 

@@ -150,11 +150,15 @@ class SharedContactsPostgresIT : PostgresITBase() {
         replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set key_version=2 where user_id=?",id)
         assertEquals(ContactSyncState.RESYNC_REQUIRED,participation.status(id).state)
+        mvc.perform(get("/api/me/shared-contacts").with(authenticated(id)))
+            .andExpect(jsonPath("$.totalDistinctCount").hasJsonPath())
+            .andExpect(jsonPath("$.totalDistinctCount").value(org.hamcrest.Matchers.nullValue()))
         val retired = contacts.identifiers(id)
         assertEquals("CONTACT_FULL_REPLACEMENT_REQUIRED", assertFailsWith<ContactRequestError> { addCurrent(id,selection(3)) }.code)
         assertEquals(retired, contacts.identifiers(id))
         replaceCurrent(id,selection(2))
         jdbcTemplate.update("update contact_participation set consent_version=2 where user_id=?",id)
+        assertNull(participation.status(id).totalDistinctCount)
         assertEquals("CONTACT_CONSENT_REQUIRED", assertFailsWith<ContactRequestError> { addCurrent(id,selection(3)) }.code)
         assertFailsWith<ContactRequestError> { replaceCurrent(id,selection(3)) }
         acceptCurrent(id,1)
@@ -198,13 +202,16 @@ class SharedContactsPostgresIT : PostgresITBase() {
         legal.currentDocuments().forEach { legal.recordAction(id,it.type,it.version,it.requiredAction) }
         mvc.perform(get(base).with(authenticated(id)))
             .andExpect(jsonPath("$.mutationRevision").value(participation.status(id).mutationRevision.toString()))
+            .andExpect(jsonPath("$.totalDistinctCount").value(0))
         mvc.perform(put("$base/consent").with(authenticated(id)).contentType("application/json").content("""{"version":1}"""))
             .andExpect(status().`is`(428)).andExpect(jsonPath("$.code").value("CONTACT_REVISION_REQUIRED"))
         send("selection","""{"numbers":[]}""").andExpect(status().isConflict)
         send("consent","""{"version":1}""").andExpect(status().isOk)
+            .andExpect(jsonPath("$.totalDistinctCount").value(0))
         send("selection","""{"numbers":["202 555-0100","+12025550100"],"defaultRegion":"US"}""")
             .andExpect(status().isOk).andExpect(jsonPath("$.status.state").value("SYNCED"))
             .andExpect(jsonPath("$.submittedCount").value(2)).andExpect(jsonPath("$.distinctCount").value(1))
+            .andExpect(jsonPath("$.status.totalDistinctCount").value(1))
         assertEquals(1,contacts.identifiers(id).size)
         mvc.perform(put("$base/selection/additions").with(authenticated(id)).contentType("application/json").content("""{"numbers":[]}"""))
             .andExpect(status().`is`(428)).andExpect(jsonPath("$.code").value("CONTACT_REVISION_REQUIRED"))
@@ -212,6 +219,7 @@ class SharedContactsPostgresIT : PostgresITBase() {
             .andExpect(status().isOk).andExpect(jsonPath("$.status.state").value("SYNCED"))
             .andExpect(jsonPath("$.submittedCount").value(3)).andExpect(jsonPath("$.addedDistinctCount").value(1))
             .andExpect(jsonPath("$.totalDistinctCount").value(2))
+            .andExpect(jsonPath("$.status.totalDistinctCount").value(2))
         val stale = participation.status(id).mutationRevision
         participation.remove(id,true)
         acceptCurrent(id,1)
@@ -231,6 +239,7 @@ class SharedContactsPostgresIT : PostgresITBase() {
         send("selection"," ".repeat(300001)).andExpect(status().`is`(413))
         assertEquals(1,contacts.identifiers(id).size)
         send("selection","""{"numbers":[]}""").andExpect(status().isOk)
+            .andExpect(jsonPath("$.status.totalDistinctCount").value(0))
         assertTrue(contacts.identifiers(id).isEmpty())
         mvc.perform(delete("$base/consent").with(authenticated(id))).andExpect(status().isNoContent)
         mvc.perform(get(base).with(authenticated(id))).andExpect(jsonPath("$.state").value("NOT_CONFIGURED"))
@@ -389,6 +398,8 @@ class SharedContactsPostgresIT : PostgresITBase() {
         val before = participation.status(id)
         val identifiers = contacts.identifiers(id)
         val replay = addCurrent(id, selection(2))
+        assertEquals(2, replay.status.totalDistinctCount)
+        assertEquals(replay.totalDistinctCount, replay.status.totalDistinctCount)
         assertEquals(0, replay.addedDistinctCount)
         assertEquals(before, replay.status)
         assertEquals("CONTACT_REPLACEMENT_LIMIT", assertFailsWith<ContactRequestError> { addCurrent(id, selection(3)) }.code)
@@ -420,6 +431,35 @@ class SharedContactsPostgresIT : PostgresITBase() {
                 assertEquals(if (replaced) 1 else 2, contacts.identifiers(id).size)
             }
         } finally { pool.shutdownNow() }
+    }
+
+    @Test fun `owner status exposes revision and count together across committed transitions`() {
+        val id = owner()
+        val other = owner()
+        acceptCurrent(other, 1)
+        replaceCurrent(other, selection(7))
+        acceptCurrent(id, 1)
+        val reader = Executors.newSingleThreadExecutor()
+        try {
+            fun verify(expectedCount: Int, mutate: () -> Unit) {
+                val before = participation.status(id)
+                val after = transactions.execute {
+                    mutate()
+                    val pending = participation.status(id)
+                    assertEquals(expectedCount, pending.totalDistinctCount)
+                    assertNotEquals(before.mutationRevision, pending.mutationRevision)
+                    assertEquals(before, reader.submit(Callable { participation.status(id) }).get(10, TimeUnit.SECONDS))
+                    pending
+                }
+                assertEquals(after, participation.status(id))
+            }
+            verify(2) { replaceCurrent(id, selection(2)) }
+            verify(4) { addCurrent(id, selection(4)) }
+            verify(0) { participation.remove(id, withdraw = false) }
+            verify(1) { replaceCurrent(id, selection(1)) }
+            verify(0) { participation.remove(id, withdraw = true) }
+            assertEquals(7, participation.status(other).totalDistinctCount)
+        } finally { reader.shutdownNow() }
     }
 
     @Test fun `quota eligibility includes exact boundary`() {
