@@ -16,7 +16,7 @@ class HomeStateInvalidationService(
         reason: String
     ) {
         log.debug("Bumping Home status for user={} reason={}", userId, reason)
-        homeStatusService.bump(
+        homeStatusService.invalidate(
             userId = userId,
             reason = reason
         )

@@ -14,12 +14,16 @@ import com.reals.backend.repository.ProfilePhotoRepository
 import com.reals.backend.repository.ActiveEngagementLockRepository
 import com.reals.backend.repository.matching.MatchmakingCandidateRepository
 import com.reals.backend.repository.matching.MatchmakingPairExclusionPolicy
+import com.reals.backend.service.HomeStatusService
 import com.reals.backend.service.MatchService
 import com.reals.backend.service.UserBlockService
 import com.reals.backend.service.matching.MatchmakingProcessorService
 import com.reals.backend.service.matching.MatchmakingService
 import com.reals.backend.service.ProfileService
 import com.reals.backend.service.UserService
+import jakarta.persistence.EntityManagerFactory
+import org.awaitility.Awaitility.await
+import org.hibernate.SessionFactory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -44,7 +48,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-@SpringBootTest
+@SpringBootTest(properties = [
+    "spring.jpa.defer-datasource-initialization=false",
+    "spring.jpa.properties.hibernate.generate_statistics=true"
+])
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 class MatchmakingPostgresConcurrencyIntegrationTest {
@@ -87,6 +94,25 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
 
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
+
+    @Autowired
+    private lateinit var entityManagerFactory: EntityManagerFactory
+
+    @Autowired
+    private lateinit var homeStatusService: HomeStatusService
+
+    @Test
+    fun cancellationStatementCounts() {
+        val user = createActiveProfile("cancel@example.com", "Cancel", Gender.FEMALE, setOf(Gender.MALE))
+        enqueueForMatchmaking(user)
+        val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        val before = statistics.prepareStatementCount
+        matchmakingService.dequeue(user)
+        val afterRemoval = statistics.prepareStatementCount
+        matchmakingService.dequeue(user)
+        assertEquals(2L, afterRemoval - before)
+        assertEquals(1L, statistics.prepareStatementCount - afterRemoval)
+    }
 
     @BeforeEach
     fun cleanDatabase() {
@@ -390,6 +416,86 @@ class MatchmakingPostgresConcurrencyIntegrationTest {
             1,
             activeEngagementLockRepository.countByUserIdAndEngagementType(userB, EngagementType.MATCH)
         )
+    }
+
+    @Test
+    fun `candidate claim skips pending cancellation and rollback restores queue and Home`() {
+        val (user, partner) = enqueueCompatiblePair()
+        homeStatusService.markClean(user)
+        val before = homeStatusService.getOrCreateStatus(user)
+        Executors.newSingleThreadExecutor().use { worker ->
+            TransactionTemplate(transactionManager).executeWithoutResult { tx ->
+                matchmakingService.dequeue(user)
+                assertEquals(before.version + 1, homeStatusService.getOrCreateStatus(user).version)
+                val claim = worker.submit(Callable { matchmakingProcessorService.process(1) })
+                val result = claim.get(10, TimeUnit.SECONDS)
+                assertEquals(0, result.candidatePairs)
+                assertEquals(0, result.failedPairs)
+                tx.setRollbackOnly()
+            }
+        }
+        assertTrue(matchmakingQueueRepository.existsByUserId(user))
+        assertTrue(matchmakingQueueRepository.existsByUserId(partner))
+        assertEquals(before, homeStatusService.getOrCreateStatus(user))
+        assertEquals(0L, matchRepository.count())
+    }
+
+    @Test
+    fun `cancellation waiting on a successful match preserves match and Home version`() {
+        val (user, partner) = enqueueCompatiblePair()
+        val before = homeStatusService.getOrCreateStatus(user).version
+        var matchedVersion = before
+        runWhileHoldingTransaction(
+            hold = {
+                assertEquals(1, matchmakingProcessorService.process(1).matchesCreated)
+                matchedVersion = homeStatusService.getOrCreateStatus(user).version
+                assertTrue(matchedVersion > before)
+            },
+            competingWrite = { matchmakingService.dequeue(user) }
+        )
+        assertEquals(matchedVersion, homeStatusService.getOrCreateStatus(user).version)
+        val match = matchRepository.findAll().single()
+        assertEquals(setOf(user, partner), setOf(match.userAId, match.userBId))
+        assertEquals(0L, matchmakingQueueRepository.count())
+    }
+
+    @Test
+    fun `concurrent invalidations initialize missing Home row and keep both increments`() {
+        val user = userService.createUser("missing-home@example.com").id
+        runWhileHoldingTransaction(
+            hold = { homeStatusService.invalidate(user, "first") },
+            competingWrite = { homeStatusService.invalidate(user, "second") }
+        )
+        val status = homeStatusService.getOrCreateStatus(user)
+        assertEquals(2L, status.version)
+        assertTrue(status.dirty)
+    }
+
+    private fun enqueueCompatiblePair(): Pair<UUID, UUID> {
+        val user = createActiveProfile("a@example.com", "User A", Gender.FEMALE, setOf(Gender.MALE))
+        val partner = createActiveProfile("b@example.com", "User B", Gender.MALE, setOf(Gender.FEMALE))
+        enqueueForMatchmaking(user)
+        enqueueForMatchmaking(partner)
+        return user to partner
+    }
+
+    private fun runWhileHoldingTransaction(hold: () -> Unit, competingWrite: () -> Unit) {
+        Executors.newSingleThreadExecutor().use { worker ->
+            val competing = TransactionTemplate(transactionManager).execute {
+                hold()
+                val future = worker.submit(competingWrite)
+                // Commit only once PostgreSQL confirms the second writer is waiting on this transaction.
+                await().pollInSameThread().atMost(10, TimeUnit.SECONDS).until {
+                    jdbcTemplate.queryForObject(
+                        """select exists (select 1 from pg_locks
+                            where not granted and pg_backend_pid() = any(pg_blocking_pids(pid)))""",
+                        Boolean::class.java
+                    ) == true
+                }
+                future
+            }!!
+            competing.get(10, TimeUnit.SECONDS)
+        }
     }
 
     private fun assertMatchedUsersAreDistinct(expectedUserCount: Int? = null) {

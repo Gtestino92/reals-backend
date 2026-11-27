@@ -11,6 +11,7 @@ import org.hamcrest.Matchers.equalTo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -19,6 +20,31 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 class MatchmakingControllerIntegrationTest : ControllerIT() {
+
+    @Test
+    fun `cancelling twice removes the queue entry and invalidates Home once`() {
+        val userId = createActiveProfile(
+            email = "cancel-queue@example.com",
+            displayName = "Cancel Queue",
+            gender = Gender.FEMALE,
+            lookingForGenders = setOf(Gender.MALE)
+        )
+        enqueueForMatchmaking(userId)
+        val before = homeStatusService.getOrCreateStatus(userId).version
+        homeStatusService.markClean(userId)
+
+        repeat(2) {
+            mockMvc.perform(delete("/api/matchmaking/queue").with(authenticatedAs(userId)))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.userId", equalTo(userId.toString())))
+                .andExpect(jsonPath("$.inQueue", equalTo(false)))
+
+            assertFalse(matchmakingQueueRepository.existsByUserId(userId))
+            val status = homeStatusRepository.findById(userId).orElseThrow()
+            assertEquals(before + 1, status.version)
+            assertEquals(true, status.dirty)
+        }
+    }
 
     @Test
     fun `enqueue requires current search location`() {
